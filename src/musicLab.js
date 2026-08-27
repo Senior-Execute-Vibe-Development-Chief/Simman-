@@ -187,6 +187,12 @@ function pump() {
   for (const lane of SCHED.lanes) {
     const m = lane.m();
     if (!m) continue;
+    // A backgrounded tab throttles this timer to once a second or worse, and
+    // the lane clock has no idea. Without resyncing, a thirty-second stall
+    // schedules three hundred notes in one pass, nearly all of them dated in
+    // the past — and Web Audio fires a past-dated start immediately, so they
+    // all land at once as a crash and the lane runs behind for ever after.
+    if (lane.next < now - 0.05) lane.next = now + 0.05;
     while (lane.next < now + 0.8) {
       const plan = ambientBar(m, { occ: S.occ, intimacy: S.intimacy, bar: lane.bar, seed: m.people.seed });
       const spb = 60 / plan.tempo;
@@ -222,6 +228,9 @@ function hymnSyllables(m, n = 8) {
 }
 function playPiece() {
   const A = audio();
+  // one clock at a time: the piece and the ambience share a people, so they
+  // also share voice channels, and each was damping the other's notes mid-note
+  if (S.playing) stopAmbient();
   setDistance(A, 0.9);
   const hymn = hymnSyllables(P, 10);
   const piece = composePiece(P, S.occ, hymn.syls);
