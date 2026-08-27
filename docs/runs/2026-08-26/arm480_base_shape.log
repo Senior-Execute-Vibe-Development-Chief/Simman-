@@ -83,3 +83,17 @@
       tiny #582 "Faphutbuytay" 4k km2 mem=1 age=1504 org=0.37
     [368s]
 [peopleSim] AGRICULTURE INVENTED at (115,99) (-93.8E 15.8N) — the basin farms; a city will rise when its market gathers one (score 1.97)
+
+=== step 32000  realms=541 (235 vassal)  claimed=19.5%  flows: founded=144 ended=206 seceded=295 shattered=21
+    size km2: P10=15k  MED=34k  P90=92k  MAX=1665k  | top1share=6%  max/med=48.4  gini=0.44  lnσ=0.77 (real maps ≈2.0-2.6)
+    histogram  <50k:377  50-200k:152  200k-1M:11  1-5M:1  >5M:0
+    SMALL (<100k km2): 495 of 541 (91%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #1608 "Fizaikhuisazusi" 4k km2 mem=1 age=13 org=0.55
+      tiny #1456 "Fippusaňifa" 4k km2 mem=1 age=608 org=0.56
+      tiny #782 "Kyiukokyopea" 4k km2 mem=1 age=3163 org=0.52
+      tiny #1062 "Zuzyuszyuta" 4k km2 mem=1 age=2336 org=0.55
+      tiny #710 "Zezeejiimsiityop" 4k km2 mem=1 age=4663 org=0.58
+      tiny #129 "Tyimzadyityopa" 4k km2 mem=1 age=6913 org=0.57
+      tiny #29 "Wityim" 4k km2 mem=2 age=7663 org=0.60
+      tiny #197 "Dapfaphut'eb" 4k km2 mem=1 age=7513 org=0.58
+    [781s]
