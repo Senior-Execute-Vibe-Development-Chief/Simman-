@@ -49,6 +49,12 @@ const UA = "Simman-worldsim-asset-fetch/1.0 (open-source hobby worldsim; one-off
 const REPOS = {
   vcsl: { dir: "/home/user/sgossner/vcsl", url: "https://github.com/sgossner/vcsl" },
   vsco: { dir: "/home/user/sgossner/vsco2", url: "https://github.com/sgossner/VSCO-2-CE" },
+  // CC0, and the only openly-licensed recording of a bowed skin-membrane
+  // fiddle anyone has published: a cheap erhu, close-miked in stereo, long and
+  // short and sul tasto. Its readme says it was played by "someone who's more
+  // of a violinist", which is audible and is still an erhu.
+  erhu: { dir: "/home/user/sfzinstruments/aliexpress-erhu",
+          url: "https://github.com/sfzinstruments/aliexpress-erhu", full: true },
 };
 
 // ── the mapping: one real body per engine family ─────────────────────────
@@ -85,8 +91,6 @@ const MAP = {
                  kind: "struck",  src: "Darbuka", why: "a single-headed struck membrane", unpitched: true },
   frameDrum:   { repo: "vcsl", dir: "Membranophones/Struck Membranophones/Frame Drum",
                  kind: "struck",  src: "Frame Drum", why: "a hand-struck frame membrane", unpitched: true },
-  clappers:    { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Claves",
-                 kind: "struck",  src: "Claves", why: "two solid bodies struck together", unpitched: true },
   claps:       { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Claps",
                  kind: "struck",  src: "Claps", why: "hands", unpitched: true },
 };
@@ -303,6 +307,11 @@ function matOf(src) {
   if (!m) throw new Error(`no material recorded for sample source "${src}" — add it to RECORDED_MAT`);
   return m;
 }
+// A DRIVEN BODY HAS TO LOOP and a struck one must not, so a named recording
+// carries its own kind rather than being assumed plucked — which is what the
+// bank did, and it would have played the erhu as a note that simply stops.
+const GM_KIND = { bowed: "sustain", fluteOpen: "sustain", pipeStopped: "sustain",
+  reedPipe: "sustain", horn: "sustain" };
 const NAMED_FAM = {
   sitar: "luteNeck", acoustic_guitar_nylon: "luteNeck", shamisen: "luteNeck",
   koto: "lyre", dulcimer: "lyre",
@@ -310,6 +319,40 @@ const NAMED_FAM = {
   flute: "fluteOpen", pan_flute: "fluteOpen", shakuhachi: "fluteOpen",
   bagpipe: "reedPipe", reed_organ: "reedPipe",
   taiko_drum: "drum",
+};
+
+/**
+ * NAMED INSTRUMENTS THAT ARE NOT IN A GENERAL MIDI SET.
+ *
+ * The FluidR3 bank below covers what General MIDI happens to name, which is a
+ * list drawn up in 1991 around a Western keyboard: it has a sitar and a koto
+ * and a shakuhachi, and nothing at all for a bowed fiddle with a snakeskin
+ * membrane or a plucked box zither with movable bridges. Those have to come
+ * from a real recording, one folder of WAVs at a time, through the same path
+ * the family bank uses.
+ *
+ * `pitch` is per-library because octave numbering is not standard: this erhu
+ * set labels its octaves ONE ABOVE scientific pitch, which is not a guess —
+ * its "a5" measures 440.0 Hz with nothing at 220, and its "d5" measures
+ * 293.7 with nothing at 146. (Its own SFZ maps them an octave lower again;
+ * the audio is the authority, not the mapping.)
+ */
+const NAMED_WAV = {
+  "erhu": {
+    repo: "erhu", dir: "Samples/sus", kind: "sustain", fam: "bowed", mat: "silk",
+    src: "AliExpress Erhu", every: 1,
+    match: /^erhu_([a-g][b]?)(\d)_sus_rr1\.wav$/i,
+    pitch: (m) => 440 * Math.pow(2, (PC[m[1][0].toUpperCase() + (m[1][1] || "")] - 9) / 12
+      + (parseInt(m[2], 10) - 1 - 4)),
+  },
+  "qānūn": {
+    repo: "vcsl", dir: "Chordophones/Zithers/Dan Tranh/Normal", kind: "pluck",
+    fam: "lyre", mat: "iron", src: "Dan Tranh", every: 1,
+    like: "a plucked box zither with movable bridges under metal strings, "
+      + "which is what a qānūn is — the dulcimer it used to borrow is STRUCK",
+    match: /^([A-G][b#]?)(\d)_(?:ff|f|mf)_1\.wav$/,
+    pitch: (m) => 440 * Math.pow(2, (PC[m[1]] - 9) / 12 + (parseInt(m[2], 10) - 4)),
+  },
 };
 
 const GM_URL = "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/";
@@ -326,12 +369,16 @@ const NAMED = {
   "tānpūrā":    { gm: "sitar",       lo: "C2", hi: "C4" },
   // by acoustic class, named so the substitution is visible
   "oud":        { gm: "acoustic_guitar_nylon", lo: "F2", hi: "F5", like: "a gut-strung short-necked lute" },
-  "qānūn":      { gm: "dulcimer",    lo: "A2", hi: "A5", like: "a plucked box zither" },
-  "nāy":        { gm: "pan_flute",   lo: "C4", hi: "E6", like: "an end-blown rim flute" },
-  "bānsurī":    { gm: "pan_flute",   lo: "C4", hi: "C6", like: "an end-blown rim flute" },
+  // A PAN FLUTE IS THE WRONG BODY, not merely the wrong instrument. It is a
+  // bundle of stopped pipes with one pitch each and no finger holes, so it
+  // cannot bend, and bending is most of what these two do — a taqsīm on a nāy
+  // is very largely portamento. A shakuhachi is an end-blown rim flute with
+  // open holes in a bamboo tube, which is the nāy's own construction, and it
+  // is a real recording of one.
+  "nāy":        { gm: "shakuhachi",  lo: "A3", hi: "D6", like: "an end-blown rim flute in bamboo, which is the nāy's own body" },
+  "bānsurī":    { gm: "shakuhachi",  lo: "A3", hi: "C6", like: "a bamboo flute with open holes — blown across rather than over" },
   "kamānja":    { gm: "fiddle",      lo: "G3", hi: "C6", like: "a bowed folk fiddle" },
   "sārangī":    { gm: "fiddle",      lo: "E3", hi: "C6", like: "a bowed folk fiddle" },
-  "erhu":       { gm: "fiddle",      lo: "C4", hi: "D6", like: "a bowed folk fiddle" },
   "dizi":       { gm: "flute",       lo: "D4", hi: "D7", like: "a transverse flute, without the membrane buzz" },
   "sheng":      { gm: "reed_organ",  lo: "C3", hi: "C6", like: "a free reed, which is exactly what a sheng is" },
   "pipa":       { gm: "sitar",       lo: "A2", hi: "A5", like: "a plucked, fretted lute with a bright metallic attack" },
@@ -353,6 +400,50 @@ async function buildNamed() {
   const cache = new Map();
   const bank = {};
   let files = 0, bytes = 0;
+  for (const [label, spec] of Object.entries(NAMED_WAV)) {
+    const from = join(REPOS[spec.repo].dir, spec.dir);
+    const entries = [];
+    if (existsSync(from)) {
+      // ONE TAKE PER PITCH, loudest, exactly as the family bank does — a
+      // library that ships three dynamics of every note otherwise contributes
+      // the same pitch three times, and striding across that list lands twice
+      // on one note and skips two others.
+      const best = new Map();
+      for (const f of readdirSync(from)) {
+        const m = spec.match.exec(f);
+        if (!m) continue;
+        const hz = spec.pitch(m);
+        if (!(hz > 0)) continue;
+        const key = Math.round(hz * 100);
+        const prev = best.get(key);
+        if (!prev || dynOf(f) < dynOf(prev.f)) best.set(key, { f, hz });
+      }
+      const picks = [...best.values()].sort((a, b) => a.hz - b.hz);
+      // one every `every` pitches: the engine shifts by at most a tone anyway,
+      // and a chromatic set of three-second stereo WAVs is not worth the bytes
+      for (let i = 0; i < picks.length; i += spec.every) {
+        const p2 = picks[i];
+        const raw = decodeWav(readFileSync(join(from, p2.f)));
+        if (!raw) continue;
+        const sh2 = shape(raw.pcm, raw.rate, spec.kind);
+        if (!sh2) continue;
+        const file = `${label.replace(/[^a-z]/gi, "")}_${Math.round(p2.hz)}.mp3`;
+        if (!DRY && !existsSync(join(dir, file))) {
+          const mp3 = await encodeMp3(sh2.pcm, sh2.rate, spec.kind === "sustain" ? 72 : 64);
+          writeFileSync(join(dir, file), mp3);
+          bytes += mp3.length; files++;
+        }
+        entries.push({ hz: +p2.hz.toFixed(2), file });
+      }
+    }
+    if (entries.length) {
+      bank[label] = { src: spec.src, kind: spec.kind, like: spec.like || null,
+        fam: spec.fam, mat: spec.mat, entries };
+      console.log(`  ${label.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${spec.src} (recorded)`);
+    } else {
+      console.log(`  ${label.padEnd(12)} MISSING ${spec.dir}`);
+    }
+  }
   for (const [label, spec] of Object.entries(NAMED)) {
     if (EMIT_ONLY) {
       // rebuild the entry from what is already on disk, so the manifest can be
@@ -364,7 +455,8 @@ async function buildNamed() {
         if (existsSync(join(dir, file))) entries.push({ hz, file });
       }
       if (entries.length) {
-        bank[label] = { gm: spec.gm, like: spec.like || null,
+        bank[label] = { src: spec.gm, kind: GM_KIND[NAMED_FAM[spec.gm]] || "pluck",
+          like: spec.like || null,
           fam: NAMED_FAM[spec.gm] || null, mat: matOf(spec.gm), entries };
         console.log(`  ${label.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${spec.gm} (from disk)`);
       }
@@ -396,7 +488,8 @@ async function buildNamed() {
       if (!existsSync(join(dir, file))) { writeFileSync(join(dir, file), raw); bytes += raw.length; files++; }
       entries.push({ hz, file });
     }
-    bank[label] = { gm: spec.gm, like: spec.like || null,
+    bank[label] = { src: spec.gm, kind: GM_KIND[NAMED_FAM[spec.gm]] || "pluck",
+      like: spec.like || null,
       fam: NAMED_FAM[spec.gm] || null, mat: matOf(spec.gm), entries };
     console.log(`  ${label.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${spec.gm}${spec.like ? "  (as " + spec.like + ")" : ""}`);
   }
@@ -410,9 +503,11 @@ async function main() {
     // fetch every mapped folder in ONE sparse set per repo, so git resolves the
     // blobs in a single pass instead of once per family
     for (const key of Object.keys(REPOS)) {
-      const dirs = fams.filter(f => MAP[f].repo === key).map(f => MAP[f].dir + "/*");
-      if (!dirs.length) continue;
       ensureRepo(key);
+      if (REPOS[key].full) continue;                 // a small repo, checked out whole
+      const dirs = fams.filter(f => MAP[f].repo === key).map(f => MAP[f].dir + "/*")
+        .concat(Object.values(NAMED_WAV).filter(n => n.repo === key).map(n => n.dir + "/*"));
+      if (!dirs.length) continue;
       console.log(`  ${key}: fetching ${dirs.length} folders …`);
       sh("git", ["sparse-checkout", "init", "--no-cone"], REPOS[key].dir);
       sh("git", ["sparse-checkout", "set", ...dirs], REPOS[key].dir);
@@ -486,7 +581,8 @@ ${gen}
 };
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
-  "Community Edition, by Versilian Studios LLC (CC0). Named bench instruments " +
+  "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
+  "sfzinstruments/aliexpress-erhu (CC0). Named bench instruments " +
   "from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever
@@ -494,7 +590,8 @@ export const SAMPLE_CREDIT =
 // is walled off from the generator by construction. Keyed by that label.
 export const NAMED_BANK = {
 ${Object.entries(named.bank).map(([k, v]) =>
-  `  ${JSON.stringify(k)}: { gm: ${JSON.stringify(v.gm)}, like: ${JSON.stringify(v.like)}, ` +
+  `  ${JSON.stringify(k)}: { src: ${JSON.stringify(v.src || v.gm)}, ` +
+  `kind: ${JSON.stringify(v.kind || "pluck")}, like: ${JSON.stringify(v.like)}, ` +
   `fam: ${JSON.stringify(v.fam)}, mat: ${JSON.stringify(v.mat)}, samples: [\n` +
   v.entries.map(e => `    { hz: ${e.hz}, file: ${JSON.stringify("named/" + e.file)} },`).join("\n") +
   `\n  ] },`).join("\n")}

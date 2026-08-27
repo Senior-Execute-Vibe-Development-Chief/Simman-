@@ -2,13 +2,14 @@
 
 `assets/instr-audio/` holds one real recording per instrument **family**, used by
 the Music Lab's "recorded bodies" path. It is built by `tools/build_samples.mjs`,
-which fetches from two sample libraries and re-encodes what it needs.
+which fetches from three sample libraries and re-encodes what it needs.
 
-## Two banks, two licences
+## Two banks, three licences
 
 There are two banks here and they are NOT under the same terms. The family bank
-is CC0 and needs nothing; the named bench bank is CC BY and the credit below is
-a genuine obligation, not a courtesy.
+is CC0 and needs nothing; the named bench bank is mostly CC BY, and that credit
+is a genuine obligation rather than a courtesy — except for the two named
+bodies that come from CC0 recordings, listed under their own heading below.
 
 ## The family bank — CC0
 
@@ -52,7 +53,6 @@ calls.
 | `gong` | Gong | a flat plate, dense inharmonic modes |
 | `drum` | Darbuka | a single-headed struck membrane |
 | `frameDrum` | Frame Drum | a hand-struck frame membrane |
-| `clappers` | Claves | two solid bodies struck together |
 | `claps` | Claps | hands |
 
 ## The named bench bank — CC BY 3.0, attribution REQUIRED
@@ -71,19 +71,49 @@ credit*, which is discharged here and in the Lab's footer.
 > Named bench instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts
 > — CC BY 3.0.
 
+An openly-licensed **oud** exists (MFA Oud by Mr Fuzzywump, CC BY 3.0, on
+musical-artifacts.com) and is not used here: that site serves its file
+downloads behind a bot challenge, and working around one is not something this
+build does. The oud stays on the nylon-guitar substitute until the file can be
+fetched the way it is meant to be.
+
 Its sibling font **MusyngKite is deliberately not used**: it is
 Attribution-**ShareAlike**, and a share-alike asset would reach back into this
 repository's own licensing.
 
+## Two named bodies from a CC0 recording
+
+General MIDI's instrument list was drawn up in 1991 around a Western keyboard.
+It has a sitar and a koto and a shakuhachi in it, and nothing whatever for a
+bowed fiddle with a snakeskin membrane or a plucked box zither with movable
+bridges — so those two come from real recordings instead, through the same path
+the family bank uses.
+
+| named | recording | licence |
+|---|---|---|
+| `erhu` | [AliExpress Erhu](https://github.com/sfzinstruments/aliexpress-erhu) — a cheap erhu, close-miked in stereo | CC0 1.0 |
+| `qānūn` | VCSL **Dan Tranh** — a plucked box zither with movable bridges under metal strings | CC0 1.0 |
+
+Neither requires attribution. The erhu's own readme says it was played by
+"someone who's more of a violinist", which is audible and is still an erhu.
+
 ### Exact, and by acoustic class
 
-Ten of these are the instrument itself — sitar, koto, shamisen, shakuhachi,
-taiko, bagpipe, fiddle. The rest are the nearest thing in the same acoustic
-class, and each one says so in the table so the substitution is never invisible:
-a sheng and a reed organ are both free reeds; a nāy and a pan pipe are both
-end-blown rim flutes; an oud and a nylon-strung guitar are both gut-ish
-short-necked lutes. Where no honest neighbour exists the entry is simply left
-out and the family bank plays — a wrong instrument is worse than a generic one.
+Twelve of these are the instrument itself — erhu, sitar, koto, shamisen,
+shakuhachi, taiko, bagpipe, fiddle. The rest are the nearest thing in the same
+acoustic class, and each one says so in the table so the substitution is never
+invisible: a sheng and a reed organ are both free reeds; a nāy and a shakuhachi
+are both end-blown rim flutes with open holes in a bamboo tube; an oud and a
+nylon-strung guitar are both gut-ish short-necked lutes. Where no honest
+neighbour exists the entry is simply left out and the family bank plays — a
+wrong instrument is worse than a generic one.
+
+Two substitutions were replaced rather than kept, because they were wrong in
+the BODY and not merely in the name. The nāy and the bānsurī used to borrow a
+**pan flute**, which is a bundle of stopped pipes with one pitch each and no
+finger holes: it cannot bend, and bending is most of what those two do. The
+qānūn used to borrow a **hammered dulcimer**, which is struck where a qānūn is
+plucked.
 
 Three of the bench's percussion parts deliberately stay on the CC0 family bank
 rather than take a General MIDI substitute, because VCSL's **Darbuka** and

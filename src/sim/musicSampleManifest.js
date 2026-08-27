@@ -183,14 +183,6 @@ export const SAMPLE_BANK = {
     { hz: 0, secs: 1.853, file: "frameDrum_4.mp3" },
     { hz: 0, secs: 3.2, file: "frameDrum_5.mp3" },
   ] },
-  clappers: { src: "Claves", kind: "struck", unpitched: true, mat: "wood", samples: [
-    { hz: 0, secs: 1.132, file: "clappers_0.mp3" },
-    { hz: 0, secs: 1.087, file: "clappers_1.mp3" },
-    { hz: 0, secs: 1.292, file: "clappers_2.mp3" },
-    { hz: 0, secs: 0.718, file: "clappers_3.mp3" },
-    { hz: 0, secs: 1.028, file: "clappers_4.mp3" },
-    { hz: 0, secs: 1.28, file: "clappers_5.mp3" },
-  ] },
   claps: { src: "Claps", kind: "struck", unpitched: true, mat: "none", samples: [
     { hz: 0, secs: 0.739, file: "claps_0.mp3" },
     { hz: 0, secs: 0.713, file: "claps_1.mp3" },
@@ -202,14 +194,55 @@ export const SAMPLE_BANK = {
 };
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
-  "Community Edition, by Versilian Studios LLC (CC0). Named bench instruments " +
+  "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
+  "sfzinstruments/aliexpress-erhu (CC0). Named bench instruments " +
   "from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever
 // looks it up: an instrument only gets a name in `musicTraditions.js`, which
 // is walled off from the generator by construction. Keyed by that label.
 export const NAMED_BANK = {
-  "sitār": { gm: "sitar", like: null, fam: "luteNeck", mat: "iron", samples: [
+  "erhu": { src: "AliExpress Erhu", kind: "sustain", like: null, fam: "bowed", mat: "silk", samples: [
+    { hz: 293.66, file: "named/erhu_294.mp3" },
+    { hz: 311.13, file: "named/erhu_311.mp3" },
+    { hz: 329.63, file: "named/erhu_330.mp3" },
+    { hz: 349.23, file: "named/erhu_349.mp3" },
+    { hz: 369.99, file: "named/erhu_370.mp3" },
+    { hz: 392, file: "named/erhu_392.mp3" },
+    { hz: 415.3, file: "named/erhu_415.mp3" },
+    { hz: 440, file: "named/erhu_440.mp3" },
+    { hz: 466.16, file: "named/erhu_466.mp3" },
+    { hz: 493.88, file: "named/erhu_494.mp3" },
+    { hz: 523.25, file: "named/erhu_523.mp3" },
+    { hz: 554.37, file: "named/erhu_554.mp3" },
+    { hz: 587.33, file: "named/erhu_587.mp3" },
+    { hz: 622.25, file: "named/erhu_622.mp3" },
+    { hz: 659.26, file: "named/erhu_659.mp3" },
+    { hz: 698.46, file: "named/erhu_698.mp3" },
+    { hz: 739.99, file: "named/erhu_740.mp3" },
+    { hz: 783.99, file: "named/erhu_784.mp3" },
+    { hz: 830.61, file: "named/erhu_831.mp3" },
+    { hz: 880, file: "named/erhu_880.mp3" },
+  ] },
+  "qānūn": { src: "Dan Tranh", kind: "pluck", like: "a plucked box zither with movable bridges under metal strings, which is what a qānūn is — the dulcimer it used to borrow is STRUCK", fam: "lyre", mat: "iron", samples: [
+    { hz: 61.74, file: "named/qnn_62.mp3" },
+    { hz: 69.3, file: "named/qnn_69.mp3" },
+    { hz: 77.78, file: "named/qnn_78.mp3" },
+    { hz: 92.5, file: "named/qnn_92.mp3" },
+    { hz: 103.83, file: "named/qnn_104.mp3" },
+    { hz: 123.47, file: "named/qnn_123.mp3" },
+    { hz: 138.59, file: "named/qnn_139.mp3" },
+    { hz: 155.56, file: "named/qnn_156.mp3" },
+    { hz: 185, file: "named/qnn_185.mp3" },
+    { hz: 207.65, file: "named/qnn_208.mp3" },
+    { hz: 246.94, file: "named/qnn_247.mp3" },
+    { hz: 277.18, file: "named/qnn_277.mp3" },
+    { hz: 311.13, file: "named/qnn_311.mp3" },
+    { hz: 369.99, file: "named/qnn_370.mp3" },
+    { hz: 415.3, file: "named/qnn_415.mp3" },
+    { hz: 493.88, file: "named/qnn_494.mp3" },
+  ] },
+  "sitār": { src: "sitar", kind: "pluck", like: null, fam: "luteNeck", mat: "iron", samples: [
     { hz: 130.81, file: "named/sitar_131.mp3" },
     { hz: 164.81, file: "named/sitar_165.mp3" },
     { hz: 207.65, file: "named/sitar_208.mp3" },
@@ -221,7 +254,7 @@ export const NAMED_BANK = {
     { hz: 830.61, file: "named/sitar_831.mp3" },
     { hz: 1046.5, file: "named/sitar_1047.mp3" },
   ] },
-  "koto": { gm: "koto", like: null, fam: "lyre", mat: "silk", samples: [
+  "koto": { src: "koto", kind: "pluck", like: null, fam: "lyre", mat: "silk", samples: [
     { hz: 146.83, file: "named/koto_147.mp3" },
     { hz: 185, file: "named/koto_185.mp3" },
     { hz: 233.08, file: "named/koto_233.mp3" },
@@ -233,7 +266,7 @@ export const NAMED_BANK = {
     { hz: 932.33, file: "named/koto_932.mp3" },
     { hz: 1174.66, file: "named/koto_1175.mp3" },
   ] },
-  "shamisen": { gm: "shamisen", like: null, fam: "luteNeck", mat: "silk", samples: [
+  "shamisen": { src: "shamisen", kind: "pluck", like: null, fam: "luteNeck", mat: "silk", samples: [
     { hz: 98, file: "named/shamisen_98.mp3" },
     { hz: 123.47, file: "named/shamisen_123.mp3" },
     { hz: 155.56, file: "named/shamisen_156.mp3" },
@@ -245,7 +278,7 @@ export const NAMED_BANK = {
     { hz: 622.25, file: "named/shamisen_622.mp3" },
     { hz: 783.99, file: "named/shamisen_784.mp3" },
   ] },
-  "shakuhachi": { gm: "shakuhachi", like: null, fam: "fluteOpen", mat: "bamboo", samples: [
+  "shakuhachi": { src: "shakuhachi", kind: "sustain", like: null, fam: "fluteOpen", mat: "bamboo", samples: [
     { hz: 220, file: "named/shakuhachi_220.mp3" },
     { hz: 277.18, file: "named/shakuhachi_277.mp3" },
     { hz: 349.23, file: "named/shakuhachi_349.mp3" },
@@ -255,7 +288,7 @@ export const NAMED_BANK = {
     { hz: 880, file: "named/shakuhachi_880.mp3" },
     { hz: 1108.73, file: "named/shakuhachi_1109.mp3" },
   ] },
-  "taiko": { gm: "taiko_drum", like: null, fam: "drum", mat: "hide", samples: [
+  "taiko": { src: "taiko_drum", kind: "pluck", like: null, fam: "drum", mat: "hide", samples: [
     { hz: 65.41, file: "named/taiko_drum_65.mp3" },
     { hz: 82.41, file: "named/taiko_drum_82.mp3" },
     { hz: 103.83, file: "named/taiko_drum_104.mp3" },
@@ -264,7 +297,7 @@ export const NAMED_BANK = {
     { hz: 207.65, file: "named/taiko_drum_208.mp3" },
     { hz: 261.63, file: "named/taiko_drum_262.mp3" },
   ] },
-  "chanter": { gm: "bagpipe", like: null, fam: "reedPipe", mat: "reed", samples: [
+  "chanter": { src: "bagpipe", kind: "sustain", like: null, fam: "reedPipe", mat: "reed", samples: [
     { hz: 196, file: "named/bagpipe_196.mp3" },
     { hz: 246.94, file: "named/bagpipe_247.mp3" },
     { hz: 311.13, file: "named/bagpipe_311.mp3" },
@@ -273,7 +306,7 @@ export const NAMED_BANK = {
     { hz: 622.25, file: "named/bagpipe_622.mp3" },
     { hz: 783.99, file: "named/bagpipe_784.mp3" },
   ] },
-  "drones": { gm: "bagpipe", like: null, fam: "reedPipe", mat: "reed", samples: [
+  "drones": { src: "bagpipe", kind: "sustain", like: null, fam: "reedPipe", mat: "reed", samples: [
     { hz: 110, file: "named/bagpipe_110.mp3" },
     { hz: 138.59, file: "named/bagpipe_139.mp3" },
     { hz: 174.61, file: "named/bagpipe_175.mp3" },
@@ -282,7 +315,7 @@ export const NAMED_BANK = {
     { hz: 349.23, file: "named/bagpipe_349.mp3" },
     { hz: 440, file: "named/bagpipe_440.mp3" },
   ] },
-  "fiddle": { gm: "fiddle", like: null, fam: "bowed", mat: "gut", samples: [
+  "fiddle": { src: "fiddle", kind: "sustain", like: null, fam: "bowed", mat: "gut", samples: [
     { hz: 196, file: "named/fiddle_196.mp3" },
     { hz: 246.94, file: "named/fiddle_247.mp3" },
     { hz: 311.13, file: "named/fiddle_311.mp3" },
@@ -295,7 +328,7 @@ export const NAMED_BANK = {
     { hz: 1567.98, file: "named/fiddle_1568.mp3" },
     { hz: 1975.53, file: "named/fiddle_1976.mp3" },
   ] },
-  "tānpūrā": { gm: "sitar", like: null, fam: "luteNeck", mat: "iron", samples: [
+  "tānpūrā": { src: "sitar", kind: "pluck", like: null, fam: "luteNeck", mat: "iron", samples: [
     { hz: 65.41, file: "named/sitar_65.mp3" },
     { hz: 82.41, file: "named/sitar_82.mp3" },
     { hz: 103.83, file: "named/sitar_104.mp3" },
@@ -304,7 +337,7 @@ export const NAMED_BANK = {
     { hz: 207.65, file: "named/sitar_208.mp3" },
     { hz: 261.63, file: "named/sitar_262.mp3" },
   ] },
-  "oud": { gm: "acoustic_guitar_nylon", like: "a gut-strung short-necked lute", fam: "luteNeck", mat: "gut", samples: [
+  "oud": { src: "acoustic_guitar_nylon", kind: "pluck", like: "a gut-strung short-necked lute", fam: "luteNeck", mat: "gut", samples: [
     { hz: 87.31, file: "named/acoustic_guitar_nylon_87.mp3" },
     { hz: 110, file: "named/acoustic_guitar_nylon_110.mp3" },
     { hz: 138.59, file: "named/acoustic_guitar_nylon_139.mp3" },
@@ -316,38 +349,26 @@ export const NAMED_BANK = {
     { hz: 554.37, file: "named/acoustic_guitar_nylon_554.mp3" },
     { hz: 698.46, file: "named/acoustic_guitar_nylon_698.mp3" },
   ] },
-  "qānūn": { gm: "dulcimer", like: "a plucked box zither", fam: "lyre", mat: "iron", samples: [
-    { hz: 110, file: "named/dulcimer_110.mp3" },
-    { hz: 138.59, file: "named/dulcimer_139.mp3" },
-    { hz: 174.61, file: "named/dulcimer_175.mp3" },
-    { hz: 220, file: "named/dulcimer_220.mp3" },
-    { hz: 277.18, file: "named/dulcimer_277.mp3" },
-    { hz: 349.23, file: "named/dulcimer_349.mp3" },
-    { hz: 440, file: "named/dulcimer_440.mp3" },
-    { hz: 554.37, file: "named/dulcimer_554.mp3" },
-    { hz: 698.46, file: "named/dulcimer_698.mp3" },
-    { hz: 880, file: "named/dulcimer_880.mp3" },
+  "nāy": { src: "shakuhachi", kind: "sustain", like: "an end-blown rim flute in bamboo, which is the nāy's own body", fam: "fluteOpen", mat: "bamboo", samples: [
+    { hz: 220, file: "named/shakuhachi_220.mp3" },
+    { hz: 277.18, file: "named/shakuhachi_277.mp3" },
+    { hz: 349.23, file: "named/shakuhachi_349.mp3" },
+    { hz: 440, file: "named/shakuhachi_440.mp3" },
+    { hz: 554.37, file: "named/shakuhachi_554.mp3" },
+    { hz: 698.46, file: "named/shakuhachi_698.mp3" },
+    { hz: 880, file: "named/shakuhachi_880.mp3" },
+    { hz: 1108.73, file: "named/shakuhachi_1109.mp3" },
   ] },
-  "nāy": { gm: "pan_flute", like: "an end-blown rim flute", fam: "fluteOpen", mat: "bamboo", samples: [
-    { hz: 261.63, file: "named/pan_flute_262.mp3" },
-    { hz: 329.63, file: "named/pan_flute_330.mp3" },
-    { hz: 415.3, file: "named/pan_flute_415.mp3" },
-    { hz: 523.25, file: "named/pan_flute_523.mp3" },
-    { hz: 659.26, file: "named/pan_flute_659.mp3" },
-    { hz: 830.61, file: "named/pan_flute_831.mp3" },
-    { hz: 1046.5, file: "named/pan_flute_1047.mp3" },
-    { hz: 1318.51, file: "named/pan_flute_1319.mp3" },
+  "bānsurī": { src: "shakuhachi", kind: "sustain", like: "a bamboo flute with open holes — blown across rather than over", fam: "fluteOpen", mat: "bamboo", samples: [
+    { hz: 220, file: "named/shakuhachi_220.mp3" },
+    { hz: 277.18, file: "named/shakuhachi_277.mp3" },
+    { hz: 349.23, file: "named/shakuhachi_349.mp3" },
+    { hz: 440, file: "named/shakuhachi_440.mp3" },
+    { hz: 554.37, file: "named/shakuhachi_554.mp3" },
+    { hz: 698.46, file: "named/shakuhachi_698.mp3" },
+    { hz: 880, file: "named/shakuhachi_880.mp3" },
   ] },
-  "bānsurī": { gm: "pan_flute", like: "an end-blown rim flute", fam: "fluteOpen", mat: "bamboo", samples: [
-    { hz: 261.63, file: "named/pan_flute_262.mp3" },
-    { hz: 329.63, file: "named/pan_flute_330.mp3" },
-    { hz: 415.3, file: "named/pan_flute_415.mp3" },
-    { hz: 523.25, file: "named/pan_flute_523.mp3" },
-    { hz: 659.26, file: "named/pan_flute_659.mp3" },
-    { hz: 830.61, file: "named/pan_flute_831.mp3" },
-    { hz: 1046.5, file: "named/pan_flute_1047.mp3" },
-  ] },
-  "kamānja": { gm: "fiddle", like: "a bowed folk fiddle", fam: "bowed", mat: "gut", samples: [
+  "kamānja": { src: "fiddle", kind: "sustain", like: "a bowed folk fiddle", fam: "bowed", mat: "gut", samples: [
     { hz: 196, file: "named/fiddle_196.mp3" },
     { hz: 246.94, file: "named/fiddle_247.mp3" },
     { hz: 311.13, file: "named/fiddle_311.mp3" },
@@ -357,7 +378,7 @@ export const NAMED_BANK = {
     { hz: 783.99, file: "named/fiddle_784.mp3" },
     { hz: 987.77, file: "named/fiddle_988.mp3" },
   ] },
-  "sārangī": { gm: "fiddle", like: "a bowed folk fiddle", fam: "bowed", mat: "gut", samples: [
+  "sārangī": { src: "fiddle", kind: "sustain", like: "a bowed folk fiddle", fam: "bowed", mat: "gut", samples: [
     { hz: 164.81, file: "named/fiddle_165.mp3" },
     { hz: 207.65, file: "named/fiddle_208.mp3" },
     { hz: 261.63, file: "named/fiddle_262.mp3" },
@@ -368,16 +389,7 @@ export const NAMED_BANK = {
     { hz: 830.61, file: "named/fiddle_831.mp3" },
     { hz: 1046.5, file: "named/fiddle_1047.mp3" },
   ] },
-  "erhu": { gm: "fiddle", like: "a bowed folk fiddle", fam: "bowed", mat: "gut", samples: [
-    { hz: 261.63, file: "named/fiddle_262.mp3" },
-    { hz: 329.63, file: "named/fiddle_330.mp3" },
-    { hz: 415.3, file: "named/fiddle_415.mp3" },
-    { hz: 523.25, file: "named/fiddle_523.mp3" },
-    { hz: 659.26, file: "named/fiddle_659.mp3" },
-    { hz: 830.61, file: "named/fiddle_831.mp3" },
-    { hz: 1046.5, file: "named/fiddle_1047.mp3" },
-  ] },
-  "dizi": { gm: "flute", like: "a transverse flute, without the membrane buzz", fam: "fluteOpen", mat: "iron", samples: [
+  "dizi": { src: "flute", kind: "sustain", like: "a transverse flute, without the membrane buzz", fam: "fluteOpen", mat: "iron", samples: [
     { hz: 293.66, file: "named/flute_294.mp3" },
     { hz: 369.99, file: "named/flute_370.mp3" },
     { hz: 466.16, file: "named/flute_466.mp3" },
@@ -389,7 +401,7 @@ export const NAMED_BANK = {
     { hz: 1864.66, file: "named/flute_1865.mp3" },
     { hz: 2349.32, file: "named/flute_2349.mp3" },
   ] },
-  "sheng": { gm: "reed_organ", like: "a free reed, which is exactly what a sheng is", fam: "reedPipe", mat: "reed", samples: [
+  "sheng": { src: "reed_organ", kind: "sustain", like: "a free reed, which is exactly what a sheng is", fam: "reedPipe", mat: "reed", samples: [
     { hz: 130.81, file: "named/reed_organ_131.mp3" },
     { hz: 164.81, file: "named/reed_organ_165.mp3" },
     { hz: 207.65, file: "named/reed_organ_208.mp3" },
@@ -401,7 +413,7 @@ export const NAMED_BANK = {
     { hz: 830.61, file: "named/reed_organ_831.mp3" },
     { hz: 1046.5, file: "named/reed_organ_1047.mp3" },
   ] },
-  "pipa": { gm: "sitar", like: "a plucked, fretted lute with a bright metallic attack", fam: "luteNeck", mat: "iron", samples: [
+  "pipa": { src: "sitar", kind: "pluck", like: "a plucked, fretted lute with a bright metallic attack", fam: "luteNeck", mat: "iron", samples: [
     { hz: 110, file: "named/sitar_110.mp3" },
     { hz: 138.59, file: "named/sitar_139.mp3" },
     { hz: 174.61, file: "named/sitar_175.mp3" },
@@ -413,7 +425,7 @@ export const NAMED_BANK = {
     { hz: 698.46, file: "named/sitar_698.mp3" },
     { hz: 880, file: "named/sitar_880.mp3" },
   ] },
-  "guqin": { gm: "koto", like: "a silk-strung board zither", fam: "lyre", mat: "silk", samples: [
+  "guqin": { src: "koto", kind: "pluck", like: "a silk-strung board zither", fam: "lyre", mat: "silk", samples: [
     { hz: 65.41, file: "named/koto_65.mp3" },
     { hz: 82.41, file: "named/koto_82.mp3" },
     { hz: 103.83, file: "named/koto_104.mp3" },

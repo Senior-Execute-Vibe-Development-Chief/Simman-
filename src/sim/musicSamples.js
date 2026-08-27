@@ -102,7 +102,14 @@ export async function loadSamples(A, resolve) {
   const named = {};
   for (const [label, spec] of Object.entries(NAMED_BANK || {})) {
     const entries = [];
-    named[label] = { kind: "pluck", unpitched: false, src: spec.gm, entries };
+    // A NAMED BODY CARRIES ITS OWN KIND AND ITS OWN SOURCE. Both used to be
+    // assumed: every named recording was treated as plucked, so a bowed or
+    // blown one was played as a note that simply stops instead of looping its
+    // steady state, and its source was read off the General MIDI program name
+    // — which is null for a recording that came from a folder of WAVs rather
+    // than from a soundfont, so two such bodies deduplicated onto each other
+    // in the shared pool below.
+    named[label] = { kind: spec.kind || "pluck", unpitched: false, src: spec.src, entries };
     for (const s of spec.samples) {
       jobs.push((async () => {
         try {
