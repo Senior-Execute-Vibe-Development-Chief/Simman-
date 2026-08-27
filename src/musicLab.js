@@ -19,6 +19,8 @@ import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung } from "./sim/musicSynth.js";
+import { loadSamples } from "./sim/musicSamples.js";
+import { SAMPLE_BANK, SAMPLE_CREDIT } from "./sim/musicSampleManifest.js";
 import { voiceRange } from "./sim/vocalTract.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 import { TRADITIONS, applyTradition } from "./sim/musicTraditions.js";
@@ -33,6 +35,13 @@ const S = {
   // the blend partner — is an all-metal tradition whose frame is not an
   // octave at all, so sliding the border control is an audible argument.
   seed: 1035, ref: "random", trad: "", occ: "peace", intimacy: 0.72, blend: 0,
+  // WHICH BODY YOU HEAR. `recorded` plays one real instrument per family out of
+  // two CC0 sample libraries; `modelled` synthesises the body this people
+  // actually built, from its materials. The recording sounds like an
+  // instrument and the model sounds like this people's instrument, and those
+  // are not the same virtue — so it is a switch, and the bench exists to make
+  // the difference audible rather than arguable.
+  sampled: true,
   // How much voice is in the mix. The synthesis path is calibrated so a
   // singer and a player agree on what a velocity means (musicSynth), but how
   // much SINGING you want over an ensemble is a listener's call and not a
@@ -68,11 +77,33 @@ function regen() {
 }
 
 // ── audio plumbing ───────────────────────────────────────────────────────
+// The recorded bank arrives either inlined into a single-file build or as
+// files next to the page. Neither is this module's business beyond finding it,
+// and a bank that fails to arrive is not an error: every family falls back to
+// the synthesis it already had.
+function sampleSource(file) {
+  const inline = typeof window !== "undefined" && window.__SAMPLE_DATA__;
+  const b64 = inline && inline[file];
+  if (b64) {
+    const bin = atob(b64);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+  }
+  return "assets/instr-audio/" + file;
+}
+
 function audio() {
   if (!A) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     A = makeAudio(new Ctx());
+    loadSamples(A, sampleSource).then(() => {
+      const n = A.sampleCount || 0;
+      const el = document.getElementById("bankstate");
+      if (el) el.textContent = n ? `${n} recorded samples loaded` : "no bank — synthesis only";
+    }).catch(() => { /* synthesis is a working instrument */ });
   }
+  A.sampled = S.sampled;
   if (A.ctx.state === "suspended") A.ctx.resume();
   return A;
 }
@@ -735,6 +766,11 @@ function transportHTML() {
     <label class="tl sl" title="How much singing sits over the players. The two synthesis paths are calibrated to agree on what a velocity means; how much voice you want above that is yours.">Voice
       <input type="range" id="voice" min="0" max="1" step="0.01" value="${S.voice}" />
       <span class="slv">${S.voice < 0.02 ? "silent" : S.voice < 0.25 ? "behind" : S.voice < 0.6 ? "in the band" : "out front"}</span></label>
+    <label class="tl" title="Recorded plays one real instrument per family from two CC0 sample libraries; modelled synthesises the body this people actually built, out of its own materials.">Bodies
+      <select id="sampled">
+        <option value="1"${S.sampled ? " selected" : ""}>recorded</option>
+        <option value="0"${S.sampled ? "" : " selected"}>modelled</option>
+      </select></label>
     <label class="tl sl" title="A border settlement's ambience is an admixture: both traditions generated and sounded together, at the population proportions">Border
       <input type="range" id="blend" min="0" max="1" step="0.01" value="${S.blend}" />
       <span class="slv">${S.blend < 0.05 ? esc(P.people.name) : S.blend > 0.95 ? esc(PB.people.name) : Math.round((1 - S.blend) * 100) + "/" + Math.round(S.blend * 100)}</span></label>
@@ -763,7 +799,10 @@ function render() {
     ${peopleHTML(m)}
     ${chainHTML(m)}
     <footer class="foot">Simman Music Lab${typeof __BUILD__ !== "undefined" ? " · " + __BUILD__ : ""} —
-      every sound on this page is synthesised from the instrument models; no audio is downloaded.</footer>`;
+      every scale, metre, ensemble and phrase on this page is derived from the people. The bodies are
+      either synthesised from the materials that people had, or played from one real recording per
+      instrument family — <span id="bankstate">loading the recorded bank…</span>.
+      <br />${esc(SAMPLE_CREDIT)}</footer>`;
   wire();
   redraw();
 }
@@ -793,6 +832,10 @@ function wire() {
     if (A) setDistance(A, S.intimacy);
     const sp = e.target.parentElement.querySelector(".slv");
     if (sp) sp.textContent = S.intimacy > 0.66 ? "in the city" : S.intimacy > 0.33 ? "nearby" : "far off";
+  };
+  $("sampled").onchange = (e) => {
+    S.sampled = e.target.value === "1";
+    if (A) A.sampled = S.sampled;
   };
   $("blend").oninput = (e) => {
     S.blend = +e.target.value;
@@ -949,6 +992,7 @@ function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
+    loadSamples, sampleSource, SAMPLE_BANK,
     fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs,
     buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S };
 }

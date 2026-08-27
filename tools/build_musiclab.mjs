@@ -12,11 +12,16 @@
 //                                                   #   its own <head>/<body>)
 //
 // The Lab is deliberately outside the production Vite build (which bundles
-// only index.html), so this is its own tiny bundler. There are no assets to
-// inline: every sound is synthesised from the instrument models at play time,
-// so the page needs nothing but itself.
+// only index.html), so this is its own tiny bundler.
+//
+// It inlines ONE asset: the recorded instrument bank in assets/instr-audio,
+// base64'd into a `window.__SAMPLE_DATA__` map ahead of the bundle. The page
+// still needs nothing but itself and still makes no network request — the
+// samples travel inside it. `--no-samples` leaves them out, which drops the
+// page from megabytes to kilobytes and leaves every family on the synthesis it
+// already had; the Lab treats a missing bank as a fallback, never an error.
 import { build } from "esbuild";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { execSync } from "node:child_process";
@@ -24,7 +29,24 @@ import { execSync } from "node:child_process";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const artifactMode = args.includes("--artifact");
-const OUT = args.filter(a => a !== "--artifact")[0] || join(ROOT, "tools", "musiclab.html");
+const withSamples = !args.includes("--no-samples");
+const OUT = args.filter(a => !a.startsWith("--"))[0] || join(ROOT, "tools", "musiclab.html");
+
+// the recorded bank, base64'd. Emitted as its own <script> before the bundle so
+// it is plain data the app finds on `window`, rather than something esbuild has
+// to carry through the module graph.
+let bankTag = "", bankBytes = 0, bankFiles = 0;
+const BANK_DIR = join(ROOT, "assets", "instr-audio");
+if (withSamples && existsSync(BANK_DIR)) {
+  const parts = [];
+  for (const f of readdirSync(BANK_DIR).sort()) {
+    if (!f.endsWith(".mp3")) continue;
+    const b = readFileSync(join(BANK_DIR, f));
+    bankBytes += b.length; bankFiles++;
+    parts.push(JSON.stringify(f) + ":" + JSON.stringify(b.toString("base64")));
+  }
+  if (parts.length) bankTag = `<script>window.__SAMPLE_DATA__={${parts.join(",")}};</script>\n`;
+}
 
 let label = "artifact";
 try { label = execSync("git rev-parse --short HEAD", { cwd: ROOT }).toString().trim(); } catch { /* not a checkout */ }
@@ -45,7 +67,7 @@ const js = result.outputFiles[0].text.split("</script").join("<\\/script");
 // so the page body is just a mount point and the script
 const body = `<div id="app"></div>
 <noscript>This procedural music generator needs JavaScript enabled.</noscript>
-<script>${js}</script>`;
+${bankTag}<script>${js}</script>`;
 
 const html = artifactMode ? body : `<!doctype html>
 <html lang="en">
@@ -60,4 +82,7 @@ ${body}
 </html>`;
 
 writeFileSync(OUT, html);
-console.log(`wrote ${OUT}  (${(html.length / 1024) | 0}KB, ${artifactMode ? "artifact body" : "standalone"})`);
+console.log(`wrote ${OUT}  (${(html.length / 1048576).toFixed(2)}MB, ${artifactMode ? "artifact body" : "standalone"})`);
+console.log(bankFiles
+  ? `  recorded bank: ${bankFiles} samples, ${(bankBytes / 1048576).toFixed(2)}MB inlined`
+  : "  recorded bank: none inlined — synthesis only");

@@ -38,6 +38,7 @@ import { playDriven } from "./musicDriven.js";
 import { playImpulse } from "./musicImpulse.js";
 import { pluckString, flexible } from "./musicString.js";
 import { MATERIALS, FAMILIES } from "./musicInstruments.js";
+import { playSampled } from "./musicSamples.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -161,14 +162,27 @@ function spreadFor(A, inst, role) {
   return pan;
 }
 
+// Where this player sits: their role's bus, through their own seat on the
+// stage if the role has several people in it. Shared by both paths, because a
+// recorded body and a modelled one are the same player in the same room.
+function busFor(A, inst, role) {
+  const key = "bus:" + inst.id + ":" + role;
+  let n = A.bodies.get(key);
+  if (!n) {
+    const seat = spreadFor(A, inst, role);
+    if (seat) { seat.connect(A.buses[role] || A.master); n = { input: seat }; }
+    else n = { input: A.buses[role] || A.master };
+    A.bodies.set(key, n);
+  }
+  return n.input;
+}
+
 function bodyFor(A, inst, role) {
   const key = inst.id + ":" + role;
   let b = A.bodies.get(key);
   if (!b) {
     b = buildBody(A.ctx, inst);
-    const seat = spreadFor(A, inst, role);
-    if (seat) { b.output.connect(seat); seat.connect(A.buses[role] || A.master); }
-    else b.output.connect(A.buses[role] || A.master);
+    b.output.connect(busFor(A, inst, role));
     A.bodies.set(key, b);
   }
   return b;
@@ -305,6 +319,15 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   const K = STROKE_DSP[opts.stroke] || null;
   const f = freq * (K ? K.pitch : 1) * (1 + inst.detune + 0.004 * (Math.random() - 0.5));
   if (!(f > 20 && f < 12000)) return null;
+  // ── the recorded body, if there is one and the Lab asked for it ──
+  // It bypasses the modelled body deliberately: the recording already contains
+  // the instrument's own box, and convolving a second one over it would be
+  // putting the sound in two rooms. Everything downstream — the role bus, the
+  // stage seat, the room — is shared, so this is the same player either way.
+  if (A.sampled) {
+    const rec = playSampled(A, inst, f, when, dur, vel, opts, busFor(A, inst, role), K);
+    if (rec) return rec;
+  }
   const body = bodyFor(A, inst, role);
   const dest = body.input;
   // Everything this instrument plays feeds the halo, and the halo radiates

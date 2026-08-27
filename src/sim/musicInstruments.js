@@ -527,7 +527,42 @@ export function definiteness(partials) {
 // fraction of the length — that is what its 1 : 6.27 series IS, a very stiff
 // short cantilever — so it is a fraction of the mass, and a thumb stops it
 // where it would not stop a marimba key.
-const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, tongue: 0.15, bar: 1, plate: 9 };
+export const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, tongue: 0.15, bar: 1, plate: 9 };
+
+/**
+ * HOW LOUD THIS BODY IS, relative to the others in the room.
+ *
+ * The same element mass that decides whether a player can stop a body decides
+ * how much air it moves, and for the same reason: an element is heavy exactly
+ * when it has to radiate for ITSELF. A string is a thread that radiates
+ * essentially nothing and lets a soundboard do the work; a gong carries sixty
+ * kilos of bronze because nothing else is going to couple it to the air. So
+ * the loudest things in a room are the ones that are their own radiators, and
+ * that is not a preference about gongs, it is what the mass is FOR.
+ *
+ * Measured before this existed, at one written velocity, the engine spread its
+ * bodies over 28.8 dB with the order INVERTED — a thumb piano at -19.9 dB was
+ * the loudest thing it made and a gong at -35.6 among the quietest. A thumb
+ * piano is one of the quietest instruments in the world.
+ *
+ * Log, not linear: 450x the element mass is not 450x the sound, because most
+ * of that mass buys coupling rather than amplitude, and a real ensemble spans
+ * something like twenty decibels from its quietest body to its loudest.
+ */
+export function radiatedLevel(inst) {
+  const fam = FAMILIES[inst.fam] || {};
+  // A DRIVEN BODY IS NOT LIMITED BY ITS ELEMENT. A struck body radiates the
+  // energy one stroke put into it, so the element's mass is the whole story.
+  // A blown or bowed one is being fed for as long as the note lasts, and what
+  // it radiates is what the player is putting in — which is why a trumpet,
+  // whose vibrating element is a column of air that weighs nothing, is among
+  // the loudest things in an orchestra, and why reading its loudness off the
+  // air's mass would put it under a thumb piano.
+  if (inst.kind === "sustain") return 1;
+  const e = ELEMENT[fam.vib] ?? 0.1;
+  const REF = ELEMENT.membrane;                     // a drum: the middle of any room
+  return Math.pow(e / REF, 0.28);
+}
 export function dampTime(inst) {
   const m = MATERIALS[inst.mat] || MATERIALS.wood;
   const fam = FAMILIES[inst.fam] || {};
