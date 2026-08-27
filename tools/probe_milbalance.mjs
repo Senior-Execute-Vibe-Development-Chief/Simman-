@@ -108,6 +108,17 @@ function report(lo, hi, t0) {
   for (const [k, n] of modeCount) if (n > modeN || (n === modeN && +k < +modeVal)) { modeVal = k; modeN = n; }
   const pc = (q) => cores.length ? cores[Math.min(cores.length - 1, Math.floor(q * cores.length))] : 0;
 
+  // THE SATURATION SHARE — how much of the register has passed the point where
+  // the only brake on urban concentration stops responding. settlement.js:3714-6
+  // scales the urban graveyard by min(1, urbShare/0.3), so a settlement 30% urban
+  // and one 90% urban carry the SAME crowd mortality; past 0.3 the driver keeps
+  // growing and the counterforce does not. The world-wide urban share cannot
+  // answer this — it is an average over a skewed distribution — so measure the
+  // per-settlement share directly and count what is over the line.
+  const shares = settled.map(s => (s._urbanPop || 0) / Math.max(1, s.people)).sort((x, y) => x - y);
+  const sq = (q) => shares.length ? shares[Math.min(shares.length - 1, Math.floor(q * shares.length))] : 0;
+  const overSat = shares.filter(v => v >= 0.3).length;
+
   const c = windowCounts(lo, hi);
   // Per-realm rates use the window's MEAN realm count, not its endpoint: the
   // register is growing fast enough here that the endpoint would flatter or
@@ -121,6 +132,7 @@ function report(lo, hi, t0) {
   console.log(`    WAR in-window     began=${c["war.began"]} ended=${c["war.ended"]} captured=${c["settlement.captured"]} sacked=${c["polity.submittedBySack"]}`);
   console.log(`    WAR per realm     began=${per("war.began")} captured=${per("settlement.captured")}`);
   console.log(`    CORES p10=${pc(0.1).toFixed(1)} p50=${pc(0.5).toFixed(1)} p90=${pc(0.9).toFixed(1)} max=${(cores[cores.length - 1] || 0).toFixed(1)}su  |  MODE ${modeVal}su held by ${modeN}/${cores.length} (${(100 * modeN / Math.max(1, cores.length)).toFixed(1)}%)  <- the pin`);
+  console.log(`    URBSHARE/sett p50=${sq(0.5).toFixed(3)} p90=${sq(0.9).toFixed(3)} max=${(shares[shares.length - 1] || 0).toFixed(3)}  |  >=0.30 (graveyard saturated): ${overSat}/${shares.length} (${(100 * overSat / Math.max(1, shares.length)).toFixed(1)}%)`);
   console.log(`    MASS  urban=${Math.round(urban)}su rural=${Math.round(rural)}su urbanShare=${(100 * urban / Math.max(1e-9, urban + rural)).toFixed(2)}%`);
   // diskBound is the memo §5.3 metric and it belongs beside the arming pair: it
   // is the brake (min(_coreF, ·)) that keeps urbanisation under history's
