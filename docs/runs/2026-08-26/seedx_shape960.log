@@ -16,3 +16,13 @@
 [peopleSim] hearth Bofvu at (494,80) (5.2E 60.0N) score 0.50 pkg=wheat(suit 0.21) — matured 4319y into prehistory (wave age 1681y)
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=262144 peakN=218206 pushes=1354653 (2.1MB backing)
+
+=== step 4000  realms=4 (0 vassal)  claimed=1.4%  flows: founded=81 ended=5 seceded=0 shattered=0
+    size km2: P10=280k  MED=432k  P90=1097k  MAX=1097k  | top1share=51%  max/med=2.5  gini=0.30  lnσ=0.53 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:3  1-5M:1  >5M:0
+    SMALL (<100k km2): 0 of 4 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #7 "Wityim" 280k km2 mem=1 age=4000 org=0.12
+      tiny #2 "Pephamdo" 336k km2 mem=1 age=4000 org=0.19
+      tiny #4 "Fevvonfax" 432k km2 mem=1 age=4000 org=0.10
+      tiny #1 "Ňěňnílěā" 1097k km2 mem=1 age=4000 org=0.23
+    [148s]
