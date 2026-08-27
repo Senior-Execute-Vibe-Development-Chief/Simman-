@@ -120,7 +120,41 @@ export function foodHaulArrive(world, child, parent) {
   // distance converted at the world's own km-per-tile (grid-honest by
   // construction — no rNormPop needed); otherwise the legacy tile constant.
   const baseTiles = T.HAUL_PHYS > 0 ? HAUL_LAND_KM / (EARTH_KM / tw) : T.FOOD_HAUL_RANGE * rNormPop(world);
-  let range = baseTiles * FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];   // grain hauls a REAL distance, not a tile count (RES_INVARIANT_POP)
+  // T.HAUL_PAID — A CITY REACHES AS FAR AS IT CAN PAY TO REACH, NOT AS FAR AS ITS
+  // RANK ENTITLES IT TO. This line multiplied the SPOILAGE range by the
+  // DESTINATION's size label, and spoilage does not know who is buying: a cart of
+  // wheat rots on the road at a rate set by the road, the vehicle and the weather,
+  // never by the size of the market at the far end.
+  // The table's own header names three causes for the multiplier — "granaries,
+  // ports, professional carters" — and TWO OF THEM ARE ALREADY IN THIS FUNCTION:
+  // professional carters and roads are the transport-tech term immediately below,
+  // ports are the water-corridor term below that. The third, granaries, is storage
+  // at the DESTINATION: it bounds how much a buyer can hold, not how far grain
+  // survives, and granaryCap already prices it where it belongs. So the tier
+  // multiplier was a second, unphysical copy of terms this curve already carries.
+  // WHY IT MATTERED, MEASURED (docs/runs/2026-08-27/mil_*.log, live arm tw=480,
+  // one treated arm against three float-epsilon no-mechanism draws). Being keyed on
+  // a LABEL rather than on a quantity makes it a RATCHET. Crossing the metropolis
+  // bar — TIER_CORE[3] = 40, a fractional change in size at the margin — grants
+  // four discontinuous upgrades at once: this range ×2.2→×3.6, GRAIN_PRICE_BY_TIER
+  // 14→22, HINTERLAND_BY_TIER 6→8 and CORE_BY_TIER 3→4 (both +78% area). All four
+  // grow the core that produced the label, so the label sticks and the grants keep
+  // coming. With T.CORE_LOCAL letting self-fed cities finally reach that bar, the
+  // register's mean core crossed 40 between 32k and 36k (35.1 → 37.4 → 60.3) and
+  // the world's urban share went 8.79% → 15.57% in that one window — past history's
+  // agrarian ceiling, and still climbing — while the no-mechanism arms sat at 18.2
+  // and never came near it. The runaway is not CORE_LOCAL's: CORE_LOCAL only opened
+  // the door to a machine that was always here. The closed trap WAS the brake.
+  // 1 = the range is physics alone (real km, transport tech, a real water route).
+  // A big city still draws grain from further out — but by PAYING for it: under
+  // T.GRAIN_FREIGHT the buyer buys at the farm gate and the road eats the loss, so
+  // a richer, hungrier city can afford consignments whose survival fraction is low.
+  // That mechanism is already built and shipping, it is continuous in the city's
+  // own state rather than stepped on its rank, and unlike the table it STOPS: past
+  // the distance where freight exceeds the grain's worth, nobody sells. That is the
+  // brake this economy does not otherwise have.
+  const tierMul = T.HAUL_PAID > 0 ? 1 : FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];
+  let range = baseTiles * tierMul;   // grain hauls a REAL distance, not a tile count (RES_INVARIANT_POP)
   // Transport tech of the shipping region: roads (construction) + wagons (mobility),
   // plus an industrial leap (rail / refrigeration / canning) as construction passes ~0.85.
   const k = child.knowledge || {};
