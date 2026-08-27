@@ -449,3 +449,103 @@ two draws that reached it, 8.6→14.7 and 8.8→15.6). `URBAN_LABOR`'s last two
 increments are −0.13 and +0.87. If it tracks the untreated jump it fails; if it
 stays near 8-9 it holds. The criterion was written in §7 before any of this data
 existed and does not move now.
+
+---
+
+## 10. §8 IS RETRACTED — the share cancels, exactly
+
+§8 claimed: *"Urban capacity is keyed on the share of food imported, not on the
+amount of food available. Starve a city's hinterland and it grows."* I published
+that. **It is wrong.** Not approximately — the term it names cancels out of the
+algebra exactly.
+
+### 10.1 The cancellation
+
+Three lines, all already in the tree:
+
+```
+settlement.js:3192   netLand      = s._foodNet
+settlement.js:3354   _foodSupply  = netLand + fish                = foodNet + fish
+settlement.js:3591   foodK        = (_foodSupply + _foodExported) / perCapita
+settlement.js:3647   _k           = max(K_MIN_VIABLE, foodK)              [DISSOLVE_FARMS]
+popField.js:1979     importShare  = clamp01((_foodNet − _landFood) / _foodSupply)
+popField.js:1981     kBeyond      = _k × importShare / scale
+popField.js:2103     kLocal       = _k × (1 − importShare) / scale        [CORE_LOCAL]
+```
+
+Substitute. With no market exports and `_k` off its floor:
+
+```
+kBeyond = (foodNet + fish)/pc × (foodNet − landFood)/(foodNet + fish)
+        = (foodNet − landFood) / pc          ← the IMPORT VOLUME, in mouths
+
+kLocal  = (foodNet + fish)/pc × (landFood + fish)/(foodNet + fish)
+        = (landFood + fish) / pc             ← the LOCAL HARVEST, in mouths
+```
+
+**`_foodSupply` is both the numerator of `_k` and the denominator of
+`importShare`, so it divides out.** The two capacity terms are pure volumes —
+grain divided by per-capita demand. There is no share-reward anywhere in them.
+`perCapita` cancels nothing and needs to be nothing in particular; the result
+holds whatever `_urbanFactor` does.
+
+So cutting a city's local harvest leaves `kBeyond` **untouched** (its imports did
+not change) and cuts `kLocal` **proportionally**. Urban capacity falls with local
+food, which is the direction it should fall. §8's mechanism does not exist.
+
+Two exceptions, both narrow and neither load-bearing here: the market export
+add-back (`_foodExported`) scales `kBeyond` up by `(supply+exported)/supply` for
+sellers, and below `K_MIN_VIABLE` the floor breaks the cancellation for the
+starving tail.
+
+### 10.2 What actually raised urban share at 20k-24k
+
+The real mechanism was visible in the instrument the whole time, in the column I
+built to answer a different question.
+
+```
+coreEff = min(_coreF, max(holdF, kLocal) + kBeyond)
+                      ^^^^^^^^^^^^^^^^^^
+```
+
+`holdF` is the founding stamp — 12 sim units, 12,000 people — and it is a **floor**
+under the local term. `bind%` is precisely the share of settlements where
+`kLocal > holdF`, i.e. where that floor is *not* binding. At 20k-24k it read
+**29-34%**. So for roughly **seven cities in ten, the urban core is pinned to the
+stamp and does not respond to local food at all.**
+
+Now apply any brake on farm output:
+
+- **The countryside shrinks immediately** — rural population is `people − _urbanPop`,
+  and `people` follows `_k`, which follows the harvest. Measured: rural mass
+  −7% at 20k-24k.
+- **The cities do not** — 70% of them are sitting on a floor the brake cannot reach.
+  Measured: urban mass +22%.
+
+Urban *share* rises because the denominator was cut and the numerator was floored.
+It is an artefact of the pin, not a reward for import-dependence.
+
+And that predicts the rest of the wave, which §8's story did not: as the world
+matures, more cities clear the stamp, the brake reaches them too, and the treated
+arms cross below untreated — 20k-24k above the band, 24k-28k inside it, 28k-32k
+below all three draws. That is exactly the observed sequence.
+
+### 10.3 What this changes
+
+- **The pin is not one pathology among several. It is the thing that makes every
+  food brake read backwards while it holds.** Any mechanism that reduces rural
+  output — `URBAN_LABOR`, `FARM_RES`, a yield change, a climate shock — will
+  raise measured urbanisation in a world where most cores are stamped, and will
+  do it for a reason that has nothing to do with the mechanism being tested.
+- **§8's "both levers push on the same broken denominator" is withdrawn.** There is
+  no broken denominator. `CORE_LOCAL` credits local harvest volume and
+  `URBAN_LABOR` reduces local harvest volume; they oppose each other honestly.
+- **The §8 objection to `URBAN_LABOR` is void**, and the wave-4 verdict rests
+  entirely on the 32k-36k window and the pre-registered §7 criterion, as it should
+  have from the start.
+
+This is the fourth time this lap that a story told from one window did not survive
+contact with the next thing measured. The pattern is consistent enough to name:
+**every one of them was a mechanism inferred from a direction, and every one was
+refuted by reading the actual arithmetic or waiting one more window.** The
+arithmetic here took ten minutes and could have been done before §8 was written.
