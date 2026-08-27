@@ -1170,3 +1170,122 @@ default on this metric is to read it as neutral unless a matched comparison exis
 Only the twin. `w4_cl_ulab_chaos` is the last arm running, and §17.1's median-core
 finding — the first time the typical city has been anything but 12.0su — rests on
 the single draw it is there to check.
+
+---
+
+## 19. WAVE 4 CLOSES — the median city leaves the stamp, and a sign error is retracted
+
+The twin completed. Final window, all four arms:
+
+| 36k-40k | claimed% | urban% | bind% | pin | **p50 core** | total su |
+|---|---|---|---|---|---|---|
+| untreated, clean | 44.42 | 28.21 | 44.5 | — | — | 421,981 |
+| untreated, chaos1 | 50.83 | 20.61 | 40.2 | 37.0% | **12.5** | 409,448 |
+| `+URBAN_LABOR` | 55.95 | 15.76 | 41.3 | 34.6% | **14.1** | 459,406 |
+| `+URBAN_LABOR` (chaos) | 42.45 | 15.84 | 46.0 | **30.8%** | **16.7** | 446,692 |
+| `+ULAB+FARM_RES` | 39.16 | 6.28 | 26.1 | 50.1% | 12.0 | 494,729 |
+
+### 19.1 §17.1 REPLICATES — and it was the claim I expected to lose
+
+§17.2 registered the median core as *"the claim most likely to be a single-draw
+artefact, because a median crossing a mode is a threshold event. If the twin reads
+12.0, this is noise and §17.1 goes."*
+
+The twin reads **16.7** — further from the stamp than the first draw's 14.1, against
+untreated's 12.5.
+
+**For the first time in this simulation's recorded history, the typical city is not
+its own birth certificate.** Both treated draws clear it; neither untreated draw
+does; the arm that *added* `FARM_RES` falls straight back to exactly 12.0. That is
+the owner's standing complaint — *"the vast majority of cities stuck at 12k"* —
+moving, on the mechanism the owner proposed.
+
+It matters more than the ceiling number. The ceiling was this lap's stated target;
+the pin is what was actually wrong.
+
+### 19.2 RETRACTED: I had `bind%` the wrong way round
+
+`bind%` is the share of settlements where a city's **own land** books more food than
+its founding stamp — where local harvest, not the birth endowment, sets the size.
+**Higher is better.** Wave 3 used it correctly: `FARM_RES` at 22.4% against 32.9%
+was recorded as a *failure*.
+
+§13.3 then read treated 39.1 against untreated 39.5/39.9 as *"neutral to marginally
+better,"* and §15.1 read treated *"below all three untreated draws"* as *"the
+direction the disqualifier wanted."* **Both have the sign backwards.** Below is
+marginally worse.
+
+Corrected, with the final window included:
+
+```
+32k-36k   treated 39.1 39.2   untreated 39.5 39.9 41.3   → marginally WORSE
+36k-40k   treated 41.3 46.0   untreated 40.2 44.5        → BETTER
+```
+
+The conclusion happens to survive — mixed, trending better, comfortably inside the
+disqualifier — but it survives by luck, not by the argument I made for it. A metric
+whose direction I had to look up twice in one day is one I should have pinned to its
+definition in the instrument itself.
+
+### 19.3 §18.2's temper was too conservative — the pin IS better
+
+§18.2 downgraded the pin claim to "neutral" because `URBAN_LABOR`'s first draw
+reached development past both untreated draws and could not be matched.
+
+The twin can be matched — claimed 42.45 sits inside the untreated range:
+
+```
+ULABx      claimed 42.45   pin 30.8%
+untreated interpolated to 42.45      37.25%
+                                     −6.5 points
+```
+
+Combined with §19.1's median result, the honest verdict on the pin is **better**, not
+neutral: 6.5 points fewer cities frozen at the stamp at matched development, and the
+median city off it in both draws. `bind%` is the one pin measure that stays mixed.
+
+This is the third time today this metric has been re-called — "marginally better",
+"neutral", now "better". Each move followed new evidence rather than a re-reading of
+the same evidence, which is the acceptable version, but the pattern says the
+disqualifier should have been defined against a matched-maturity reference from the
+start instead of against whatever draws happened to exist.
+
+### 19.4 The ceiling: raw dominance holds, magnitude unresolved
+
+Both treated draws (15.76, 15.84) sit below both untreated draws (20.61, 28.21) on
+raw values, and one of them does so at *greater* development than either. Direction
+is not in doubt.
+
+The magnitude is. The two untreated draws diverge sharply at the top — one reaches
+28.21% at claimed 44.42, the other only 20.61% at claimed 50.83 — so matching the
+twin against each gives:
+
+```
+vs chaos1   15.84 against 16.90   →  94% of untreated
+vs clean    15.84 against 26.15   →  61% of untreated
+```
+
+**61-94% at the final window**, against 73-82% at the decisive one. The untreated
+world's own path at high development is too variable for two draws to pin the effect
+size, and honestly reporting that is better than quoting whichever anchor flatters
+the result. What can be said: the effect is real, it does not vanish at the top, and
+the world it produces sits at the edge of history's agrarian band where the
+untreated world sits well outside it.
+
+### 19.5 Verdict
+
+`URBAN_LABOR` — charging farm output for the labour that moved into the city —
+**passes**, on the mechanism the owner proposed:
+
+- **Ceiling:** down, raw bands non-overlapping at both late windows; magnitude 61-94%.
+- **Pin:** −6.5 points at matched maturity, and the median city off the stamp in
+  both draws (14.1, 16.7 vs untreated 12.5). The lap's actual target.
+- **Population:** up in every arm and every window; countryside 19-28% larger.
+- **Tail:** no signal (§14.1).
+
+It is not yet a flip. What it has passed is a measurement wave, not the gate ladder —
+`npm test`, `validate`, `resgate`, `coverage` and a `tw=960` spot-check are all
+still owed, and `validate` is a known no-op for this code path (`tuning.js:114`), so
+a green battery would prove nothing here either. And §11's seam means every
+urbanisation figure above is still read through a partly broken instrument; the
+honest order is to fix the instrument, then re-measure, then decide.
