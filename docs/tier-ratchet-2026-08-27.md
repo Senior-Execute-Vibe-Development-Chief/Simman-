@@ -649,3 +649,58 @@ falsify it later:
 That last one is the disqualifier's mirror image and worth stating plainly: if
 population drops materially, the two sites were not measuring the same thing and
 the premise fails.
+
+---
+
+## 12. The pin measure, tabulated — and what it says about `FARM_RES`
+
+`probe_milbalance` prints the modal core size and how much of the register holds it.
+That is the owner's complaint stated directly, and this lap had not tabulated it
+across the wave. Share of settled entities whose measured core sits at **exactly
+12.00 sim units** — the founding stamp:
+
+| window | untreated (2 draws) | `+URBAN_LABOR` | `+ULAB` (chaos) | `+ULAB+FARM_RES` |
+|---|---|---|---|---|
+| 20k-24k | 36.2 / 43.5 | 44.8 | 45.0 | 40.0 |
+| 24k-28k | 43.8 / 45.0 | 45.4 | 44.8 | **50.6** |
+| 28k-32k | 44.6 / 42.1 | 40.9 | 42.9 | **53.9** |
+
+`URBAN_LABOR` sits inside the untreated spread at every window and is at or below it
+by 28k-32k. `URBAN_LABOR + FARM_RES` is **11 points worse than the untreated
+maximum** by 28k-32k, and rising while every other arm is flat or falling.
+
+### 12.1 `FARM_RES` buys its ceiling by pinning more cities
+
+Wave 3 recorded that `FARM_RES` holds the urban ceiling (7.22% vs 20.61/28.21%) but
+fails the pre-registered pin disqualifier on `bind%` (22.4% vs 32.9%). This is the
+same finding on the direct measure, and it is worse than `bind` made it look: over
+half the register frozen at the founding stamp, against ~43% untreated.
+
+The two measures agree because they are two views of one event. `FARM_RES` halves
+the hinterland radius, which cuts each city's own harvest, which cuts `kLocal`,
+which drops cities back below `holdF`. `bind%` falls (fewer cities beat the stamp);
+the modal share rises (more cities sit on it). Urban share falls — but §11 says why
+that number falls, and it is not because the cities got smaller in any way the world
+would feel. They are being held at 12,000 by a floor that does not know they are
+starving.
+
+**A brake whose whole effect is to push cities back onto the pin does not fix the
+pin, it feeds it.** `FARM_RES` remains blocked on the resolution-anchor decision
+regardless; this is a second, independent reason not to ship it as a ceiling brake.
+
+### 12.2 A number in §10.2 was loose
+
+§10.2 said *"for roughly seven cities in ten, the urban core is pinned to the stamp
+and does not respond to local food at all."* Two different quantities were run
+together there:
+
+- **~65%** is the share where `kLocal` does **not** beat `holdF` (`bind%` 33-37%, so
+  63-67% of cores take the stamp as their local term). This is the number the
+  argument needs, and it is right.
+- **~43%** is the share sitting at **exactly** 12.00su. The rest of that 65% clear
+  the mode because `kBeyond` — their imports — lifts them above it.
+
+The mechanism is unchanged: local harvest does not reach the core read for about two
+thirds of the register. But "pinned at 12k" describes 43%, not 70%, and the
+distinction matters because it is the 43% that §11's fed-ness melt would actually
+move.
