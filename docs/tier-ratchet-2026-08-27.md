@@ -296,3 +296,40 @@ Recommended: (3). Not chosen unilaterally.
 - **Band=0 verdicts in the first political window are artifacts.** At 20k-24k the
   null arms had zero deaths and zero secessions, so any nonzero treated value read
   as "OUTSIDE". The 28k-32k band is the first with enough events to carry a verdict.
+
+---
+
+## 7. Wave 3, pre-registered before the data lands
+
+Four arms, live arm, tw=480, seed 8817, 40k, all carrying `CORE_LOCAL` so there is a
+runaway to brake: `+HAUL_PAID`, `+FARM_RES`, `+both`, and a float-epsilon draw for
+the band. **The criterion is written here before the decisive window reports**, because
+today has already shown how easily a verdict follows the number that happens to
+arrive.
+
+The two reference trajectories, both measured:
+
+| urban share | 28k | 32k | 36k | 40k |
+|---|---|---|---|---|
+| **untreated** (base world, 3 draws) | 2.45% | 3.83% | 4.68% | 6.06% |
+| **runaway** (`CORE_LOCAL` alone) | 7.68% | 8.79% | **15.57%** | **28.21%** |
+
+- **A brake HOLDS** if its arm tracks the untreated row — under ~7% at 40k, and with
+  the 36k→40k increment small rather than doubling.
+- **A brake FAILS** if it tracks the runaway row: past 15% at 36k, and accelerating.
+- **A brake PARTLY holds** if it lands between and, critically, **decelerates** — the
+  increment matters more than the level, since the untreated row's increments are
+  +1.4, +0.9, +1.4 while the runaway's are +1.1, +6.8, +12.6.
+
+Two things that would NOT count as success and must be checked before any is claimed:
+
+1. **Starving the world.** If the share falls because urban mass collapsed while total
+   population fell too, that is not a brake, it is a famine. Check `urban + rural`
+   against the untreated arms — `FARM_RES` v1 passed this check (total 125,925su
+   against 104,415su, i.e. more people, more rural).
+2. **Making the pin worse.** The owner's complaint is cities stuck at 12,000. If the
+   modal share at exactly 12.00 rises, a brake has bought the ceiling at the cost of
+   the thing this lap exists to fix — which `FARM_RES` v1 measurably did (45.1%
+   against 40.6%, and `bind` 13.3% against 29.2%).
+
+Both checks are in the probe's own output. Neither is optional.
