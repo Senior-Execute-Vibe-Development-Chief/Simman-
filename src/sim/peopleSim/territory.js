@@ -598,15 +598,44 @@ export function seedLocalTerritory(world, s) {
   // (no owner array yet — the dawn) nothing is owned, so the bootstrap is
   // byte-identical. Zero new constants; this is the existing rule applied at
   // birth instead of a tick later.
+  // v2, after the tw=960 arm refuted v1. The first cut VETOED every owned tile
+  // and measured catastrophic at the shipped grid: the small-state tier went
+  // 5 of 14 realms (36%) to ZERO of 12, and size dispersion lnσ fell from 2.68
+  // — inside history's 2.0-2.6 band — to 0.92, a uniform-blob political map.
+  // Every tw=240 gate passed it; the failure was a change in KIND at the grid
+  // that ships (the deffdce pattern the THIRD CARDINAL RULE exists for).
+  // The cause: small states are seeded by MARGINAL foundings, and a blunt veto
+  // gives a newborn NOTHING where the bug gave it EVERYTHING. Neither is the
+  // rule. The partition itself settles contested ground by NEAREST-WINS
+  // (the hinterland pass, :326 `if (d2 < hintDist[ti])`), and within one
+  // amortized pass the newborn will simply be handed every tile it is nearer
+  // to. So the honest seed box PREDICTS that outcome instead of ignoring it or
+  // being vetoed by it: an owned tile counts only if the newborn is strictly
+  // nearer than its current owner — the neighbour's core stays the
+  // neighbour's, the ground that is genuinely about to change hands does not
+  // wait a pass to be booked, and a town founded into real countryside keeps
+  // the opening ledger that lets a small state exist at all.
   const ownSeed = T.SEED_EXCLUSIVE > 0 ? world._territoryOwner : null;
   const ownSeedOk = ownSeed && ownSeed.length === world.N;
+  const seedById = ownSeedOk ? (world._byId || null) : null;
+  const _wrapDx = (a, b) => { let d = Math.abs(a - b); if (d > tw / 2) d = tw - d; return d; };
   for (let dy = -rb; dy <= rb; dy++) {
     const ny = sy + dy; if (ny < 0 || ny >= th) continue;
     for (let dx = -rb; dx <= rb; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const ti = ny * tw + nx;
       if ((world.elev[ti] || 0) <= 0) continue;
-      if (ownSeedOk) { const o = ownSeed[ti]; if (o >= 0 && o !== s.id) continue; }   // another settlement's field — not this newborn's to harvest
+      if (ownSeedOk) {
+        const o = ownSeed[ti];
+        if (o >= 0 && o !== s.id) {
+          // Nearest-wins, the partition's own tiebreak: count it only if this
+          // newborn is strictly closer than the settlement holding it today.
+          const os = seedById ? seedById.get(o) : null;
+          if (!os) continue;                                  // owner gone this tick — leave it to the pass
+          const odx = _wrapDx(os.pos.x | 0, nx), ody = (os.pos.y | 0) - ny;
+          if (odx * odx + ody * ody <= dx * dx + dy * dy) continue;   // the holder is nearer (or tied) — its field, not ours
+        }
+      }
       tiles += _invA;
       const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
       const cost = Math.sqrt(dx * dx + dy * dy) / _rn;
