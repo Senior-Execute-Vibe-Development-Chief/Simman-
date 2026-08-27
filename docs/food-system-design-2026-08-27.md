@@ -4,12 +4,24 @@
 this world produced a two-mode model (§1), a set of claims about how the code works
 today (§2), and a set of claims about history used to justify both (§4). The claims
 were made at speed and largely from memory. **They have since been verified against
-the tree and against the literature, and a third of them did not survive.** This
-document is the record: the model, the mechanism, the gaps, and — kept deliberately
-visible — the corrections.
+the tree and against the literature, and a third of the code claims did not survive.**
+This document is the record: the model, the mechanism, the gaps, and — kept
+deliberately visible — the corrections. **A second, adversarial audit was then run
+against this document itself and returned 34 findings; all 34 are applied below, and
+where one of them corrected a correction that fact is stated rather than smoothed over.**
 
-**Tree.** All code citations verified against `68b5676` (`git status` clean; probes
-under `/tmp`, no source file modified). Line numbers are that tree's.
+**Tree.** All code citations are against `68b5676` (`git status` clean; no file under
+`src/` modified). Line numbers are that tree's. **Correction, from the adversarial
+audit of this document.** The first draft of this line claimed the citations were
+"verified" and that the probes lived under `/tmp`. Neither was true. About a dozen line
+numbers were off by 1-5; one named the **wrong lever entirely** (§3.1); one named the
+wrong table row of a source memo (§2.6); two omitted a lever sitting on the very lines
+cited (§2.4). And the probes behind §3.5 are `tools/probe_orgspread{,2,3}_tmp.mjs`,
+which are **committed in the tree** — commit `68b5676` exists for precisely that reason,
+per its own message — and are flagged for deletion in §7.10. Every `file:line` in this
+document has since been re-opened in the tree and corrected one at a time. Read that as
+this document's own worked example of §6.5: **a citation is a measurement, and an
+unverified one fails the same way a mislabelled probe does.**
 
 **How to read the tags.** Every claim carried over from the conversation is tagged:
 
@@ -19,10 +31,22 @@ under `/tmp`, no source file modified). Line numbers are that tree's.
 | **[CORRECTED]** | the original claim was wrong or overstated; the text here is the corrected version, and the footnote says what the original said |
 | **[CONTESTED]** | the underlying evidence is genuinely disputed; the disagreement is part of the finding |
 | **[PROPOSAL]** | design intent, not a measurement — nothing here has been built |
+| **[OVERSTATED]** | the direction is right and the strength, scope or precision is not |
+| **[WRONG]** | the claim does not survive at all; the corrected statement replaces it |
+| **[UNVERIFIABLE]** | no source found in the tree or in the literature — do not repeat as fact |
 
 **The one-line summary of the verification.** Of 13 code claims: 4 confirmed,
-6 overstated, 3 wrong. Of 13 historical claims (19 entries once composites are split):
-4 confirmed, 4 wrong, 9 overstated or contested-stated-as-settled, 2 unverifiable.
+6 overstated, 3 wrong — the ledger that reconciles, entry by entry, in the appendix
+(4 + 6 + 3 = 13 ✓). **The historical aggregate that stood here — "of 13 historical
+claims (19 entries once composites are split): 4 confirmed, 4 wrong, 9 overstated,
+2 unverifiable" — is WITHDRAWN as a headline**, because it cannot be checked against
+this document: three of those entries never reached this record and survive only in an
+ephemeral verification output that is not in the tree, and the entry count itself
+depends on how the composites are split. What is checkable is the **eighteen numbered
+entries E1-E18 in §4**, each carrying its own verdict. That withdrawal is itself an
+instance of §6.5 — *a number quoted from a summary rather than from the thing it
+summarises is a number about something else* — and it was caught by the audit of this
+document, not by its author.
 **The two most load-bearing errors were both in the same place — the description of
 how a tile is assigned to a city.** It is not a cost-spread, and it is not
 cheapest-wins.
@@ -45,11 +69,43 @@ economic: grain moves until the freight eats the spread. Its signature is
 stops paying stops carrying.
 
 **Mode C — compulsion.** No price at the origin. A levy, a tithe, a tribute, a
-requisition; the cultivator's consent is not an input. Its distance limit is
-administrative, not economic — the *annona* crossed the Mediterranean at a cost no
-merchant would have borne, because the state was not trying to make a margin. Its
-signature is *insensitive to price and sensitive to authority*: it flows while the
-state can compel, and stops the day it cannot.
+requisition; the cultivator's consent is not an input. Its signature is *insensitive to
+price and sensitive to authority*: it flows while the state can compel, and stops the
+day it cannot.
+
+**Why Mode C's limit is administrative — [CORRECTED, and the correction repairs the
+argument rather than deleting it].**
+
+> *This paragraph originally read: "its distance limit is administrative, not economic —
+> the* annona *crossed the Mediterranean at a cost no merchant would have borne, because
+> the state was not trying to make a margin." **The premise is false**, and it
+> contradicted §4.1 and §4.5 of this same document (sea freight ran roughly 1/28 of land
+> carriage and was cheaper than carting ~75 miles; "Rome's grain went by sea, not by
+> cart"). It was also the **sole** justification for the model's founding claim, so the
+> claim had to be re-derived rather than merely re-worded.*
+
+The *annona* moved grain the length of the Mediterranean **not because the haul was
+uneconomic**. Sea freight was cheap on exactly that water, a large **private**
+Mediterranean grain trade ran the same routes, and the state's own carriage was largely
+performed by **private shippers** — the *navicularii*, held to the service by a bundle
+of privileges and obligations rather than by a freight rate no one else would accept.
+What was not market about it was the **origin**: the grain was **taken rather than
+bought**, and the carriage could be compelled as well as the crop.
+
+So the honest distinction is not *expensive vs cheap*, nor *loss-making vs profitable*.
+It is **where the limit binds**:
+
+- **Mode M stops when the freight eats the spread.** Its limit is a *price* at both ends
+  — so the world can move it: a better hull, a dearer destination or a cheaper origin
+  extends the shed, and a route that stops paying stops carrying.
+- **Mode C stops when the claim stops being enforceable.** Its limit is *reach* — the
+  ability to assess, collect, haul, and hold the province that owes it. A Mode C flow
+  may run down a route a merchant would gladly use (the annona largely did), and it will
+  still stop dead the day the claim lapses, while the merchant keeps sailing.
+
+**Mode C's distance limit is administrative because its *claim* is administrative** —
+not because its freight bill was one no merchant would pay. Egypt's grain reached Rome
+because Rome could requisition it in Egypt.
 
 **The two are not variants of one thing.** A market shed and a tribute shed have
 different shapes on the map, and the same city can sit at the centre of both at
@@ -73,14 +129,22 @@ A world with tribute but no rent has capitals fed from nowhere in particular. **
 current code has both** (§2, flows 4-6) — the conversation initially claimed it had
 neither, which was wrong.
 
-### 1.3 The hybrid: staple rights **[CONFIRMED]**
+### 1.3 The hybrid: staple rights **[CONFIRMED for the mechanism; OVERSTATED for the list]**
 
 The clean two-mode split has a historically important hybrid, and it is the case
 that shows the modes are not exclusive. Under a **staple right** (*Stapelrecht*,
 *droit d'étape*), a town holds a legal privilege compelling passing merchants to
 unload their cargo and offer it for sale in that town for a fixed period before
-continuing. **The routing is compelled; the transaction is a market.** Dordrecht,
-Cologne, Bruges and the Calais wool staple all worked this way.
+continuing. **The routing is compelled; the transaction is a market.**
+
+**The list, corrected.** **Dordrecht (1299) and Cologne (1259) are the clean cases** —
+municipal *Stapelrecht* over passing river traffic, which is exactly the mechanism
+described above. **Bruges** held staple obligations that were commodity- and
+nation-specific and that shifted repeatedly, so it is a partial case rather than a
+clean one. **The Calais wool staple (1363) is a related but distinct instrument**: a
+crown-designated compulsory export market for a single commodity, run by the Company of
+the Staple as a customs-revenue monopoly — *not* a town's privilege over passers-by.
+The mechanism is confirmed; the four-item list was not.
 
 This matters for the design because it is the mechanism by which **law creates a
 market centre where geography did not put one** — the same class of thing as
@@ -99,10 +163,18 @@ model would replace is narrower and more specific:
 > administrative reach budget — with no price anywhere in it and no authority
 > anywhere in it.**
 
-Measured: a plain Euclidean Voronoi over the same land reproduces the live partition
-moving only **14.2% of tiles** (`docs/gravity-partition-memo-2026-08-27.md:65-67`);
-ρ(`_grainPrice`, catchment tiles) = **−0.011**. **`world._territoryOwner` is, today,
-a Voronoi diagram.**
+Measured — **and the arm matters, because §6.2 of this document is about exactly how
+far two arms of this sim can diverge, so no headline number here appears without one**:
+
+| number | value | arm it was measured on |
+|---|---|---|
+| Euclidean Voronoi reproduces the live partition, moving | **14.2% of tiles** | memo arm **G2** — a *static* repartition counterfactual, tw=480, the shipped genesis arm, 24k, n=93 (`memo:21, :23, :67`) |
+| ρ(`_grainPrice`, catchment tiles) | **−0.011** | memo arm **E** — tw=480, the shipped genesis arm, step 28000, n=273 (`memo:53, :60`) |
+
+Both arms carry the memo's own stated limits: Euclidean distance proxies the cost field,
+one seed, `SETT_STRIDE`/`TRADE_STRIDE` at the harness's 1/3 rather than the shipped 3/5,
+and **no tw=960 measurement anywhere in that memo** (`memo:23`). **`world._territoryOwner`
+is, today, a Voronoi diagram.**
 
 So the model's claim on the code is: **the land partition should be an output of the
 two modes, not a substitute for them.** A market centre should hold the land whose
@@ -141,12 +213,14 @@ are stated against; it is not a plan of record.
 | 6b | **Colony subsidy** | **C** | granary → granary, capital to young colony, and metropole to dependency | always |
 
 **Flow 1 — the settlement eats its own catchment.** `_storableSupply = landFood`
-(`settlement.js:3308`), `_foodSupply = netLand + fish` (`:3312`), where `landFood`
-comes from `_terrFertSum`, the falloff-weighted harvest over the catchment
-(`territory.js:481`). Fish is deliberately local — perishable, never exported.
+(`settlement.js:3308`); `const supply = netLand + fish` (`:3312`) becomes `s._foodSupply`
+at **`:3315`** — and it passes through a `SIEGE_STARVE` override the draft's citation
+skipped past: **a besieged seat's supply reads 0, its flow being the besieger's**.
+`landFood` comes from `_terrFertSum`, the falloff-weighted harvest over the catchment
+(`territory.js:481-482`). Fish is deliberately local — perishable, never exported.
 
 **Flow 2 — the levy.** `foodHierarchy.js:306,312`: `levyShare = LEVY_MAX ×
-foodReach(node)` with `LEVY_MAX = 0.7` (`:70`). A fully-organised state requisitions
+foodReach(node)` with `LEVY_MAX = 0.7` (`:71`). A fully-organised state requisitions
 up to 70% of a child's shippable offer **in kind, with no coin paid**; the remainder
 (2b) it buys at the child's `_grainPrice` if it has spare coin. The gate is
 `L.countryId === s.countryId` (`:251`) — **[CONFIRMED]**: the levy is strictly
@@ -156,18 +230,45 @@ must not ship grain across a border).
 **Flow 3 — the peer market.** `foodHierarchy.js:411-520`. Three properties the
 conversation got half-right (see §2.2).
 
-**Flow 4 — tribute of land.** `entities.js:300-362`. **This is a parallel grain
-economy that never touches a settlement's food ledger.** The polity skims
-`TRIBUTE_RATE` = 0.10 of extraction from the *field people* under its borders into
-`p.tribute`; overflow above the store cap is **sold into the capital's own market**
-at the capital's live `_grainPrice`, with the coin coming out of that capital's
-wealth so the money supply stays closed (`entities.js:377-397`); and a capital under
-famine pressure draws the store down (`settlement.js:3332-3338`).
+**Flow 4 — tribute of land. [CORRECTED twice by the audit of this document.]**
+`entities.js:297-362`. **This is a parallel grain economy that is never *collected
+from* a settlement's food ledger — it is skimmed off the field people — though it
+discharges into a capital's granary at both ends of its life.**
+
+> *The draft bolded "**never touches a settlement's food ledger**", and its own next
+> sentence named two consumers that both write `s.food`: `entities.js:396`
+> (`capS.food += coin / price`) and `settlement.js:3337` (`s.food += draw`). The
+> mechanism was right; the bolded phrase was not.*
+
+**The base, precisely.** The draft called it "`TRIBUTE_RATE` = 0.10 of extraction",
+which overstates what is taxed. `entities.js:332` reads
+`perTick = landCensus × TRIB_FOOD_PER_POP × TRIBUTE_RATE × extract`, with
+`TRIB_FOOD_PER_POP = 0.0030` — the sim's own civilian subsistence-demand constant — and
+`TRIBUTE_RATE = 0.10` (`:257-259`), and `extract = 0.3` flat for a chiefdom ramping to
+`0.3 + 0.7·org` for a realm (`:331`). So it is **10% of the field people's subsistence
+*consumption flow*, scaled by an emergent 0.3-1.0 — an effective 3-10%, and of
+consumption, not of harvest.**
+
+The polity accrues that into `p.tribute`; overflow above the store cap is **sold into
+the capital's own market** at the capital's live `_grainPrice`, with the coin coming out
+of that capital's wealth so the money supply stays closed and the market takes delivery
+of what it bought (`entities.js:377-397`, the granary credit at `:396`); and a capital
+under famine pressure draws the store down (`settlement.js:3332-3338`, the credit at
+`:3337`).
 
 **Flow 5 — tribute up.** `entities.js:351-361`. `T.TRIBUTE_UP` (ships 0.33) remits
 that share of a dependency polity's in-kind tribute to its overlord, one level per
-pass. **This is compelled, in-kind, cross-realm food movement** — and it is the
-counterexample to the otherwise-correct statement that compelled flow is intra-realm.
+pass. **This is compelled, in-kind, cross-realm food movement** — a counterexample to
+the otherwise-correct statement that compelled flow is intra-realm.
+
+**[CORRECTED] It is not the only one.** Flow 6b's **metropole → dependency** leg is
+cross-realm in-kind grain too: `oc.capital.food -= food; dc.capital.food += food` across
+the overlord link (`conquest.js:2556-2573`, the grain leg at `:2571-2573`). It ships
+**unlevered** — there is no `T.` gate on that loop at all, only a young-colony window
+and the metropole's projection reach — and, unlike `TRIBUTE_UP`, it is **not pinned off
+by the harness**, so it *is* visible to the gates. §6.1's consequence is therefore
+narrower than it first reads: **the gates are blind to flow 5, not to cross-realm grain
+as such.**
 
 **Flow 6 — court exchange.** `entities.js:407-448`. Grain for metal or prestige
 between courts at fixed customary ratios (`COURT_RATIO_METAL` 80,
@@ -178,7 +279,7 @@ rather than by scarcity.
 `rentDue = s._landFood × FARM_RENT × serfMul × taxMul × POLITY_INTERVAL`
 (`conquest.js:3525-3530`) is **priced off the harvest but paid from `s.wealth`**,
 purse-capped, with the unmonetized remainder credited as `gov._inKind` that offsets
-the army wage bill (`:3546-3557`, `:1828-1831`). **No food ledger, granary or
+the army wage bill (`:3548-3552`, `:1828-1831`). **No food ledger, granary or
 `_foodNet` is ever debited.** It is a fiscal flow with the harvest as its tax base —
 which is exactly the rent half of §1.2 *modelled on the money side only*.
 
@@ -193,7 +294,8 @@ const surplus  = Math.max(0, (p._foodNet||0) - (p._foodDemand||0));
 const residual = Math.max(0, surplus - Math.max(0, granaryCap(p) - (p.food||0)));
 ```
 `foodHierarchy.js:479-480`, with `granaryCap` the same clamp `updateFood` applies
-(`settlement.js:3352-3355`). Three qualifications:
+(the clamp at `settlement.js:3346-3348`; `granaryCap` itself at `:3354-3357`). Three
+qualifications:
 
 1. **It does not apply to the levy tree.** A child's offer is
    `max(0, pool − _foodDemand) × arrive` with **no granary term**
@@ -201,9 +303,15 @@ const residual = Math.max(0, surplus - Math.max(0, granaryCap(p) - (p.food||0)))
    unpaid. **A settlement's stores are protected from its trade peers but not from
    its overlord** — which is the two-mode model falling out of the code by accident,
    and arguably correct.
+   **Citation sharpened:** that offer form is only the `surplusBasis` branch, which
+   fires when `T.SHIP_SURPLUS && ONE_BOOK && ONE_POP && DISSOLVE_FARMS` all hold
+   (`:188`); the alternate branch is `pool × SHIP_FRAC_BY_TIER × arrive`. **The claim
+   survives either way — neither branch carries a granary term** — but the citation
+   should say so rather than quote one branch as if it were the law.
 2. **A settlement does not "sell" — it never initiates.** The pass is buyer-driven:
-   only a buyer with `techEff().market`, spare coin above its wealth reserve, and the
-   seller inside its `mergeReach` draws the residual down (`:411-436, :465-478`).
+   only a buyer with `techEff(s).market` (`:429`), spare coin above its wealth reserve
+   (`:457`), and the seller inside its `mergeReach` (`:455`, walked at `:462-467`) draws
+   the residual down (`:479-481`). Buyer gates `:415-458`; seller-side draw `:462-481`.
 3. The whole pass is behind `T.GRAIN_MARKET` (ships 1).
 
 ### 2.3 The two decay laws — and the two distance metrics **[CONFIRMED, strengthened]**
@@ -216,18 +324,36 @@ on both the law and the metric.
 | **law** | hyperbolic `1/(1 + 0.5c)` | exponential `exp(−d/range)` |
 | **where** | `territory.js:100`, applied at `:481` | `foodHierarchy.js:155` |
 | **metric** | accumulated **transport cost** (resolution-normalised) | straight-line **Euclidean tile distance** |
-| **terrain** | full cost field — rivers cheap, mountains dear | **none at all** |
+| **terrain** | full cost field — rivers cheap, mountains dear | **none in the distance**; the only terrain the haul sees is whether a sea-lane exists between the pair (`foodHierarchy.js:151-153`) |
 | **grounding** | a tuned discount, no physical unit | real km: `HAUL_LAND_KM = 340`, `EARTH_KM = 40075`, `baseTiles = 340/(40075/tw)` |
 | **tail** | never reaches zero | never reaches zero |
 
-The 340 km e-folding is Diocletian's Price Edict (ox-wagon +55% per 148 km, so
-148/ln 1.55), and water multiplies the range by 12 (the edict's land:water freight
-ratio), blended by seamanship (`foodHierarchy.js:108-122`, `T.HAUL_PHYS` ships 1).
+The 340 km e-folding is taken from Diocletian's Price Edict (ox-wagon ~+55% per
+148 km). Note the arithmetic: **148 / ln 1.55 = 337.7**, so the honest reading is
+*"≈338, taken as 340"* — the constant is not that quotient. Water multiplies the range
+by 12 — the edict's land:water freight ratio — blended by seamanship
+(`foodHierarchy.js:108-110` for the constants, `:150-154` for the water blend;
+`T.HAUL_PHYS` ships 1).
+
+**[CONTESTED] — the provenance this constant inherits.** The edict's figures are
+**maximum tariffs**, not observed prices, and the land:sea gap they imply is disputed:
+Scheidel, *"Explaining the maritime freight charges in Diocletian's Price Edict"*,
+*JRA* 26 (2013), argues the maritime rates imply a **substantially smaller** land:sea
+ratio than the conventional ~1:28. Full statement at §4.1, entry **E1**. The constant is
+not thereby wrong — it has independent physical meaning as a haul e-folding, which is
+what the SECOND CARDINAL RULE asks of a parameter — but calling the ratio "real and
+standard" applies a laxer evidentiary standard than this document applies to, say,
+Constantinople's population, **and the code's "+55% per 148 km" inherits the dispute
+along with the number.**
 
 **The strengthening the conversation missed:** it is not only two decay *laws*, it is
-two distance *metrics*. The catchment's distance is terrain-aware accumulated cost;
-the haul's is a straight line across the map with no terrain in it whatsoever. **A
-mountain range shrinks a city's fields and does nothing at all to its imports.**
+two distance *metrics*. The catchment's distance is terrain-aware accumulated cost; the
+haul's is a straight line across the map with no terrain in the **distance** at all.
+**[CORRECTED, narrowly]** — *the draft said "no terrain in it whatsoever", which is one
+step too strong: under `HAUL_PHYS` the ×12 water corridor is gated on an actual sea-lane
+link, `child._seaReach.has(parent.id)` (`foodHierarchy.js:151-153`), and that link is
+terrain-derived routing.* **The punchline is unaffected and is the sharper statement:
+a mountain range shrinks a city's fields and does nothing at all to its imports.**
 
 ### 2.4 How a tile is actually assigned **[CORRECTED — the most important correction in this document]**
 
@@ -249,13 +375,19 @@ settlement order (`territory.js:284-296`). Pure geometry.
 
 **Phase 2 — the guaranteed hinterland belt.** A **Euclidean nearest-wins disk** of
 radius `HINTERLAND_BY_TIER = [3,4,6,8]` by tier: `if (d2 < hintDist[ti]) { … }`
-(`:315-329`). **This is literally a Voronoi tessellation**, weighted only by the
-4-rung tier ladder.
+(`:315-329`). **This is a Voronoi tessellation over the land it is allowed to see**,
+weighted only by the 4-rung tier ladder. **[CORRECTED — "literally a Voronoi
+tessellation" omitted a live third exclusion]:** the belt skips cores (`:323`), skips
+any tile **ever stamped as conquered** — `if (capAt && capAt[ti] > -Infinity) continue`
+(`:324`), the stamp written at `armies.js:2398` — and skips out-of-country ground
+(`:325`). So it is a Voronoi over land that is *neither a core, nor ever-conquered, nor
+out-of-country*. That is not a dead branch: any front that has flipped a tile removes it
+from the nearest-wins carve permanently.
 
 **Phase 3 — the Dijkstra frontier.** Multi-source over `localEdgeCost` (`:335-412`).
-Rivers *are* cheap (`transport.js:281-284`, `params.river = max(0.15, 0.50 −
-cons×0.30)`, banded by magnitude) and mountains *are* dear (`:287-303`, relief =
-`e*5 + e²*14` plus slope and ridge terms). But:
+Rivers *are* cheap (`params.river = max(0.15, 0.50 − cons×0.30)`, defined at
+`transport.js:172` and banded by magnitude at `:281-282`) and mountains *are* dear
+(`:293-303`, relief = `e*5 + e²*14` plus slope and ridge terms). But:
 
 - **Locked land is a wall, not a contest.** `const base = owner.slice()` snapshots
   phases 1-2 and every tile already owned; `if (lk >= 0 && lk !== oid) continue`
@@ -265,16 +397,21 @@ cons×0.30)`, banded by magnitude) and mountains *are* dear (`:287-303`, relief 
   the residual frontier."*
 - **Roads are explicitly ignored.** `localEdgeCost(world, ti, ni, kn, true, true)` —
   `ignoreRoads` **and** `noPortTax` (`:380`), skipping the road short-circuit at
-  `transport.js:259-266`. Construction *tech* lowers per-step cost; road *tiles* do
+  `transport.js:262-267`. Construction *tech* lowers per-step cost; road *tiles* do
   not, by design ("political reach follows TERRAIN, not roads").
 - **The frontier does not minimise cost.** It minimises **value-discounted effort**:
   `eff = step / (1 + T.VALUE_PULL × val)`, `VALUE_PULL` def 0.3 (`:394`). The true
-  haul cost is tracked separately in `tcost` (`:397, :414`) and is what feeds the
+  haul cost is tracked separately in `tcost` (`:399`, `:414`) and is what feeds the
   food falloff — so the harvest is honest even though the ownership race is not.
-- **`CATCHMENT_CLIP` (ships 1) vetoes any tile outside the settlement's own
-  country** (`:237-241, :292, :325, :409`). Market competition between centres is
-  therefore **intra-country only** — a metropolis can never outbid a rival across a
-  border. The Hanseatic case is structurally impossible in this engine today.
+- **`CATCHMENT_CLIP` (ships 1) vetoes any tile inside *another* country; unowned
+  wilderness stays workable, because `CATCH_WILD` also ships 1** (`:237-240`,
+  `wildOK`/`clipped` at `:238-239`, `CATCH_WILD` def 1 at `tuning.js:205`; applied at
+  `:292`, `:325`, `:408`). **[CORRECTED]** — *the draft said "vetoes any tile outside
+  the settlement's own country", which reads the veto one lever too wide; the lever that
+  narrows it sits on the very lines the draft cited.* **The downstream conclusions are
+  unchanged:** market competition between centres is **intra-country only** — a
+  metropolis can never outbid a rival across a border — and the Hanseatic case is
+  structurally impossible in this engine today.
 - A newborn's pre-pass ledger uses **raw Euclidean distance** in place of cost
   (`:641-642`).
 
@@ -294,7 +431,8 @@ market and the crown's tribute sale (`foodHierarchy.js:314, :413, :487`;
 (`territory.js:48, :90-91`), scaled by `rNormPop` at the call site (`:206`). The
 split is genuinely enforced: `_paramsFromKnowledge` reads **only** construction,
 mobility and navigation, and the header states it — *"organization → does NOT enter
-here; it controls reach budget"* (`transport.js:120-121, :161-164`).
+here; it controls reach budget in territory.js. Pure separation of concerns."*
+(`transport.js:124-125`; `_paramsFromKnowledge` itself at `:161-174`).
 
 But `reachLevel = lerp(org, lvl(ch.reach,'reach'), blend)` with `blend =
 T.TECH_EFFECTS`, **which ships 1.0** (`tech.js:579`, `tuning.js:803`). The continuous
@@ -321,10 +459,21 @@ scarcity = clamp((_foodDemand||1) / max(0.01, _foodSupply), 0.5, 3);
 s._grainPrice = GRAIN_PRICE_BY_TIER[tier] * scarcity;      // :236-238
 ```
 
-so realised prices span **1 to 66** and are as much scarcity as tier. Measured
-register: p10 7.00 / p50 21.54 / p90 42.00 / max 42.00 — **half the register pinned
-at the 3× clamp** (`docs/gravity-partition-memo-2026-08-27.md:65`). Say *"tier base ×
-a real scarcity multiplier"*, and note that the clamp is binding for half the world.
+so the **possible** span is 1 to 66 (= 2 × 0.5 to 22 × 3) while the **measured**
+register runs **7.00 - 42.00**, and price is as much scarcity as tier. Measured
+quantiles: p10 7.00 / p50 21.54 / p90 42.00 / max 42.00 — so
+**at least the top decile is pinned at the 3× clamp** (p90 = max = 42.00 = tier-2
+base × the clamp) (`docs/gravity-partition-memo-2026-08-27.md:60`; arm E, tw=480,
+shipped genesis arm, step 28000, n=273).
+
+**[CORRECTED twice by the audit of this document.]** The draft said prices *"span
+1 to 66"* — that is the theoretical envelope, not the register — and *"half the
+register pinned at the 3× clamp"*, citing `memo:65`. `memo:65` is the **`reachBudget`**
+row, not the `_grainPrice` row (`:60`), and the 54% the sentence was reading is that
+row's **"pairs moved ≥1 tile"** column — what a `_grainPrice`-weighted partition *would
+displace* — which has nothing to do with the clamp. The clamp evidence is the quantiles
+themselves. Say *"tier base × a real scarcity multiplier"*, and say the clamp binds for
+**at least the top decile**, not for half the world.
 
 **Footnote worth carrying:** there is a **second, unrelated grain price** — the goods
 layer's `P[G_STAPLE]` scarcity price (`goods.js:145, :263-274`) — which never moves
@@ -381,12 +530,20 @@ Five, each with its evidence and a proposed mechanism. **None of these is built.
 
 ### 3.1 No price enters tile assignment
 
-**Evidence.** No price, wealth or market term anywhere in `territory.js`
-(§2.4); ρ(`_grainPrice`, catchment tiles) = **−0.011**; a plain Euclidean Voronoi
-reproduces the live partition moving **14.2%** of tiles; the guaranteed belt's
-*realised* size ratio is **1.33×** with median Reilly displacement **0.000**
-(`docs/gravity-partition-memo-2026-08-27.md:65-67, :137`). The economic catchment at
-the register that ships **has no live size term at all**.
+**Evidence.** No price, wealth or market term anywhere in `territory.js` (§2.4), plus
+four measurements — **each with the arm it was taken on, because §6.2 of this document
+measures the two arms of this sim ~25× apart**:
+
+| measurement | value | arm |
+|---|---|---|
+| ρ(`_grainPrice`, catchment tiles) | **−0.011** | E — tw=480, shipped genesis arm, step 28000, n=273 (`memo:53, :60`) |
+| guaranteed belt's **realised** size ratio | **1.33×**, median Reilly displacement **0.000** | E, same (`memo:64, :67, :135`) |
+| `reachBudget` max/p50 | **1.02-1.05** | every arm, both grids (`memo:65, :137`) |
+| Euclidean Voronoi reproduces the live partition, moving | **14.2% of tiles** | G2 — a *static* repartition counterfactual, tw=480, shipped genesis arm, 24k, n=93 (`memo:21, :23, :67`) |
+
+*(The draft attributed the 1.33× / Reilly 0.000 pair to `memo:137`. `:137` is the
+`reachBudget` 1.02-1.05 line; the belt figures are at `:64`, `:67` and `:135`.)*
+The economic catchment at the register that ships **has no live size term at all**.
 
 **Why this is the two-mode model's sharpest gap.** Mode M's whole content is that the
 market paying more takes the field. The code has prices, has scarcity, has a haul
@@ -403,22 +560,61 @@ claim ti to  argmin_i [ cost(i,ti) − haulTiles · ln A_i ],   haulTiles = 340/
 with `A = s._coreMeasured`, normalised by the **geometric mean of this pass's
 measured cores** so an unmeasured settlement's weight is exactly 1 and the dawn
 bootstrap is byte-identical. Full sketch, three insertion points and the persistence
-requirement (`_coreMeasured` must join `SETT_FIELDS`, `persist.js:77-108`, or
+requirement (`_coreMeasured` must join `SETT_FIELDS`, `persist.js:77-107`, or
 save/load determinism becomes a coin flip): `docs/gravity-partition-memo-2026-08-27.md` §4.
 
-**Why additive and not Huff.** Huff's loop gain is scale-free — a 2× bigger city
-always takes the same *fraction* more land at every size, which is the documented
-`SIZE_BY_POP` pathology (`tuning.js:348`: *"a pure proportional feedback with NO
-interior fixed point"*). The additive form's gain falls with size, and its scale term
-is `HAUL_LAND_KM`, a real distance that does not move when the border moves. **It
+**Why additive and not Huff.** Huff's loop gain is scale-free — a 2× bigger city always
+takes the same *fraction* more land at every size — which is the same **shape** as the
+documented **`SIZE_WORKED`** pathology (`tuning.js:350`, derived in code at
+`countryTerritory.js:891`: *"a pure proportional feedback with NO interior fixed
+point"*). The additive form's gain falls with size, and its scale term is
+`HAUL_LAND_KM`, a real distance that does not move when the border moves. **It
 introduces no new constant and no exponent to pick.**
 
+> **[CORRECTED — and this one is a live example of the failure mode §6.5 is about, so it
+> is kept in full rather than silently fixed.]**
+>
+> The draft attributed that quoted string to **`SIZE_BY_POP`**, at `tuning.js:348`. The
+> string is not in `SIZE_BY_POP` anywhere. At `68b5676`, `SIZE_BY_POP`'s key is at
+> `:347` and its description at `:348` is a different text entirely (the "minimum-Egypt"
+> size floor); the quoted string lives in **`SIZE_WORKED`**'s description at `:350`
+> (key at `:349`), and the derivation it summarises is in code at
+> `countryTerritory.js:886-894`, the sentence itself at `:891`. **`SIZE_BY_POP` is a
+> different lever.**
+>
+> **The error was inherited verbatim from `docs/gravity-partition-memo-2026-08-27.md:154`**,
+> which makes the identical mistake — and which was written earlier the same day by the
+> same author. A mis-citation was therefore **propagated one hop further from its
+> source**, arriving in this document with the extra authority of having been cited
+> before. Nothing in the drafting caught it; the adversarial audit did. *(The memo's own
+> line number was right for the memo's tree `07359fd`, where `:348` is `SIZE_WORKED`'s
+> description — it was the **lever name**, not the line, that was wrong there. Both files
+> are now corrected. Note what that means: the wrong-lever citation would have survived
+> any check that only re-ran the line number.)*
+>
+> **Second problem, independent of the citation: the analogy is loose.** The
+> `SIZE_WORKED` pathology is `target = k·h` — proportional feedback on **held tiles**,
+> i.e. a self-reference between the size target and the thing it sizes. Huff's
+> scale-freeness is a property of the **attraction exponent**, not of that loop. The two
+> share a shape ("gain that does not fall with size, so no interior fixed point") and the
+> same cure ("a term that does not move when the border moves"); they are not the same
+> mechanism. Read the citation as a precedent for the *cure*, not as a claim that Huff
+> would re-create `SIZE_WORKED`'s loop.
+
 **What would refute it.** `probe_shape` paired A/B at tw=960: small states <100k km²
-falling below ~20% of realms, or size dispersion lnσ below 2.0. **And the arming
-check nobody would think to run:** the share of touching catchment pairs whose
-boundary moves ≥1 tile from nearest-wins (31% today, median 0.00 tiles). *If flipping
-the lever does not move that number, the lever is inert and must not be recorded as
-validated, no matter how many gates it passes.*
+falling below ~20% of realms, or size dispersion lnσ below 2.0. **And the arming check
+nobody would think to run:** the share of touching catchment pairs whose boundary moves
+≥1 tile from nearest-wins. **The static projection with `A = _coreMeasured` is 31% of
+touching pairs, median displacement 0.00 tiles** (`memo:190`, arm G2). **The live arm
+must reproduce it: if flipping the lever leaves the *live* pair displacement at ~0, the
+lever is inert and must not be recorded as validated, no matter how many gates it
+passes.**
+
+*[CORRECTED — the draft wrote "(31% today…)" and then "if flipping the lever does not
+move that number, the lever is inert", which is circular: the 31% is itself the
+**projection** of the proposed law with `A = _coreMeasured`, so the test compared the
+lever against its own forecast. The projection is the prediction; the live arm is the
+test.]*
 
 **The standing warning attached to this proposal.** At the shipped register the law
 reshuffles 30-39% of tiles while leaving the size distribution alone (catchment lnσ
@@ -438,9 +634,18 @@ distance. **In the model this is right** — locational rent declines linearly a
 reaches zero at the margin of cultivation, beyond which lies von Thünen's
 wilderness. **In the world it is an assumption, not a measurement.** Linear
 per-ton-mile cost is what von Thünen *assumed*. Real freight has a large fixed
-terminal/handling component plus a line-haul rate that **tapers** with distance
-(visible in modern rates — long-haul $0.55-1.10/mile against short-haul
-$1.75-2.75/mile — and pre-modern as loading costs and per-town tolls).
+terminal/handling component plus a line-haul rate that **tapers** with distance —
+pre-modern, that is loading and handling costs plus per-town tolls; modern rate cards
+have the same shape.
+
+> **[CORRECTED — the figures are deleted, deliberately.]** The draft supported this with
+> *"long-haul $0.55-1.10/mile against short-haul $1.75-2.75/mile"*, with **no source, no
+> year, no mode and no country**. No recent US truckload dry-van market has sat in a
+> $0.55-1.10/mile band — all-in rates have run roughly $1.60-2.60/mile through the 2020s
+> — so that reads like a fuel-excluded or marginal-cost figure being taken for a rate.
+> The qualitative point carries the entire argument and is uncontroversial. **The numbers
+> added nothing and were the single most likely thing in this document to be quoted back
+> wrongly.**
 
 **Why this matters here rather than being pedantry:** *linear cost gives a hard
 catchment edge at a definite radius; a taper gives a soft, long, thin tail with no
@@ -486,9 +691,12 @@ should be specified after both, not before.
 `MINT_RESIDUAL` has **three** reads and one of them **is** exactly the pull the claim
 says is absent: it re-points `CROWD_FOUND`'s founding-**rate** gradient at
 `residualBasinMass`, so more unmarketed people means a proportionally higher founding
-rate and *"saturated valleys damp toward 0 instead of pegging CROWD_CAP"*
-(`crystallize.js:2801-2809`). The other two reads are bars — the shared city bar
-`cityBasinOkAt` (`:1249-1252`) and site-lane eligibility (`:1454-1459`).
+rate and *"saturated valleys damp toward 0 instead of CROWD_CAP"* (`crystallize.js:2801-2809`,
+the quoted line at `:2805`). *[The draft rendered that quote as "instead of **pegging**
+CROWD_CAP" inside quotation marks; the source has no "pegging". Quotation marks are a
+claim of verbatimness — either quote it or paraphrase it.]* The other two reads are bars
+— the shared city bar `cityBasinOkAt` (`:1249-1252`) and site-lane eligibility
+(`:1454-1459`).
 
 **Two further corrections.** (1) The lever **ships OFF** (`tuning.js:95`, def 0), so
 today it is neither veto nor pull — it does nothing. (2) It measured **near-inert
@@ -505,12 +713,19 @@ crystallise where people already are, never where the surplus *could* be.
 `TOWN_BASIN_R × rNormPop` = **1,670 km** (~8.8M km², roughly Australia). 65.3% of
 covered tiles sit under more than one disk, up to **8 cities share one tile**, and
 summed basin mass is **3.58×** the people actually standing there
-(`crystallize.js:169-181, :360-383`; `docs/catchment-audit-2026-08-27.md` §2).
+(`crystallize.js:170-181` for the function, `:365-387` for the constant and every figure
+quoted here; `docs/catchment-audit-2026-08-27.md` §2).
 **One constant serves six unrelated physical questions** — the mint bar, the dissolve
 bar, the founding-rate reference, the hearth ignition basin, a harbour's shelter test,
 and (via `CAGE_HORIZON_REF`) the exit ring of the caging field, the core drive of
 state formation. No number can be all six, and because the disk is so permissive
 every attempt to make it bind has measured inert.
+
+**Carry the source's own scope limit with the defect, or a later reader will over-read
+it.** `crystallize.js:382-385` states it exactly: *"The economy is NOT affected — census
+and harvest both reduce over the exclusive `_territoryOwner` partition — but city
+FOUNDING and DISSOLUTION are priced on this triple-counted read."* The 3.58× is a
+**founding/dissolution** defect, not a population or harvest defect.
 
 **[PROPOSAL].** A residual-**capacity** read (unworked carrying capacity within haul
 range) rather than a residual-**people** read, on a radius grounded the way
@@ -527,11 +742,12 @@ range) rather than a residual-**people** read, on a radius grounded the way
 > hides the tail. The conclusion survives on a better statistic.*
 
 The 0.001 is the **p90−p50 spread of CAPITALS' `techEff.reachLevel`** as printed by
-`tools/probe_consol.mjs:58,:74` (which labels it "org pack" while measuring
+`tools/probe_consol.mjs:58, :74` (which labels it "org pack" while measuring
 `reachLevel`), quoted from one arm into `docs/harvest-years-2026-08-25.md:538` and
-thence into `tuning.js:116` and `docs/catchment-audit-2026-08-27.md:175`.
+thence into `tuning.js:116`, `tuning.js:124` and
+`docs/catchment-audit-2026-08-27.md:174-175`.
 
-**Re-measured independently this session** (own probe, harness defaults, seed 8817):
+**Re-measured independently this session** (own probe, seed 8817):
 
 | | tw=240 / 30k | tw=480 / 24k |
 |---|---|---|
@@ -541,15 +757,60 @@ thence into `tuning.js:116` and `docs/catchment-audit-2026-08-27.md:175`.
 | `reachBudget` max/min | **1.103** | **1.574** |
 | `reachBudget` **max/p50** | **1.000** | **1.032** |
 
+> **THE ARM THIS WAS TAKEN ON — stated in the same bold as everything else here,
+> because it is a real limitation on the re-measurement and the draft buried it in a
+> parenthesis.** The probe (`tools/probe_orgspread3_tmp.mjs`) calls `buildSim` from
+> `tools/_harness.mjs` with **no `SIM_TUNE`**, so it inherits the harness pins in full:
+> `DAWN_LIVE=0, STATE_RECORDS=0, LAND_KNOW=0, PEER_SEATS=0, WAR_FINISH=0, SETT_STRIDE=1`
+> (§6.1). **That is the gate world, and §6.2 of this document measures the gate world at
+> ~25× fewer realms than the shipped one.** So the document's only independent
+> measurement is a **gate-world measurement used to correct a claim about the world** —
+> exactly the move §6.2 warns against.
+>
+> **Why the conclusion survives anyway, stated explicitly rather than assumed:** the
+> number this section actually asks you to quote — `reachBudget` max/p50 — was
+> **independently measured by the gravity memo on the LIVE arm, at both grids, at
+> 1.02-1.05** (`memo:137`). The re-measurement's job is only to kill the *"world spread
+> of 0.001"* framing, and it agrees with a live-arm number where the two overlap. **If
+> the re-measurement and the memo had disagreed, the memo's live arm would win.**
+
+> **An unexplained 0.07, flagged rather than smoothed over.** The figure this section
+> replaces is `p50/p67/p90 = 0.83/0.84/0.84` (`harvest-years:538`,
+> `catchment-audit:174`, `tuning.js:124`); the re-measurement reads
+> `0.7568/0.7568/0.7568`. The **spread** claim is what this section is about and it
+> resolves cleanly — but **the LEVEL differs by ~0.07 and this document does not know
+> why.** The leading candidate, untested: `probe_consol`'s own usage line documents
+> `SIM_TUNE="<live arm>"` (`probe_consol.mjs:24`) while the re-measurement passes none,
+> so the two may simply be the two regimes of §6.2 again. Recorded as **open**. Do not
+> quote either level as settled without re-running both on one arm.
+
 So *"the world converges to 0.001"* is **false**; *"the upper half of the capital pack
 is within 0.001-0.03"* is **true**. **Quote `reachBudget` max/p50 = 1.00-1.05** — it
 matches the memo's independently measured 1.02-1.05 at every arm and both grids, and
 it is the number that actually bears on the partition.
 
-**The consequence stands and is separately measured.** The guaranteed belt *is*
-literally nearest-wins (`territory.js:326`), its realised size ratio is 1.33× with
-Reilly displacement 0.000, and a plain Euclidean Voronoi reproduces the live partition
-moving 14.2% of tiles.
+**The measurement, written out so it survives the probe's deletion (§7.10).** The
+probes are committed in the tree and flagged for deletion, so the recipe is recorded
+here rather than only in a file that is scheduled to disappear:
+
+```js
+// tools/probe_orgspread3_tmp.mjs — buildSim(_harness.mjs), NO SIM_TUNE
+// quantiles: probe_consol's own convention — FLOOR, not round
+const q = (a, f) => (a.length ? [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.floor(f * a.length))] : 0);
+// capitals:      techEff(c.capital).reachLevel   for every country with a capital
+// all settled:   s._techEff.reachLevel   and   reachBudget(s)      (territory.js)
+// invocation:    node tools/probe_orgspread3_tmp.mjs [steps] [W] [seed]   // W=480 ⇒ tw=240
+//                CK=<checkpoint interval> in the environment
+```
+
+**The consequence stands and is separately measured — on the LIVE arm, which is the
+point.** The guaranteed belt *is* nearest-wins where it is allowed to run
+(`territory.js:326`; see §2.4 for the three exclusions); its realised size ratio is
+**1.33× with Reilly displacement 0.000** (memo arm E — tw=480, shipped genesis arm,
+step 28000, n=273), and a plain Euclidean Voronoi reproduces the live partition moving
+**14.2% of tiles** (memo arm G2 — a *static* counterfactual, tw=480, shipped genesis
+arm, 24k, n=93). **Neither of those is a harness-defaults number**, which is why the
+conclusion survives the arm limitation flagged above.
 
 **Why this is a gap and not just a measurement.** The same flatness exists one layer
 up: **186 of 273 urban cores sit at exactly 12.00 sim units**, the founding stamp
@@ -579,16 +840,28 @@ mysteriously redrawn map.
 ## 4. HISTORICAL GROUNDING
 
 **Read this section as a corrections list, not as a bibliography.** The historical
-claims in the conversation were made from memory and at speed; the verification pass
-covered 13 of them (19 entries once composites are split) and returned **4 confirmed,
-4 wrong, 9 overstated or contested-stated-as-settled, 2 unverifiable**. Sixteen
-entries are reproduced below. **Where a number is contested, the disagreement is
-stated rather than resolved.**
+claims in the conversation were made from memory and at speed. **Where a number is
+contested, the disagreement is stated rather than resolved.**
 
-*Three entries of the 19 are not reproduced here — including both UNVERIFIABLE
-verdicts — because their text did not reach this record. They exist only in the
-verification output. If a claim you remember from the conversation is absent below,
-treat it as unverified rather than as verified-and-omitted.*
+**[CORRECTED — the aggregate count is withdrawn, and the entries are numbered so the
+arithmetic can be checked.]**
+
+> *The draft opened with "the verification pass covered 13 of them (19 entries once
+> composites are split) and returned 4 confirmed, 4 wrong, 9 overstated or
+> contested-stated-as-settled, 2 unverifiable. Sixteen entries are reproduced below."
+> **None of that reconciles against this document.** Counting the tagged entries gives
+> neither 16 nor 19; the entry count depends entirely on how the composites are split;
+> and three entries — including both UNVERIFIABLE verdicts — never reached this record
+> at all, existing only in an ephemeral verification output that is not in the tree.
+> **A headline statistic that cannot be checked against its own document is the exact
+> failure §6.5 is about**, so it is withdrawn rather than patched. The code ledger in
+> the appendix is left standing because it does reconcile, entry by entry: 4 + 6 + 3 = 13.*
+
+**Eighteen entries are reproduced below, numbered E1-E18**, each carrying its own
+verdict. That number is a count of what is *here*, not a claim about the size of the
+verification pass. **If a claim you remember from the conversation is absent below,
+treat it as unverified rather than as verified-and-omitted** — three such entries are
+known to exist and this document cannot say what they were about.
 
 ### 4.1 City sizes
 
@@ -597,50 +870,110 @@ treat it as unverified rather than as verified-and-omitted.*
 | ~50,000 is the practical ceiling for a premodern city without water transport or state grain administration | **OVERSTATED** | mechanism yes, number no — see below |
 | typical medieval towns held 2-10k | **OVERSTATED** | the modal chartered market town is **500-2,000** |
 | Ghent, Bruges, Cologne 40-60k | **CONFIRMED** | top edge contested |
-| Florence, Venice ~100k | **CONFIRMED** | slightly low: 110-120k / 120-150k |
-| Paris 200-250k by 1300, biggest in Latin Europe | **OVERSTATED** | "biggest" stands; the figure is contested and misdated |
-| Constantinople, Baghdad, Kaifeng, Hangzhou, Edo near or at a million | **WRONG** | splits three ways |
+| Florence, Venice ~100k | **CONTESTED** (E4) | *the draft tagged this CONFIRMED-but-low and replaced it with a band it cannot cite* |
+| Paris 200-250k by 1300, biggest in Latin Europe | **OVERSTATED / CONTESTED** (E5) | "biggest" stands; the figure is contested and misdated |
+| Constantinople, Baghdad, Kaifeng, Hangzhou, Edo near or at a million | **WRONG**, and it splits three ways | E6 wrong · E7 contested · E8 contested |
 
-**The 50,000 ceiling — the mechanism is documented, the number is not.**
-The transport-cost asymmetry is real and standard: sea : river : land ≈ **1 : 5 : 28**,
-and it was cheaper to ship grain the length of the Mediterranean than to cart it
-~75 miles (Duncan-Jones, *The Economy of the Roman Empire*, 1982). But "50,000" is a
-rule of thumb that has acquired a decimal point, and I could find no scholarship
-behind it. Counterexamples survive the "or a state grain administration" escape only
-awkwardly: **Teotihuacan** held 100,000-200,000 at peak (c.450-500 CE) with no draught
-animals, no wheeled vehicles and no navigable water; Aleppo, Damascus, Fez and Isfahan
-were all large, inland and non-navigable. **Madrid** fits the claim's logic best and
-its number worst — ~150,000 by the 1630s on a non-navigable river, sustained by
-exactly the state provisioning the claim posits, at enormous cost to Castile
-(Ringrose, *Madrid and the Spanish Economy 1560-1850*, 1983).
+**E1 — the 50,000 ceiling. [OVERSTATED on the number; CONTESTED on the ratio.]**
+The mechanism is documented; the number is not; and the ratio is **not** as settled as
+the draft made it.
+
+**The transport-cost asymmetry — attribution and dispute, both corrected.** The
+ratio sea : river : land ≈ **1 : 5 : 28** comes from **Duncan-Jones, *The Economy of
+the Roman Empire: Quantitative Studies*** — **1974** for the first edition (1982 is the
+second; the draft cited only 1982). The famous sentence the draft hung on it — *that it
+was cheaper to ship grain the length of the Mediterranean than to cart it ~75 miles* —
+is **not Duncan-Jones's**. It is **A. H. M. Jones, *The Later Roman Empire 284-602***
+(1964). Duncan-Jones supplies the ratio; Jones supplies that sentence.
+**And the ratio is contested. [CONTESTED]** It is derived from the **maximum tariffs**
+in Diocletian's Price Edict, and Scheidel, *"Explaining the maritime freight charges in
+Diocletian's Price Edict"*, ***JRA*** **26 (2013)**, argues the maritime rates imply a
+**substantially smaller** land:sea gap than ~1:28. Calling it "real and standard", as
+the draft did, applies a **laxer evidentiary standard than this same section applies to
+Constantinople two entries later** — which is exactly the inconsistency §6.5 is about.
+The same caveat belongs on **§2.3**, because the code's `HAUL_LAND_KM = 340` inherits
+it: and note there that **148 / ln 1.55 = 337.7**, so the honest phrasing is *"≈338,
+taken as 340"*, not that the constant *is* that quotient.
+
+**The 50,000 itself** is a rule of thumb that has acquired a decimal point, and no
+scholarship was found behind it. Counterexamples survive the "or a state grain
+administration" escape only awkwardly:
+
+- **Teotihuacan** — and **the draft's own counterexample was partly wrong. [WRONG in
+  part.]** It said *"no draught animals, no wheeled vehicles and no navigable water"*.
+  The load-bearing half is right: **no draught animals and no wheeled vehicles.** But
+  Teotihuacan sits in a north-eastern arm of the **Basin of Mexico**, ~15-25 km from the
+  Lake Texcoco shore, and the Basin's lake system carried a **large canoe-freight
+  network** — the same one that later provisioned Tenochtitlan. *"No navigable water"*
+  is false, and it weakens the very counterexample the paragraph was built on. Band, too:
+  Millon's survey estimate is **~125,000**, with 100,000-200,000 as the outer range —
+  quote the estimate, not the range's ceiling.
+- Aleppo, Damascus, Fez and Isfahan were all large, inland and non-navigable.
+- **Madrid** fits the claim's logic best and its number worst — ~150,000 by the 1630s on
+  a non-navigable river, sustained by exactly the state provisioning the claim posits, at
+  enormous cost to Castile (Ringrose, *Madrid and the Spanish Economy 1560-1850*, 1983).
+
 **Safe form for the doc:** *"the ceiling is set by carting cost, and water carriage or
 a state provisioning system is what raises it"* — with no specific figure, or an
 order-of-magnitude band (10⁴-10⁵).
 
-**Medieval town sizes.** 2-10k describes the tier **above** the modal market town. In
-England the great majority of small towns held fewer than 2,000 (most above 300);
-"true towns" ran 2,000-8,000, averaging toward 2,500-3,000. About 10% of England's
-population lived in towns over 2,000 and a further 5% in small boroughs, some as small
-as 300; England had roughly **760 market towns**, most at 200-500 families
-(*Cambridge Urban History of Britain*, vol. I, "Small towns 1270-1540").
-**This is the number that matters for this codebase**, because it is the register
-`DISSOLVE_TOWNS` deliberately does not mint (see `CLAUDE.md`): the sim's entity
-register is the *city* register, and the 500-2,000 tier lives in `popField`.
+**E2 — medieval town sizes. [OVERSTATED, and the draft mixed units in the one
+codebase that has a standing rule about that.]**
 
-**Ghent/Bruges/Cologne.** Fair band, upper edge contested in both directions: Ghent is
+> *The draft wrote: "the great majority of small towns held fewer than **2,000** (most
+> above **300**) … England had roughly **760 market towns**, most at **200-500
+> families**." **Two units, one paragraph, no conversion** — people in one clause,
+> households in the next. That is the precise failure `CLAUDE.md` calls "the single most
+> repeated mistake in this codebase's history", committed inside the section whose job
+> is to supply this codebase with comparable numbers.*
+
+**Restated in one unit — people — throughout.** 2-10k describes the tier **above** the
+modal market town. In England the great majority of small towns held **fewer than 2,000
+people** (most above **300 people**); "true towns" ran **2,000-8,000 people**, averaging
+toward 2,500-3,000. The often-quoted **"200-500 families"** for a market town is
+**900-2,500 people** at 4.5-5 per household — i.e. the same band, not a smaller one.
+
+**Which definition each count uses, because they differ.** The counts in the *Cambridge
+Urban History of Britain*, vol. I — the relevant chapter is **Christopher Dyer, "Small
+towns 1270-1540"** — vary with the definition applied: **Dyer's own small-town count is
+usually cited nearer ~600**, while the ~**760** figure and the **~2,400** often quoted
+alongside it are different objects again (the *Gazetteer of Markets and Fairs* counts
+~2,400 market **grants**, which is a count of franchises, not of towns). **Quote a count
+only with the definition attached.** And *"10% of England's population in towns over
+2,000 plus a further 5% in small boroughs"* is **Dyer's estimate**, not a census —
+mark it as an estimate wherever it is reused.
+
+**This is the tier that matters for this codebase**, because it is the register
+`DISSOLVE_TOWNS` deliberately does not mint (see `CLAUDE.md`): the sim's entity register
+is the *city* register, and the 500-2,000-**people** tier lives in `popField`.
+
+**E3 — Ghent/Bruges/Cologne.** Fair band, upper edge contested in both directions: Ghent is
 usually placed at or above it (up to 64-65,000 within the walls by the 13th-14th c.,
 though one line of estimate puts it at ~50,000 in 1300), conventionally the largest
 city north of the Alps after Paris; Cologne is sometimes put at 50-55,000 by 1300,
 falling to 35-40,000 by the sixteenth century. **[CONTESTED]** — treat 40-60k as a
 band whose top edge is disputed, not as three cities that all sat inside it.
 
-**Florence/Venice.** ~100k is a floor, not a centre. Florence c.1338 was about
-**115,000-120,000**, falling to ~50,000 by 1351; Venice is estimated at
-**120-150,000** pre-plague ("The population of Florence before the Black Death",
-*Journal of Medieval History* 28:2, 2002). For the top of the Latin-European urban
-hierarchy below Paris, **110-120k** beats 100k.
+**E4 — Florence/Venice. [CONTESTED — and the draft's *correction* was itself uncited
+and over-confident.]**
 
-**Paris. [CONTESTED — and this is a live debate, not a settled figure.]** "Biggest in
+> *The draft tagged the conversation's "~100k" **CONFIRMED but slightly low** and
+> replaced it with "115,000-120,000 / 120-150,000", citing one article for both cities.
+> **That article is about Florence only, and it is explicitly a survey of a contested
+> question** — it does not source Venice at all. Replacing a contested figure with a
+> band you cannot cite is not a correction.*
+
+The article is **W. R. Day Jr., "The population of Florence before the Black Death:
+survey and synthesis", *Journal of Medieval History* 28:2 (2002)** — name the author,
+and read it as what it says it is: **a survey of a dispute.** **Florence** estimates
+span roughly **90,000-120,000** c.1338 depending on how the grain-ration and hearth
+evidence is read, falling to ~50,000 by 1351. **Venice** c.1338 is usually put at
+**~100,000-120,000**, with 150,000 at the high end — **and it needs its own source; do
+not carry it on Day's citation.** For the top of the Latin-European urban hierarchy
+below Paris, the honest statement is *"around 100,000, contested upward"*, not a firm
+110-120k.
+
+**E5 — Paris. [CONTESTED — and this is a live debate, not a settled figure.]** "Biggest in
 Latin Europe" is the standard view and stands. The 210,000-270,000 range comes from
 applying a 3.5-4.5 multiplier to the **61,098 hearths of the *État des paroisses et
 des feux*** — which is **1328, not 1300**, and is a **fiscal** document. Whether a
@@ -651,53 +984,91 @@ put Paris nearer **80,000**. (Ferdinand Lot, "L'état des paroisses et des feux 
 between ~80,000 and ~250,000 depending on how the 1328 hearths are read", or pick a
 figure and say it is contested.**
 
-**The million-city list — splits three ways.**
-- **Constantinople is simply wrong.** Modern estimates for the 6th-century peak run
-  **300,000-500,000**, with half a million the conventional high point in 541. It was
-  never near a million.
-- **Baghdad is contested, not settled** — estimates run ~300k to 1.5M. The defensible
-  statement is that Baghdad is one of several candidates (with Rome and Chang'an) for
-  the first city to reach a million, not that it did.
-- **Kaifeng, Hangzhou and Edo are fine** — each conventionally at or around a million,
-  Edo best documented.
+**The million-city list — splits three ways (E6, E7, E8).**
 
-*Do not let Constantinople ride into a document on the coat-tails of Edo.*
+- **E6 — Constantinople is simply wrong. [WRONG.]** Modern estimates for the
+  6th-century peak run **300,000-500,000**, with half a million the conventional high
+  point in 541. It was never near a million.
+- **E7 — Baghdad is contested, not settled. [CONTESTED.]** Estimates run ~300k to 1.5M.
+  The defensible statement is that Baghdad is one of several candidates (with Rome and
+  Chang'an) for the first city to reach a million, not that it did.
+- **E8 — Kaifeng, Hangzhou and Edo: defensible, but NOT settled. [CONTESTED —
+  retagged.]**
 
-### 4.2 The urban graveyard **[CONFIRMED]**
+> *The draft wrote "Kaifeng, Hangzhou and Edo are fine — each conventionally at or
+> around a million, Edo best documented", with no contestation at all — in a paragraph
+> that contests Constantinople and Baghdad carefully. **Two standards in one list.***
 
-Pre-modern cities did not reproduce themselves; urban mortality exceeded urban
-fertility and cities grew only by in-migration from the countryside. This is the
-demographic reason a city's catchment is not optional — **a city is a standing drain
-on its hinterland's people, not just on its grain**, and it is the correct mental
-model for what `popField` → urban-core transfer is supposed to represent.
+  The ~1M figures for **Kaifeng and Hangzhou** are **prefecture (*fu*) household-register
+  counts, not walled-city populations**; city-proper estimates run to several hundred
+  thousand. **Edo's** million is a **townsman census (*machikata*, ~500,000) plus an
+  *estimate* of the never-censused samurai population** — better documented than the
+  Song figures, but half of it is still an estimate, not a count. **Defensible but not
+  settled**, and every figure here needs the register it was counted on attached.
+
+*Do not let Constantinople ride into a document on the coat-tails of Edo — and do not
+let Edo become a clean anchor either.*
+
+### 4.2 The urban graveyard **[CONTESTED — retagged]**
+
+**E9.** Most large pre-modern cities recorded **more burials than baptisms** and
+depended on **rural in-migration** to grow (de Vries). That much is the standard
+picture, and the design point rests on it.
+
+**The mechanism, however, is disputed, and the draft tagged this CONFIRMED and wrote
+"cities grew *only* by in-migration".** **Allan Sharlin, *"Natural Decrease in Early
+Modern Cities: A Reconsideration"*, *Past & Present* 79 (1978)**, argued that the
+observed deficit belongs to the **transient migrant population** rather than to urban
+residence as such — settled burgher families, on his reading, reproduced themselves, and
+it is the churn of unmarried migrants that produces the aggregate excess of burials.
+Later work finds wide variation by city, period and disease environment.
+
+**Both readings support the design point, so state them at their proper strengths:
+the design point as settled, the demography as contested.** Either way a city is a
+standing draw on its hinterland's people, not just on its grain — **which is the correct
+mental model for what the `popField` → urban-core transfer represents.** What is *not*
+established is that urban residence itself is the killer.
 
 ### 4.3 The legal instruments
 
-**Bracton's 6⅔-mile rule. [CONFIRMED — rule, arithmetic, rationale and enforcement
-all check out.]** *De Legibus* reasons that "every reasonable day's journey consists
+**E10 — Bracton's 6⅔-mile rule. [CONFIRMED — rule, arithmetic, rationale and
+enforcement all check out; two of the four precisions below were corrected.]** *De Legibus* reasons that "every reasonable day's journey consists
 of twenty miles", divided into three parts — morning to travel to market, midday to
 buy and sell, the third to return home — so **6⅔ miles is the distance covered in one
 third of a day**, and it must all be done by day, *"because of ambushes and the
 attacks of robbers."*
 
-Three precisions:
+Four precisions:
 1. **Enforcement is real but softer than "a rule".** 6⅔ was a jurist's guideline in a
    treatise, not a statute. The operative legal test in charters and in *quo warranto*
    proceedings was ***nisi sit ad nocumentum aliorum*** — unless it be to the harm of
    others — with 6⅔ serving as the **measure of nuisance in litigation** rather than
    as an automatic bar.
-2. **It is still live law.** Charnwood BC invoked Henry III's Loughborough charter to
-   close a market at Sileby within 6⅔ miles.
-3. **Authorship:** *De Legibus* was composed in stages from the 1220s to 1260s by
-   Martin of Pattishall, William of Raleigh and Henry of Bratton; sole attribution to
-   "Bracton" is traditional but erroneous (Paul Brand, "The Age of Bracton",
-   *Proceedings of the British Academy* 89; Thorne's edition on authorship).
+2. **It is still live law — but the specific episode is [UNVERIFIABLE].** The
+   **general** claim is sound and is the one to repeat: **ancient chartered market
+   franchises remain enforceable in England and Wales, and the 6⅔-mile measure is still
+   argued in disputes over rival markets.** The draft went further and told a specific
+   story — *"Charnwood BC invoked Henry III's Loughborough charter to close a market at
+   Sileby within 6⅔ miles"* — with **no citation, and none findable in this tree**.
+   *(The Loughborough/Sileby example told in the conversation has not been sourced — do
+   not repeat it as fact.)* Cite a case or a report, or keep only the general claim.
+3. **Authorship. [CORRECTED.]** The draft wrote that *De Legibus* "was composed in
+   stages from the 1220s to 1260s by **Martin of Pattishall**, William of Raleigh and
+   Henry of Bratton", which makes Pattishall (**d. 1229**) an author. **Thorne's argument
+   is that the principal author was William of Raleigh, working from the plea rolls of
+   Martin of Pattishall, with Henry of Bratton as the later reviser whose name the work
+   carries.** Sole attribution to "Bracton" is traditional but erroneous — and **the
+   dating remains disputed** (Paul Brand, "The Age of Bracton", *Proceedings of the
+   British Academy* 89, 1996, disputes parts of Thorne's chronology).
 4. **"A legal switching barrier" is our own economic gloss, not a historical
    finding.** Label it as interpretation wherever it appears.
 
-**Staple rights.** See §1.3 — the hybrid, and confirmed as described.
+**E11 — staple rights.** See §1.3 — the hybrid. **[CONFIRMED for the mechanism;
+OVERSTATED for the list]**: Dordrecht and Cologne are the clean cases, Bruges is
+partial, and the Calais wool staple is a **crown export monopoly**, a related but
+distinct instrument. §1.3 carries the correction in full.
 
-**Gascony's bastides. [WRONG — both the number and the region, plus the purpose.]**
+**E12 — Gascony's bastides. [WRONG — both the number and the region, plus the purpose.]**
 - **Number/region:** Beresford counted **124 planted towns in Gascony** across the
   whole span of English rule, of which over seventy were founded 1263-1297, Edward I
   the most energetic patron. The **~500** figure (estimates range 200-700 depending on
@@ -718,24 +1089,38 @@ political reasons) at least as much as of Mode M.*
 
 ### 4.4 The spatial models
 
-**Reilly's law. [CONFIRMED — with two notes for anyone writing code from the
-sentence.]** Reilly (1931): two cities attract trade from an intermediate town in
-direct proportion to their **populations** and in inverse proportion to the **square**
-of the distances. Setting the attractions equal, `(d₂/d₁)² = P₂/P₁`, so
-`d₂/d₁ = √(P₂/P₁)`.
-1. The closed-form breakpoint `BP = D/(1+√(P₂/P₁))` is **Converse's** (1949)
-   transformation, not Reilly's own statement.
-2. *"The breakpoint sits at distance proportional to the square root of the size
-   ratio"* is loose. What equals √r is the **ratio of the two distances**. The
-   breakpoint's absolute distance from a centre is `D·√r/(1+√r)`, which is **not**
-   proportional to √r. Worth writing out before implementing.
+**E13 — Reilly's law. [CONFIRMED — with two notes for anyone writing code from the
+sentence, and the notes themselves corrected to name their endpoints.]** Reilly (1931):
+two cities attract trade from an intermediate town in direct proportion to their
+**populations** and in inverse proportion to the **square** of the distances. Setting the
+attractions equal, `(d₂/d₁)² = P₂/P₁`, so `d₂/d₁ = √(P₂/P₁)`.
 
-**Von Thünen. [OVERSTATED — see §3.2 for the full treatment.]** The rings do end *in
+1. The closed-form breakpoint is **Converse's** (1949) transformation, not Reilly's own
+   statement.
+2. *"The breakpoint sits at distance proportional to the square root of the size ratio"*
+   is loose. What equals √r is the **ratio of the two distances**, not either distance.
+
+**Both formulas, with the centre each is measured from named — because this entry exists
+specifically to stop a mis-implementation, and the draft gave the two forms as if they
+competed.** Write `D` for the separation of the two centres and `r = P₂/P₁`. Then
+
+```
+d₁ = D / (1 + √r)        // distance from CITY 1 (the smaller-numerator city)
+d₂ = D·√r / (1 + √r)     // distance from CITY 2
+d₁ + d₂ = D              // they are the SAME point, measured from opposite ends
+```
+
+Converse's `BP = D/(1+√(P₂/P₁))` is `d₁`. The draft then wrote *"the breakpoint's
+absolute distance from a centre is `D·√r/(1+√r)`"* — that is `d₂`. **Same breakpoint,
+opposite endpoints, presented as two competing statements.** Neither is proportional to
+√r. Name the centre in code and in prose, every time.
+
+**E14 — von Thünen. [OVERSTATED — see §3.2 for the full treatment.]** The rings do end *in
 the model*, because linear per-ton-mile cost is what the model **assumes**. Real
 freight tapers. **Do not inherit "rings end" as physics.**
 
-**Chayanov and vent-for-surplus. [CORRECTED — two different theories welded under one
-name.]** The conversation ran together (a) the **labour-consumer balance** — a peasant
+**E15 — Chayanov and vent-for-surplus. [CORRECTED — two different theories welded
+under one name.]** The conversation ran together (a) the **labour-consumer balance** — a peasant
 household works until its drudgery outweighs its consumption need, so it produces no
 surplus beyond that point — which is **Chayanov**, and is among the *least* accepted
 parts of him; and (b) **"a market partly creates the surplus"** — that output rises
@@ -747,14 +1132,22 @@ ever implements either, implement one of them on purpose.**
 
 ### 4.5 The grain trades
 
-**Amsterdam's Baltic trade. [WRONG — the either/or inverts it.]** The claim was that
-it was fundamentally a **storage** business (buy cheap at harvest, sell dear in
-spring) rather than spatial arbitrage. **The spatial leg *was* the business.**
+**E16 — Amsterdam's Baltic trade. [WRONG — the either/or inverts it. One date-detail
+inside the correction is itself corrected below.]** The claim was that it was
+fundamentally a **storage** business (buy cheap at harvest, sell dear in spring) rather
+than spatial arbitrage. **The spatial leg *was* the business.**
 Amsterdam was the central entrepôt from which Baltic grain was distributed over the
 Dutch hinterland and the rest of Europe; Danzig grain was shipped by Dutch merchants
 **directly to Venice**; and the decisive episode is purely spatial — in the **1590s**
-the Italian republics, cut off from Black Sea supply by Ottoman expansion, looked
-north, and that crisis consolidated and extended the Baltic-Mediterranean route.
+the Italian republics turned north for grain, and that crisis consolidated and extended
+the Baltic-Mediterranean route.
+
+> **[CORRECTED — the 1590s trigger was loosely dated.]** The draft said the Italian
+> republics were "cut off from Black Sea supply **by Ottoman expansion**" in the 1590s.
+> **Ottoman control of Black Sea grain, and its reservation for Istanbul, long predates
+> the 1590s** — that is not what changed. The trigger was a **Mediterranean harvest
+> crisis** combined with an **Ottoman export prohibition**, not a new cutting-off. The
+> episode remains decisive and remains spatial; only its cause is restated.
 Holland was itself a structural grain-**deficit** region (high urbanisation, land in
 dairy and industrial crops), so even the home-market share is spatial arbitrage.
 Storage is genuinely part of the story — van Tielhof treats warehousing and local port
@@ -765,25 +1158,50 @@ round: **it was spatial arbitrage that storage made cheaper and less risky.**
 (Milja van Tielhof, *The "Mother of all Trades": The Baltic Grain Trade in Amsterdam
 from the Late 16th to the Early 19th Century*, Brill.)
 
-**Florence's grain. [WRONG — and the correction points at Mode C.]** The claim was
-that Florence was fed largely from its own *contado* estates. Domenico Lenzi's *Libro
-del Biadaiolo* (c.1320-35) records the *contado* feeding the city about **five months
-a year**; the rest came from **Sicily, Sardinia, Apulia and the Pisan Maremma**,
+**E17 — Florence's grain. [WRONG — and the correction points at Mode C. The
+attribution inside the correction was itself wrong, and is fixed here.]** The claim was
+that Florence was fed largely from its own *contado* estates.
+
+> **[CORRECTED — attribution.]** The draft credited the five-month figure to Domenico
+> Lenzi's *Libro del Biadaiolo*. **It is Giovanni Villani, *Nuova Cronica* XII.94.**
+> Lenzi's *Libro del Biadaiolo* (*Specchio Umano*, c.1320-35) is the **grain-market
+> price and provisioning record** — the source for the 1328-30 famine and for the
+> apparatus, not for the five-month figure.
+
+**Giovanni Villani reports the *contado* feeding the city about five months a year**
+(*Nuova Cronica* XII.94); **Domenico Lenzi's *Libro del Biadaiolo* (c.1320-35) records
+the market and the apparatus behind the rest.** The rest came from **Sicily, Sardinia,
+Apulia and the Pisan Maremma**,
 through a **municipal provisioning apparatus** (the *Sei della Biada*, later the
 *Abbondanza*) — i.e. through exactly the compelled/administered channel the original
 claim demoted. **Florence is not an example of a city fed by its catchment. It is an
 example of a city whose catchment fed it for five months and whose government fed it
 for the other seven.**
 
-**Hanseatic rye "with no state at all". [WRONG — and a strawman besides.]** The
-**Teutonic Order was a landed state *and* a Hansa member**; the grain came off
-**Polish noble estates**; and the route ran through the **Danish Sound and its toll**.
-There is state at every stage. The claim was also set against the wrong contrast:
-**Rome's grain went by sea, not by cart**, so the real comparison is not
-state-vs-carts — it is *two different sea-borne grain systems, one run by a fisc and
-one run by merchants under several states' tolls and privileges*. That comparison is
-still interesting and is arguably the best single illustration of the two-mode model;
-the version in the conversation was not.
+**E18 — Hanseatic rye "with no state at all". [WRONG — and a strawman besides. Two
+imprecisions inside the correction are fixed here; the core of it stands.]** The
+**Teutonic Order was a landed state**; the grain came off estates; and the route ran
+through the **Danish Sound and its toll**. There is state at every stage.
+
+> **[CORRECTED — two details.]**
+> **(a) Membership.** The draft called the Teutonic Order "a landed state **and a Hansa
+> member**". The Order's **towns** — Danzig, Elbing, Thorn, Königsberg — were the
+> members; the Order itself traded through its ***Großschäfferei*** and attended
+> *Hansetage*, but **was not itself a member city**. The point survives intact — a
+> landed state stands inside the Hansa's grain trade either way — but the mechanism is
+> the Order's towns and its own trading arm, not its membership.
+> **(b) Whose estates, and when.** *"The grain came off **Polish noble estates**"* is
+> **true of the 16th-17th-century Vistula trade** (the *szlachta*'s *folwarki*). For the
+> **14th-15th century**, Prussian grain came substantially off **Order and Prussian
+> estates**. **Date the claim** — the sentence names two different centuries' economies
+> depending on which one you mean.
+
+The claim was also set against the wrong contrast: **Rome's grain went by sea, not by
+cart**, so the real comparison is not state-vs-carts — it is *two different sea-borne
+grain systems, one run by a fisc and one run by merchants under several states' tolls
+and privileges*. **That comparison is right, is the best single illustration of the
+two-mode model in this section, and should be kept**; the version in the conversation
+was not.
 
 ---
 
@@ -795,20 +1213,56 @@ Three defects in the grain shed, each hidden by the one before it, all found in 
 same lap and all now **default ON** at `SAVE_VERSION 50` (`0f3c091`), with a `v<50`
 guard pinning old worlds to the old behaviour (*a pre-v50 world's urban geography IS
 its old market's output*). Baseline before the lap (obs-240, seed 8817, 30k): median
-market haul **965 km**, p90 1,867, max 4,126 — against history's 20-100 km overland
-shed — with the top 3 importers taking **42%** of all landed grain.
+market haul **965 km**, p90 1,867, max 4,126 — with the top 3 importers taking **42%**
+of all landed grain.
+
+> **[CORRECTED — a retraction from the source document survived into this draft and is
+> restored here.]** The draft opened this section by setting the 965 km median "against
+> history's 20-100 km overland shed" **as the lap's defect**. Its own source document
+> retracts that framing on the same page. `docs/grain-shed-2026-08-26.md:168-176`,
+> verbatim:
+>
+> > **"Haul distance is largely GRID-BOUND, not a pure defect.** The median haul sits at
+> > ~1,000 km in EVERY arm because at tw=240 a tile is 167 km and neighbouring
+> > settlements are ~6 tiles apart: inter-city grain trade cannot be shorter than
+> > settlement spacing. History's 20-100 km overland shed lives INSIDE the catchment,
+> > which `s.people` already accounts for. `HAUL_PHYS` is still right on its own terms
+> > (a tile constant meaning 2,338 km is a bug whatever the grid), **but it must not be
+> > sold as a fix for the distance number.** Re-measure at tw=480/960, where spacing
+> > halves."
+>
+> **So the 965 km is not the defect and the lap did not set out to fix it.** The defect
+> is the tile-constant range; the distance number is mostly the grid, and comparing it to
+> history's overland shed compares two different objects — an inter-**city** haul against
+> a city's **intra-catchment** shed.
 
 | lever | defect | measured effect |
 |---|---|---|
-| **`GRAIN_FREIGHT`** | **the road was free** — the buyer paid the seller's farm-gate price for what *arrived*, so the haul's loss was borne by nobody and a far city bought at the same unit price as the seller's neighbour | concentration **42% → 31%**; distances **unchanged** — which exposed (b) |
+| **`GRAIN_FREIGHT`** | **the road was free** — the buyer paid the seller's farm-gate price for what *arrived*, so the haul's loss was borne by nobody and a far city bought at the same unit price as the seller's neighbour | concentration **42% → 31%** *(single-lever arm; **under the full v50 stack top-3 reads 40-52% against the 42% baseline — no net de-concentration**, `grain-shed:177-179`)*; distances **unchanged** — which exposed (b) |
 | **`HAUL_PHYS`** | **the range was a tile constant** — `FOOD_HAUL_RANGE = 14` tiles × ~167 km = a **2,338 km** e-folding *before* tier (×3.6), tech (×2) and water (×3) multipliers pushed it past Earth's circumference; `arrive ≈ 1` between any two points on the planet | median **965 → 847 km**, barely moved — which exposed (c) |
 | *(within `HAUL_PHYS`)* | **the water test was an endpoint test** — the corridor bonus asked only whether each *end* touched water, and ~100% of settlements are waterside, so a ×12 barge multiplier applied to entirely overland routes | now requires an actual water **route** (the sea-lane `mergeReach` link) |
-| **`GRAIN_BID`** | **`grainMarketPass` walked `world.settlements` in array order — founding order** — each buyer drawing down live residuals as it went, so the world's oldest city was served in full before a younger one was offered a bushel; price, hunger and distance played no part in allocating scarcity | buyers now approach in descending order of their own emergent `_grainPrice` (ties on id for determinism) — the hungriest bid it away, and a real deficit outbids a granary top-up so `GRAIN_PROVISION`'s standing demand subordinates to hunger for free |
+| **`GRAIN_BID`** | **`grainMarketPass` walked `world.settlements` in array order — founding order** — each buyer drawing down live residuals as it went, so the world's oldest city was served in full before a younger one was offered a bushel; price, hunger and distance played no part in allocating scarcity | buyers now approach in descending order of their own emergent `_grainPrice` (ties on id for determinism) — the hungriest bid it away, and a real deficit outbids a granary top-up so `GRAIN_PROVISION`'s standing demand subordinates to hunger for free. **Measured effect on concentration: none — it "does not de-concentrate — a chronically short metropolis holds the highest scarcity price, so it stays first in the queue" (`grain-shed:177-179`).** The draft's table left this cell blank, which read as "unmeasured" when it is in fact measured-and-null. |
 
-**Recorded limitation, not fixed:** river barge traffic (Thebes→Memphis) is not a sea
-lane and takes the land curve. `transport.js` already prices river ground cheap for
-the *route* but not for the *spoilage clock*. That is the next lap **if the cradles
-measurably starve on it — never a widened constant.**
+**Recorded limitations, not fixed — all three, because the draft listed only the
+first:**
+
+1. **River barge traffic** (Thebes→Memphis) is not a sea lane and takes the land curve.
+   `transport.js` already prices river ground cheap for the *route* but not for the
+   *spoilage clock*. That is the next lap **if the cradles measurably starve on it —
+   never a widened constant.** (The limitation is recorded in the source itself, at
+   `foodHierarchy.js:144-149`.)
+2. **The haul-distance number is grid-bound**, not a defect this lap fixed — see the
+   retraction quoted above. Re-measure at tw=480/960, where settlement spacing halves,
+   before treating any distance figure as a verdict on the market.
+3. **Import concentration did not improve, and is probably not a defect.** Top-3 share
+   reads **40-52% under the full stack against a 42% baseline** — no net improvement
+   (`grain-shed:177-184`). The source's own reading is that this is history's shape
+   rather than a bug: *"Rome, Constantinople and Alexandria DID dominate the ancient
+   grain trade: a few huge cities taking most of the traded grain is history's own
+   shape. The owner's real complaint was that most cities buy NOTHING, and that is the
+   ladder metric, which improved."* **The single-lever 42% → 31% in the table above is
+   real for its arm and did not survive the stack — quote it with the arm or not at
+   all.**
 
 **Gate ladder at flip:** stylized 8817/4242/777 all hard gates passed, 0/0/1 soft
 against budget 2; `resgate` all app-grid bands held at median realm area app/ref
@@ -928,8 +1382,17 @@ The shipped live arm is
 **Food-specific consequence, and it is new here: `TRIBUTE_UP` is pinned to 0 in every
 gate.** Flow 5 (§2.1) — compelled, in-kind, **cross-realm** grain movement, shipping
 at 0.33 — **is invisible to `npm run validate`, `npm run resgate` and every probe that
-uses the harness.** Anything asserted about cross-realm food flow from a gate run is
-an assertion about a world in which that flow does not exist.
+uses the harness.** Anything asserted about **flow 5** from a gate run is an assertion
+about a world in which that flow does not exist.
+
+**[CORRECTED — scope.]** *The draft stopped there, which leaves a reader believing the
+gates see **no** cross-realm grain at all. They see some.* Flow 6b's **metropole →
+dependency** grain leg (`conquest.js:2571-2573`) is also compelled, in-kind and
+cross-realm; it is **unlevered** — there is no `T.` gate on that loop — so the harness
+does not pin it off and it **is** live in every gate run. **The precise statement:
+the gates are blind to `TRIBUTE_UP`, not to cross-realm grain as a category.** Which is
+the sharper warning anyway: the invisible flow is the one keyed to a lever, and the
+lever list is the thing to check.
 
 ### 6.2 The regime divergence is measured, and it is a factor of ~25
 
@@ -978,10 +1441,22 @@ From the grain-shed lap, both caught before publication:
    `cageField.js`'s own answer, the capacity-**weighted** mean (Σcap²/Σcap).
 
 **And a third, from this verification pass:** `tools/probe_consol.mjs` prints
-`org pack p50/p67/p90` while measuring **`techEff(capital).reachLevel`** — not
-organisation, and not the world (§3.5). **A number quoted from a probe's label rather
-than its expression is a number about something else.** That mislabel propagated into
-a docs file, a `tuning.js` description and a design conversation before it was caught.
+`org pack p50/p67/p90` at `:74` while measuring **`techEff(c.capital).reachLevel`** at
+`:58` — not organisation, and not the world (§3.5). **A number quoted from a probe's
+label rather than its expression is a number about something else.**
+
+**The propagation is one hop longer than the draft claimed.** The 0.001 reached
+`docs/harvest-years-2026-08-25.md:538`, then `docs/catchment-audit-2026-08-27.md:174-175`,
+then **two separate `tuning.js` lever descriptions — `:116` (`SEED_EXCLUSIVE`) and
+`:124` (`ABSORB_PEER`)** — and then a design conversation, before it was caught. A
+mislabelled probe that reaches a lever description has entered the code's own
+explanation of itself, which is where a future reader will trust it most.
+
+**And the same class of error is recorded twice more in this document, from the audit of
+the document rather than of the sim:** a citation to the wrong **lever** (§3.1,
+inherited verbatim from a memo written hours earlier) and a headline count that could not
+be reconciled against its own document (§4). **Three instruments and two citations, one
+class: the label was checked and the expression was not.**
 
 ### 6.6 Chaos-bound before attributing anything to a mechanism
 
@@ -1012,7 +1487,11 @@ happens.
 1. Should Mode C (tribute/levy) have its own **distance law** at all? Today the levy
    is bounded by the liege tree's topology and the haul curve; the *annona* argues that
    compelled flow's limit is administrative, not economic — which would mean it should
-   read `reachLevel` (where §3.3 says the *market* catchment should not).
+   read `reachLevel` (where §3.3 says the *market* catchment should not). **Read this
+   against the repaired argument in §1.1**: the annona's limit is administrative because
+   its **claim** is administrative, *not* because its freight was uneconomic — so a Mode
+   C distance law should model **enforceability**, and must not be built as "the same
+   haul curve but more expensive".
 2. Where does **rent** belong? It is currently modelled entirely on the money side
    (`FARM_RENT`, §2.1). Should the in-kind half (`gov._inKind`) ever become grain in a
    granary, or is the fiscal abstraction correct?
@@ -1048,8 +1527,13 @@ happens.
 **Housekeeping**
 10. `tools/probe_orgspread{,2,3}_tmp.mjs` were committed at `68b5676` only to keep the
     tree clean during this verification and are **flagged for deletion**. They are the
-    probes behind §3.5's re-measurement; if the numbers there are ever re-checked,
-    check the probes still exist first.
+    probes behind §3.5's re-measurement. **Two consequences, both from the audit of this
+    document:** (a) the header's original claim that the probes lived "under `/tmp`, no
+    source file modified" was **false** and is corrected there; (b) **the moment
+    housekeeping runs, §3.5's only independent measurement becomes unreproducible**, so
+    the probe's exact expressions, invocation and quantile convention are now written
+    out in §3.5 itself and survive the deletion. If the numbers are ever re-checked, use
+    that block rather than assuming the files are still present.
 
 ---
 
@@ -1072,7 +1556,7 @@ version lives in this document.
 | 10 | rivers are real hydrology (D8, pit-fill, accumulation, lakes, terminal basins) | **CONFIRMED** | §2.7 |
 | 11 | the levy requires same-country, so compelled flow is intra-realm | **CONFIRMED** — with the caveat that `TRIBUTE_UP` is compelled cross-realm flow | §2.1 |
 | 12 | there are three food flows, and `FARM_RENT` is not a fourth | **WRONG** — at least six; `FARM_RENT` correctly excluded, for a precise reason | §2.1 |
-| 13 | the partition has 46 references assuming one owner per tile | **OVERSTATED** — the precision is borrowed and false; direct count is 63 occurrences / **42 code refs across 12 files**. Say "~40-50 call sites across roughly a dozen files", or cite the memo. The load-bearing reducers are the ones to name: the census (`popField.js:1836-1841`), the `FOOD_K` capacity ledger (`:907-920`), the harvest (`territory.js:465+`), governed people (`conquest.js:2711-2718`), and the sharpest single breakage under any nesting scheme — `residualBasinMass` skipping any tile with `to[ti] >= 0` (`crystallize.js:218-231`) | here |
+| 13 | the partition has 46 references assuming one owner per tile | **OVERSTATED** — the precision is borrowed and false. **And the draft's own "direct count" did not reproduce either, which is ironic given this entry's verdict.** It claimed "63 occurrences / 42 code refs across 12 files"; no obvious command produces those numbers. Stated as a command and its output, at `68b5676`: `grep -rno "_territoryOwner" --include=*.js src \| wc -l` → **60 occurrences**; the same without `-o` → **58 lines** (**45** of them non-comment); `grep -rl … \| wc -l` → **12 files**. So: twelve files ✓, and the safe form is **"~45-60 references across a dozen files"** — or cite the memo. Quote a count only with the command that produced it. The load-bearing reducers are the ones to name: the census (`popField.js:1836-1841`), the `FOOD_K` capacity ledger (`:907-920`), the harvest (`territory.js:465+`), governed people (`conquest.js:2711-2718`), and the sharpest single breakage under any nesting scheme — `residualBasinMass` skipping any tile with `to[ti] >= 0` (`crystallize.js:218-231`) | here |
 
 **Prior records this document sits on top of:**
 `docs/gravity-partition-memo-2026-08-27.md` (what attraction should be, and whether to
