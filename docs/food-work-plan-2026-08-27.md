@@ -8,6 +8,87 @@ it says SHIPPED. The order is deliberate and the reasoning for it is in §6.
 
 ---
 
+## STATUS 2026-08-27 (evening) — THE ORDER IN §6 IS WRONG, and the measurement says why
+
+This section is appended, not edited over the plan below, so the reasoning that
+produced the original order stays readable beside the evidence that overturned it.
+
+**Item 1 was run in full on the live arm** (tw=480, seed 8817, 40k, one treated arm
+against three float-epsilon no-mechanism draws; `docs/runs/2026-08-27/mil_*.log`).
+Three results, in order of how much they change the plan:
+
+**(a) The military-balance kill-shot PASSED, cleanly.** `urban-claim-memo` §5.1
+refutes the change if realm deaths collapse or explode. At 32k-36k, per realm:
+deaths 0.3988 vs 0.3344 ± 0.1317, wars 11.97 vs 13.59 ± 2.44, shatterings and
+foundings all **inside** the band. Doubling the urban mass that mans walls and pays
+garrisons does not disturb the war system.
+
+**(b) The political map CONVERGED.** 766 realms vs 782 ± 42; claimed land 32.34% vs
+31.96% ± 1.85. The +43% realms and −36% foundings visible at 28k were a **timing
+shift** — states form earlier, then the map settles to the same shape.
+
+**(c) The urban ceiling BROKE, and it is not `CORE_LOCAL`'s fault.** Urban share
+8.79% → **15.57%** in one window, past §5.3's refutation line and still climbing.
+The cause is the **tier ratchet**: crossing the metropolis bar (core 40) grants four
+discontinuous upgrades at once —
+
+| table | at the bar | grant |
+|---|---|---|
+| `CORE_BY_TIER` | 3 → 4 | home block +78% area |
+| `HINTERLAND_BY_TIER` | 6 → 8 | farmland belt +78% area |
+| `FOOD_RANGE_BY_TIER` | 2.2 → 3.6 | grain reach +64% |
+| `GRAIN_PRICE_BY_TIER` | 14 → 22 | bid +57% |
+
+— every one of which grows the core that produced the label. The register's mean
+core crossed 40 between 32k and 36k (35.1 → 37.4 → **60.3**) exactly when the share
+doubled; the null arms sat at 18.2 and never approached it. `CORE_LOCAL` only opened
+the door: **the closed trap its own description names was the brake.**
+
+Owner's judgment on being shown this: *"that tier ratchet thing seems utterly
+useless, and against our design philosophy."* It is — a derived label driving
+capability is what CLAUDE.md forbids for the era, in space instead of time.
+
+### What this does to the order
+
+§6 argued §3 must wait for §1 because a size-keyed rule would be inert while cities
+are pinned. That reasoning still holds on its own terms. What it missed is the
+other direction: **§1 cannot ship without §3, because §3 is the brake.** The two are
+not sequential, they are the same repair from two ends.
+
+- **`T.HAUL_PAID` (built 2026-08-27, def 0)** — §3's first leg, and the one that is
+  purely a deletion. `FOOD_RANGE_BY_TIER` is removed from the spoilage curve, which
+  never had a physical claim on it: the table's own header names "granaries, ports,
+  professional carters" and two of the three are already separate terms in the same
+  function. Reach becomes what `GRAIN_FREIGHT` already prices — a city reaches as far
+  as it pays to. Paired arm running.
+- **`GRAIN_PRICE_BY_TIER` — NOT to be deleted.** Load-bearing: the steep
+  farm-gate→market gradient is what stops a market town paying its villages for
+  everything and becoming a net buyer that pumps coin into the countryside. The
+  margin needs a real source (collection, storage, the market institution — all
+  already tracked) before the table goes.
+- **`HINTERLAND_BY_TIER` / `CORE_BY_TIER`** — the territory half. Their comments
+  justify themselves by the map they want to see ("that size gap is what reads as a
+  hierarchy on the map") rather than by a cause. Blast radius is the exclusive
+  partition; this is the §3 proper.
+
+### Item 2 is built
+
+`npm run livegate` — derives the shipped lever set from the code (never a copied
+string), runs the stylized battery on it, and refuses a verdict unless the child
+echoes the arm it derived. Measured: **18 of 19 pinned levers** sit at a value the
+app does not ship. Horizon and grid defaults are reasoned but not yet calibrated
+against a real run.
+
+### And the instrument that made all of this legible
+
+`urban.coreBlockRanPct` / `urban.coreLocalBindPct` through `collect()`, plus
+`tools/cmp_arms.mjs`'s chaos band and matched-maturity view. The arming check
+confirmed itself against a static prediction made days earlier (memo: 37% of the
+register; live: 37.9%, with 0.0% on every null arm), and the maturity view **reversed
+a conclusion** — at 20k-24k the treated arm reads "8× the band, more war" at matched
+step and "3.2× the band, LESS war" at matched claimed land. The first number was
+measuring that the treated world is older.
+
 ## 0. WHAT IS ALREADY SHIPPED (no work needed)
 
 | what | lever | record |
