@@ -4,7 +4,13 @@
 the Music Lab's "recorded bodies" path. It is built by `tools/build_samples.mjs`,
 which fetches from two sample libraries and re-encodes what it needs.
 
-## Sources
+## Two banks, two licences
+
+There are two banks here and they are NOT under the same terms. The family bank
+is CC0 and needs nothing; the named bench bank is CC BY and the credit below is
+a genuine obligation, not a courtesy.
+
+## The family bank — CC0
 
 Both are by **Versilian Studios LLC** and both are released **CC0 1.0
 Universal** (public domain dedication) — no attribution is required, and
@@ -48,6 +54,41 @@ calls.
 | `frameDrum` | Frame Drum | a hand-struck frame membrane |
 | `clappers` | Claves | two solid bodies struck together |
 | `claps` | Claps | hands |
+
+## The named bench bank — CC BY 3.0, attribution REQUIRED
+
+`assets/instr-audio/named/` holds the actual instruments five real traditions
+use, for the traditions bench only. Nothing a derived people can reach ever
+looks these up: an instrument gets a `sampleName` in `musicTraditions.js` and
+nowhere else, which is the same wall that already keeps the pinned scales away
+from the generator.
+
+Source: **FluidR3_GM** by **Frank Wen**, taken as pre-rendered per-note MP3 from
+[midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts), released
+under **Creative Commons Attribution 3.0**. Redistribution is permitted *with
+credit*, which is discharged here and in the Lab's footer.
+
+> Named bench instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts
+> — CC BY 3.0.
+
+Its sibling font **MusyngKite is deliberately not used**: it is
+Attribution-**ShareAlike**, and a share-alike asset would reach back into this
+repository's own licensing.
+
+### Exact, and by acoustic class
+
+Ten of these are the instrument itself — sitar, koto, shamisen, shakuhachi,
+taiko, bagpipe, fiddle. The rest are the nearest thing in the same acoustic
+class, and each one says so in the table so the substitution is never invisible:
+a sheng and a reed organ are both free reeds; a nāy and a pan pipe are both
+end-blown rim flutes; an oud and a nylon-strung guitar are both gut-ish
+short-necked lutes. Where no honest neighbour exists the entry is simply left
+out and the family bank plays — a wrong instrument is worse than a generic one.
+
+Three of the bench's percussion parts deliberately stay on the CC0 family bank
+rather than take a General MIDI substitute, because VCSL's **Darbuka** and
+**Frame Drum** are real recordings of exactly those instruments and better than
+any stand-in would be.
 
 ## The cost, stated plainly
 

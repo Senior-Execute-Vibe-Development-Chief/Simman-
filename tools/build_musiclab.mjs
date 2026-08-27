@@ -39,12 +39,19 @@ let bankTag = "", bankBytes = 0, bankFiles = 0;
 const BANK_DIR = join(ROOT, "assets", "instr-audio");
 if (withSamples && existsSync(BANK_DIR)) {
   const parts = [];
-  for (const f of readdirSync(BANK_DIR).sort()) {
-    if (!f.endsWith(".mp3")) continue;
-    const b = readFileSync(join(BANK_DIR, f));
-    bankBytes += b.length; bankFiles++;
-    parts.push(JSON.stringify(f) + ":" + JSON.stringify(b.toString("base64")));
-  }
+  // one level deep: the family bank sits at the top and the bench's named
+  // instruments in named/, and the manifest keys them by that relative path
+  const walk = (dir, prefix) => {
+    for (const f of readdirSync(dir).sort()) {
+      const full = join(dir, f);
+      if (statSync(full).isDirectory()) { walk(full, prefix + f + "/"); continue; }
+      if (!f.endsWith(".mp3")) continue;
+      const b = readFileSync(full);
+      bankBytes += b.length; bankFiles++;
+      parts.push(JSON.stringify(prefix + f) + ":" + JSON.stringify(b.toString("base64")));
+    }
+  };
+  walk(BANK_DIR, "");
   if (parts.length) bankTag = `<script>window.__SAMPLE_DATA__={${parts.join(",")}};</script>\n`;
 }
 

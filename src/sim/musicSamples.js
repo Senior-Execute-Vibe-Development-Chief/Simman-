@@ -23,8 +23,35 @@
 // name and no recording, and a bank of named instruments could never play for
 // them.
 
-import { SAMPLE_BANK } from "./musicSampleManifest.js";
+import { SAMPLE_BANK, NAMED_BANK } from "./musicSampleManifest.js";
 import { MATERIALS, dampTime, radiatedLevel } from "./musicInstruments.js";
+
+/**
+ * ONE LEVEL CONVENTION FOR EVERY RECORDING, measured here rather than assumed.
+ *
+ * The two banks arrive with different histories — the CC0 family samples are
+ * peak-normalised when they are encoded, the named ones are taken as raw bytes
+ * out of a soundfont and are not — and mixing those two conventions is exactly
+ * the bug that put a thumb piano above a gong in the first place. Measured, the
+ * Japanese bench dropped 14 dB the moment it started playing named
+ * instruments, for no reason but this.
+ *
+ * So neither bank is trusted: every buffer is measured on arrival and given the
+ * gain that brings it to the same peak. What a body's level then IS comes from
+ * `radiatedLevel` and the velocity the composer wrote, which is where it
+ * belongs — a recording engineer's gain staging is not a fact about the
+ * instrument.
+ */
+function levelOf(buf) {
+  let peak = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    // every 7th frame: a peak estimate does not need every sample, and a bank
+    // of three hundred buffers is decoded while somebody is waiting
+    for (let i = 0; i < d.length; i += 7) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+  }
+  return peak > 1e-5 ? 0.97 / peak : 1;
+}
 
 /**
  * Decode the bank into AudioBuffers.
@@ -48,22 +75,55 @@ export async function loadSamples(A, resolve) {
           const got = await resolve(s.file);
           const raw = got instanceof ArrayBuffer ? got : await (await fetch(got)).arrayBuffer();
           const buf = await A.ctx.decodeAudioData(raw);
-          entries.push({ hz: s.hz, buf });
+          entries.push({ hz: s.hz, buf, gain: levelOf(buf) });
         } catch { /* a family short one sample is still a family */ }
+      })());
+    }
+  }
+  // and the bench's own named instruments, which only a pinned tradition can
+  // ever ask for
+  const named = {};
+  for (const [label, spec] of Object.entries(NAMED_BANK || {})) {
+    const entries = [];
+    named[label] = { kind: "pluck", unpitched: false, src: spec.gm, entries };
+    for (const s of spec.samples) {
+      jobs.push((async () => {
+        try {
+          const got = await resolve(s.file);
+          const raw = got instanceof ArrayBuffer ? got : await (await fetch(got)).arrayBuffer();
+          const buf = await A.ctx.decodeAudioData(raw);
+          entries.push({ hz: s.hz, buf, gain: levelOf(buf) });
+        } catch { /* falls back to the family recording, then to the model */ }
       })());
     }
   }
   await Promise.all(jobs);
   for (const b of Object.values(bank)) b.entries.sort((x, y) => x.hz - y.hz);
+  for (const b of Object.values(named)) b.entries.sort((x, y) => x.hz - y.hz);
   A.samples = bank;
-  A.sampleCount = Object.values(bank).reduce((n, b) => n + b.entries.length, 0);
+  A.named = named;
+  A.sampleCount = Object.values(bank).reduce((n, b) => n + b.entries.length, 0)
+    + Object.values(named).reduce((n, b) => n + b.entries.length, 0);
   return bank;
 }
 
-/** Is there a recording for this body? */
+/**
+ * Is there a recording for this body?
+ *
+ * A NAME BEATS A FAMILY, when there is one. Only the traditions bench gives an
+ * instrument a name, so this is the whole of the wall: a derived people falls
+ * straight through to its family's recording, because its bodies have no names
+ * to look up. A named body keeps its family's KIND — whether it sustains,
+ * whether it is plucked — because that is a fact about the thing, not about
+ * the recording of it.
+ */
 export function sampledFor(A, inst) {
-  const b = A.samples && A.samples[inst.fam];
-  return b && b.entries.length ? b : null;
+  const fam = A.samples && A.samples[inst.fam];
+  const nm = inst.sampleName && A.named && A.named[inst.sampleName];
+  if (nm && nm.entries.length) {
+    return { kind: fam ? fam.kind : "pluck", unpitched: false, src: nm.src, entries: nm.entries };
+  }
+  return fam && fam.entries.length ? fam : null;
 }
 
 /**
@@ -139,7 +199,8 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke) {
   // no attack is added: the recording has its own, and that onset is most of
   // why this path exists at all. Three milliseconds only to stop the splice
   // itself clicking.
-  const lvl = Math.max(0.0001, vel * radiatedLevel(inst) * (stroke ? stroke.vel ?? 1 : 1));
+  const lvl = Math.max(0.0001,
+    vel * radiatedLevel(inst) * (one.gain ?? 1) * (stroke ? stroke.vel ?? 1 : 1));
   gate.gain.setValueAtTime(0.0001, when);
   gate.gain.linearRampToValueAtTime(lvl, when + 0.003);
 

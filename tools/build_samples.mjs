@@ -44,6 +44,7 @@ const OUT_DIR = join(ROOT, "assets", "instr-audio");
 const MANIFEST = join(ROOT, "src", "sim", "musicSampleManifest.js");
 const DRY = process.argv.includes("--dry");
 const EMIT_ONLY = process.argv.includes("--emit");
+const UA = "Simman-worldsim-asset-fetch/1.0 (open-source hobby worldsim; one-off asset build)";
 
 const REPOS = {
   vcsl: { dir: "/home/user/sgossner/vcsl", url: "https://github.com/sgossner/vcsl" },
@@ -232,6 +233,111 @@ function ensureRepo(key) {
   sh("git", ["clone", "--depth", "1", "--filter=blob:none", "--no-checkout", r.url, r.dir], ROOT);
 }
 
+
+// ── THE NAMED BANK: real instruments, for the BENCH only ─────────────────
+//
+// Everything above is mapped by FAMILY, because a people in this world invents
+// bodies that have no name. This second bank is the opposite and is walled off
+// for the same reason `musicTraditions.js` is: these are the actual instruments
+// five real traditions actually use, and NOTHING a derived people can reach
+// ever touches them. Only a pinned tradition names an instrument, so only a
+// pinned tradition can play one.
+//
+// That is what makes it worth having. The bench exists to tell two bugs apart —
+// a scale that is wrong and a sound that is wrong — and it can only do that if
+// the sound is not in question. A real koto playing miyako-bushi through this
+// composer either sounds Japanese or it does not, and whichever it is, that is
+// a fact about the composer rather than about the synthesis.
+//
+// SOURCE AND LICENCE. FluidR3_GM, via the pre-rendered per-note MP3s at
+// gleitz.github.io/midi-js-soundfonts — Creative Commons Attribution 3.0,
+// which permits redistribution WITH CREDIT. That credit is in
+// CREDITS-instr-audio.md and in the Lab's own footer, and it is a real
+// obligation rather than the courtesy the CC0 bank gets. Its sibling font
+// MusyngKite is deliberately NOT used: it is Attribution-ShareAlike, and a
+// share-alike asset would reach back into this repository's own licence.
+//
+// WHERE THERE IS NO RECORDING, the substitute is by ACOUSTIC CLASS and says so.
+// A sheng and a reed organ are both free reeds; a ney and a pan pipe are both
+// end-blown rim flutes; an oud and a nylon-strung guitar are both gut-ish
+// short-necked lutes. Those are honest neighbours. A substitute that is only
+// vaguely similar is left out and the family bank plays instead, because a
+// wrong instrument is worse than a generic one.
+const GM_URL = "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/";
+const NAMED = {
+  // exact — the instrument itself
+  "sitār":      { gm: "sitar",       lo: "C3", hi: "C6" },
+  "koto":       { gm: "koto",        lo: "D3", hi: "D6" },
+  "shamisen":   { gm: "shamisen",    lo: "G2", hi: "G5" },
+  "shakuhachi": { gm: "shakuhachi",  lo: "D4", hi: "D6" },
+  "taiko":      { gm: "taiko_drum",  lo: "C2", hi: "C4" },
+  "chanter":    { gm: "bagpipe",     lo: "A3", hi: "A5" },
+  "drones":     { gm: "bagpipe",     lo: "A2", hi: "A3" },
+  "fiddle":     { gm: "fiddle",      lo: "G3", hi: "E6" },
+  "tānpūrā":    { gm: "sitar",       lo: "C2", hi: "C4" },
+  // by acoustic class, named so the substitution is visible
+  "oud":        { gm: "acoustic_guitar_nylon", lo: "F2", hi: "F5", like: "a gut-strung short-necked lute" },
+  "qānūn":      { gm: "dulcimer",    lo: "A2", hi: "A5", like: "a plucked box zither" },
+  "nāy":        { gm: "pan_flute",   lo: "D4", hi: "D6", like: "an end-blown rim flute" },
+  "bānsurī":    { gm: "pan_flute",   lo: "C4", hi: "C6", like: "an end-blown rim flute" },
+  "kamānja":    { gm: "fiddle",      lo: "G3", hi: "G5", like: "a bowed folk fiddle" },
+  "sārangī":    { gm: "fiddle",      lo: "G3", hi: "G5", like: "a bowed folk fiddle" },
+  "erhu":       { gm: "fiddle",      lo: "D4", hi: "D6", like: "a bowed folk fiddle" },
+  "dizi":       { gm: "flute",       lo: "D5", hi: "D7", like: "a transverse flute, without the membrane buzz" },
+  "sheng":      { gm: "reed_organ",  lo: "C3", hi: "C6", like: "a free reed, which is exactly what a sheng is" },
+  "pipa":       { gm: "sitar",       lo: "A2", hi: "A5", like: "a plucked, fretted lute with a bright metallic attack" },
+  "guqin":      { gm: "koto",        lo: "C2", hi: "C5", like: "a silk-strung board zither" },
+};
+
+/** Note name to MIDI number, for walking a range. */
+function midiOf(n) {
+  const m = /^([A-G])([#b]?)(-?\d)$/.exec(n);
+  if (!m) return null;
+  return PC[m[1] + m[2]] + (parseInt(m[3], 10) + 1) * 12;
+}
+const SHARP = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+const nameOf = (mi) => SHARP[((mi % 12) + 12) % 12] + (Math.floor(mi / 12) - 1);
+
+async function buildNamed() {
+  const dir = join(OUT_DIR, "named");
+  mkdirSync(dir, { recursive: true });
+  const cache = new Map();
+  const bank = {};
+  let files = 0, bytes = 0;
+  for (const [label, spec] of Object.entries(NAMED)) {
+    if (!cache.has(spec.gm)) {
+      if (EMIT_ONLY) { console.log(`  ${label.padEnd(12)} skipped (--emit)`); continue; }
+      const url = GM_URL + spec.gm + "-mp3.js";
+      const js = sh("curl", ["-sSf", "--max-time", "180", "-A", UA, url]);
+      const map = new Map();
+      const re = /"([A-G][#b]?-?\d)":\s*"data:audio\/mp3;base64,([^"]+)"/g;
+      let m;
+      while ((m = re.exec(js))) map.set(m[1], m[2]);
+      cache.set(spec.gm, map);
+      console.log(`    fetched ${spec.gm}: ${map.size} notes`);
+    }
+    const map = cache.get(spec.gm);
+    if (!map || !map.size) continue;
+    // one sample every four semitones across the instrument's own range: close
+    // enough that nothing shifts more than a tone, which is where a stretched
+    // body starts sounding like a cartoon of itself
+    const lo = midiOf(spec.lo), hi = midiOf(spec.hi);
+    const entries = [];
+    for (let mi = lo; mi <= hi; mi += 4) {
+      const b64 = map.get(nameOf(mi)) || map.get(SHARP[((mi % 12) + 12) % 12].replace("b", "#") + (Math.floor(mi / 12) - 1));
+      if (!b64) continue;
+      const raw = Buffer.from(b64, "base64");
+      const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+      const file = `${spec.gm}_${Math.round(hz)}.mp3`;
+      if (!existsSync(join(dir, file))) { writeFileSync(join(dir, file), raw); bytes += raw.length; files++; }
+      entries.push({ hz, file });
+    }
+    bank[label] = { gm: spec.gm, like: spec.like || null, entries };
+    console.log(`  ${label.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${spec.gm}${spec.like ? "  (as " + spec.like + ")" : ""}`);
+  }
+  return { bank, files, bytes };
+}
+
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   const fams = Object.keys(MAP);
@@ -287,6 +393,9 @@ async function main() {
     console.log(`  ${fam.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${m.src}`);
   }
 
+  console.log("");
+  const named = await buildNamed();
+
   if (DRY) { console.log(`\n  dry run: ${files} samples would be written`); return; }
 
   const gen = Object.entries(bank).map(([fam, b]) =>
@@ -311,9 +420,21 @@ ${gen}
 };
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
-  "Community Edition, by Versilian Studios LLC — released CC0 (public domain).";
+  "Community Edition, by Versilian Studios LLC (CC0). Named bench instruments " +
+  "from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
+
+// THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever
+// looks it up: an instrument only gets a name in \`musicTraditions.js\`, which
+// is walled off from the generator by construction. Keyed by that label.
+export const NAMED_BANK = {
+${Object.entries(named.bank).map(([k, v]) =>
+  `  ${JSON.stringify(k)}: { gm: ${JSON.stringify(v.gm)}, like: ${JSON.stringify(v.like)}, samples: [\n` +
+  v.entries.map(e => `    { hz: ${e.hz}, file: ${JSON.stringify("named/" + e.file)} },`).join("\n") +
+  `\n  ] },`).join("\n")}
+};
 `);
-  console.log(`\n  wrote ${files} samples, ${(bytes / 1048576).toFixed(2)} MB → assets/instr-audio/`);
+  console.log(`\n  family bank: ${files} samples, ${(bytes / 1048576).toFixed(2)} MB`);
+  console.log(`  named bank:  ${named.files} samples, ${(named.bytes / 1048576).toFixed(2)} MB`);
   console.log(`  wrote ${MANIFEST.replace(ROOT + "/", "")}`);
 }
 main().catch(e => { console.error(e); process.exit(1); });

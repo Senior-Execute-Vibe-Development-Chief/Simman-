@@ -194,6 +194,15 @@ export function applyTradition(m, key, deps) {
   m.insts = T.insts.map((s, i) => {
     const inst = makeInstrument(s.fam, s.mat, s.frame || null, (m.people.seed >>> 0) + i * 7919, 0, m.people.know || {});
     inst.label = s.label;
+    // AND THE BENCH MAY PLAY THE ACTUAL INSTRUMENT. This is the only place in
+    // the codebase that sets `sampleName`, which is what keeps the named
+    // recordings on the bench's side of the wall: a derived people's bodies
+    // have no names, so they can never look one up and will always play the
+    // family recording or the model. Naming it here is the same kind of pinned
+    // INPUT as the scale and the metre — it is what a takht is made of — and
+    // it is what lets a wrong-sounding bench prove the fault is the composer's
+    // rather than the synthesis's.
+    inst.sampleName = s.label;
     if (s.cap != null) inst.cap = s.cap;
     inst.weight = s.weight ?? 1;
     inst.raw = inst.weight;

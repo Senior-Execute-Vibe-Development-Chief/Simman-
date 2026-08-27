@@ -19,7 +19,7 @@ import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung } from "./sim/musicSynth.js";
-import { loadSamples } from "./sim/musicSamples.js";
+import { loadSamples, sampledFor } from "./sim/musicSamples.js";
 import { SAMPLE_BANK, SAMPLE_CREDIT } from "./sim/musicSampleManifest.js";
 import { voiceRange } from "./sim/vocalTract.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
@@ -992,7 +992,7 @@ function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
-    loadSamples, sampleSource, SAMPLE_BANK,
+    loadSamples, sampleSource, sampledFor, SAMPLE_BANK,
     fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs,
     buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S };
 }
