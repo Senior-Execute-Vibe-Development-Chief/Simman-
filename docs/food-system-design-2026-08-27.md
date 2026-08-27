@@ -608,7 +608,8 @@ introduces no new constant and no exponent to pick.**
 falling below ~20% of realms, or size dispersion lnσ below 2.0. **And the arming check
 nobody would think to run:** the share of touching catchment pairs whose boundary moves
 ≥1 tile from nearest-wins. **The static projection with `A = _coreMeasured` is 31% of
-touching pairs, median displacement 0.00 tiles** (`memo:190`, arm G2). **The live arm
+touching pairs, median displacement 0.00 tiles** (`memo:190`; **arm G2 — the static
+repartition counterfactual at tw=480 under the shipped genesis arm, NOT a live run**). **The live arm
 must reproduce it: if flipping the lever leaves the *live* pair displacement at ~0, the
 lever is inert and must not be recorded as validated, no matter how many gates it
 passes.**
@@ -1565,7 +1566,7 @@ version lives in this document.
 | 1 | catchment assigned by cost-spread over the transport field; roads lower cost | **OVERSTATED** | §2.4 |
 | 2 | tile food discounted `1/(1+0.5c)`, differing from the haul's `exp(−d/range)` | **CONFIRMED** (strengthened: two *metrics*, not just two laws) | §2.3 |
 | 3 | a tile goes to whoever reaches it cheapest; no price enters | **WRONG** on the first half, **CONFIRMED** on the second | §2.4, §3.1 |
-| 4 | grain prices set by city tier, 2/8/14/22 | **OVERSTATED** — tier base **×** scarcity, half the register at the clamp | §2.6 |
+| 4 | grain prices set by city tier, 2/8/14/22 | **OVERSTATED** — tier base **×** scarcity; **at least the top decile** at the 3x clamp (p90 = max = 42.00 = tier-2 base x 3). The "half the register" figure in the draft misread the memo's "pairs moved >=1 tile" column as a clamp share; retracted by audit A2, and it survived into this ledger after being fixed in the body — the same carry-forward failure B1/B2 record. | §2.6 |
 | 5 | organisation buys reach, other tech buys efficiency; `reachBudget` a pure function of organisation | **OVERSTATED** — split real, "pure function of organisation" false at `TECH_EFFECTS=1` | §2.5 |
 | 6 | organisation converges to a spread of 0.001 | **OVERSTATED** — capitals' p90−p50 of `reachLevel`, not a world spread; quote `reachBudget` max/p50 = 1.00-1.05 | §3.5 |
 | 7 | founding rate scales with basin people, and the basin read is gross over overlapping disks | **CONFIRMED** | §3.4 |
