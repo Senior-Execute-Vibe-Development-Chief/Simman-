@@ -122,18 +122,29 @@ export const FAMILIES = {
   // ── membranes: pitch-vague, the time-keepers ──
   drum: {
     label: "drum", kind: "struck", drive: "strike", cap: 2, low: 80, beta: 0.5, wid: 45, vib: "membrane", poly: 1,
-    ratios: (n) => MEMBRANE.slice(0, n),
+    ratios: (n, m, K) => (K.shell ? MEMBRANE_SHELL : MEMBRANE_OPEN).slice(0, n),
+    // Radiation order decides which modes die first, and it is the reverse of
+    // what a rolloff by frequency gives. The concentric (0,n) modes push air
+    // out in every direction at once — monopoles, efficiently radiating, so
+    // they lose their energy fast — while the (m,1) modes above them cancel
+    // themselves and hang on. Measured on a timpano: the (0,1) is gone in
+    // three tenths of a second while the (2,1) rings for nearly four.
+    decays: (i, r, base, K) => base * (i === 0 ? (K.shell ? 0.16 : 0.5) : 1.5 / Math.pow(r, 0.7)),
     body: ["hide"], frame: ["wood", "clay", "gourd"], needs: {},
   },
   frameDrum: {
     label: "frame drum", kind: "struck", drive: "strike", cap: 1, low: 110, beta: 0.62, wid: 38, vib: "membrane", poly: 1,
-    ratios: (n) => MEMBRANE.slice(0, n),
+    ratios: (n) => MEMBRANE_OPEN.slice(0, n),
+    // open on both sides, so every mode demotes one radiation order and rings
+    // longer than the same mode over a shell — which is most of the difference
+    // between a bendir and a conga
+    decays: (i, r, base) => base * (i === 0 ? 1.1 : 2.0 / Math.pow(r, 0.6)),
     body: ["hide"], frame: ["wood"], needs: {},
   },
   claps: {                      // hands, and the body they are attached to
     label: "hands", kind: "struck", drive: "strike", cap: 1, low: 200, beta: 0.5, wid: 60,
     vib: "membrane", poly: 1,
-    ratios: (n) => MEMBRANE.slice(0, n).map(r => r * 2.4),
+    ratios: (n) => MEMBRANE_OPEN.slice(0, n).map(r => r * 2.4),
     body: ["none"], needs: {},
   },
 };
@@ -143,7 +154,19 @@ const BAR_FREE  = [1, 2.756, 5.404, 8.933, 13.34, 18.64];          // free–fre
 const BAR_ARCH  = [1, 3.00, 6.16, 10.29, 15.5, 21.6];              // arch-undercut (xylophone)
 const BAR_DEEP  = [1, 3.92, 9.24, 16.27, 24.0, 33.0];              // deep-undercut (marimba)
 const LAMELLA   = [1, 6.267, 17.55, 34.39];                        // clamped–free bar
-const MEMBRANE  = [1, 1.593, 2.135, 2.295, 2.653, 2.917, 3.155];   // circular membrane
+// A DRUMHEAD IN AIR IS NOT AN IDEAL MEMBRANE. The textbook circular membrane
+// runs 1 : 1.593 : 2.135 : 2.295 — ratios that agree with nothing, which would
+// mean a drum has no pitch at all. It has one because the head has to drag the
+// air with it, and that loading drops the low modes far more than the high
+// ones: measured, the (1,1) falls by 518 cents and the (5,1) by about 50. What
+// is left is close to whole numbers, and THAT is why a djembe or a bendir
+// speaks a note. The series below is normalised to the (1,1) — the mode you
+// hear as the pitch — with the (0,1) beneath it, which is what a bass stroke
+// in the middle of the head excites and a rim stroke misses entirely.
+const MEMBRANE_OPEN  = [0.55, 1, 1.47, 1.91, 2.36, 2.80];   // no kettle: a frame drum
+const MEMBRANE_SHELL = [0.58, 1, 1.50, 1.97, 2.44, 2.89];   // a closed shell raises the
+                                                            // concentric modes and pulls
+                                                            // the rest onto 2:3:4:5
 const PLATE     = [1, 2.08, 3.41, 3.89, 5.00, 6.71];               // flat circular plate
 const BELL      = [0.5, 1, 1.2, 1.5, 2, 2.5, 3.0];                 // hum · prime · tierce · quint · nominal
 
@@ -283,7 +306,10 @@ function modeAmps(ratios, fam, mat, f0 = 220) {
 // are gone in a fraction of one. Damping them as gently as a string's
 // harmonics leaves every note trailing a four-second cloud that fights the
 // next one.
-function modeDecays(ratios, base, drive) {
+function modeDecays(ratios, base, drive, fam, K) {
+  // a family that knows how its own modes radiate says so; everything else
+  // loses its highs to the standard damping climb with frequency
+  if (fam && fam.decays) return ratios.map((r, i) => fam.decays(i, r, base, K || {}));
   const q = drive === "strike" ? 1.9 : drive === "pluck" ? 1.2 : 0.75;
   return ratios.map(r => base / Math.pow(Math.max(1, r), q));
 }
@@ -297,7 +323,7 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0, know =
   const fam = FAMILIES[famId], mat = MATERIALS[matId];
   // what the maker knew, and who they were: a body is not just a shape, it is
   // a shape somebody was able to execute
-  const K = { ...know, seed };
+  const K = { ...know, seed, shell: frameId === "clay" || frameId === "gourd" };
   // how many modes this body actually radiates with useful energy: a string
   // or air column supports a long series; a bar, plate or bell has only a few
   // strong modes — a fact about the geometry, and the reason their consonance
@@ -317,13 +343,44 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0, know =
   return {
     id: `${famId}:${matId}:${frameId || "-"}`, fam: famId, mat: matId, frame: frameId || null,
     label: fam.label, kind: fam.kind, drive: fam.drive, cap: fam.cap, poly: fam.poly,
-    partials: ratios.map((r, i) => ({ r, a: amps[i], d: modeDecays(ratios, ringBase, fam.drive)[i] })),
+    partials: (() => { const d = modeDecays(ratios, ringBase, fam.drive, fam, K);
+      return ratios.map((r, i) => ({ r, a: amps[i], d: d[i] })); })(),
     // where it sits: struck metal and drums low, pipes and small strings high
     reg: register || (famId === "gong" || famId === "drum" ? -1 : famId === "fluteOpen" || famId === "lamella" ? 1 : 0),
     reso: !!fam.reso,
     // how well this was made: a driven body's voice depends on it (a small
     // hard reed speaks higher and more piercingly than a big soft one)
     craft: Math.max(0, Math.min(1, ((K.construction ?? 0.3) + (K.metallurgy ?? 0.3)) / 2)),
+    // SYMPATHETIC STRINGS: a second set nobody plays, tuned to the scale and
+    // left to answer whatever the played strings put into the bridge. They are
+    // a refinement rather than a necessity — more wire, more pegs, more work,
+    // and no use at all unless the tradition holds still enough pitches to be
+    // worth tuning them to — so a maker builds them only where the craft is
+    // there to spend.
+    symp: fam.vib === "string" && fam.cap >= 10 && (know.construction ?? 0) > 0.62,
+    // OMBAK. Two bars cast to the same nominal pitch are never the same bar,
+    // and the difference between them is heard as a beat — slow, steady, and
+    // the same number of hertz wherever they are played, so it shrinks in
+    // cents as the pitch rises. How big the mismatch is, is a matter of craft;
+    // whether a people keeps two of everything is a matter of what the surplus
+    // will carry. A tradition that prizes the shimmer is downstream of having
+    // it, which is exactly how it became an aesthetic rather than a fault.
+    ombak: fam.vib === "bar" || fam.vib === "plate"
+      ? 1 + 11 * (1 - Math.max(0, Math.min(1, ((know.construction ?? 0.3) + (know.metallurgy ?? 0.3)) / 2)))
+      : 0,
+    // A GONG BLOOMS. Struck hard, a plate is driven past the range where its
+    // modes are independent: they start pumping each other, and energy climbs
+    // out of the fundamental into partials that were silent at the strike. A
+    // large tam-tam takes one to two seconds to reach full brilliance, and if
+    // the blow is soft the brilliance never develops at all — the coupling is
+    // quadratic, so what arrives up there goes as the SQUARE of how hard you
+    // hit it. This is why a gong swells instead of decaying, and no amount of
+    // filtering a decaying strike will imitate it.
+    blooms: fam.vib === "plate",
+    // and which way the pitch slides as it dies is set by the profile: a flat
+    // plate stiffens as it flexes and falls as much as three semitones, a
+    // curved shell softens and rises
+    glide: fam.vib === "plate" ? (famId === "gong" ? -1 : 0.55) : 0,
     // a hand-made resonating tube is never exactly on pitch; better craft,
     // smaller error
     mistune: ((h - 0.5) * 0.02),

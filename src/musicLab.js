@@ -86,6 +86,21 @@ function tonicOf(m, occ) {
  * body. Move it by whole frames until it fits: a player who cannot reach a
  * note plays it in the octave they can.
  */
+/** The pitches a set of sympathetic strings would be tuned to: this people's
+ *  own mode, across the range the played strings cover. */
+const SYMP = new Map();
+function sympPitches(m) {
+  const key = m.people.seed + ":" + m.mode.idx.join(",");
+  let hz = SYMP.get(key);
+  if (hz) return hz;
+  const t = tonicOf(m);
+  hz = [];
+  for (let o = -1; o <= 1; o++) for (let d = 0; d < m.mode.idx.length; d++) {
+    hz.push(degreeHz(m, t, modeDegree(m, d), o));
+  }
+  SYMP.set(key, hz);
+  return hz;
+}
 function noteFreq(m, ev) {
   let f = degreeHz(m, tonicOf(m), ev.deg, ev.oct);
   const inst = m.insts[ev.inst];
@@ -146,6 +161,7 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   // they are replacing and leaves everything else ringing. A marker stroke
   // belongs to no channel — its ring is the point.
   playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
+    symp: inst.symp ? sympPitches(m) : null,
     role: ev.role === "het" ? "het" : ev.role || "lead",
     stroke: ev.stroke,
     damped: ev.damped != null ? ev.damped : !!inst.damped,

@@ -36,6 +36,8 @@ import { buildBody } from "./musicBody.js";
 import { scoreSong, renderScore } from "./vocalTract.js";
 import { playDriven } from "./musicDriven.js";
 import { playImpulse } from "./musicImpulse.js";
+import { pluckString, flexible } from "./musicString.js";
+import { MATERIALS, FAMILIES } from "./musicInstruments.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -48,7 +50,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // the dullest ones. And a part with no entry here bypassed the balance
 // altogether and arrived at full level.
 const ROLE_DB = {
-  lead: 0, voice: 1, elab: -7, core: -5, het: -8,
+  lead: 0, voice: 1, elab: -7, core: -8, het: -8,
   bass: -6, pad: -14, ost: -11,
   // percussion is the drive, not the background — a drum ensemble is what
   // makes this music powerful rather than moody, and it was mixed as an
@@ -172,6 +174,107 @@ const STROKE_DSP = {
   ghost: { pitch: 1, beta: 0.7, damp: 0.28 },
 };
 
+// ── the halo ─────────────────────────────────────────────────────────────
+//
+// Sympathetic strings are the only thing in an instrument that plays itself.
+// They are not struck, plucked or blown: they take whatever energy the bridge
+// hands them at their own frequency and give it back slowly, so a phrase leaves
+// a wash behind it in the scale's own pitches and every note lands on the
+// resonance of the notes before it. That halo outlasting the line is the whole
+// sound of a sarangi or a sitar.
+//
+// Built as a bank of decaying sinusoids convolved with the voice, rather than
+// as a feedback bank: it is exactly the same thing mathematically, has no
+// stability to lose, and costs one node. The strings are never damped, because
+// nobody is touching them.
+function sympatheticFor(A, inst, hz) {
+  const key = inst.id + ":symp";
+  let s = A.bodies.get(key);
+  if (s) return s;
+  const { ctx } = A;
+  const SR = ctx.sampleRate, n = Math.floor(SR * 2.2);
+  const buf = ctx.createBuffer(1, n, SR);
+  const d = buf.getChannelData(0);
+  for (let k = 0; k < hz.length; k++) {
+    const f = hz[k];
+    if (!(f > 40 && f < 6000)) continue;
+    // a thin unplayed string is very lightly damped; the high ones less so
+    const t60 = 2.6 * Math.pow(220 / f, 0.45);
+    const dec = 6.907755 / (t60 * SR);
+    const w = 2 * Math.PI * f / SR;
+    const ph = (k * 2.399) % (2 * Math.PI);
+    for (let i = 0; i < n; i++) {
+      const e = Math.exp(-dec * i);
+      if (e < 2e-4) break;
+      d[i] += e * Math.sin(w * i + ph);
+    }
+  }
+  let e = 0; for (let i = 0; i < n; i++) e += d[i] * d[i];
+  e = Math.sqrt(e) || 1;
+  for (let i = 0; i < n; i++) d[i] /= e;
+  const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = buf;
+  const send = ctx.createGain(); send.gain.value = 0.11;
+  const out = ctx.createGain(); out.gain.value = 1;
+  send.connect(conv); conv.connect(out);
+  s = { send, out };
+  A.bodies.set(key, s);
+  return s;
+}
+
+// ── the waveguide path ───────────────────────────────────────────────────
+// A flexible string is rendered as an actual wave running back and forth in a
+// JS loop and handed to the graph as a buffer, because a feedback loop cannot
+// exist in the graph at all. It costs about a millisecond a note. A handful of
+// variants per pitch and dynamic are kept so a repeated note is not a copy of
+// itself, which is the whole reason not to cache just one.
+const PLUCKS = new Map();
+function pluckBuffer(ctx, inst, f, vel, variant) {
+  const key = `${inst.id}|${f.toFixed(1)}|${Math.round(vel * 4)}|${variant}`;
+  let buf = PLUCKS.get(key);
+  if (buf) return buf;
+  const mat = MATERIALS[inst.mat] || MATERIALS.gut;
+  const fam = FAMILIES[inst.fam] || {};
+  const pcm = pluckString(ctx.sampleRate, f, {
+    t60: inst.partials[0] ? inst.partials[0].d : 2,
+    bright: mat.bright,
+    // where the hand falls is never twice the same place, and the comb it
+    // makes is one of the loudest differences between two plucks of one string
+    beta: (fam.beta ?? 0.15) * (0.82 + 0.36 * (variant / 3)),
+    width: fam.wid ?? 8,
+    vel: vel * 0.5, seed: 1 + variant * 7717 + Math.round(f),
+  });
+  if (!pcm) return null;
+  buf = ctx.createBuffer(1, pcm.length, ctx.sampleRate);
+  buf.getChannelData(0).set(pcm);
+  if (PLUCKS.size > 96) PLUCKS.clear();
+  PLUCKS.set(key, buf);
+  return buf;
+}
+function playPluck(A, inst, f, when, dur, vel, dest, opts) {
+  const { ctx } = A;
+  const variant = Math.floor(Math.random() * 4);
+  const buf = pluckBuffer(ctx, inst, f, vel, variant);
+  if (!buf) return null;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  // fine tuning and per-note wander live here rather than in the render, so
+  // they cost nothing and the buffer still gets reused
+  if (src.detune) src.detune.value = (Math.random() - 0.5) * 7;
+  const gate = ctx.createGain(); gate.gain.value = 1;
+  src.connect(gate); gate.connect(dest);
+  src.start(when);
+  src.stop(when + Math.min(buf.duration, 14));
+  if (opts.damped) gate.gain.setTargetAtTime(0.0001, when + dur, 0.06);
+  return {
+    damp(at) {
+      const t = Math.max(at, when + 0.02);
+      gate.gain.cancelScheduledValues(t);
+      gate.gain.setTargetAtTime(0.0001, t, 0.05);
+      try { src.stop(t + 0.25); } catch { /* already stopped */ }
+    },
+  };
+}
+
 export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   const role = opts.role || "lead";
   // A stroke is a real change to how and where the body is struck, not a
@@ -182,8 +285,29 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   if (!(f > 20 && f < 12000)) return null;
   const body = bodyFor(A, inst, role);
   const dest = body.input;
+  // Everything this instrument plays feeds the halo, and the halo radiates
+  // through a body of its own — the same box, but a second instance of it,
+  // because routing it back into the one that feeds it would be a loop and
+  // Web Audio silences those.
+  if (inst.symp && opts.symp && opts.symp.length) {
+    const h = sympatheticFor(A, inst, opts.symp);
+    if (!h.wired) {
+      body.input.connect(h.send);
+      h.out.connect(bodyFor(A, inst, role + ":symp").input);
+      h.wired = true;
+    }
+  }
 
-  const handle = inst.kind === "sustain"
+  const mat = MATERIALS[inst.mat];
+  const wave = inst.drive === "pluck" && (FAMILIES[inst.fam] || {}).vib === "string"
+    && flexible(mat ? mat.B : 0);
+  const handle = wave
+    // A flexible string is a WAVE, not a sum of modes: one round trip sets one
+    // period for every partial at once, the loss at the ends is what makes the
+    // top die first, and plucking near the bridge cancels the modes with a node
+    // under the finger. None of that has to be described because it happens.
+    ? playPluck(A, inst, f, when, dur, vel, dest, opts)
+    : inst.kind === "sustain"
     // Everything held up by continuous energy — bow, breath, reed, lip — is
     // built in musicDriven.js: a sine through the mechanism's own nonlinear
     // valve, so the harmonics are MADE by the drive rather than read from a
@@ -208,8 +332,6 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   return handle;
 }
 
-// PeriodicWave cache — one per (instrument, brightness bucket)
-const WAVES = new WeakMap();
 
 
 // ── the voice: this people's own language, SUNG ──────────────────────────

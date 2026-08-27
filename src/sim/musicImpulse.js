@@ -88,6 +88,9 @@ export function playImpulse(A, inst, f0, when, dur, vel, dest, opts = {}) {
   const stops = [];
   // uncorrelated partials sum as the square root of their power, so normalise
   // by power and a near-sine body comes out level with a rich one
+  // a soft blow never wakes the upper modes at all — the coupling is
+  // quadratic, so below about half force there is nothing up there to bloom
+  const bloom = inst.blooms ? Math.min(1.6, 2.4 * vel * vel) : 0;
   const pw = modes.reduce((s, m) => s + m.a * m.a, 0) || 1;
   // Matched by measurement against the driven voices, which were arriving
   // nine decibels quieter for the same written velocity — so every struck or
@@ -112,14 +115,45 @@ export function playImpulse(A, inst, f0, when, dur, vel, dest, opts = {}) {
     // what a plucked string sounds like.
     const twin = fam.vib === "string" && i < 6;
     const parts = twin ? [[1, 0.62, 1], [1.0009, 0.38, 3.6]] : [[1, 1, 1]];
+    // OMBAK: the same bar, cast twice. A fixed hertz offset, so the beat runs
+    // at the same rate wherever it is played and narrows in cents as the pitch
+    // climbs — which is why the low instruments of a paired set shimmer slowly
+    // and the high ones almost sing in unison.
+    if (inst.ombak > 0.3 && !twin) parts.push([1 + inst.ombak / m.f, 0.85, 1]);
     for (const [dt, lvl, slow] of parts) {
       const o = dt === 1 ? osc : ctx.createOscillator();
       if (dt !== 1) o.type = "sine";
       o.frequency.value = m.f * dt;
       const gg = dt === 1 ? g : ctx.createGain();
-      gg.gain.setValueAtTime(0.0001, when);
-      gg.gain.exponentialRampToValueAtTime(Math.max(0.0002, a * lvl), when + Math.min(0.011, tau * 3));
-      gg.gain.setTargetAtTime(0, when + Math.min(0.013, tau * 3.5), (t60 * slow) / TAU60);
+      if (bloom && i > 0) {
+        // THE BLOOM. This partial was not struck; it is being fed by the one
+        // below it, so its envelope is the difference of two exponentials —
+        // rising while the driver still has energy to give and falling once it
+        // has not. It peaks a second or so in, which is what a gong swelling
+        // sounds like, and its height goes as the square of the strike because
+        // the coupling is quadratic.
+        const tI = Math.max(0.4, modes[0].d), tJ = Math.max(0.3, t60);
+        const tPk = Math.max(0.15, Math.min(2.6,
+          (tI * tJ * Math.log(Math.max(1.05, tI / (2 * tJ)))) / Math.max(0.05, tI - 2 * tJ)));
+        gg.gain.setValueAtTime(0.0001, when);
+        gg.gain.linearRampToValueAtTime(Math.max(0.0002, a * lvl * bloom), when + tPk);
+        gg.gain.setTargetAtTime(0, when + tPk, (t60 * slow) / TAU60);
+      } else {
+        gg.gain.setValueAtTime(0.0001, when);
+        gg.gain.exponentialRampToValueAtTime(Math.max(0.0002, a * lvl), when + Math.min(0.011, tau * 3));
+        gg.gain.setTargetAtTime(0, when + Math.min(0.013, tau * 3.5), (t60 * slow) / TAU60);
+      }
+      // A PLATE DOES NOT HOLD ITS PITCH. Driven hard it leaves the range where
+      // its stiffness is linear, and which way it slides is set by its
+      // profile: a flat plate stiffens as it flexes and falls, by as much as
+      // three semitones on a big opera gong; a curved shell softens and rises.
+      // Either way the slide tracks the amplitude, so it happens while the
+      // note is loud and stops when it is not.
+      if (inst.glide) {
+        const cents = inst.glide * 300 * vel * vel;
+        o.frequency.setValueAtTime(m.f * dt * Math.pow(2, -cents / 1200), when);
+        o.frequency.setTargetAtTime(m.f * dt, when, Math.max(0.12, t60 * 0.22));
+      }
       o.connect(gg); gg.connect(gate);
       // every oscillator starts at phase zero, so without scattering them the
       // first cycle sums arithmetically into a click

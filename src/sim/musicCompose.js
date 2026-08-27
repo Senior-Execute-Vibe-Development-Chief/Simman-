@@ -617,7 +617,11 @@ export function sectionsOf(music, occKey) {
       // sections are not the same length — equal ones are the loudest single
       // tell that this is a loop and not a piece
       cycles: s === 0 ? 1 : (t > 0.55 && t < 0.9 ? 2 : 1 + (hash32(seed, "len", s) % 2)),
-      dens: Math.pow(2, Math.round(2.4 * climb) - (t > 0.82 ? 1 : 0)),
+      // Javanese irama runs one to sixteen, in doublings, and the measured
+      // surface tempo of a dhrupad concert multiplies by the same integers
+      // while the metric pulse barely moves. Three doublings is eight, which
+      // is inside that range and as far as this texture can carry.
+      dens: Math.pow(2, Math.round(3 * climb) - (t > 0.82 ? 1 : 0)),
       // The climb is real — the arch to a high point and the landing back home
       // is one of the few cross-cultural universals — but it does NOT have to
       // be made of octave jumps. A modal tradition moves its tonal CENTRE
@@ -976,15 +980,31 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // rendering it as long ones is the single most audible way to make this
   // music sound moody instead of driven.
   if (ST.core && audible(0.55)) {
-    const step = Math.max(G.div, Math.round(SLOTS / ST.core.n));
+    // AND THE CORE SLOWS. This is the part of irama that surprises: as the
+    // elaboration multiplies, the skeleton it hangs on STRETCHES rather than
+    // keeping pace, so the piece gets denser and more spacious at once. Both
+    // moving together would just be the same music played faster.
+    const step = Math.max(G.div, Math.round((SLOTS / ST.core.n) * Math.sqrt(S.sec.dens)));
     for (let s = 0, j = 0; s < SLOTS; s += step, j++) {
       const d = ph.degs[Math.floor(j * ph.degs.length / Math.max(1, SLOTS / step))] ?? 0;
       ev.push({ b: slotBeat(G, s, R.swing), dur: Math.min(1.1, step / G.div * 0.6), inst: ST.core.k,
         deg: modeDegree(music, d + fin + S.sec.ist), oct: -1, vel: ST.core.vel, role: "core", damped: true });
     }
   }
-  // THE LINE.
-  const lead = layPhrase(music, ph, O, {
+  // THE LINE — stated plainly first, and filled in later. A statement is the
+  // theme in its barest form; what multiplies as a piece intensifies is the
+  // elaboration around it, not the theme itself. Playing every note of it from
+  // the opening bar leaves the later sections with nowhere to go, and measured,
+  // it was most of why the density ramp stalled at two and a half times when
+  // the traditions run four to sixteen.
+  const plain = S.sec.dens < 4
+    ? { ...ph, pat: { ...ph.pat, onsets: ph.pat.onsets.filter((o, i) => ph.pat.grid.w[o % ph.pat.grid.slots] >= (S.sec.dens < 2 ? 1 : 0.5) || i === 0) } }
+    : ph;
+  if (plain !== ph) {
+    plain.degs = plain.pat.onsets.map(o => ph.degs[ph.pat.onsets.indexOf(o)] ?? 0);
+    plain.pat.notes = ph.pat.notes.filter(n => plain.pat.onsets.includes(n.s));
+  }
+  const lead = layPhrase(music, plain, O, {
     inst: ST.lead ? ST.lead.k : -1, intimacy, oct: Math.round(O.reg) + S.sec.oct,
     ist: S.sec.ist, orn: music.texture.ornament * S.sec.orn > 0.5,
     vel: 0.42 * (0.85 + 0.3 * Math.min(1, S.sec.dens / 3)),
@@ -995,22 +1015,61 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // a rest is the strongest boundary signal there is.
   const last = lead[lead.length - 1];
   if (last && S.last) last.dur *= S.sec.grade === 2 ? 2.6 : 1.8;
+  // THE APPROACH. A section that changes register used to get there by
+  // jumping: the line simply restarted a frame higher, on a note nothing had
+  // led to. Measured, that happened about one and a half times a piece and it
+  // is the loudest remaining fault in the melodies.
+  //
+  // No tradition does it that way. A modal one climbs by WALKING — the Persian
+  // radif names the descending figure that brings the line back down from its
+  // high point, and every tradition with an arch has some version of it — so
+  // the last few notes of the outgoing cycle are rewritten as a stepwise run
+  // that arrives at the new register on the downbeat. Which direction it runs
+  // is decided by where the music is going, and its length by how far.
+  if (S.last) {
+    const nxt = sectionAt(secs, bar + 1);
+    const climb = nxt.sec.oct - S.sec.oct;
+    if (climb !== 0 && lead.length >= 3) {
+      const steps = Math.max(3, Math.min(lead.length - 1, music.mode.size));
+      const from = lead[lead.length - steps].mi;
+      const to = from + climb * music.mode.size;
+      for (let i = 0; i < steps; i++) {
+        const e = lead[lead.length - steps + i];
+        const mi = Math.round(from + ((to - from) * (i + 1)) / steps);
+        e.mi = mi;
+        e.deg = modeDegree(music, mi + fin);
+        // the run is a lead-in, not a cadence: it does not linger
+        e.dur = Math.min(e.dur, 1 / G.div * 1.5);
+        e.vel *= 0.82 + 0.18 * (i / steps);
+      }
+      // and the note it was going to land on is not an ending any more
+      if (last) last.dur = Math.min(last.dur, 1.2);
+    }
+  }
   if (ST.lead) ev.push(...lead);
   // THE ELABORATION: two to sixteen times the core's density, running
   // continuously. This is where the music lives in every tuned-metal tradition
   // and the engine simply did not have it — implement the gong and the core
   // and leave this out and you have left out most of the onsets.
   if (ST.elab && audible(0.5) && ST.elab.k !== (ST.lead && ST.lead.k)) {
-    const n = Math.max(2, Math.round(ST.elab.n * Math.min(1, 0.22 * S.sec.dens)));
-    const e = euclid(Math.min(n, SLOTS - 1), SLOTS);
+    // AND IT SUBDIVIDES. One note per grid slot is a ceiling the elaborating
+    // instruments of these traditions go straight through: a Javanese peking
+    // plays two, four, eight or sixteen notes to a beat of the core melody,
+    // and that is where the density comes from. How far it can actually go is
+    // bounded by the body — a bronze key clears about two notes a second and a
+    // wooden one ten — so the subdivision asks and the physics answers.
+    const sub = S.sec.dens >= 8 ? 4 : S.sec.dens >= 4 ? 2 : 1;
+    const N = SLOTS * sub;
+    const n = Math.max(2, Math.min(Math.round(ST.elab.n * sub * Math.min(1, 0.3 * S.sec.dens)), N - 1));
+    const e = euclid(n, N);
     let j = 0;
-    for (let s = 0; s < SLOTS; s++) {
+    for (let s = 0; s < N; s++) {
       if (!e[s]) continue;
       // it PARAPHRASES the line rather than doubling it: same pitches, more of
       // them, and it fills where the line is not
       const d = ph.degs[j % ph.degs.length];
-      const near = ph.pat.onsets.some(o => Math.abs(o - s) < 1);
-      ev.push({ b: slotBeat(G, s, R.swing), dur: 0.4, inst: ST.elab.k,
+      const near = ph.pat.onsets.some(o => Math.abs(o * sub - s) < sub);
+      ev.push({ b: slotBeat(G, s / sub, R.swing), dur: 0.34 / sub, inst: ST.elab.k,
         deg: modeDegree(music, d + fin + S.sec.ist), oct: Math.round(O.reg) + S.sec.oct,
         vel: ST.elab.vel * (near ? 0.6 : 1), role: "elab", damped: true });
       j++;
