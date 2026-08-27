@@ -1365,3 +1365,99 @@ The instrument change that follows: `cmp_arms` should refuse to report an effect
 size when fewer than three usable control anchors bracket the treated arm, and
 should print the control spread beside every ratio it does report. A number that
 cannot be qualified should not be printable.
+
+---
+
+## 21. THE OWNER'S QUESTION — the stamp's premise died, but only on one side
+
+> Owner: *"that stamp is meant to let it survive without imports, but now it CAN,
+> because it eats its own SURPLUS now, instead of HAVING to import"*
+
+The premise is exactly right and the conclusion does not follow yet, because
+`CORE_LOCAL` repaired **one** of the two places the import-only read lives.
+
+### 21.1 What `CORE_LOCAL` fixed, and what it did not
+
+The birth crater (`CORE_HOLD`, `tuning.js:154`) was caused by this: at the mint the
+site spike is deleted and the entity's own capacity takes over, but that capacity was
+import-driven and ~zero for a newborn feeding itself. Measured: census 457 → 20.
+
+`CORE_LOCAL` added `kLocal` — the city's own harvest — to the **size read**
+(`coreEff`, popField.js:2105). A self-fed city is now *reported* at its true size.
+
+**The concentration engine was not touched.** popField.js:1936-1994:
+
+```js
+const isr = clamp01((foodNet − landFood) / foodSupply);   // import share
+const kb  = (s._k × isr) / scale;                          // IMPORT-fed capacity
+if (kb > 0) { sumK += kb; sumKb += pow(kb, betaEff); }     // ← the whole basis
+…
+if (agglom && kBeyond > 0 && sumKb > 0) {                  // ← the gate
+  const share = pow(kBeyond, betaEff) / sumKb;
+  uTarget = T.URBAN_AGGLOM × … × sumK × share;
+}
+let kCap = agglom ? uTarget : kBeyond;
+```
+
+A city with no imports has `kBeyond = 0`, so **`uTarget = 0`, `kCap = 0`, and nothing
+concentrates its countryside into a core at all.** The only thing holding it up is
+the `CORE_HOLD` stamp.
+
+So: **the stamp is still load-bearing today.** Removing it now would re-open the
+crater exactly as measured in 2026-08-07. The owner's statement describes what
+*should* be true, and names the mechanism that would make it true.
+
+### 21.2 The import-only read has FOUR consumers, and one is fixed
+
+| site | what it decides | state |
+|---|---|---|
+| `coreEff` (size read) | how big the city is *reported* | **fixed** by `CORE_LOCAL` |
+| `uTarget` / `sumK` / `sumKb` | whether the countryside *concentrates* into a core | **import-only** |
+| `kCap` (capacity spike) | whether the field *holds* the core | inherits the above |
+| `holdF` in the size read | whether a starving core's report *melts* | **missing** (§11) |
+
+§11 found the fourth from one direction; the owner's question finds the second from
+the other. **The second is the more fundamental — it is the one the stamp exists to
+paper over.**
+
+### 21.3 The fix that would actually retire the stamp
+
+The owner's own logic, applied to the engine: a city should gather its countryside in
+proportion to **its whole economy**, not just the imported slice — the same partition
+`CORE_LOCAL` already uses on the size read. Then a self-fed city builds a real core
+from its own surplus, the handoff has something to hand off *to*, and the stamp
+becomes a genuine birth transient that can be retired rather than a permanent floor
+that has to be melted.
+
+This is not double-counting. `uTarget` is a **target for concentration**, not added
+food: the flow moves a region's own people between its core and its own countryside
+and the region's census total is unchanged by construction. Widening the basis says
+"a self-fed city may gather its own people too," not "a self-fed city has more food."
+
+**Two honest catches, both of which say measure before building:**
+
+1. **It pushes toward MORE urbanisation, not less.** Widening the basis from imports
+   to the whole economy raises `sumK` by roughly the ratio of total economy to import
+   economy — a large multiplier where `importShare` is small, which is most cities.
+   This lap spent a day establishing the world already over-urbanises (28% against
+   history's 5-15%). This change goes the other way and would have to be paired with
+   the brake, not shipped alone.
+2. **`URBAN_AGGLOM`'s meaning changes.** Its comment defines it as *"the fraction of
+   import-fed capacity that concentrates in the core."* Under a whole-economy basis
+   it becomes the fraction of *total* capacity, and a constant whose referent changed
+   is exactly the resolution-constant mistake in different clothes. It needs
+   re-grounding on its new meaning, not carrying over at its old value.
+
+### 21.4 Order of work
+
+1. **The concentration basis** (§21.3) — the cause. Retires the stamp's reason to
+   exist and is the owner's insight implemented as a mechanism.
+2. **The stamp itself** — once (1) holds, it can be a decaying birth transient or
+   simply go. Deciding this before (1) is deciding it blind.
+3. **§11's melt** — may become moot: if a self-fed city's core is built from live
+   local food, a starving one's core falls on its own without a fed-ness term.
+
+That third point is worth flagging: **the owner's fix may make my §11 fix
+unnecessary.** A core sized from current harvest already shrinks when the harvest
+fails. The melt was a patch for a floor that should not have been permanent — which
+is the second cardinal rule pointing at my own morning's work.
