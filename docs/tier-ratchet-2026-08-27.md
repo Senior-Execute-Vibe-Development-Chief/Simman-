@@ -333,3 +333,54 @@ Two things that would NOT count as success and must be checked before any is cla
    against 40.6%, and `bind` 13.3% against 29.2%).
 
 Both checks are in the probe's own output. Neither is optional.
+
+---
+
+## 8. The perverse loop: urban capacity keys on the SHARE imported, not the AMOUNT available
+
+`T.URBAN_LABOR`'s first political window contradicted its own pre-registered
+prediction on both axes, and the reason is worth more than the lever.
+
+| 20k–24k | untreated (CL) | HAUL_PAID | FARM_RES | **URBAN_LABOR** |
+|---|---|---|---|---|
+| urban share | 5.08% | 5.09% | 3.34% | **6.85%** |
+| urban mass | 5,351su | 5,319su | 3,991su | **7,121su** |
+| rural mass | 100,025su | 99,096su | 115,531su | **96,829su** |
+| core p90 | 108.7 | 103.2 | 70.0 | **113.4** |
+| core max | 357.6 | 556.7 | 418.7 | **1,177.6** |
+| pin | 36.2% | 40.6% | 38.2% | **44.8%** |
+
+Predicted: hold the ceiling, leave the pin alone. Measured at this window: ceiling
+**up**, largest core more than tripled, pin **worse**. The two untreated draws read
+5.08 and 5.09, so the band here is tight.
+
+**The mechanism.** Urban capacity is built from
+
+```
+importShare = (_foodNet − _landFood) / _foodSupply
+kBeyond     = _k × importShare          ← the agglomeration target's basis
+```
+
+`importShare` is the **fraction** of a city's food that came from beyond its own
+land. Cut `_landFood` and that fraction **rises** for any city with imports at all —
+the numerator is its imports, and the denominator shrinks with local supply. So the
+model reads *"this city's own fields feed it less"* as *"this city is more
+import-dependent"* and **rewards it with urbanisation**.
+
+**Urban capacity is keyed on the share of food imported, not on the amount of food
+available. Starve a city's hinterland and it grows.**
+
+That is plausibly a deeper defect than any of the ratchet's four legs, and it
+explains something that had been sitting in plain sight all day: `CORE_LOCAL` exists
+*because* a self-fed city was denied urban capacity, and its fix was to credit local
+food — while `URBAN_LABOR` removes local food and collects the same reward from the
+opposite direction. Both levers are pushing on the same broken denominator.
+
+It also explains why `FARM_RES` behaved the way it did rather than the same way: it
+cuts `_landFood` **and** the census over the same catchment, so the ratio moves far
+less than under a pure labour withdrawal.
+
+**Status:** one window, 143 settlements, and this lap has twice been punished for
+calling a verdict at the first window that showed something. But the direction is
+wrong on both pre-registered axes *and* there is a mechanism that predicts it, which
+is a different situation from noise. The arm runs to 40k before any verdict.
