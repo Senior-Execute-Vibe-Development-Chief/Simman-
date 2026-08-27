@@ -95,7 +95,10 @@ export function foundPeople(seed, lang, pin = {}) {
 // a substance has to travel to a workshop — ore has to be found, smelted and
 // traded; cane grows outside.
 const MAT_COST = { bronze: 1, iron: 0.85, silver: 1.1, stone: 0.45, wood: 0.2, bamboo: 0.1, reed: 0.08,
-  clay: 0.15, gourd: 0.1, hide: 0.2, gut: 0.3, silk: 0.7, horn: 0.25 };
+  // bone is the cheapest thing a herding or hunting people owns: it is left
+  // over from a beast killed for something else, and unlike gut it needs no
+  // curing before it can be cut
+  clay: 0.15, gourd: 0.1, hide: 0.2, gut: 0.3, silk: 0.7, horn: 0.25, bone: 0.15 };
 function matScore(struck, matId, jitter, strat = 0) {
   const m = MATERIALS[matId], cost = MAT_COST[matId] ?? 0.5;
   // a stratified society spends on display: the same cane pipe gets made in

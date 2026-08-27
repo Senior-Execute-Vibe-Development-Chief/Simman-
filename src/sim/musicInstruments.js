@@ -47,6 +47,22 @@ export const MATERIALS = {
   gut:    { label: "gut",     decay: 2.4, bright: 0.66, B: 2.0e-5, dens: 0.50, needs: ["hide"] },
   silk:   { label: "silk",    decay: 2.8, bright: 0.60, B: 1.0e-5, dens: 0.45, needs: ["silk"] },
   horn:   { label: "horn",    decay: 0.8, bright: 0.70, B: 0,      dens: 0.60, needs: ["horn"] },
+  // BONE COMES OFF THE SAME ANIMAL AS THE HIDE. That is not a convenience, it
+  // is the fact the table was missing: `gut` already needs ["hide"] for exactly
+  // this reason — you do not get a skin without the beast that wore it, and
+  // that beast also leaves bone, sinew and horn. The engine knew four of those
+  // five. The omission silenced every people whose endowment is an animal
+  // rather than a forest: measured over four hundred peoples, 19% held hide and
+  // could build no drum of any kind because no wood existed to hoop it, and 43%
+  // held gut and could build no string because a soundbox had to be timber.
+  // Those are not marginal peoples. The oldest instruments anyone has ever
+  // found are bone — the Hohle Fels and Geissenklösterle flutes, swan and
+  // vulture radius and mammoth ivory, made in a periglacial tundra forty
+  // thousand years ago by people with hide, bone, antler and no forest at all.
+  // Stiff (E ~ 18 GPa) and dense (~1.9 g/cm3) but internally lossy next to
+  // metal: it rings a little longer than wood and nothing like stone, and it is
+  // brighter than horn because it is far stiffer for its damping.
+  bone:   { label: "bone",    decay: 1.7, bright: 0.76, B: 0,      dens: 0.74, needs: ["hide"] },
   // the hand: no ore, no timber, no craft, and everybody has two
   none:   { label: "hands",   decay: 0.09, bright: 0.55, B: 0,      dens: 0.40, needs: [] },
 };
@@ -61,28 +77,28 @@ export const FAMILIES = {
   lyre: {                       // open strings, one per pitch, plucked
     label: "lyre-class", kind: "pluck", drive: "pluck", cap: 7, low: 175, beta: 0.34, wid: 16, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
-    body: ["gut", "silk"], frame: ["wood"], needs: { construction: 0.15 },
+    body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.15 },
   },
   luteNeck: {                   // stopped strings — the neck is the pitch machine
     label: "stopped-string", kind: "pluck", drive: "pluck", cap: 14, low: 110, beta: 0.12, wid: 2, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
-    body: ["gut", "silk"], frame: ["wood"], needs: { construction: 0.42 },
+    body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.42 },
   },
   bowed: {                      // sustained string — a bow keeps the mode driven
     label: "bowed-string", kind: "sustain", drive: "bow", cap: 14, low: 196, beta: 0.09, wid: 8, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
-    body: ["gut", "silk"], frame: ["wood"], needs: { construction: 0.5, mobility: 0.3 },
+    body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.5, mobility: 0.3 },
   },
   // ── winds ──
   fluteOpen: {                  // open tube, edge-blown: full harmonic series
     label: "open flute", kind: "sustain", drive: "breath", cap: 6, low: 262, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
-    body: ["bamboo", "reed", "wood", "clay"], needs: {},
+    body: ["bamboo", "reed", "wood", "clay", "bone"], needs: {},
   },
   pipeStopped: {                // stopped tube: ODD harmonics only — a hollow, clarinet-ish spectrum
     label: "stopped pipe", kind: "sustain", drive: "breath", cap: 5, low: 220, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => 2 * i + 1),
-    body: ["bamboo", "reed", "clay", "gourd"], needs: {},
+    body: ["bamboo", "reed", "clay", "gourd", "bone"], needs: {},
   },
   reedPipe: {                   // conical reed: full series, loud and buzzing
     label: "reed pipe", kind: "sustain", drive: "reed", cap: 8, low: 175, vib: "air", poly: 1,
@@ -92,14 +108,14 @@ export const FAMILIES = {
   horn: {                       // lip-driven natural horn — plays the harmonic series ITSELF
     label: "natural horn", kind: "sustain", drive: "lip", cap: 6, low: 116, vib: "air", tune: "series", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
-    body: ["horn", "bronze", "iron", "clay"], needs: {},
+    body: ["horn", "bronze", "iron", "clay", "bone"], needs: {},
   },
   // ── struck: where the spectra stop being harmonic ──
   barSet: {                     // tuned bars over resonators: free–free bar modes,
                                 // pulled onto whole numbers by undercutting
     label: "tuned bars", kind: "struck", drive: "strike", cap: 7, low: 130, beta: 0.5, wid: 14, vib: "bar", poly: 2, reso: true,
     ratios: (n, m, K) => barRatios(n, ((K.construction ?? 0) - 0.25) / 0.6),
-    body: ["wood", "bamboo", "stone", "bronze", "iron"], frame: ["bamboo", "wood", "gourd", "clay"],
+    body: ["wood", "bamboo", "stone", "bronze", "iron"], frame: ["bamboo", "wood", "gourd", "clay", "bone", "stone", "horn"],
     needs: { construction: 0.25 },
   },
   gong: {                       // flat cast plate — dense inharmonic plate modes
@@ -117,7 +133,7 @@ export const FAMILIES = {
   lamella: {                    // plucked clamped tongue: violently inharmonic upper modes
     label: "plucked tongues", kind: "pluck", drive: "pluck", cap: 8, low: 147, beta: 0.9, wid: 3, vib: "tongue", poly: 2, reso: true,
     ratios: (n) => LAMELLA.slice(0, n),
-    body: ["iron", "bronze", "bamboo"], frame: ["wood", "gourd"], needs: { metallurgy: 0.3 },
+    body: ["iron", "bronze", "bamboo"], frame: ["wood", "gourd", "bone"], needs: { metallurgy: 0.3 },
   },
   // ── membranes: pitch-vague, the time-keepers ──
   drum: {
@@ -130,7 +146,7 @@ export const FAMILIES = {
     // themselves and hang on. Measured on a timpano: the (0,1) is gone in
     // three tenths of a second while the (2,1) rings for nearly four.
     decays: (i, r, base, K) => base * (i === 0 ? (K.shell ? 0.16 : 0.5) : 1.5 / Math.pow(r, 0.7)),
-    body: ["hide"], frame: ["wood", "clay", "gourd"], needs: {},
+    body: ["hide"], frame: ["wood", "clay", "gourd", "bone"], needs: {},
   },
   frameDrum: {
     label: "frame drum", kind: "struck", drive: "strike", cap: 1, low: 110, beta: 0.62, wid: 38, vib: "membrane", poly: 1,
@@ -139,7 +155,7 @@ export const FAMILIES = {
     // longer than the same mode over a shell — which is most of the difference
     // between a bendir and a conga
     decays: (i, r, base) => base * (i === 0 ? 1.1 : 2.0 / Math.pow(r, 0.6)),
-    body: ["hide"], frame: ["wood"], needs: {},
+    body: ["hide"], frame: ["wood", "bone"], needs: {},
   },
   claps: {                      // hands, and the body they are attached to
     label: "hands", kind: "struck", drive: "strike", cap: 1, low: 200, beta: 0.5, wid: 60,
