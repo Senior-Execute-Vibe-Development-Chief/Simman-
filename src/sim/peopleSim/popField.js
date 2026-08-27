@@ -2054,8 +2054,48 @@ export function deriveOnePop(world) {
         // ORGANIZATION, not the standing crowd; entities without a founding
         // hold stamp — legacy towns, colonies — keep the tile read as their
         // base so nothing pre-wave demotes.)
+        // T.CORE_LOCAL — A CITY MAY EAT ITS OWN HINTERLAND'S SURPLUS.
+        // The read above claims urbanites ONLY against kBeyond, the
+        // IMPORT-fed share of capacity, and the comment at :1969 states the
+        // design outright: "A self-fed farm town concentrates nothing."
+        // MEASURED consequence (tw=480, shipped genesis arm, 28k, n=273):
+        // 186 of 273 cores sit at EXACTLY 12.00 — the founding stamp
+        // (crystallize.js:1751, = TIER_CORE[2]/bridge x 1.2) — and
+        // importShare > 0 for TEN. Because settlement.js:3903 quantises TIER
+        // off this read, a self-fed city is pinned at tier 2 forever and
+        // never reaches metropolis (TIER_CORE[3] = 40), which freezes
+        // FOOD_RANGE_BY_TIER (2.2 vs 3.6), GRAIN_PRICE_BY_TIER (14 vs 22),
+        // granaryCap and hinterlandRadiusFor: you need imports to grow the
+        // core, the tier to reach and outbid for imports, and the core for
+        // the tier. A self-fed city can never enter the loop.
+        // History says the opposite: 80% farming supports a 20% urban
+        // minority ENTIRELY LOCALLY — Uruk, Thebes and Norwich did not
+        // import their bread. Imports are how a city passes its hinterland's
+        // ceiling (Rome at a million), not the only door to being a town.
+        // THE FIX USES BOTH HALVES OF A PARTITION THE CODE ALREADY OWNS:
+        // popField.js:921-2 already spreads s._k * landShare over the
+        // countryside while kBeyond (:1974) is its exact complement, and the
+        // comment at :897-903 promises "catchment + spike sum to the
+        // economy's own number". The core simply received none of the local
+        // half. (1 - importShare) IS landShare.
+        // MAX, not +, and that is load-bearing: the form is strictly
+        // monotone, so no core can FALL, no tier can demote, and this cannot
+        // cause a single DISSOLVE_CORE dissolution (crystallize.js:1293).
+        // The stamp survives as a birth ENDOWMENT (the pile the basin
+        // gathered before the entity existed) rather than as a size target —
+        // which is what the refuters' "the stamp is the register's survival
+        // margin" objection requires, and what SEED_EXCLUSIVE failed to
+        // respect earlier the same day.
+        // NO extraction rate: the supply side already credits the whole
+        // catchment harvest with no institution between field and ledger
+        // (territory.js:465-482), ONE_BOOK already feeds the core from the
+        // whole hinterland (settlement.js:3086), and foodReach + FARM_RENT
+        // already price the institution twice elsewhere. Measured, a
+        // foodReach gate is also INERT: p50 0.095, max 0.188, 115 of 273 at
+        // exactly 0. Zero new constants.
+        const kLocal = T.CORE_LOCAL ? ((s._k || 0) * (1 - importShare)) / scale : 0;
         const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
-        coreEff = Math.min(_coreF, holdF + kBeyond);
+        coreEff = Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);
       }
       s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
