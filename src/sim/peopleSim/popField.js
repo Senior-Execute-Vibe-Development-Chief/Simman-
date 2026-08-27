@@ -1940,7 +1940,20 @@ export function deriveOnePop(world) {
       if (s.mode !== "settled") continue;
       const isr = Math.max(0, Math.min(1,
         ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
-      const kb = ((s._k || 0) * isr) / scale;
+      // T.AGGLOM_LOCAL — the basis is the WHOLE economy, not the imported slice.
+      // The comment above states the design intent exactly: "the TOTAL urban
+      // population is set by the ECONOMY … how many non-farmers the food surplus
+      // can support". `isr` narrows that to food from BEYOND the city's own land —
+      // a distinction about DISTANCE, not about whether the food is surplus. A
+      // city eating its own hinterland's surplus supports non-farmers on it just
+      // as a city eating shipped grain does. Under the lever the pull is s._k
+      // itself, which is exactly kLocal + kBeyond — the same partition CORE_LOCAL
+      // uses on the size read, summed back to one.
+      // SIDE EFFECT, named: coreDens below collects the pull-bearing cores, so
+      // medDens (the graveyard's density reference) becomes the median of ALL
+      // cores rather than of importing cores. That follows the basis — under a
+      // whole-economy pull "importing core" stops being the meaningful subset.
+      const kb = ((s._k || 0) * (T.AGGLOM_LOCAL ? 1 : isr)) / scale;
       if (kb > 0) {
         sumK += kb; sumKb += Math.pow(kb, betaEff);
         if (coreDens) {
@@ -1979,19 +1992,25 @@ export function deriveOnePop(world) {
     const importShare = Math.max(0, Math.min(1,
       ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
     const kBeyond = ((s._k || 0) * importShare) / scale;
+    // The agglomeration PULL (T.AGGLOM_LOCAL) — see the pre-pass for the argument.
+    // s._k / scale === kLocal + kBeyond identically, so this is the undivided
+    // economy and needs no second partition.
+    const pull = T.AGGLOM_LOCAL ? ((s._k || 0) / scale) : kBeyond;
     // AGGLOMERATION↔CONGESTION (T.URBAN_AGGLOM): relax the core tile toward an
     // agglomeration target that is SUBLINEAR in the economic pull (β<1, the
     // congestion compression), conservatively concentrating the region's own
     // countryside into (or back out of) its city. Runs BEFORE the core read so
-    // s._urbanPop sees the concentrated field. Non-importers (kBeyond=0) have
-    // no target — they stay rural, as the ontology says.
+    // s._urbanPop sees the concentrated field. Off T.AGGLOM_LOCAL, non-importers
+    // (kBeyond=0) have no target — they stay rural, as that ontology said. ON it,
+    // the pull is the whole economy and a self-fed city gathers its own
+    // countryside, which is what makes the CORE_HOLD stamp retirable.
     let uTarget = 0;
-    if (agglom && kBeyond > 0 && sumKb > 0) {
+    if (agglom && pull > 0 && sumKb > 0) {
       // This city's β-compressed share of the economy's total urban capacity
       // (βeff=1 under γ: the target is the RAW economy — the density graveyard,
       // not this exponent, does the compressing).
-      const share = Math.pow(kBeyond, betaEff) / sumKb;
-      uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core; ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
+      const share = Math.pow(pull, betaEff) / sumKb;
+      uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of the pull that concentrates in the core — of IMPORT-fed capacity off T.AGGLOM_LOCAL, of the region's WHOLE capacity on it (there it reads as an urbanisation rate, and 0.13 sits in history's 5-15% agrarian band); ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
       // A city lives WITHIN its hinterland: cap the target at a share of the
       // region's own people. Under β-share this is the binding limiter (and, for
       // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to
