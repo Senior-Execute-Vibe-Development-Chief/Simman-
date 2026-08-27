@@ -25,3 +25,14 @@
       tiny #4 "Fevvonfax" 432k km2 mem=1 age=4000 org=0.10
       tiny #1 "Ňěňnílěā" 1097k km2 mem=1 age=4000 org=0.23
     [147s]
+
+=== step 8000  realms=5 (0 vassal)  claimed=2.8%  flows: founded=137 ended=6 seceded=3 shattered=1
+    size km2: P10=1k  MED=584k  P90=2080k  MAX=2080k  | top1share=51%  max/med=3.6  gini=0.44  lnσ=2.77 (real maps ≈2.0-2.6)
+    histogram  <50k:1  50-200k:0  200k-1M:3  1-5M:1  >5M:0
+    SMALL (<100k km2): 1 of 5 (20%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #99 "Pụ̌ịtrụ̀ịlǐ" 1k km2 mem=0 age=1513 org=0.00
+      tiny #7 "Wityim" 566k km2 mem=1 age=8000 org=0.15
+      tiny #2 "Pephamdo" 584k km2 mem=1 age=8000 org=0.32
+      tiny #4 "Fevvonfax" 866k km2 mem=1 age=8000 org=0.10
+      tiny #1 "Ňěňnílěā" 2080k km2 mem=3 age=8000 org=0.36
+    [286s]
