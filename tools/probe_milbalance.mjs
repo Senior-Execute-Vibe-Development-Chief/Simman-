@@ -94,6 +94,20 @@ function report(lo, hi, t0) {
   }
   const nS = Math.max(1, settled.length);
 
+  // THE PIN ITSELF — the owner's actual complaint ("most cities at 12k?"), which
+  // every metric above only reaches indirectly through aggregate mass. A pin is
+  // not a low mean, it is a MODE: 186 of 273 cores sat at EXACTLY 12.00 sim
+  // units, the founding stamp (crystallize.js, TIER_CORE[2]/bridge x 1.2), and
+  // an average can move a lot while that spike stays exactly where it was. So
+  // measure the spike: round the core to 2dp, take the modal value, and report
+  // what share of the register sits on it, beside the distribution it sits in.
+  const cores = settled.map(s => s._urbanPop || 0).filter(v => v > 0).sort((x, y) => x - y);
+  const modeCount = new Map();
+  for (const v of cores) { const k = v.toFixed(2); modeCount.set(k, (modeCount.get(k) || 0) + 1); }
+  let modeVal = "0", modeN = 0;
+  for (const [k, n] of modeCount) if (n > modeN || (n === modeN && +k < +modeVal)) { modeVal = k; modeN = n; }
+  const pc = (q) => cores.length ? cores[Math.min(cores.length - 1, Math.floor(q * cores.length))] : 0;
+
   const c = windowCounts(lo, hi);
   // Per-realm rates use the window's MEAN realm count, not its endpoint: the
   // register is growing fast enough here that the endpoint would flatter or
@@ -106,6 +120,7 @@ function report(lo, hi, t0) {
   console.log(`    FLOWS per realm   founded=${per("polity.founded")} ended=${per("polity.ended")} seceded=${per("polity.seceded")} shattered=${per("polity.shattered")}   (meanRealms=${meanRealms.toFixed(0)})`);
   console.log(`    WAR in-window     began=${c["war.began"]} ended=${c["war.ended"]} captured=${c["settlement.captured"]} sacked=${c["polity.submittedBySack"]}`);
   console.log(`    WAR per realm     began=${per("war.began")} captured=${per("settlement.captured")}`);
+  console.log(`    CORES p10=${pc(0.1).toFixed(1)} p50=${pc(0.5).toFixed(1)} p90=${pc(0.9).toFixed(1)} max=${(cores[cores.length - 1] || 0).toFixed(1)}su  |  MODE ${modeVal}su held by ${modeN}/${cores.length} (${(100 * modeN / Math.max(1, cores.length)).toFixed(1)}%)  <- the pin`);
   console.log(`    MASS  urban=${Math.round(urban)}su rural=${Math.round(rural)}su urbanShare=${(100 * urban / Math.max(1e-9, urban + rural)).toFixed(2)}%`);
   // diskBound is the memo §5.3 metric and it belongs beside the arming pair: it
   // is the brake (min(_coreF, ·)) that keeps urbanisation under history's

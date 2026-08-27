@@ -114,3 +114,13 @@
     ARMING  blockRan=81.4%  bind=0.0%  [CORE_LOCAL=0 LAND_KNOW=1]
     MACHINE 28000 32000 541 19.509 93 154 197 6 6341 0 14017 369908 81.38 0.00
     [1454s]
+
+=== window 32000->36000  realms=782  claimed=31.6%  settled=1207
+    FLOWS in-window   founded=88 ended=251 seceded=259 shattered=24
+    FLOWS per realm   founded=0.1330 ended=0.3794 seceded=0.3915 shattered=0.0363   (meanRealms=662)
+    WAR in-window     began=9353 ended=8635 captured=0 sacked=23
+    WAR per realm     began=14.1391 captured=0.0000
+    MASS  urban=22330su rural=455193su urbanShare=4.68%
+    ARMING  blockRan=84.1%  bind=0.0%  [CORE_LOCAL=0 LAND_KNOW=1]
+    MACHINE 32000 36000 782 31.625 88 251 259 24 9353 0 22330 455193 84.09 0.00
+    [2908s]
