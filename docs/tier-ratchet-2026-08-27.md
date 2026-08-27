@@ -704,3 +704,79 @@ The mechanism is unchanged: local harvest does not reach the core read for about
 thirds of the register. But "pinned at 12k" describes 43%, not 70%, and the
 distinction matters because it is the 43% that §11's fed-ness melt would actually
 move.
+
+---
+
+## 13. WAVE 4 VERDICT — `URBAN_LABOR` partly holds, and is the first brake that costs nothing
+
+The pre-registered decisive window (§7: *"32k-36k decides it"*) is in.
+
+### 13.1 The decisive window, matched on maturity
+
+Comparing at the same step is not comparing at the same world. The untreated draw
+that brackets `URBAN_LABOR`'s claimed-land figure is interpolated to it; the other
+would require extrapolating past its own range and is dropped rather than stretched.
+
+| | claimed% | urban% | bind% | pin (=12.00su) | urban su | rural su | **total su** | max core |
+|---|---|---|---|---|---|---|---|---|
+| untreated, clean | 32.34 | 15.57 | 39.9 | — | 64,186 | 348,138 | 412,324 | — |
+| untreated, chaos1 | 37.51 | 14.72 | 39.5 | 37.4% | 63,454 | 367,527 | 430,981 | 1234.3 |
+| untreated, **interpolated to 36.04** | 36.04 | **14.09** | | | | | | |
+| **`+URBAN_LABOR`** | 36.04 | **11.59** | **39.1** | **36.0%** | 51,959 | **396,321** | **448,280** | **613.5** |
+
+### 13.2 Against the criterion, as written
+
+§7 set three outcomes before any of this existed. **HOLD** = tracks the base world
+(~7% with a small final increment). **FAIL** = tracks the runaway (past 15% at 36k,
+accelerating). **PARTLY** = between and decelerating.
+
+`URBAN_LABOR` is **between**, clearly: 11.59 against a base world at ~6-7% and a
+runaway at 14.72/15.57. It is not past 15% and it is not near 7%.
+
+On the deceleration clause I have to be exact rather than generous. Its increments
+run −0.13, +0.87, **+4.00** — that is accelerating in absolute terms. It decelerates
+only *relative* to the untreated world, whose same-window increments were +6.12 and
++6.78. The brake removes about 40% of the growth and 18% of the level; it does not
+flatten the curve. **The letter of "PARTLY holds" is met on "between" and not on
+"decelerating," and the honest verdict is: it brakes, it does not hold.**
+
+### 13.3 Both disqualifiers pass — cleanly, and one of them inverts
+
+The two disqualifiers were written to catch a brake that buys its number with damage.
+Both were checked before the headline:
+
+- **Starvation.** Total population must not fall. It **rose**: 448,280su against
+  430,981 and 412,324 — **+4.0%** over the bracketing draw. The countryside is
+  *bigger* (396,321 vs 367,527, **+7.8%**), which is what a mechanism that stops
+  counting city-dwellers as farmhands should do. This is the opposite of the
+  failure mode, not a narrow escape from it.
+- **The pin.** `bind%` 39.1 against 39.5/39.9, and the direct modal share 36.0%
+  against 37.4%. Neutral to marginally better on both, at every window of the wave.
+
+And a third thing nobody asked for: **the runaway tail is halved.** Largest core
+613.5su against 1234.3su. The brake bites hardest exactly where the pathology is —
+the one metropolis eating a continent — and not on the median city, which stays at
+12.0su in both arms.
+
+### 13.4 What this settles
+
+Four mechanisms have now been measured against the same ceiling on the same arm:
+
+| | ceiling | pin | population |
+|---|---|---|---|
+| `HAUL_PAID` | inert | — | — |
+| `FARM_RES` | holds (7.2%) | **fails** — 54% pinned | — |
+| `URBAN_LABOR + FARM_RES` | lowest (4.9%) | **worst** — 53.9% pinned | — |
+| **`URBAN_LABOR`** | **brakes 40%** | **neutral** (36.0% vs 37.4%) | **+4%** |
+
+`URBAN_LABOR` is the only one that moves the ceiling without paying for it
+somewhere else, and the only one that leaves the world with more people in it than
+it found. That is the difference between a brake and a mechanism: the others reduce
+urbanisation by making the world smaller or by shoving cities back onto the stamp;
+this one reduces it by charging cities the farm labour they actually withdrew.
+
+**Not yet a flip recommendation.** 36k-40k is still running, and that is where the
+untreated world went +12.6 and +5.9 — the steepest part of the runaway and the real
+test of whether a 40% brake survives at the top. And §11's seam is untouched: while
+the founding stamp reports full size for starving cities, every ceiling number in
+this table — including this one — is measured through a partly broken instrument.
