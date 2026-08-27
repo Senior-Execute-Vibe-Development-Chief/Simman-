@@ -65,3 +65,17 @@
       tiny #172 "Ňímyǎ" 1823k km2 mem=2 age=1413 org=0.55
       tiny #118 "Nomümama" 1917k km2 mem=3 age=9400 org=0.56
     [412s]
+
+=== step 20000  realms=11 (0 vassal)  claimed=14.2%  flows: founded=382 ended=29 seceded=57 shattered=10
+    size km2: P10=394k  MED=1577k  P90=3434k  MAX=5117k  | top1share=24%  max/med=3.2  gini=0.41  lnσ=1.12 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:1  200k-1M:2  1-5M:7  >5M:1
+    SMALL (<100k km2): 1 of 11 (9%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #347 "Šǎrrụ́ịrụ́" 79k km2 mem=0 age=913 org=0.00
+      tiny #272 "Ňìssū" 394k km2 mem=0 age=913 org=0.00
+      tiny #241 "Bamfaxfax" 668k km2 mem=1 age=6613 org=0.15
+      tiny #310 "Vyabodyakyofa" 1070k km2 mem=1 age=2713 org=0.15
+      tiny #2 "Pephamdo" 1484k km2 mem=1 age=20000 org=0.64
+      tiny #7 "Wityim" 1577k km2 mem=2 age=20000 org=0.25
+      tiny #298 "Esizmi" 2021k km2 mem=2 age=4063 org=0.23
+      tiny #4 "Fevvonfax" 2146k km2 mem=1 age=20000 org=0.15
+    [554s]

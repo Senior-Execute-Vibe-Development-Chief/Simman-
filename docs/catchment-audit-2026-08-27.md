@@ -133,3 +133,79 @@ because the corrections matter more than the originals:
   r=0 (own tile only) is already generous. The realized worked catchment measures a
   median ~621 km equivalent radius. This is a statement about what the grid can
   represent, not a bug to patch.
+
+---
+
+## 6. SEED_EXCLUSIVE REFUTED AT THE SHIPPED GRID — and the bug is LOAD-BEARING
+
+The paired tw=960 A/B (`probe_shape` 20k/8817) the dossier demanded, and it
+killed the fix twice:
+
+| tw=960, step 20000 | baseline | v1 (veto owned tiles) | v2 (nearest-wins) |
+|---|---|---|---|
+| realms | 14 | 12 | 11 |
+| **small states <100k km²** | **5 of 14 (36%)** | **0 (0%)** | **1 of 11 (9%)** |
+| size dispersion lnσ | **2.68** (real ≈2.0-2.6) | 0.92 | 1.12 |
+| gini | 0.56 | 0.38 | 0.41 |
+| P10 realm | 4k km² | 206k | 394k |
+
+Every tw=240 gate passed BOTH versions — 3 seeds all hard, resgate at app/ref
+0.96 (better than the default's 0.91), and a monotone urban ladder (median city
+8k → 15k → 20k). The failure is invisible at the diagnosis grid and is a change
+in KIND at the shipped one: the `deffdce` pattern, caught only because the arm
+was run.
+
+**THE FINDING IS BIGGER THAN THE FIX.** The small-state tier RESTS ON THIS BUG.
+A newborn's temporary over-claim is the window in which a marginal founding
+establishes itself; remove the subsidy — bluntly (v1) or fairly (v2) — and only
+uniform large blobs survive. Nothing else in the sim currently supports a small
+state. That is a fragile foundation and worth knowing.
+
+**So the honest repair is not to the seed box.** It is to what a small centre can
+legitimately HOLD — and the owner named the mechanism the same day:
+
+> *"I am predicting small slop cities will drown out the big ones? Simply by
+> taking their catchment? Why DIDNT this happen irl? Were prices better in big
+> cities?"*
+
+Correct on both counts. The partition apportions by DISTANCE: the guaranteed belt
+is nearest-wins (`territory.js:326`) and the Dijkstra budget is
+`TERRITORY_BASE + reachLevel × ORG_REACH` (`territory.js:78-92`) — weighted by
+ORGANIZATION, which measurably CONVERGES (org pack p50/p67/p90 = 0.83/0.84/0.84,
+spread 0.001), so in a mature world **a metropolis and a hamlet draw the same
+catchment budget**. The only size term anywhere is the tier belt, 3→8 tiles, a
+2.7× radius ratio at most.
+
+Reality apportioned by MARKET PULL, which scales with the centre's size:
+
+- **Reilly's law of retail gravitation (1931):** the breakpoint between two
+  centres sits at distance ∝ **√(size ratio)** — a 500k city against a 12k town
+  holds the boundary ~6.5× further from itself. Christaller: higher-order centres
+  have longer ranges. Huff (1964) generalises to pull = attraction / distance^λ.
+- **Prices, exactly as the owner guessed:** a big city bids more for grain (more
+  mouths, more coin, often a state buying) and sells manufactures cheaper (thicker
+  market, scale). Von Thünen's rings are drawn around ONE market because the net
+  farm-gate price after transport sets the haul distance — a higher price pushes
+  the big city's rings past the nearer small town's.
+- **Thick markets:** lower search cost, less risk of hauling and not selling.
+- **The law forbade the failure mode outright:** medieval English market
+  franchises under Bracton's rule — no new market within 6⅔ miles (a third of a
+  day's journey) of an existing one, enforced to suppress rivals. Florence's
+  *contado*, the Roman *civitas*, the Chinese *xian*: the hinterland was assigned
+  to its seat, and a new settlement inside it was a subordinate village.
+- **Hierarchy, not competition:** Skinner's Chinese marketing system nests
+  standard markets inside intermediate inside central. Real catchments are
+  exclusive WITHIN a tier and NESTED ACROSS tiers. Our register is flat, so a
+  minor town and a metropolis contest the same tiles as equals.
+
+**THE NAMED MECHANISM (not built, needs its own lap and both grids):** replace
+nearest-wins with a **gravity/Huff partition** — each tile to the centre
+maximising `pull = attraction / cost^λ`, attraction ∝ √(market size), the same
+√pop convention the sim's trade gravity already uses. Reilly then falls out for
+free. A small centre would hold a modest catchment **by right** rather than by
+theft — which is what would finally let `SEED_EXCLUSIVE` ship without taking the
+small-state tier with it.
+
+**Verdict: SEED_EXCLUSIVE stays at def 0.** The code and both measurements stay
+in the tree as the record. Do NOT re-tune the seed box; the next move is the
+partition.
