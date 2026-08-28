@@ -1,0 +1,47 @@
+[harness] tree aeeb9a0d
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"WAR_FINISH":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"CORE_LOCAL":1}
+[fooddiag-arm] label=emergent W=960 seed=NaN steps=28000 SIM_TUNE=DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1,FOUND_DRIFT=1,ABSORB_ORG_ERA=1,WAR_FINISH=1,SETT_STRIDE=3,TRADE_STRIDE=5,CORE_LOCAL=1
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== [emergent] window 8000->12000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=74MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=1 PRICE_GROSS=1 HAUL_PAID=1 URBAN_LABOR=1 CORE_LOCAL=1
+    MACHINE 8000 12000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+
+=== [emergent] window 12000->16000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=76MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=1 PRICE_GROSS=1 HAUL_PAID=1 URBAN_LABOR=1 CORE_LOCAL=1
+    MACHINE 12000 16000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+
+=== [emergent] window 16000->20000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=38MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=1 PRICE_GROSS=1 HAUL_PAID=1 URBAN_LABOR=1 CORE_LOCAL=1
+    MACHINE 16000 20000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+
+=== [emergent] window 20000->24000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=55MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=1 PRICE_GROSS=1 HAUL_PAID=1 URBAN_LABOR=1 CORE_LOCAL=1
+    MACHINE 20000 24000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+
+=== [emergent] window 24000->28000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=26MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=1 PRICE_GROSS=1 HAUL_PAID=1 URBAN_LABOR=1 CORE_LOCAL=1
+    MACHINE 24000 28000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+[fooddiag-arm] done in 107s
+[peopleSim] hearth Nile: no viable seat (window blocked or too near another hearth) — skipped
+[peopleSim] hearth Mesopotamia: no viable seat (window blocked or too near another hearth) — skipped
+[peopleSim] hearth Indus: no viable seat (window blocked or too near another hearth) — skipped
+[peopleSim] hearth Yellow River: no viable seat (window blocked or too near another hearth) — skipped
+[peopleSim] earth hearths found no site — falling back to algorithmic cradles
+[peopleSim] no viable cradle site found — world all water?

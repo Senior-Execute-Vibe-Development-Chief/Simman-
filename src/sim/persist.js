@@ -342,6 +342,7 @@ export function saveWorld(world, meta = {}) {
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
       soilFatigue: sparseFromTyped(world._soilFatigue, 0),
       fishTaken: sparseFromTyped(world._fishTaken, 0),   // "the sea remembers" (T.FISH_LABOR, settlement.js) — taken fraction of each coastal stock
+      tileWealth: sparseFromTyped(world._tileWealth, 0), // T.TILE_MONEY — coin on farm tiles (tileMoney.js)
     },
     reserves,
     tables,
@@ -853,6 +854,8 @@ export function loadWorld(data, opts = {}) {
     if (soil) world._soilFatigue = soil;                // "the land remembers" (settlement.js)
     const fishT = typedFromSparse(data.maps.fishTaken, Float32Array, N, 0);
     if (fishT) world._fishTaken = fishT;                // "the sea remembers" (T.FISH_LABOR, settlement.js)
+    const tileW = typedFromSparse(data.maps.tileWealth, Float32Array, N, 0);
+    if (tileW) world._tileWealth = tileW;              // T.TILE_MONEY farm-gate coin (tileMoney.js)
     // The loyalty field (loyaltyField.js). Allegiance is the presence marker
     // (dense, always saved once the lever ran); the sparse memory arrays may
     // legitimately be all-default in a young world, so materialize them at
