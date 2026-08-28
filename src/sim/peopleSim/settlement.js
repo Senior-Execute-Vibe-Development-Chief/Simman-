@@ -21,6 +21,7 @@ import { cageAt, cageFillAt } from "./cageField.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
+import { POP_SCALE } from "../units.js";   // T.VIABLE_UNITS reads the viability constants as PEOPLE, which is what their comments say they are
 import { updateGoods, LEG_GOOD, GOODS, G_STAPLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
@@ -117,6 +118,19 @@ const METRO_REL_FRAC = 0.8;
 //   K = (land food + fish + imported food) / demand_per_capita
 // where demand_per_capita = 0.003 food/person/tick.
 const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the wither cull threshold)
+// T.VIABLE_UNITS — the SAME constant, read in the units its own comment claims.
+// K_MIN_VIABLE and the wither cull below are both written as "8", and the wither
+// comment says "stable small forage hamlets sit at ~10-15". Under POP_SCALE=1000
+// that reads as forage hamlets of 10,000-15,000 people, which is a town. The pair
+// was written for a HEADCOUNT scale. Measured consequence (docs/tier-ratchet-
+// 2026-08-27.md section 26): with the 12k founding stamp retired, 36.5% of the
+// register lands on a new mode at EXACTLY 8.00su — this floor — because
+// coreEff = min(_coreF, kLocal + kBeyond) and kLocal + kBeyond is identically
+// s._k/scale, so a settlement under the floor reports exactly K_MIN_VIABLE.
+// ZERO NEW CONSTANTS: 8 stays 8, expressed as 8 PEOPLE rather than 8,000.
+// The pair MUST move together — lowering the capacity floor alone would drop
+// settlements under an unchanged cull threshold and kill them wholesale.
+const viableUnits = () => (T.VIABLE_UNITS ? 8 / POP_SCALE : 8);
 
 // ── Housing population cap: FOOD, BUILDINGS, and SPACE ──
 // Population grows to min(food capacity, housing). Housing is purely
@@ -3643,9 +3657,10 @@ function updatePopulation(world, s) {
   // load, full urbanity and zero sanitation, crowd disease slightly more than
   // cancels natural increase (1.2x) — the city needs migrants to grow.
   const URBAN_GRAVEYARD_W = 1.2;
+  const _kMin = viableUnits();
   const K = T.DISSOLVE_FARMS
-    ? Math.max(K_MIN_VIABLE, foodK)
-    : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
+    ? Math.max(_kMin, foodK)
+    : Math.max(_kMin, Math.min(foodK, houseK));
   s._k = K;
   s._foodK = foodK;            // exposed so the info panel can show which limit binds
   s._houseK = houseK;
@@ -3775,7 +3790,7 @@ function updatePopulation(world, s) {
   // Withering: a settlement stuck below 8 people for too long (a stillborn
   // site whose territory can't feed it, or a post-famine zombie) dies.
   // Stable small forage hamlets sit at ~10–15 and never trip the timer.
-  if (s.people < 8) {
+  if (s.people < viableUnits()) {
     if (s._witherSince === undefined) s._witherSince = world.step;
     if (world.step - s._witherSince > 2000 / _dt) {   // same wither-window in history-time at any granularity
       s.mode = "dead";
