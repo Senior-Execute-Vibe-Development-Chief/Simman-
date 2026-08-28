@@ -76,8 +76,24 @@ export function initTileValue(world) {
   return val;
 }
 // T.MARKET_PULL's shared carriage knowledge — see the localEdgeCost call below.
-// The route costs what the route costs, whoever is buying.
+// The route costs what the route costs, whoever is buying: carriage is a property
+// of the ROUTE and THE AGE, not of the purchaser. Built each pass as the
+// element-wise best knowledge in the world, because grain moved on the best
+// shipping available, not on the buyer's own — Rome ate Egyptian wheat carried by
+// professional grain fleets it did not itself own.
+//   THIS MUST NOT BE EMPTY. An empty object means no navigation, and
+// localEdgeCost returns Infinity for water without the nav floor — so every
+// market became land-locked and no ring could ever cross water, which is exactly
+// the sea-borne grain that let real cities feed past the 340 km land limit.
+// Measured with it empty: the gate world fell to 10 settlements.
 const _MARKET_KN = {};
+function _rebuildMarketKn(byId) {
+  for (const k in _MARKET_KN) delete _MARKET_KN[k];
+  for (const s of byId.values()) {
+    const kn = s.knowledge; if (!kn) continue;
+    for (const k in kn) { const v = kn[k]; if (typeof v === "number" && !(_MARKET_KN[k] >= v)) _MARKET_KN[k] = v; }
+  }
+}
 
 export function reachBudget(s) {
   // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
@@ -258,14 +274,46 @@ export function computeTerritory(world) {
   const mktPull = T.MARKET_PULL > 0;
   const seedOf = new Map();
   if (mktPull) {
+    _rebuildMarketKn(byId);
     let sum = 0, n = 0;
     for (const s of byId.values()) {
-      const a = Math.max(1e-6, (s._scarcity || 1) * Math.max(1, s.wealth || 0));
+      // T.MARKET_WEALTH: whether ability-to-pay enters the RING at all.
+      // Off (default), the bid is scarcity alone — a PER-BUSHEL price, bounded
+      // 0.5-3. Wealth is a BANK BALANCE, and multiplying the two conflates a
+      // price with a purse: wealth spans orders of magnitude, so a rich city's
+      // ring swallows a poor neighbour's doorstep where carriage is ~0 and the
+      // local price is perfectly adequate. That is not crowding-out, it is Rome
+      // outbidding a village for the field behind the village. Ability to pay
+      // belongs on VOLUME (how much you can buy), not on REACH.
+      const a = T.MARKET_WEALTH
+        ? Math.max(1e-6, (s._scarcity || 1) * Math.max(1, s.wealth || 0))
+        : Math.max(1e-6, (s._scarcity || 1));
       seedOf.set(s.id, a); sum += a; n++;
     }
     const abar = n > 0 ? sum / n : 1;
-    const haulTiles = 340 / (40075 / tw);   // HAUL_LAND_KM at this grid's km-per-tile
-    for (const [id, a] of seedOf) seedOf.set(id, -haulTiles * Math.log(a / abar));
+    // HAUL_LAND_KM = 340 km is an E-FOLDING distance, not a zero point: under the
+    // exponential the grain is still worth 37% of its price there. Converting it
+    // to a LINEAR law by using 340 as the zero point silently HALVES the haul —
+    // measured, the gate world fell to 10 settlements. Match the two laws on the
+    // value they actually deliver instead: the exponential's total is
+    // integral(exp(-d/340)) = 340, the linear's over [0,D] is D/2, so D = 2*340 =
+    // 680 km. That is a derivation from the edict figure already in the tree, not
+    // a constant tuned until the world survived.
+    const haulTiles = 2 * 340 / (40075 / tw);   // HAUL_LAND_KM, converted e-folding -> finite range
+    // THE DECAY LAW (work-plan item 4). Freight rises STEADILY with distance, so
+    // the farm-gate net is A_i - freight*d and hits EXACTLY ZERO at a finite
+    // range — von Thuenen's rings END. The first build used an exponential haul
+    // (seed = -haulTiles*ln A), which fades forever and gave the frontier no
+    // stopping rule at all: measured on the live arm, a handful of markets took
+    // the continent (max core 2717 against the controls' 357-452, register 5
+    // realms against 15) and the sweep ran 2x slow because nothing bounded it.
+    //   Linear freight makes the race ADDITIVE rather than logarithmic, so the
+    // seed is -haulTiles*(A_i/Abar) and reach is proportional to what a market
+    // pays — and the stopping rule falls out for free (see the ring's edge in
+    // the relaxation below). No cap, no cutoff to tune: the boundary IS where
+    // freight eats the price. Abar normalisation keeps it constant-free — an
+    // average market reaches exactly HAUL_LAND_KM, the edict's own 340 km.
+    for (const [id, a] of seedOf) seedOf.set(id, -haulTiles * (a / abar));
   }
 
   // ── CATCHMENT_CLIP (T.CATCHMENT_CLIP): the economic catchment is REACTIVE to the
@@ -500,6 +548,11 @@ export function computeTerritory(world) {
       // verdict in persistent-territory-spec. VALUE_PULL alone rides the banks.)
       eff /= (1 + T.VALUE_PULL * (val[ni] || 0));                        // pull onto the valued banks
       const nd = d + eff;
+      // THE RING'S EDGE: nd = seed + carriage, and seed is minus the distance
+      // the bid buys, so nd >= 0 is exactly where freight has eaten the grain's
+      // whole value. Beyond it the harvest is not worth carrying and no market
+      // wants the field. This is the bound the first build lacked.
+      if (mktPull && nd >= 0) continue;
       if ((!mktPull || T.MARKET_CAP > 0) && nd > bud) continue;    // owner can't reach further (in value-weighted effort). T.MARKET_CAP keeps the allowance as a BOUND while the bid decides the ORDER — the diagnostic split (docs section 44)
       if (nd < cost[ni]) {
         cost[ni] = nd;

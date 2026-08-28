@@ -3358,3 +3358,59 @@ the bid decides who owns the land.
 `T.MARKET_PULL` is **built, off, and not shippable as it stands**. The mechanism is
 right; it is missing its boundary. Next is the decay law, then re-measure on the live
 arm — not more of the bid.
+
+---
+
+## 46. THE DECAY LAW LANDED; THE BID RULE STILL DOES NOT WORK
+
+The boundary is fixed. The mechanism is not. Recording the whole arc, including four
+failed rescues, because the pattern matters more than any one of them.
+
+### 46.1 What the decay law fixed
+
+Freight rises steadily with distance, so the farm-gate net is `A − freight·d` and
+hits zero at a finite range. That makes the race **additive**, not logarithmic:
+`seed = −haulTiles·(A_i/Abar)`, and the stopping rule falls out for free —
+`nd = seed + carriage` is negative exactly while the grain is still worth carrying,
+so the frontier stops at **`nd >= 0`**. No cap, no cutoff to tune.
+
+It did what §45.2 predicted on two of three counts:
+
+- **runtime**: 149s → 84-96s, near the 70s baseline. The 2× was the unbounded sweep.
+- **runaway**: the continent-taking frontier is gone.
+- **the world**: still broken. Best result **16 settlements against a baseline 39.**
+
+### 46.2 Four rescues, four stories, none of them right
+
+| attempt | reasoning | result |
+|---|---|---|
+| shared carriage knowledge was `{}` | no navigation ⇒ water is `Infinity` ⇒ every market land-locked, killing the sea-borne grain that let real cities feed past the land limit | 10 → 8 settlements. **Worse.** |
+| `HAUL_LAND_KM` is an **e-folding** distance, not a zero point | matching the two laws on delivered value gives `D = 2×340 = 680 km`, not 340 — I had silently halved the haul | 8 → 16. **Best so far, still failing.** |
+| wealth belongs on **volume**, not **reach** | wealth spans orders of magnitude while scarcity is clamped 0.5-3, so the mean bid is dominated by rich cities and a new settlement's ring collapses; a rich city's ring then covers a poor neighbour's doorstep where carriage is ~0 | 16 → 11. **Refuted — worse.** |
+
+The second was a genuine derivation error and its correction stands on its own. The
+first and third were plausible mechanisms that measurement rejected.
+
+**That is four consecutive fixes reasoned from a story rather than from a
+measurement, and it is exactly the failure this document has recorded all day.** The
+difference is only that tonight each one was cheap to test.
+
+### 46.3 What is honestly known
+
+- The **boundary** is right and principled: a market's ring ends where freight eats
+  the price, derived from the edict figure already in the tree.
+- The **allowance** cannot simply be deleted. The rest of the food economy is
+  calibrated around catchments the bid rule does not reproduce, and **which part is
+  the mismatch is not yet diagnosed.** `TERRITORY_BASE = 5` tiles against an
+  integral-matched physical ring of ~4.07 tiles at `tw=240` is close enough that the
+  gap is probably not the radius alone.
+- Everything is `def: 0`; `hashbase` 7fb32527 / ebfb8021 unchanged, smoke green,
+  coverage clean. **Nothing that ships has moved.**
+
+### 46.4 The next step is a diagnosis, not a fifth fix
+
+The question to answer before touching the code again: **where does the food actually
+go missing?** Under the bid rule, compare against the baseline, per settlement:
+catchment tile count, worked tiles, `_landFood`, and `s._k`. One of those four
+diverges first and that is the mismatch. Everything above was an attempt to guess
+which, and the guessing lost four rounds in a row.
