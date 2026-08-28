@@ -1624,3 +1624,77 @@ Note also that a city born at ~3,000 IS a town for a while, which reverses the
 owner's 2026-08-22 directive (*"towns should not exist, anything smaller than a city
 should not be anything"*). That is the owner's call to reverse and is flagged here
 only so the reversal is deliberate rather than incidental.
+
+---
+
+## 24. WAVE 5, WINDOW 9 — three predictions separate cleanly; the population disqualifier FIRES
+
+Maturity overlaps (controls claimed 32.3-37.5, treated 31.5-39.1), so the raw
+comparison is near-fair without interpolation. Four treated draws against three
+controls:
+
+| arm | claimed% | urban% | bind% | med core | total su | ended |
+|---|---|---|---|---|---|---|
+| ctrl clean | 32.34 | 15.57 | 39.9 | — | 412,324 | 266 |
+| ctrl chaos1 | 37.51 | 14.72 | 39.5 | 12.0 | 430,981 | 286 |
+| ctrl ref3 | 34.35 | 14.46 | 41.3 | 12.0 | 418,181 | 239 |
+| `+AGGLOM_LOCAL` | 36.25 | 11.55 | 44.2 | **16.1** | 337,703 | 301 |
+| `+AGGLOM_LOCAL` chaos | 31.53 | 11.84 | 44.7 | **14.1** | 328,436 | 312 |
+| `+AGG+URBAN_LABOR` | 34.05 | 9.91 | 48.0 | **15.8** | 317,959 | 331 |
+| `+AGG+ULAB` chaos | 39.08 | 9.20 | 44.2 | **14.2** | 353,404 | 411 |
+
+### 24.1 Three predicted measures separate with no overlap
+
+```
+urban%     controls [14.5, 15.6]   treated [ 9.2, 11.8]   treated LOWER
+bind%      controls [39.5, 41.3]   treated [44.2, 48.0]   treated HIGHER
+med core   controls [12.0, 12.0]   treated [14.1, 16.1]   treated HIGHER
+```
+
+Every treated draw beats every control draw on all three, 4 against 3, no
+interpolation needed. **This is the strongest separation any mechanism has produced
+this lap**, and it is the exact shape §22.2 registered before the data: the floor
+rises (median city off the stamp, more cities sized by their own land) while the
+ceiling falls.
+
+The median core result is the one wave 4 could not establish and retracted (§20).
+Here both control draws read **exactly 12.0** and all four treated draws clear it.
+That is the owner's complaint moving, on the owner's own mechanism.
+
+### 24.2 THE DISQUALIFIER FIRED — population is 14-26% lower
+
+§22.2 registered: *"total population — **not lower** (disqualifier)."*
+
+```
+controls   412,324 - 430,981
+treated    317,959 - 353,404      →  −14% to −26%
+```
+
+Non-overlapping in the wrong direction, at matched maturity. Settlements ending
+in-window also rise: 301-411 treated against 239-286 control.
+
+**The mechanism is coherent and that is exactly why this needs care.** Concentrating
+people into cores puts them under the urban graveyard — excess crowd mortality that
+scales with urban share. More concentration, more deaths. Historically cities *were*
+population sinks that grew only by in-migration, so a more-urban world holding fewer
+people is not obviously wrong physics. But a 14-26% loss of world population is not
+a detail, and the disqualifier was written precisely so that a good-looking result on
+three axes could not carry a bad one on the fourth by omission.
+
+Two readings, and this window cannot distinguish them:
+
+1. **Correct physics.** The graveyard is real, cities really did kill people, and
+   the untreated world's larger population was an artefact of cities being frozen at
+   12k and never concentrating anyone into the mortality.
+2. **The graveyard is mis-scaled.** It saturates at 30% urban share and decays with
+   health tech — parameters set when almost nothing concentrated. Feeding it real
+   concentration for the first time may be exposing a term that was never tested in
+   the regime it now runs in.
+
+Reading 2 is the more likely and is checkable: the graveyard's `min(1, urbShare/0.3)`
+cap was named in `CORE_LOCAL`'s own description as "the honest boundary of the safety
+argument", and nothing before today pushed a median city off the founding stamp.
+
+**No verdict.** One window remains, and the population gap is the thing to watch in
+it — if it widens, the mechanism needs the graveyard re-examined before it can ship;
+if it closes as the world matures, reading 1 gains ground.
