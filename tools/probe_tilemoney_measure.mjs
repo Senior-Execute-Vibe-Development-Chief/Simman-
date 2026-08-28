@@ -6,7 +6,7 @@
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { T } from "../src/sim/peopleSim/tuning.js";
-import { sumTileWealth } from "../src/sim/peopleSim/tileMoney.js";
+import { sumTileWealth, sumUnservedTileCoin } from "../src/sim/peopleSim/tileMoney.js";
 
 const steps = parseInt(process.argv[2] || "24000", 10);
 const seed = parseInt(process.argv[3] || "8817", 10);
@@ -34,6 +34,7 @@ function snap(world, step) {
     for (let i = 0; i < tw.length; i++) if ((tw[i] || 0) > 0) tilesWithCoin++;
   }
   const tileTotal = sumTileWealth(world);
+  const unservedCoin = sumUnservedTileCoin(world);
   const debugCoin = world.debug?.totalCoin ?? 0;
   const f = {
     tax: world._tileFiscalTax || 0,
@@ -52,6 +53,8 @@ function snap(world, step) {
     settleWealth,
     tileTotal,
     tileShare: tileTotal / (debugCoin || 1),
+    unservedCoin,
+    unservedShare: unservedCoin / (tileTotal || 1),
     tileIn,
     tilesWithCoin,
     debugCoin,

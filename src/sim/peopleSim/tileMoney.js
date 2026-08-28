@@ -346,3 +346,76 @@ export function updateTileFiscalSinks(world, interval) {
   world._tileFiscalFaith = faithCoin;
   world._tileFiscalLoss = lossCoin;
 }
+
+/**
+ * Phase D — unserved surplus signal for founding pressure.
+ * Sums tile coin on populated tiles outside any market catchment, plus piled
+ * coin above a local spending cushion on claimed tiles (farm-gate pay with weak sinks).
+ * Returns a damped multiplier boost ∈ [0, TILE_COIN_FOUND_CAP] for crystallize.
+ */
+const TILE_COIN_FOUND_CAP = 2;
+const TILE_COIN_REF = 2;   // coin per sim-unit person → +1 mul at reference pile
+
+export function unservedTileCoinInDisk(world, tx, ty, rB) {
+  if (!(T.TILE_MONEY > 0) || !world._tileWealth || !world.popField) return 0;
+  const tw = world._tileWealth, pf = world.popField, to = world._territoryOwner;
+  const bridge = world._onePopScale || 0;
+  const gridW = world.tw, th = world.th;
+  let coin = 0;
+  for (let dy = -rB; dy <= rB; dy++) {
+    const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -rB; dx <= rB; dx++) {
+      if (dx * dx + dy * dy > rB * rB) continue;
+      const ti = yy * gridW + (((tx + dx) % gridW) + gridW) % gridW;
+      if ((pf[ti] || 0) <= 0) continue;
+      const ppl = pf[ti] * (bridge > 0 ? bridge : 1);
+      const c = tw[ti] || 0;
+      if (c <= 0) continue;
+      if (!to || to[ti] < 0) coin += c;
+      else {
+        const reserve = 30 + ppl * 0.3;
+        if (c > reserve) coin += c - reserve;
+      }
+    }
+  }
+  return coin;
+}
+
+export function unservedTileCoinPull(world, tx, ty, rB) {
+  const coin = unservedTileCoinInDisk(world, tx, ty, rB);
+  if (coin <= 0) return 0;
+  const pf = world.popField, bridge = world._onePopScale || 0;
+  const gridW = world.tw, th = world.th;
+  let people = 0;
+  for (let dy = -rB; dy <= rB; dy++) {
+    const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -rB; dx <= rB; dx++) {
+      if (dx * dx + dy * dy > rB * rB) continue;
+      const ti = yy * gridW + (((tx + dx) % gridW) + gridW) % gridW;
+      if ((pf[ti] || 0) > 0) people += pf[ti] * (bridge > 0 ? bridge : 1);
+    }
+  }
+  if (people <= 0) return 0;
+  const perCap = coin / people;
+  return Math.min(TILE_COIN_FOUND_CAP, perCap / TILE_COIN_REF);
+}
+
+/** Planet total unserved tile coin (measurement). */
+export function sumUnservedTileCoin(world) {
+  if (!(T.TILE_MONEY > 0) || !world._tileWealth || !world.popField) return 0;
+  const tw = world._tileWealth, pf = world.popField, to = world._territoryOwner;
+  const bridge = world._onePopScale || 0;
+  let coin = 0;
+  for (let ti = 0; ti < world.N; ti++) {
+    if ((pf[ti] || 0) <= 0) continue;
+    const ppl = pf[ti] * (bridge > 0 ? bridge : 1);
+    const c = tw[ti] || 0;
+    if (c <= 0) continue;
+    if (!to || to[ti] < 0) coin += c;
+    else {
+      const reserve = 30 + ppl * 0.3;
+      if (c > reserve) coin += c - reserve;
+    }
+  }
+  return coin;
+}

@@ -40,6 +40,7 @@ import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { reachBudget } from "./territory.js";   // T.MINT_REACH: the newborn's day-one reach (functions only — same ESM-cycle pattern as landKnow.js)
+import { unservedTileCoinPull } from "./tileMoney.js";
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -2828,7 +2829,13 @@ export function maybeCrystallize(world) {
         : townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
       crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
     }
-    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // T.TILE_MONEY — unserved farm-gate coin pulls a market where surplus piles
+    // outside existing catchments (docs/money-field-2026-08-28.md Phase D).
+    let tileCoinMul = 1;
+    if (T.TILE_MONEY > 0) {
+      tileCoinMul += unservedTileCoinPull(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+    }
+    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * tileCoinMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance
