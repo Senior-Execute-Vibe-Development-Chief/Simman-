@@ -135,14 +135,40 @@ export function cutPitches(power, frameCents, haveCents) {
   return [...out.values()].sort((a, b) => a - b);
 }
 
-// cents: below this, a step reads as an inflection of one degree rather than as
-// two degrees. Used by BOTH ways a degree can arrive — see `inside` below and
-// the invention loop under it.
-const STEP_FLOOR = 120;
-// how much relative spread a set of steps may have and still be a scale — the
-// diatonic is 0.26, slendro 0.06, pelog 0.35. Used where the degrees are MADE
-// (`deriveScale`) and where they are chosen from (`deriveMode`).
-const EVEN_SPREAD = 0.35;
+// THE RESOLUTION OF THE CURVE, not a rule about music.
+//
+// This is the closest two degrees may sit, and it is used both ways a degree
+// can arrive — the minima picked off the curve, and the cuts the maker adds.
+// Its job is to stop ONE dip being counted twice: Plomp-Levelt's roughness peak
+// sits at about a quarter of a critical band, which in this register is some
+// tens of cents wide, so two minima closer than that are one feature found
+// twice rather than two intervals.
+//
+// It was 120, on the claim that below that a step reads as an inflection of one
+// degree rather than as two. The bench refutes that outright. Six of its seven
+// traditions have a narrowest step under 145 cents — 112 in Ḥijāzkār, in
+// Bhairavī and in Mixolydian, 90 in in-sen — and nobody has ever mistaken the
+// semitone of a diatonic scale for an inflection. What IS an inflection is a
+// quarter-tone, and 70 cents sits just above one.
+//
+// The cost of the old value was total: measured across 240 derived peoples, the
+// narrowest step anywhere in the corpus was 133 cents, ONE people in a hundred
+// had a step that leans at all, and the entire sultry-to-sparse half of
+// `affectOf` was unreachable by construction. A world that cannot make a
+// semitone cannot make a maqām, a rāg, or a shakuhachi piece.
+const STEP_FLOOR = 70;
+// How much relative spread a set of steps may have and still be a scale, used
+// where the degrees are MADE (`deriveScale`) and where they are chosen from
+// (`deriveMode`).
+//
+// This was 0.35, cited against the diatonic at 0.26, slendro at 0.06 and pelog
+// at 0.35 — three tunings that happen to be even, offered as the evidence for
+// what evenness is allowed to be. The bench sitting in this same repository
+// contains two that are not: Ḥijāzkār's steps spread 0.42 and in-sen's 0.60. So
+// the generator was rejecting as insufficiently even two of the seven
+// traditions the bench exists to calibrate it against, and every mode shaped
+// like them. 0.60 is the widest thing the evidence actually contains.
+const EVEN_SPREAD = 0.6;
 const EVEN_W = 0.55;
 
 export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpec = null, power = 1 } = {}) {
