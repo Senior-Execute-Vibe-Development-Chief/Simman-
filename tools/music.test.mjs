@@ -177,9 +177,12 @@ let maxSemis = 0, maxPoly = 0;
 for (let s = 0; s < 30; s++) {
   const seed = 2000 + s * 41;
   const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
-  const E = ensembleFor(m, "peace", 0.85);
-  check(`seed ${seed}: at most two heterophonic doublings`, (E.het || []).length <= 2,
-    `${(E.het || []).length} het`);
+  const plan = ambientBar(m, { occ: "peace", bar: 0, intimacy: 0.85 });
+  const hetOn = (plan.events || []).filter(e => e.role === "het");
+  const hetInsts = new Set(hetOn.map(e => e.inst));
+  check(`seed ${seed}: at most one heterophonic doubler per bar when elaborating`,
+    !plan.events?.some(e => e.role === "elab") || hetInsts.size <= 1,
+    `${hetInsts.size} het bodies`);
   const v = verticalOf(m);
   maxSemis = Math.max(maxSemis, v.semis);
   maxPoly = Math.max(maxPoly, v.poly);

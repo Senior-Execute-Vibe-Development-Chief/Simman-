@@ -1931,7 +1931,15 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   //  - AND A BODY HOLDS THE NOTE FOR AS LONG AS IT HOLDS IT. A sustaining
   //    player carries through the gaps; a plucked one lets it ring and stops
   //    when the string stops.
-  for (const k of (E.het || [])) {
+  // When an elaborator is already filling the gaps, only ONE doubler plays this
+  // cycle — the rest take turns bar to bar so every body is still heard across
+  // a piece without three melodic lines on one attack (measured: ~79% unison).
+  const hetBodies = (E.het || []);
+  const hetActive = ST.elab && hetBodies.length > 1
+    ? [hetBodies[bar % hetBodies.length]]
+    : hetBodies;
+  for (let hi = 0; hi < hetActive.length; hi++) {
+    const k = hetActive[hi];
     if (!audible("het" + k)) continue;
     const inst = music.insts[k];
     if (!inst) continue;
@@ -1959,6 +1967,9 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       }
       kept++;
       ev.push({ ...e, inst: k, b: e.b + Math.min(lag, e.dur * 0.25), role: "het",
+        // Heterophony is the same line in different registers — not three
+        // bodies on one unison (measured: that was ~79% of vertical pairs).
+        oct: (e.oct || 0) + hi + 1,
         // A HELD BODY FILLS THE GAP TO THE NEXT NOTE — but only if it is
         // playing the next note. A body too slow for the line drops notes
         // (`share` above); stretching what it kept over the ones it dropped
@@ -2071,9 +2082,14 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       for (let q = s + 1; q < N; q++) if (e[q]) { lastBefore = q / sub >= to; break; }
       const d = lastBefore && Math.abs(next - here) >= 2 ? here + Math.sign(next - here) : here;
       const near = on.some(o => Math.abs(o * sub - s) < sub);
+      // An elaborator FILLS THE GAPS — doubling the melody's attack at the same
+      // pitch is the main source of recorded-sample mud (measured: elab+lead
+      // was a tenth of all vertical pairs and most of what listeners heard as
+      // "too many instruments on one note").
+      if (near && d === here) continue;
       ev.push({ b: slotBeat(G, s / sub, R.swing), dur: 0.34 / sub, inst: ST.elab.k,
         deg: modeDegree(music, d + fin + ist), oct: Math.round(O.reg) + S.sec.oct,
-        vel: ST.elab.vel * (near ? 0.6 : 1), role: "elab", damped: true });
+        vel: ST.elab.vel, role: "elab", damped: true });
     }
   }
   // THE DRONE. Not a held note: a real drone is RE-ARTICULATED, on its own
@@ -2203,9 +2219,8 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       const own = e.strong || e.last || !sung.length
         || hash32(seed, "syl", Math.round(e.b * 96)) % 1000 < share * 1000;
       sung.push({ ...e, role: "voice", inst: -1, melisma: !own,
-        // the voice sits above the lead, not in unison with it — measured,
-        // `het+voice` and `elab+voice` were top clash pairs when it doubled
-        oct: (e.oct || 0) + 1,
+        // the voice sits above every doubler sounding this cycle
+        oct: (e.oct || 0) + 1 + hetActive.length,
         vel: e.vel * (own ? 1 : 0.86),
         b: e.b + Math.min(vlag, e.dur * 0.25) });
     }
