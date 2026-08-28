@@ -3161,3 +3161,69 @@ under `ONE_POP`; `URBAN_LABOR`, `STAMP_RETIRE`, `VIABLE_UNITS`.
    a measurement, not a guessed number.*
 3. **What counts as compulsion.** Liege-over-vassal only, or also a landholder inside
    one realm? The second is more historical and more work.
+
+---
+
+## 43. ELIMINATING THE RATCHET — the complete enumeration
+
+> Owner: *"i think we should utterly ELIMINATE the ratchet"*
+
+"Utterly" needs the full list, not the four §1 named. Enumerated across the tree.
+
+### 43.1 The ratchet proper — capability GRADED by the label
+
+| table | file | values | replaced by |
+|---|---|---|---|
+| `CORE_BY_TIER` | `territory.js:116` | 1, 2, 3, 4 | **emergent** — carriage to your own tile is zero, so no rival takes your immediate ground without bidding enormously more. The home block needs no rule (§42, owner's point). |
+| `HINTERLAND_BY_TIER` | `territory.js:154` | 3, 4, 6, 8 | **emergent** — the bid wins land. |
+| `GRAIN_PRICE_BY_TIER` | `foodHierarchy.js:204` | 2, 8, 14, 22 | **emergent** — scarcity × ability to pay, from `wealth` (earned) rather than `tier` (granted). The owner's crowding-out argument survives; its source changes. |
+| `FOOD_RANGE_BY_TIER` | `foodHierarchy.js:85` | 1, 1, 2.2, 3.6 | **already measured INERT** (`T.HAUL_PAID`, wave 3). Delete outright — nothing to replace. |
+| `SHIP_FRAC_BY_TIER` | `foodHierarchy.js:196` | 0.8, 0.5, 0.2, 0.05 | **already retired** (§4). |
+| **`ARMY_TIER_FRAC`** | **`armies.js:44`** | **0.02, 0.05, 0.09, 0.11** | **NOT replaced by anything designed so far.** |
+
+### 43.2 The fifth leg, in a different subsystem
+
+`ARMY_TIER_FRAC` sets the garrison cap as a **fraction of population**, so a
+metropolis musters **5.5× the share** a village does — on top of already having more
+people. It was never in this lap's list because it is military, not food.
+
+It closes the same loop in the war system: bigger label → bigger garrison → wins wars
+→ takes land → grows → bigger label. **The farm-field overhaul does not touch it.**
+
+Its honest replacement is the same shape as the grain price's: a garrison is what a
+city **can pay for** and what it **fears** — wealth and threat, both emergent and both
+already modelled. That is a separate build from the farm overhaul and should not be
+bundled with it.
+
+### 43.3 What must NOT be deleted: tier as a classifier
+
+`s.tier` has ~85 reads. The overwhelming majority ask *"is this a city?"* or *"is A
+larger than B?"* — `conquest.js` alone has 21 (`m.tier > st` for *"liege must be
+larger"*; `tier >= CITY_TIER` for seats, provinces and blocs), plus faiths, roads'
+`ROAD_MIN_TIER`, the chronicle, events, emblems and invariants.
+
+**Those are classification, and classification is what a label is for.** CLAUDE.md
+already draws this line for the derived era: it *"must be derived from emergent
+development … and only ever read, never used to drive anything."*
+
+So the rule is exact: **tier may be READ to classify. It may never GRADE a
+capability.** Deleting `s.tier` would break state formation; deleting the graded
+tables is the whole job.
+
+### 43.4 `NEEDED_BY_TIER` — a judgment call, flagged not decided
+
+`roads.js:277` lists resource *wants* by tier (timber → +stone → +copper/iron →
++tin/coal) for road-planning preference. It is closer to *"what does a settlement this
+size consume"* than to a capability grant — a readout of consumption, not a power.
+
+But it is graded on the label, and it does steer road planning. **Owner's call.**
+Left in the list rather than quietly excused.
+
+### 43.5 What this means for sequencing
+
+Four of the six are handled by work already scoped: three replaced by the farm-field
+overhaul, one already inert, one already retired. **The overhaul IS most of the
+ratchet's elimination** — the same job, not a separate one.
+
+What remains after it: `ARMY_TIER_FRAC` (its own mechanism, military subsystem) and
+the `NEEDED_BY_TIER` judgment call.
