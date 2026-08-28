@@ -348,6 +348,12 @@ export function applyTradition(m, key, deps) {
     finals: [ranked.find(x => x.f === fi) || { f: fi, bright: 0 }],
   };
 
+  // A PINNED TRADITION NAMES ITS OWN LEAD, through the weights in its table,
+  // and the reference-leads rule must not second-guess it: Chinese court music
+  // really does tune to bells and play the melody on silk, and that split is
+  // the answer rather than a fault to be corrected.
+  m.tuneRef = null;
+
   // ── metre, texture, line ──
   Object.assign(m.rhythm, T.rhythm);
   Object.assign(m.texture, T.texture);

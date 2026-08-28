@@ -557,6 +557,10 @@ function peopleHTML(m) {
 function instrumentsHTML(m) {
   return `<div class="card">
     <h2>What they can build <span class="count">— ${m.insts.length} bodies</span></h2>
+    ${m.tuneRef != null && m.insts[m.tuneRef] ? `<p class="note tight">Everyone tunes to the
+      <strong>${esc(m.insts[m.tuneRef].label || FAMILIES[m.insts[m.tuneRef].fam].label)}</strong> —
+      the most central body here that cannot be retuned while it is being played, so its
+      consonances become the tradition's and everybody else bends to it.</p>` : ""}
     <p class="note">Each body is made of what the land gives, gated by the crafts they have. The bars
       show the modes it actually radiates, against integer-multiple ticks: sit on the ticks and the
       body is <em>harmonic</em>; miss them and it is not — and that single fact is what decides the

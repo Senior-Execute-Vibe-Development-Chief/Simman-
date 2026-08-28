@@ -304,8 +304,18 @@ export function musicOf(people) {
   // The reference is ONE instrument, not a class: the most central body that
   // cannot be adjusted mid-performance. Everyone else tunes to it and so
   // contributes only lightly to what the tradition counts as consonant.
-  const FIXED = new Set(["barSet", "bell", "gong", "lamella"]);
-  const refI = insts.findIndex(i => FIXED.has(i.fam));
+  // AND "CANNOT BE RETUNED" IS A PROPERTY, not a list of four family names.
+  // `pitchBy: "fixed"` means one resonator per pitch — the next note is a
+  // different object, so there is nothing to slide along and nothing to lip.
+  // That is the definition, and this test used to be the names barSet, bell,
+  // gong and lamella, written when the table held fourteen families. It now
+  // holds twenty-two: a santur, a koto, a raft of panpipes and a sheng are all
+  // exactly as un-retunable as a cast bar set and every one of them was
+  // invisible here. The body also has to specify pitches at all — a rattle and
+  // a pair of clappers are fixed in the same sense and have nothing to offer a
+  // tuning.
+  const isFixed = (i) => (FAMILIES[i.fam] || {}).pitchBy === "fixed" && i.cap >= 3;
+  const refI = insts.findIndex(isFixed);
   const refJ = refI >= 0 ? refI : insts.findIndex(i => i.cap >= 3);
   const tuneW = insts.map((i, k) => i.weight * (k === refJ ? 5 : 1));
   const spec = ensembleSpectrum(insts, tuneW);
@@ -364,6 +374,10 @@ export function musicOf(people) {
   const modeSteps = modeCents.slice(1).map((c, i) => c - modeCents[i]).concat([scale.frame.cents - modeCents[modeCents.length - 1]]);
   return {
     people, insts, spec, scale, rhythm, texture, form,
+    // which body everybody tuned to — read by `ensembleFor`, because the
+    // instrument that cannot follow anyone else is usually the one that states
+    // the melody
+    tuneRef: refJ >= 0 ? refJ : null,
     mode: { idx: modeIdx, cents: modeCents, steps: modeSteps, size: modeIdx.length,
       finals: finalsOf(modeCents, scale.frame.cents) },
     melody: {

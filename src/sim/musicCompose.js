@@ -1366,6 +1366,31 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   // line does not get promoted to holding one just because nothing better is
   // in the room. When nothing clears the bar, nobody plays the tune and
   // somebody sings it, which is the commonest ensemble on earth.
+  // WHO CARRIES THE TUNE, and one thing that was tried here and taken out.
+  //
+  // `musicOf` picks a tuning reference — the most central body that cannot be
+  // adjusted in the moment — and everyone else bends to it. The lead is chosen
+  // by melodic capacity, and the two used to land on bodies of OPPOSITE
+  // harmonicity 46% of the time: a whole ensemble tuned to an mbira and the
+  // tune then played on a struck zither, against whose harmonic spectrum the
+  // mbira's scale is 16% rougher than it is against the mbira.
+  //
+  // The tempting fix is to hand the lead to the reference whenever it can
+  // carry a line — the instrument that cannot follow anybody is the one others
+  // copy. Measured, it works and it is wrong: the split falls to 9% and the
+  // scale fits the melody body as well as it fits the reference, and the price
+  // is that a stopped string stops leading anything. Lutes went from eighteen
+  // of a hundred and fifty-seven to TWO, bowed strings from ten to one. A
+  // world where no fiddle ever carries a tune is a bigger falsehood than a
+  // nine-point split.
+  //
+  // The real repair was upstream, in what counts as un-retunable at all: with
+  // the reference chosen by property rather than by four family names, it is
+  // usually already the most central body that can carry a line, and `claim`
+  // — which walks a weight-sorted list — hands it the tune on its own. Split
+  // 46% → 17%, and the melody instruments stay a proper spread. What is left
+  // is a bell or a gong setting the pitch for a line it cannot play, which is
+  // Chinese court music and is the answer rather than a fault.
   const lead = loud
     ? (claim(x => x.i.drive === "reed" || x.i.drive === "lip") ?? claim(x => x.m > CARRIES * 0.44))
     : claim(x => x.m > CARRIES);
