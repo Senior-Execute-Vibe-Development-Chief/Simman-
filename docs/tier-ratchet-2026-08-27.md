@@ -2185,7 +2185,7 @@ permanently safe, rather than by letting them recover or die.
 So the design is tested with and without `T.VIABLE_UNITS`, and that pairing is the
 wave's real question.
 
-### 30.3 I lost wave 7 to my own smoke runs
+### 30.3 I lost wave 7 — and my explanation was wrong (see §31)
 
 All four wave-7 arms died between windows 7 and 8 with no error written — logs cut
 mid-line, no `FATAL`, nothing in `dmesg`, and 15GB free once they were gone. I ran
@@ -2221,3 +2221,81 @@ wave-6 gains. The disqualifier is the opposite: if `ended` falls because the par
 population became permanently safe rather than because cities recovered, the mode at
 the floor will persist and the median will not move. **Mode share and `ended` must be
 read together; either alone can be satisfied the wrong way.**
+
+---
+
+## 31. §30.3 RETRACTED — the arms are killed by container restarts, not by my smoke runs
+
+Wave 8 died in the same place as wave 7: all four arms stopped after the 24k-28k
+window with no error text, no `FATAL`, nothing in `dmesg`. **I ran no test suite
+during wave 8.**
+
+```
+$ uptime
+ 03:16:23 up 0 min
+$ cat /proc/uptime
+ 47.06
+```
+
+**The container had restarted 47 seconds earlier.** Arm logs last written 03:01-03:05;
+restart at ~03:15. `setsid nohup` survives a shell exiting; it does not survive the
+machine going away.
+
+### 31.1 The retraction
+
+§30.3 stated the wave-7 arms were *"almost certainly OOM-killed"* by my running
+`npm test` twice, called it *"avoidable"*, and added a standing rule about it. **That
+was a guess presented as a diagnosis.** The evidence at the time was already against
+it — `dmesg` showed no OOM kill and 15GB was free — and I reached for the
+explanation where I was at fault instead of the one the data supported. Wave 8 then
+died identically with no smoke run anywhere near it.
+
+The standing rule from §30.3 is withdrawn. Running the gate suite alongside `tw=960`
+arms may still be unwise on a 16GB box, but it is not what killed wave 7, and a rule
+justified by a wrong diagnosis is worse than no rule.
+
+**The real constraint: background arms do not survive a container restart, and this
+environment restarts.** Two waves lost the same way in a row. Any measurement that
+takes longer than the machine's uptime is a gamble, and 40k arms at `tw=960` take
+roughly an hour and a half.
+
+### 31.2 What survived, and it is worth having
+
+Two windows of each wave-8 arm, and the 24k-28k row is the first mature one. The
+in-window `ended` count is the churn measure §30.4 pre-registered:
+
+| arm | dissolve bar | claimed% | ended | mode | p50 core |
+|---|---|---|---|---|---|
+| controls (3) | 10,000 | 10.7-12.9 | **70-77** | 12.0 | 12.0 |
+| waves 5-6 treated | 10,000 | 8.3-11.7 | **96-98** | 8.0 | 8.0 |
+| `w8_agglom052` | 10,000 | 12.36 | **95** | 8.0 | 8.0 |
+| `w8_hyst` | **2,000** | 8.80 | **48** | 0.01 @ 36.2% | 6.5 |
+| `w8_hyst_chaos` | **2,000** | 10.36 | **52** | — | 4.5 |
+| `w8_hyst_nofloor` | **2,000** | 10.87 | **54** | 8.00 @ 36.2% | 8.0 |
+
+**Every arm with the owner's 2,000 dissolve bar roughly halves the churn** (48-54)
+against both the controls (70-77) and every previous treated arm (95-98). The one
+wave-8 arm that kept the 10,000 bar sits at 95 with everything else identical — an
+internal control, same wave, same build.
+
+That is the pre-registered prediction landing at the first mature window. **One
+window, less mature worlds, no verdict** — this document has retracted four
+single-window stories and this is not going to be the fifth. But it is the right
+direction from the right comparison.
+
+One incidental oddity worth keeping: `w8_hyst` and `w8_hyst_nofloor` hold the mode at
+**the same 36.2% share** — at 0.01su and 8.00su respectively. The floor fix moves
+*where* the mode sits without changing *how much* of the register sits on it, which
+suggests the mode's size is set by something other than the floor's value.
+
+### 31.3 Wave 9, relaunched with honest names
+
+```
+w9_hyst         VIABLE_UNITS + DISSOLVE_CORE=0.2    ← the owner's design
+w9_hyst_chaos   … + MINING_RATE=5.0000001           ← twin
+w9_8kfloor      DISSOLVE_CORE=0.2, floor left at 8,000   ← the §30.2 interaction
+w9_nohyst       VIABLE_UNITS + DISSOLVE_CORE=1      ← internal control, no hysteresis
+```
+
+`w8_hyst_nofloor` is renamed `w9_8kfloor` so the name says what the arm does. All
+carry `CORE_LOCAL`, `AGGLOM_LOCAL`, `URBAN_LABOR`, `STAMP_RETIRE`.
