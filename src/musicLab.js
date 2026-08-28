@@ -342,7 +342,7 @@ function vocOf(m) {
 const SCHED = { lanes: [], timer: null };
 function startAmbient() {
   const A = audio();
-  setDistance(A, S.intimacy);
+  setDistance(A, S.intimacy, P.texture.courtly);
   const t0 = A.ctx.currentTime + 0.12;
   SCHED.lanes = [{ m: () => P, bar: 0, next: t0, w: () => 1 - S.blend },
                  { m: () => PB, bar: 0, next: t0, w: () => S.blend }];
@@ -420,7 +420,7 @@ function playPiece() {
   // the control could never show you was the thing it is for: what this
   // people's music sounds like from across their settlement, which is the
   // music a listener in the world actually hears. Same slider, both ends.
-  setDistance(A, S.intimacy);
+  setDistance(A, S.intimacy, P.texture.courtly);
   const hymn = hymnSyllables(P, 10);
   const piece = composePiece(P, S.occ, hymn.syls, S.intimacy);
   S.piece = { ...piece, words: hymn.words };
@@ -551,8 +551,8 @@ function ltPlay() {
   if (S.playing) stopAmbient();
   // a trial replaces the trial before it — "play again" must not stack
   silence(A);
-  setDistance(A, 0.85);
   const base = build(t.seed, "random");
+  setDistance(A, 0.85, base.texture.courtly);
   const m = retune(base, t.cond);
   const t0 = A.ctx.currentTime + 0.15;
   const hymn = hymnSyllables(base, 10);
@@ -1256,7 +1256,7 @@ function wire() {
   $("occ").onchange = (e) => { S.occ = e.target.value; render(); };
   $("intim").oninput = (e) => {
     S.intimacy = +e.target.value;
-    if (A) setDistance(A, S.intimacy);
+    if (A) setDistance(A, S.intimacy, P.texture.courtly);
     const sp = e.target.parentElement.querySelector(".slv");
     if (sp) sp.textContent = S.intimacy > 0.66 ? "in the city" : S.intimacy > 0.33 ? "nearby" : "far off";
   };

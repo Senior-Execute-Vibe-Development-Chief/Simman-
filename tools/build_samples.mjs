@@ -104,7 +104,7 @@ const MAP = {
                  kind: "struck",  src: "Guiro", why: "a train of impacts as the scraper crosses the notches", unpitched: true },
   slitDrum:    { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Slit Drum",
                  kind: "struck",  src: "Slit Drum", why: "cantilever tongues cut into a hollowed log", unpitched: true },
-  panpipe:     { gm: "pan_flute", lo: "C4", hi: "C7", every: 3,
+  panpipe:     { gm: "pan_flute", lo: "C3", hi: "C7", every: 2,
                  kind: "sustain", src: "pan_flute", why: "a raft of stopped pipes, one per pitch" },
   // `musicalBow` has no openly-licensed recording anywhere I could find, so it
   // plays MODELLED. That is not a gap to apologise for — it is what the
@@ -221,7 +221,15 @@ function shape(pcm, rate, kind) {
   // A DRIVEN BODY HAS TO LOOP. The engine holds drones for ten seconds and no
   // sane bank ships ten-second samples, so a sustain keeps enough steady state
   // to loop inside; a struck or plucked one is its own whole decay.
-  const capSecs = kind === "sustain" ? 2.6 : 3.2;
+  //
+  // AND A LOOP ONLY NEEDS A LOOP'S WORTH. The sustain cap was 2.6 seconds,
+  // which is a performance, not a loop point — a second and a half of steady
+  // state after the attack is as much as any looper can use and the rest is
+  // bytes. That matters because the bank has to fit inside a single published
+  // page: densifying the starved families took it from 488 samples to 646 and
+  // the page from 13.8 MB to 17.7, over the 16 MB a page may be. Shortening
+  // what is already looped is the one saving that costs nothing audible.
+  const capSecs = kind === "sustain" ? 1.7 : 2.8;
   let n = Math.min(pcm.length - s, Math.round(rate * capSecs));
   const cut = pcm.subarray(s, s + n).slice();
   const fade = Math.min(Math.round(rate * 0.05), cut.length >> 2);
@@ -344,6 +352,8 @@ const RECORDED_MAT = {
   // a throat: no ore, no timber, no craft — the same body `MATERIALS.none`
   // stands for, since the hands and the folds are the two everybody has
   "Choir Aahs": "none",
+  Marimba: "wood", Glockenspiel: "iron", Vibraphone: "bronze",
+  "Steel Pan": "iron", "French Horn": "bronze",
 };
 // which engine family each named recording belongs to, so a derived body can
 // find it: the bench reaches these BY NAME, a generated people BY PHYSICS
@@ -390,6 +400,32 @@ const NAMED_FAM = {
  * 293.7 with nothing at 146. (Its own SFZ maps them an octave lower again;
  * the audio is the authority, not the mapping.)
  */
+/**
+ * MORE BODIES PER FAMILY, so a resampler has somewhere near to go.
+ *
+ * A recording is only itself at the pitches it was recorded at; everywhere else
+ * it is stretched, and stretching drags the body's resonances along with the
+ * note. Measured across the bench, the worst families were starved: `barSet`
+ * had SIX samples with a 700-cent hole in the middle, `horn` eleven with a
+ * 1400-cent one, and a gamelan's saron came out a mean 177 cents from anything
+ * ever recorded. That is the sound of a mosquito, and it is not the engine's
+ * fault — the CC0 balafon genuinely has six notes on it, C#3 F3 C4 F4 C5 F5.
+ *
+ * The fix is not to stretch more carefully, it is to have more to choose from.
+ * These join the same material-matched pool the named bench bodies do, so
+ * nothing reaches them by name: a bronze bar set finds the metal one, a wooden
+ * one finds the marimba, an iron one finds the steel pan. All are General MIDI,
+ * so all are CC BY 3.0 like the panpipe and the choir, and all are sampled
+ * across their whole compass rather than at six pitches.
+ */
+const POOL_GM = [
+  { gm: "glockenspiel", fam: "barSet", mat: "iron",   lo: "C4", hi: "C7", kind: "struck", src: "Glockenspiel" },
+  { gm: "marimba",      fam: "barSet", mat: "wood",   lo: "C2", hi: "C6", kind: "struck", src: "Marimba" },
+  { gm: "vibraphone",   fam: "barSet", mat: "bronze", lo: "C3", hi: "C6", kind: "struck", src: "Vibraphone" },
+  { gm: "steel_drums",  fam: "barSet", mat: "iron",   lo: "C3", hi: "C6", kind: "struck", src: "Steel Pan" },
+  { gm: "french_horn",  fam: "horn",   mat: "bronze", lo: "C2", hi: "C5", kind: "sustain", src: "French Horn" },
+];
+
 const NAMED_WAV = {
   "erhu": {
     repo: "erhu", dir: "Samples/sus", kind: "sustain", fam: "bowed", mat: "silk",
@@ -530,6 +566,38 @@ async function buildNamed() {
     } else {
       console.log(`  ${label.padEnd(12)} MISSING ${spec.dir}`);
     }
+  }
+  // THE POOL-ONLY SOURCES. Same path as the named bench bodies and the same
+  // every-two-semitones grid, but under labels no tradition uses — so nothing
+  // can reach them by NAME and they exist purely to give the material-matched
+  // pool somewhere near to land. See POOL_GM.
+  for (const spec of POOL_GM) {
+    const label = "pool:" + spec.gm;
+    const entries = [];
+    const lo = midiOf(spec.lo), hi = midiOf(spec.hi);
+    if (EMIT_ONLY) {
+      for (let mi = lo; mi <= hi; mi += 2) {
+        const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+        const file = `${spec.gm}_${Math.round(hz)}.mp3`;
+        if (existsSync(join(dir, file))) entries.push({ hz, file });
+      }
+    } else {
+      const map = gmNotes(spec.gm);
+      if (!map || !map.size) continue;
+      for (let mi = lo; mi <= hi; mi += 2) {
+        const b64 = map.get(nameOf(mi)) || map.get(SHARP[((mi % 12) + 12) % 12].replace("b", "#") + (Math.floor(mi / 12) - 1));
+        if (!b64) continue;
+        const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+        const file = `${spec.gm}_${Math.round(hz)}.mp3`;
+        const mp3 = Buffer.from(b64, "base64");
+        if (!existsSync(join(dir, file))) { writeFileSync(join(dir, file), mp3); bytes += mp3.length; files++; }
+        entries.push({ hz, file });
+      }
+    }
+    if (!entries.length) continue;
+    bank[label] = { src: spec.src, kind: spec.kind, like: null,
+      fam: spec.fam, mat: spec.mat, entries };
+    console.log(`  ${label.padEnd(18)} ${String(entries.length).padStart(3)} samples  ${spec.src} (pool only)`);
   }
   for (const [label, spec] of Object.entries(NAMED)) {
     if (EMIT_ONLY) {
@@ -679,7 +747,8 @@ ${gen}
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
   "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
-  "sfzinstruments/aliexpress-erhu (CC0). Panpipes, the choir and the named bench " +
+  "sfzinstruments/aliexpress-erhu (CC0). Panpipes, the choir, the marimba, "
+  + "glockenspiel, vibraphone, steel pan, French horn and the named bench " +
   "instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever

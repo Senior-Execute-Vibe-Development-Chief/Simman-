@@ -18,6 +18,13 @@ const build = (seed, trad) => {
 const MATS = { bone:[.55,.5], bamboo:[.6,.5], wood:[.42,.6], reed:[.5,.4], clay:[.35,.5],
   gut:[.4,1.2], silk:[.32,1.4], iron:[.75,2.2], bronze:[.7,3], hide:[.45,.35],
   stone:[.5,1.5], silver:[.8,2.5], horn:[.5,.6], gourd:[.4,.5], none:[.55,.09] };
+// the same score `sampledFor` uses: the right material, and enough of it
+const gapOf = (hz) => {
+  const v = [...hz].filter(x => x > 0).sort((a, b) => a - b);
+  if (v.length < 2) return 1200;
+  const g = []; for (let i = 1; i < v.length; i++) g.push(1200 * Math.log2(v[i] / v[i - 1]));
+  g.sort((a, b) => a - b); return g[Math.floor(g.length / 2)];
+};
 const matDist = (a, b) => {
   const X = MATS[a], Y = MATS[b];
   if (!X || !Y) return 9;
@@ -38,7 +45,8 @@ function bankFor(inst) {
   if (inst.sampleName && NAMED_BANK[inst.sampleName]) return NAMED_BANK[inst.sampleName].samples.map(s => s.hz);
   const p2 = POOL[inst.fam];
   if (!p2 || !p2.length) return null;
-  return p2.reduce((a, b) => (matDist(inst.mat, b.mat) < matDist(inst.mat, a.mat) ? b : a)).hz;
+  const sc = (c) => matDist(inst.mat, c.mat) + gapOf(c.hz) / 1200;
+  return p2.reduce((a, b) => (sc(b) < sc(a) ? b : a)).hz;
 }
 function report(tag, m) {
   const p = composePiece(m, "peace");

@@ -203,10 +203,31 @@ export function silence(A) {
 }
 
 /** Distance: far away, a settlement's music is dark and mostly reflection. */
-export function setDistance(A, intimacy) {
+/**
+ * Distance: far away, a settlement's music is dark and mostly reflection.
+ *
+ * AND THE ROOM IS WHERE THE MUSIC IS PLAYED. The reverberation was a constant —
+ * one 2.8-second hall over everything — so a drum ensemble that has never in
+ * its history been indoors was washed through a stone room, and a dense
+ * percussion part through a long tail is the thing a listener hears as echo
+ * before they hear anything else.
+ *
+ * `built` is how built the space is, and the engine already derives it as
+ * `texture.courtly`: a court, a temple and a concert hall are stone with a roof
+ * over them, and a village ensemble, a street procession and a panyard are
+ * outside, where there is nothing to reflect off at all. Measured across the
+ * bench it separates exactly the right way — European 1.0, gamelan and Chinese
+ * court 0.85, against West African 0.05, Aboriginal 0, Caribbean and flamenco
+ * 0.1 — which is to say the percussive traditions are the outdoor ones, and
+ * they are the ones that were drowning.
+ */
+export function setDistance(A, intimacy, built = 0.5) {
   const k = clamp(intimacy, 0, 1);
+  const b = clamp(built, 0, 1);
   A.tone.frequency.setTargetAtTime(1400 + 13000 * Math.pow(k, 1.35), A.ctx.currentTime, 0.12);
-  A.wet.gain.setTargetAtTime(0.38 - 0.2 * k, A.ctx.currentTime, 0.12);
+  // outdoors is nearly dry however far away you are; a hall is a hall, and at
+  // a distance in one you hear more reflection than direct sound
+  A.wet.gain.setTargetAtTime((0.05 + 0.25 * b) * (1.5 - 0.7 * k), A.ctx.currentTime, 0.12);
   A.dry.gain.setTargetAtTime(0.55 + 0.34 * k, A.ctx.currentTime, 0.12);
 }
 

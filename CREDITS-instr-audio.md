@@ -64,7 +64,16 @@ calls.
 | `musicalBow` | *(none)* | modelled: no openly-licensed recording exists |
 | `voice` | Choir Aahs | people singing, on the vowel that carries — **CC BY 3.0**, see below |
 
-**Two entries in this bank are not CC0: `panpipe` and `voice`.** Nobody has
+**Several entries in this bank are not CC0.** Besides `panpipe` and `voice`
+below, five General MIDI programs join the material-matched pool so that the
+families with the sparsest recordings have somewhere near to land: a **marimba**
+(wood), **glockenspiel** (iron), **vibraphone** (bronze) and **steel pan** (iron)
+for struck bar sets, and a **French horn** for lipped tubes. Nothing reaches
+them by name — they are keyed under labels no tradition uses — and they exist
+because the CC0 balafon has six recorded pitches with a 700-cent hole in it,
+which put a gamelan's saron a mean 177 cents from anything ever recorded.
+
+**Two entries are not CC0 for their own reasons: `panpipe` and `voice`.** Nobody has
 published an openly-licensed multisampled panpipe; General MIDI's pan flute is
 a real recording of one. And `voice` is not a family at all — it is the one
 body every people has without building it, and the engine can already sing a

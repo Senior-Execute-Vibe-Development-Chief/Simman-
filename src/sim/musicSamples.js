@@ -191,6 +191,18 @@ function matDist(a, b) {
  * A named body still keeps its family's KIND — whether it sustains, whether it
  * is plucked — because that is a fact about the thing, not about the recording.
  */
+/** The median gap between a recording's pitches, in cents — how far the player
+ *  has to drag a note, on average, to find one that was actually recorded. */
+function gapOf(c) {
+  if (c._gap != null) return c._gap;
+  const hz = c.entries.map(e => e.hz).filter(x => x > 0).sort((a, b) => a - b);
+  if (hz.length < 2) return (c._gap = 1200);
+  const gaps = [];
+  for (let i = 1; i < hz.length; i++) gaps.push(1200 * Math.log2(hz[i] / hz[i - 1]));
+  gaps.sort((a, b) => a - b);
+  return (c._gap = gaps[Math.floor(gaps.length / 2)]);
+}
+
 export function sampledFor(A, inst) {
   const fam = A.samples && A.samples[inst.fam];
   const nm = inst.sampleName && A.named && A.named[inst.sampleName];
@@ -199,9 +211,26 @@ export function sampledFor(A, inst) {
   }
   const pool = A.pool && A.pool[inst.fam];
   if (pool && pool.length > 1) {
+    // THE RIGHT MATERIAL, AND ENOUGH OF IT.
+    //
+    // Material alone decided this, and on a tie the first entry won — which is
+    // always the family recording, because that is the one pushed first. So a
+    // wooden bar set kept choosing the CC0 balafon, which has six recorded
+    // pitches with a 700-cent hole in the middle, over a marimba of the same
+    // material sampled every two semitones across five octaves. Measured, that
+    // put a gamelan's saron a mean 177 cents from anything ever recorded and a
+    // steel pan 161 — which is what a stretched sample sounds like, and what
+    // gets described as a mosquito.
+    //
+    // A recording is only itself near the pitches it was made at, so how DENSE
+    // it is decides how often it can be itself. Score both: the distance in
+    // material, plus the bank's own median gap expressed in octaves, so a
+    // sparser recording has to be a better material match to win. A body still
+    // never reaches a recording by name — only by what it is made of and by
+    // what that recording can actually cover.
     let best = pool[0], bestD = Infinity;
     for (const c of pool) {
-      const d = matDist(inst.mat, c.mat);
+      const d = matDist(inst.mat, c.mat) + gapOf(c) / 1200;
       if (d < bestD) { bestD = d; best = c; }
     }
     return best;
