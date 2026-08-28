@@ -586,14 +586,67 @@ function instrumentsHTML(m) {
  * shrugging about the fifty cents is how it stops being Rast. Those are marked
  * as sitting between the names rather than dressed up as one of them.
  */
+// SPELLING, not just naming. A pitch class has two names and only one of them
+// is right in context: E Mixolydian goes E F♯ G♯ A B C♯ D, never E G♭ A♭ A B
+// D♭ D — same sounds, and the second one is unreadable because it uses A and D
+// twice and never uses F, G or C. So the scale is spelled the way a musician
+// would: each degree takes the next letter of the alphabet, and the accidental
+// is however far that letter has to move. Ḥijāzkār comes out D E♭ F♯ G A B♭ C♯,
+// mixing flats and sharps, which is exactly how the double harmonic is written.
+const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+const ACCIDENTAL = { "-2": "\ud834\udd2b", "-1": "\u266d", 0: "", 1: "\u266f", 2: "\ud834\udd2a" };
 const PITCH_NAMES = ["C", "C\u266f", "D", "E\u266d", "E", "F", "F\u266f", "G", "A\u266d", "A", "B\u266d", "B"];
-function noteName(hz) {
+/** Spell a run of pitches as a scale: letters in order, smallest accidentals. */
+function spell(midis) {
+  const out = [];
+  let li = -1;
+  const used = new Set();
+  for (let k = 0; k < midis.length; k++) {
+    const pc = ((Math.round(midis[k]) % 12) + 12) % 12;
+    const off = (cand) => {
+      let d = pc - LETTER_PC[cand];
+      while (d > 6) d -= 12;
+      while (d < -6) d += 12;
+      return d;
+    };
+    let best = null;
+    if (k === 0) {
+      // the tonic takes whichever letter needs the smallest accidental
+      for (let c = 0; c < 7; c++) {
+        const d = off(c);
+        if (best === null || Math.abs(d) < Math.abs(best.d)) best = { c, d };
+      }
+    } else {
+      // …and every degree after it takes the next letter FORWARD that can
+      // reach the pitch without an outlandish accidental. Forcing literally
+      // the next letter is what a seven-note scale wants and what a
+      // PENTATONIC does not: five notes skip letters, and insisting they do
+      // not spelled the 宮 pentatonic as D E F♯ G𝄪 A𝄪 instead of D E F♯ A B.
+      for (const tol of [1, 2]) {
+        for (let step = 1; step <= 7 && !best; step++) {
+          const c = (li + step) % 7;
+          if (used.has(c)) continue;
+          const d = off(c);
+          if (Math.abs(d) <= tol) best = { c, d };
+        }
+        if (best) break;
+      }
+    }
+    if (!best) { out.push(null); continue; }
+    li = best.c; used.add(best.c);
+    out.push(LETTERS[best.c] + ACCIDENTAL[String(best.d)]);
+  }
+  return out;
+}
+function noteName(hz, spelled) {
   if (!(hz > 0)) return null;
   const midi = 69 + 12 * Math.log2(hz / 440);
   const near = Math.round(midi);
   const cents = Math.round((midi - near) * 100);
+  const letter = spelled || PITCH_NAMES[((near % 12) + 12) % 12];
   return {
-    name: PITCH_NAMES[((near % 12) + 12) % 12] + (Math.floor(near / 12) - 1),
+    name: letter + (Math.floor(near / 12) - 1),
     cents, hz,
     // 35 cents is where a deviation stops reading as an out-of-tune version of
     // the named note and starts reading as a pitch of its own — the boundary
@@ -614,7 +667,10 @@ function tuningHTML(m) {
   // the pitch this people's home actually sounds at, so every name below is
   // the note you hear rather than a note relative to an imaginary C
   const tonic = tonicOf(m, S.occ);
-  const sung = fromHome.map(c => noteName(tonic * Math.pow(2, c / 1200)));
+  const midiOfHz = (h) => 69 + 12 * Math.log2(h / 440);
+  const modeSpell = spell(fromHome.map(c => midiOfHz(tonic * Math.pow(2, c / 1200))));
+  const sung = fromHome.map((c, i) => noteName(tonic * Math.pow(2, c / 1200), modeSpell[i]));
+  const degSpell = spell(d.map((x, i) => midiOfHz(degreeHz(m, tonic, i, 0))));
   const tween = sung.filter(n => n.between).length;
   return `<div class="card">
     <h2>The scale they found <span class="count">— derived, not chosen</span></h2>
@@ -626,7 +682,7 @@ function tuningHTML(m) {
     <canvas id="curve"></canvas>
     <div class="degrees">${d.map((x, i) => {
       const nj = nearJust(x.ratio);
-      const nn = noteName(degreeHz(m, tonic, i, 0));
+      const nn = noteName(degreeHz(m, tonic, i, 0), degSpell[i]);
       return `<button class="deg${x.found ? "" : " measured"}${inMode.has(i) ? " inmode" : ""}${i === homeIdx ? " home" : ""}" data-deg="${i}"
           title="${x.found ? "heard — a roughness minimum of their own instruments" : "measured — an even division of their frame, where the timbre gave no dip to find"}">
         <span class="dc">${x.cents.toFixed(0)}<i>¢</i></span>

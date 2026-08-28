@@ -38,8 +38,14 @@ export const TRADITIONS = {
     // the string. That is Pythagorean by construction, so the thirds are wide
     // (408, not 386) and the whole scale is built out of 3:2s.
     frame: 1200,
-    scale: [0, 204, 408, 612, 702, 906, 1110],      // seven-tone 雅樂, 變徵 and 變宮 included
-    mode: [0, 204, 408, 702, 906],                  // 宮 商 角 徵 羽 — the pentatonic actually sung
+    // 五聲, the five tones, and nothing else. The seven-tone 雅樂 scale used to
+    // sit underneath this with 變徵 and 變宮 added — a real court extension, and
+    // a tritone away from the tonic that no 五聲 melody ever touches. Keeping it
+    // as the scale and the pentatonic as its mode was true to the theory and
+    // wrong as a reference: what anyone recognises as Chinese is the five, and
+    // the two extra degrees only ever appeared on the page.
+    scale: [0, 204, 408, 702, 906],                 // 宮 商 角 徵 羽
+    mode: [0, 204, 408, 702, 906],
     finalIdx: 0,
     insts: [
       { fam: "luteNeck", mat: "silk", frame: "wood", label: "guqin", cap: 14, weight: 1.0, role: "lead" },
@@ -57,18 +63,20 @@ export const TRADITIONS = {
   },
 
   celtic: {
-    label: "Highland pipes and fiddle",
-    gloss: "the measured pipe scale — flat seventh, wide fourth — over a fixed drone",
-    // The Highland chanter is NOT diatonic and not equal. These are the
-    // measured intervals from low A, and the famously "off" high G (about 1010
-    // cents, between a minor and a major seventh) is the reason a pipe band
-    // sounds like nothing else. Idealising it to a diatonic scale would be
-    // exactly the kind of tidying this file exists to avoid.
+    label: "Irish and Scottish — Mixolydian",
+    gloss: "major with a flat seventh, pipes and fiddle over a drone",
+    // THE FLAT SEVENTH IS THE WHOLE THING. Take a major scale, lower its
+    // seventh, and you have the modal colour that most Irish and Scottish
+    // dance music actually lives in — the one that lets a tune sit over a
+    // single drone forever without ever wanting to resolve upward, which is
+    // why a bagpipe can play it at all.
+    //
+    // Just, because a fiddle and a pipe chanter are tuned to each other by ear
+    // and a drone is what they tune against: 9/8, 5/4, 4/3, 3/2, 5/3, 16/9.
     frame: 1200,
-    scale: [0, 197, 341, 495, 700, 890, 1010],
-    mode: [0, 197, 341, 495, 700, 890, 1010],
+    scale: [0, 204, 386, 498, 702, 884, 996],
+    mode: [0, 204, 386, 498, 702, 884, 996],
     finalIdx: 0,
-    drone: true,
     insts: [
       { fam: "reedPipe", mat: "reed", label: "chanter", cap: 9, weight: 1.0, role: "lead" },
       { fam: "reedPipe", mat: "reed", label: "drones", cap: 1, weight: 0.9, role: "drone" },
@@ -76,25 +84,60 @@ export const TRADITIONS = {
       { fam: "fluteOpen", mat: "wood", label: "whistle", cap: 8, weight: 0.6 },
       { fam: "frameDrum", mat: "hide", frame: "wood", label: "bodhrán", cap: 1, weight: 0.5 },
     ],
-    // a reel: even quavers at a dance tempo, no swing, and no rest anywhere
-    rhythm: { tempo: 116, meterKind: "duple", beats: 4, div: 2, density: 0.9, syncopation: 0.12, swing: 0 },
-    texture: { kind: "drone", size: 4, ornament: 0.95, sustains: true, courtly: 0.15 },
-    melody: { step: 0.72, arch: 0.36, descent: 0.5, breathBound: false, toneBound: false, reach: 9 },
-    note: "The chanter has no rests and no dynamics — the bag never stops — so the ornaments (cuts, strikes, rolls) do the work that articulation does elsewhere, which is why the ornament dial is nearly at its ceiling.",
+    rhythm: { tempo: 132, meterKind: "compound", beats: 2, div: 3, density: 0.9, syncopation: 0.12, swing: 0.15 },
+    texture: { kind: "drone", size: 3, ornament: 0.9, sustains: true, courtly: 0.1 },
+    melody: { step: 0.8, arch: 0.36, descent: 0.45, breathBound: true, toneBound: false, reach: 9 },
+    note: "A bagpipe has no dynamics and cannot stop: everything expressive it does is ornament, which is why the chanter's grace-note vocabulary is the size it is.",
+  },
+
+  celticPipes: {
+    label: "Highland pipes — as measured",
+    gloss: "the real chanter scale, neutral third and all: not a mode anybody wrote down",
+    // The Highland pipe scale as MEASURED off a chanter rather than as
+    // idealised: a third at 341 cents that is neither major nor minor, a
+    // seventh at 1010, and a fourth two cents flat. It is kept beside the
+    // Mixolydian above for the same reason maqām Rast is kept beside
+    // Ḥijāzkār — it is one of the bench's two genuinely neutral intervals,
+    // and a reference bench that holds only the intervals a keyboard can play
+    // is not testing anything.
+    frame: 1200,
+    scale: [0, 197, 341, 495, 700, 890, 1010],
+    mode: [0, 197, 341, 495, 700, 890, 1010],
+    finalIdx: 0,
+    insts: [
+      { fam: "reedPipe", mat: "reed", label: "chanter", cap: 9, weight: 1.0, role: "lead" },
+      { fam: "reedPipe", mat: "reed", label: "drones", cap: 1, weight: 0.9, role: "drone" },
+      { fam: "bowed", mat: "gut", frame: "wood", label: "fiddle", cap: 14, weight: 0.8 },
+      { fam: "fluteOpen", mat: "wood", label: "whistle", cap: 8, weight: 0.6 },
+      { fam: "frameDrum", mat: "hide", frame: "wood", label: "bodhrán", cap: 1, weight: 0.5 },
+    ],
+    rhythm: { tempo: 132, meterKind: "compound", beats: 2, div: 3, density: 0.9, syncopation: 0.12, swing: 0.15 },
+    texture: { kind: "drone", size: 3, ornament: 0.9, sustains: true, courtly: 0.1 },
+    melody: { step: 0.8, arch: 0.36, descent: 0.45, breathBound: true, toneBound: false, reach: 9 },
+    note: "Given as measured, so the third sits between major and minor where a chanter really puts it — the interval that makes pipe music sound like nothing else and like nothing on a piano.",
   },
 
   hindustani: {
-    label: "Hindustani — rāg Yaman",
-    gloss: "just intonation over a tānpūrā drone, with sympathetic strings",
-    // Yaman (Kalyan thāṭ): S R G M♯ P D N, read as shrutis — a just major
-    // scale with the sharp fourth. The tīvra Ma at 590 is the note the rāg
-    // turns on.
+    label: "Hindustani — rāg Bhairavī",
+    gloss: "every degree flattened but the fourth and fifth, sitār over a tānpūrā",
+    // BHAIRAVĪ IS THE ONE EVERYBODY KNOWS. Komal re, ga, dha and ni — the
+    // second, third, sixth and seventh all flat — which is Phrygian, and which
+    // is the sound a listener anywhere in the world hears as Indian. It is
+    // also the rāg a Hindustani concert traditionally ends on, so it is
+    // canonical as well as recognisable, which is not always the same thing.
+    //
+    // Rāg Yaman stood here before, and Yaman is the rāg every student learns
+    // first — but it is LYDIAN, a major scale with a raised fourth, and to an
+    // ear that has not been taught it that reads as dreamy Western rather than
+    // as Indian at all.
+    //
+    // Given as its shruti reading, which is just: 16/15, 6/5, 4/3, 3/2, 8/5,
+    // 9/5. A sitār has movable frets and a tānpūrā under everything, so the
+    // ratios are what the ear tunes to and not an approximation of them.
     frame: 1200,
-    scale: [0, 204, 386, 590, 702, 884, 1088],
-    mode: [0, 204, 386, 590, 702, 884, 1088],
+    scale: [0, 112, 316, 498, 702, 814, 1018],
+    mode: [0, 112, 316, 498, 702, 814, 1018],
     finalIdx: 0,
-    drone: true,
-    symp: true,
     insts: [
       { fam: "luteNeck", mat: "silk", frame: "gourd", label: "sitār", cap: 14, weight: 1.0, role: "lead", symp: true },
       { fam: "lyre", mat: "silk", frame: "gourd", label: "tānpūrā", cap: 4, weight: 0.9, role: "drone" },
@@ -281,10 +324,28 @@ export function applyTradition(m, key, deps) {
     return bi;
   });
   const modeCents = idx.map(i => T.scale[i]);
+  // A PINNED TRADITION'S HOME IS PART OF THE ANSWER.
+  //
+  // `finalsOf` ranks a mode's members by how much of the mode already lives in
+  // each one's own harmonic series, and `finalFor` then hands a working day
+  // the brightest of them and a rite the darkest. That is exactly right for a
+  // DERIVED people — rotating the final is the lever real traditions use for
+  // affect, and the pitches do not change.
+  //
+  // It is exactly wrong for a pinned one. A maqām rotated onto a different
+  // degree is a different maqām; a rāg played from its fifth is a different
+  // rāg. Every entry in this table has always declared a `finalIdx` and this
+  // function has never read it, so the bench spent its whole life playing
+  // Ḥijāzkār from wherever the roughness curve found brightest — measured just
+  // now, five of the seven entries came out rotated, which is five of them
+  // testing something other than what they say they are.
+  const fi = Math.max(0, Math.min(idx.length - 1, T.finalIdx ?? 0));
+  const ranked = finalsOf(modeCents, frameC);
   m.mode = {
     idx, cents: modeCents, size: idx.length,
     steps: modeCents.slice(1).map((c, i) => c - modeCents[i]).concat([frameC - modeCents[modeCents.length - 1]]),
-    finals: finalsOf(modeCents, frameC),
+    // one candidate, so every occasion resolves to it
+    finals: [ranked.find(x => x.f === fi) || { f: fi, bright: 0 }],
   };
 
   // ── metre, texture, line ──
