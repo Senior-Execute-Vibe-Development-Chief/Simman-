@@ -77,13 +77,103 @@ export const OCCASIONS = {
   // the darkest degree, a festival the brightest. What changes is that the
   // everyday piece is now a people's own tonic, which is also the only one that
   // differs between them.
-  peace:    { label: "everyday",  bright: 0,  tempo: 1.06, density: 1.15, reg: 0.35, perc: 0.7,  orn: 0.7,  drone: 0.4,  descent: 0.8,  artic: 0.98,  lead: null },
+  // ATMOSPHERE is the one occasion with no event in it, so nothing outside the
+  // music decides how it goes — the MODE does. Every number in this row is
+  // replaced by `affectOf` below; what is written here is only the fallback.
+  peace:    { label: "atmosphere", bright: 0,  tempo: 1.0,  density: 1.05, reg: 0.2,  perc: 0.6,  orn: 0.8,  drone: 0.5,  descent: 0.85, artic: 1.0,   lead: null },
   rite:     { label: "rite",      bright: -1, tempo: 0.74, density: 0.8,  reg: 0,    perc: 0.3,  orn: 1.2,  drone: 1,    descent: 1.05, artic: 1.05, lead: "sustain" },
   war:      { label: "war",       bright: 0,  tempo: 1.3,  density: 1.15, reg: -0.6, perc: 1,    orn: 0.3,  drone: 0.5,  descent: 0.85, artic: 0.8,  lead: "loud" },
   mourning: { label: "mourning",  bright: -1, tempo: 0.64, density: 0.62,  reg: -0.4, perc: 0.16, orn: 1,    drone: 0.9,  descent: 1.35, artic: 1.1,    lead: "sustain" },
   festival: { label: "festival",  bright: 1,  tempo: 1.22, density: 1.3,  reg: 0.5,  perc: 1,    orn: 0.7,  drone: 0.35, descent: 0.85, artic: 0.86, lead: null },
   work:     { label: "work",      bright: 0,  tempo: 1,    density: 1.2, reg: 0.2,  perc: 0.9,  orn: 0.4,  drone: 0.35, descent: 0.95, artic: 0.9, lead: null },
 };
+
+// ── how a mode wants to be played ────────────────────────────────────────
+/**
+ * A SCALE ALREADY CONTAINS ITS OWN ATMOSPHERE, and it is in the steps.
+ *
+ * Ḥijāz is not played slowly, over a drone, drenched in ornament because
+ * somebody decided maqām music should be sultry. It is played that way because
+ * of what its steps ARE: four of its seven are about a semitone, and a step
+ * that small does not stand as a degree of its own — it LEANS on the one above
+ * it. A leaning tone needs time to lean, something fixed to lean against, and
+ * an ornament to lean with, so the tempo drops, a drone appears and the
+ * decoration thickens. Every one of those is a consequence, not a taste.
+ *
+ * The same reading gives the rest of it. A mode whose steps are all a tone or
+ * a minor third has nothing leaning anywhere, so it can move, needs no drone
+ * to be heard against, and takes percussion happily — which is a Chinese
+ * anhemitonic pentatonic, and it comes out bright and quick. A mode with
+ * 400-cent GAPS in it cannot be filled in at speed without turning the gaps
+ * into runs, so it thins out and lets the notes ring — which is in-sen, and it
+ * comes out sparse. None of those three traditions is named anywhere below.
+ *
+ * Two thresholds, both about what a step DOES rather than what it measures:
+ *   · under about 150 cents a step pulls toward its neighbour instead of
+ *     standing on its own — the leading-tone effect, and the whole of what
+ *     makes a mode sound like it is yearning at something;
+ *   · over about 330 cents, wider than a major third, it stops being a step at
+ *     all and becomes a gap the line has to leap.
+ */
+const LEAN_STEP = 150;
+const GAP_STEP = 330;
+export function affectOf(music) {
+  if (music._affect) return music._affect;
+  const st = music.mode.steps.filter(x => x > 0);
+  const n = st.length || 1;
+  const lean = st.filter(x => x < LEAN_STEP).length / n;
+  const gap = st.filter(x => x > GAP_STEP).length / n;
+  // how much of the mode already lives inside its own home's harmonic series —
+  // the same measure `finalsOf` ranks finals by, read at the home it actually
+  // uses rather than at the brightest one available
+  const fs = music.mode.finals || [];
+  const open = Math.max(0, Math.min(1, ((fs.find(x => x.f === 0) || fs[0] || { bright: 0.3 }).bright) * 1.5));
+  // AND WHETHER THE ROOM CAN HOLD A NOTE. A drone and a long line are only
+  // available to a people who built something that sustains; a room of plucked
+  // and struck bodies cannot play atmospherically however its mode leans.
+  const holds = music.insts.filter(i => i.kind === "sustain").length / Math.max(1, music.insts.length);
+  return (music._affect = { lean, gap, open, holds });
+}
+/**
+ * The occasion, as this people's music actually takes it. Every occasion but
+ * one is an EVENT — a rite, a war, a feast — and an event dictates its own
+ * terms, so those rows stand as written. Atmosphere is the absence of an
+ * event, so there is nothing to dictate anything and the mode is left to say
+ * how it goes.
+ */
+export function occasionFor(music, occKey) {
+  const O = OCCASIONS[occKey] || OCCASIONS.peace;
+  if (occKey !== "peace" || !music || !music.mode) return O;
+  const key = "_occ:" + occKey;
+  if (music[key]) return music[key];
+  const { lean, gap, open, holds } = affectOf(music);
+  const sus = 0.35 + 0.65 * holds;          // what the ensemble can actually hold
+  return (music[key] = { ...O,
+    // NOBODY IS DANCING. That is what distinguishes this occasion from every
+    // other one in the table: a war march, a feast and a work song all have
+    // somebody moving to them and a tempo that follows the moving. An
+    // atmosphere has none, so it sits under the tradition's own characteristic
+    // tempo — which for a reel tradition is a dance tempo and would otherwise
+    // come out at 142 beats a minute with drones over it. On top of that, a
+    // leaning tone needs time to lean and a gap needs room to be crossed.
+    tempo: 0.86 - 0.26 * lean - 0.16 * gap + 0.10 * open,
+    // and it needs something fixed to lean against — which only a body that
+    // sustains can provide
+    drone: Math.min(1, (0.18 + 0.85 * lean) * sus),
+    // …and something to lean WITH
+    orn: 0.45 + 1.0 * lean,
+    // gaps thin a texture out: they cannot be filled at speed without becoming
+    // runs, so the notes get fewer and longer instead
+    density: 1.2 - 0.75 * gap - 0.2 * lean,
+    artic: 0.95 + 0.3 * gap + 0.1 * lean,
+    // percussion belongs to a music with a beat to mark, not to one holding a
+    // note against a drone
+    perc: Math.max(0.1, 0.85 - 0.7 * lean - 0.3 * gap),
+    // an open mode sits up in the light; a shaded one sits low
+    reg: -0.25 + 0.8 * open,
+    descent: 0.8 + 0.25 * lean,
+  });
+}
 
 // ── the grid ─────────────────────────────────────────────────────────────
 /**
@@ -819,7 +909,7 @@ export function modeDegree(music, mi) {
  *  the brightest final the mode offers; a rite or a lament takes a shaded one.
  *  Same pitches either way. */
 export function finalFor(music, occKey) {
-  const want = (OCCASIONS[occKey] || OCCASIONS.peace).bright ?? 0;
+  const want = occasionFor(music, occKey).bright ?? 0;
   const fs = music.mode.finals;
   if (!fs || !fs.length) return 0;
   if (want > 0) return fs.reduce((a, b) => (b.bright > a.bright ? b : a)).f;
@@ -848,7 +938,7 @@ export function finalFor(music, occKey) {
 export function phraseBank(music, occKey) {
   const key = "_bank:" + occKey;
   if (music[key]) return music[key];
-  const O = OCCASIONS[occKey] || OCCASIONS.peace;
+  const O = occasionFor(music, occKey);
   const fin = finalFor(music, occKey);
   const R = music.rhythm, G = gridOf(R);
   // A PHRASE IS NOT A BAR. It used to be exactly one metrical cycle, and after
@@ -1129,7 +1219,7 @@ export function cycleBars(music) {
  *     drone holding still is exactly what makes the movement audible.
  */
 export function sectionsOf(music, occKey) {
-  const F = music.form, O = OCCASIONS[occKey] || OCCASIONS.peace;
+  const F = music.form, O = occasionFor(music, occKey);
   const seed = hash32(music.people.seed, "form", occKey);
   const n = Math.max(3, Math.min(7, F.sections + 2));
   const stable = music.melody.structural;
@@ -1354,7 +1444,7 @@ function drumEnsemble(music, G, cycleSlots, seed, hands, dens) {
 /** Assign instruments to parts. */
 
 export function ensembleFor(music, occKey, intimacy = 1) {
-  const occ = OCCASIONS[occKey] || OCCASIONS.peace;
+  const occ = occasionFor(music, occKey);
   const insts = music.insts;
   // WHAT CAN CARRY A TUNE is derived in musicInstruments.js from how definite
   // the pitch is, how many pitches the player can place, whether the body can
@@ -2145,7 +2235,7 @@ export function composePiece(music, occKey = "peace", syls = null, intimacy = 1)
   }
   const all = sections.flatMap(s => s.events);
   const leadDurs = all.filter(e => e.role === "lead").map(e => e.dur);
-  const R = music.rhythm, O = OCCASIONS[occKey] || OCCASIONS.peace;
+  const R = music.rhythm, O = occasionFor(music, occKey);
   return {
     sections, events: all, totalBeats: beat, tempo: Math.round(R.tempo * O.tempo),
     occ: occKey, nPVI: nPVI(leadDurs), grid: gridOf(R),

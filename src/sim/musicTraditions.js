@@ -370,5 +370,14 @@ export function applyTradition(m, key, deps) {
   m.pull = 0;                                // a pinned tuning is not regularised toward anything
   m.tradition = { key, ...T };
   m.people.name = T.label;
+  // ANYTHING MEMOISED ON THIS PEOPLE WAS COMPUTED FROM THE MODE THEY HAD
+  // BEFORE, and this function has just replaced it. `affectOf` reads the mode's
+  // steps, `occasionFor` reads `affectOf`, `phraseBank` reads both, and
+  // `signatureOf` reads the mode — every one of them caches on the object. A
+  // tradition applied after any of those had run would be played with the
+  // derived people's character on the pinned people's scale.
+  for (const k of Object.keys(m)) {
+    if (k === "_affect" || k === "_sig" || k.startsWith("_occ:") || k.startsWith("_bank:")) delete m[k];
+  }
   return m;
 }
