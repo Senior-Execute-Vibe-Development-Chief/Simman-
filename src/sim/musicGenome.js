@@ -326,7 +326,31 @@ export function musicOf(people) {
   // in deriveScale: with the reference amplified into this decision too, one
   // minority bar set could put a string-and-pipe culture's octave at a minor
   // sixth, in 12 peoples out of 100.)
-  const radiated = ensembleSpectrum(insts, insts.map(i => i.weight));
+  // …AND THE ENSEMBLE INCLUDES THE SINGER. Every people in this world has a
+  // voice — `instrumentariumOf` says so in as many words, and `ensembleFor`
+  // gives one to every piece — and the voice was the one member missing from
+  // this spectrum, because it is not a body anyone builds and so never
+  // appeared in the list of bodies.
+  //
+  // It matters here more than anywhere, because what this spectrum decides is
+  // the FRAME: the interval a people's music repeats at. A bar set genuinely
+  // has no octave — its partials run 1 : 2.756 : 5.404 and nothing reinforces
+  // 2 : 1 — so a metal-led ensemble asked on its own where to repeat answers
+  // somewhere else entirely. Measured, ten peoples in a hundred and fifty-nine
+  // came back repeating at 911, 987 or 1004 cents, and five of those are the
+  // five whose music measures worst in the whole corpus: folding a line into a
+  // body's range across a 911-cent frame moves its pitch class by 289 cents
+  // every time it wraps, so two instruments an octave apart were not playing
+  // the same note.
+  //
+  // Real metallophone traditions repeat at the octave regardless, and the
+  // reason is not in the metal. Octave equivalence is a fact about EARS, and
+  // it comes from the harmonic series of the voice — which every gamelan
+  // player also owns. So the singer joins the ensemble that decides this, at
+  // one member's weight, and cannot be outvoted by a body nobody can sing.
+  const voiceSpec = Array.from({ length: 10 }, (_, i) => ({ f: 220 * (i + 1), a: Math.pow(0.82, i) }));
+  const radiated = ensembleSpectrum(insts, insts.map(i => i.weight))
+    .concat(voiceSpec.map(p2 => ({ f: p2.f, a: p2.a * 0.34 })));
   // how many pitches the ensemble can actually sound: the best-endowed
   // melodic body sets the ceiling. A six-hole pipe tradition stays pentatonic
   // because of the pipe, not because anyone chose pentatonicism.
