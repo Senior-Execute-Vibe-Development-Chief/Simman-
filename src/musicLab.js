@@ -426,6 +426,199 @@ function playPiece() {
   return piece;
 }
 
+// ── the listening test ───────────────────────────────────────────────────
+//
+// WHICH PART SOUNDS WRONG? Rating whole pieces only ever gives a correlation,
+// and this engine has already had two of those turn out to be the wrong
+// variable — "the narrow steps are the problem" (they are not: a just diatonic
+// semitone measures rougher than the step that was blamed) and "the bumpy
+// curves are the problem" (curve depth separated none of the five peoples
+// judged by ear). What settles a question like that is an ABLATION: play the
+// same people with one layer changed at a time, and the layer whose change
+// moves the rating is the layer at fault.
+//
+// The decisive pair is `full` against `tuned12`. Both are the same composition,
+// the same bodies, the same rhythm, the same everything — rendered once through
+// this people's own derived scale and once through equal temperament. If the
+// tempered one is rated better, the tuning is the fault. If they rate the same,
+// the tuning is exonerated no matter how the dissonance curve looks, and the
+// fault is in the line, the texture or the synthesis. `melody` and `backing`
+// then split those.
+//
+// Trials are BLIND — the condition is hidden until after the rating — and drawn
+// at random, so stopping at any point leaves a balanced sample rather than a
+// truncated sweep.
+const TRIALS = [
+  { key: "full",    what: "the piece exactly as the engine makes it — the control" },
+  { key: "tuned12", what: "the same piece, same tune, same bodies, with every scale degree snapped to equal temperament" },
+  { key: "justdia", what: "the same piece again, with every degree snapped to the nearest simple whole-number ratio" },
+  { key: "melody",  what: "the tune alone, on the body that leads it — no accompaniment, no percussion" },
+  { key: "backing", what: "everything EXCEPT the tune — the accompaniment, the drone, the percussion" },
+  { key: "scale",   what: "no music at all: just the scale, one degree at a time, then each against the tonic" },
+];
+const JUST_RATIOS = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 7 / 5, 3 / 2, 8 / 5, 5 / 3, 7 / 4, 9 / 5, 15 / 8, 2];
+
+/** Re-pitch a people's scale without touching anything else about them, so the
+ *  SAME composition can be rendered through a different tuning. The mode's
+ *  indices, the instruments, the rhythm and every event are untouched — only
+ *  where the degrees sit moves. */
+function retune(m, how) {
+  if (how === "full") return m;
+  const F = m.scale.frame.cents;
+  const degrees = m.scale.degrees.map((d) => {
+    let cents = d.cents;
+    if (how === "tuned12") cents = Math.round(d.cents / 100) * 100;
+    else if (how === "justdia") {
+      let best = d.cents, bd = Infinity;
+      for (const r of JUST_RATIOS) {
+        const c = 1200 * Math.log2(r);
+        if (Math.abs(c - d.cents) < bd) { bd = Math.abs(c - d.cents); best = c; }
+      }
+      cents = best;
+    }
+    return { ...d, cents, ratio: Math.pow(2, cents / 1200) };
+  });
+  const frame = how === "tuned12"
+    ? { ...m.scale.frame, cents: Math.round(F / 100) * 100, ratio: Math.pow(2, Math.round(F / 100) * 100 / 1200) }
+    : m.scale.frame;
+  return { ...m, scale: { ...m.scale, degrees, frame } };
+}
+
+const LT = { trial: null, log: [], on: false, last: null };
+function ltLoad() {
+  try { LT.log = JSON.parse(localStorage.getItem("musiclab.listen") || "[]"); } catch { LT.log = []; }
+  if (!Array.isArray(LT.log)) LT.log = [];
+}
+function ltSave() {
+  try { localStorage.setItem("musiclab.listen", JSON.stringify(LT.log)); } catch { /* private window */ }
+}
+/** Draw the next trial: a people at random from a fixed pool, a condition at
+ *  random. The pool is fixed so the same peoples recur across conditions —
+ *  which is what makes the comparison within-subject and the ablation work. */
+function ltNext() {
+  const pool = [1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042, 1043, 1044, 2025, 4242];
+  const seed = pool[Math.floor(Math.random() * pool.length)];
+  const cond = TRIALS[Math.floor(Math.random() * TRIALS.length)];
+  LT.trial = { seed, cond: cond.key, played: false };
+  return LT.trial;
+}
+function ltPlay() {
+  const t = LT.trial;
+  if (!t) return;
+  const A = audio();
+  if (S.playing) stopAmbient();
+  setDistance(A, 0.85);
+  const base = build(t.seed, "random");
+  const m = retune(base, t.cond);
+  const t0 = A.ctx.currentTime + 0.15;
+  if (t.cond === "scale") {
+    // no music at all — the tuning on its own, then each degree against the
+    // tonic, which is the only way to hear an interval rather than a tune
+    const lead = m.insts.find(i => i.cap >= 5) || m.insts[0];
+    const tonic = tonicOf(m, "peace");
+    const n = m.mode.size;
+    for (let i = 0; i <= n; i++) {
+      playNote(A, lead, degreeHz(m, tonic, modeDegree(m, i % n), i === n ? 1 : 0), t0 + i * 0.42, 0.4, 0.42,
+        { role: "lead", channel: "lt:run" });
+    }
+    for (let i = 1; i < n; i++) {
+      const at = t0 + (n + 1) * 0.42 + 0.3 + (i - 1) * 0.85;
+      playNote(A, lead, degreeHz(m, tonic, 0, 0), at, 0.8, 0.4, { role: "lead", channel: "lt:a" });
+      playNote(A, lead, degreeHz(m, tonic, modeDegree(m, i), 0), at, 0.8, 0.4, { role: "lead", channel: "lt:b" });
+    }
+    t.played = true;
+    return;
+  }
+  const hymn = hymnSyllables(base, 10);
+  const piece = composePiece(base, "peace", hymn.syls, 0.85);
+  const spb = 60 / piece.tempo;
+  const lead = new Set(["lead", "voice", "het", "elab"]);
+  for (const ev of piece.events) {
+    if (ev.role === "voice") continue;
+    if (t.cond === "melody" && !lead.has(ev.role)) continue;
+    if (t.cond === "backing" && lead.has(ev.role)) continue;
+    fireEvent(m, ev, t0 + ev.b * spb, spb, 1);
+  }
+  if (t.cond !== "backing") {
+    fireVoiceLine(m, piece.events.filter(e => e.role === "voice"), t0, spb, 1,
+      { syls: hymn.syls, acc: hymn.acc, rotate: true });
+  }
+  t.played = true;
+}
+function ltRate(score) {
+  const t = LT.trial;
+  if (!t || !t.played) return;
+  LT.log.push({ seed: t.seed, cond: t.cond, score, at: Date.now() });
+  ltSave();
+  // REVEALED ONLY NOW. Blind while you are judging it, named the moment you
+  // have, because a pattern you notice yourself is worth as much as one that
+  // falls out of the table.
+  LT.last = { ...t, score };
+  ltNext();
+  render();
+}
+/** What the ratings say so far, per condition — shown live, because a pattern
+ *  you can see after twenty trials is worth more than one you confirm after a
+ *  hundred. */
+function ltSummary() {
+  const by = new Map();
+  for (const r of LT.log) {
+    const b = by.get(r.cond) || { n: 0, sum: 0, bad: 0 };
+    b.n++; b.sum += r.score; if (r.score === 0) b.bad++;
+    by.set(r.cond, b);
+  }
+  return TRIALS.map(c => {
+    const b = by.get(c.key) || { n: 0, sum: 0, bad: 0 };
+    return { key: c.key, what: c.what, n: b.n, mean: b.n ? b.sum / b.n : null, badPct: b.n ? b.bad / b.n : null };
+  });
+}
+function listenHTML() {
+  const t = LT.trial;
+  const rows = ltSummary();
+  const done = LT.log.length;
+  const bar = (v) => {
+    if (v == null) return `<span class="ltnone">—</span>`;
+    const pc = Math.round(v / 2 * 100);
+    return `<span class="ltbar"><i style="width:${pc}%"></i></span><span class="ltnum">${v.toFixed(2)}</span>`;
+  };
+  return `<div class="card">
+    <h2>Listening test <span class="count">— ${done} rated</span></h2>
+    <p class="note">Rating whole pieces gives a correlation, and two of those have already turned out
+      to be the wrong variable here. This is an <b>ablation</b>: the same people, one layer changed at
+      a time. The decisive pair is <b>full</b> against <b>equal temperament</b> — identical composition,
+      identical bodies, only the tuning moved. If the tempered one rates better, the scale is the fault.
+      If they rate the same, the scale is cleared however the curve looks, and <b>melody</b> versus
+      <b>backing</b> says which of the other two it is. <b>You are not told which you are hearing until
+      after you rate it.</b></p>
+    ${!LT.on
+      ? `<div class="controls"><button id="ltstart">Start the test</button>
+         ${done ? `<button id="ltclear" class="ghost">Clear ${done} ratings</button>` : ""}</div>`
+      : `<div class="ltnow">
+          <div class="controls">
+            <button id="ltplay">${t && t.played ? "↻ Play again" : "▶ Play"}</button>
+            <span class="note tight">${t && t.played ? "Now rate it." : "Listen, then rate it."}</span>
+          </div>
+          <div class="controls ltrate ${t && t.played ? "" : "off"}">
+            <button id="ltbad" class="ltb bad">Bad</button>
+            <button id="ltok" class="ltb ok">OK</button>
+            <button id="ltgood" class="ltb good">Good</button>
+            <button id="ltstop" class="ghost">Stop</button>
+          </div>
+          ${LT.last ? `<p class="note tight ltlast">last one was <b>${esc(LT.last.cond)}</b>
+            on seed ${LT.last.seed} — you called it
+            ${["bad", "ok", "good"][LT.last.score]}.</p>` : ""}
+        </div>`}
+    <table class="lt">
+      <tr><th>what was changed</th><th>n</th><th>mean (bad 0 · good 2)</th><th>rated bad</th></tr>
+      ${rows.map(r => `<tr><td><b>${esc(r.key)}</b><span class="ltwhat">${esc(r.what)}</span></td>
+        <td class="ltn">${r.n || ""}</td><td>${bar(r.mean)}</td>
+        <td class="ltn">${r.badPct == null ? "" : Math.round(r.badPct * 100) + "%"}</td></tr>`).join("")}
+    </table>
+    ${done >= 6 ? `<p class="note tight">Paste this back to have it read:</p>
+      <textarea class="ltjson" readonly rows="3">${esc(JSON.stringify(LT.log))}</textarea>` : ""}
+  </div>`;
+}
+
 // ── drawing ──────────────────────────────────────────────────────────────
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function fitCanvas(cv, h) {
@@ -932,6 +1125,7 @@ function render() {
     ${rhythmHTML(m)}
     ${textureHTML(m)}
     ${pieceHTML(m)}
+    ${listenHTML()}
     ${peopleHTML(m)}
     ${chainHTML(m)}
     <footer class="foot">Simman Music Lab${typeof __BUILD__ !== "undefined" ? " · " + __BUILD__ : ""} —
@@ -962,6 +1156,14 @@ function wire() {
     if (sp) sp.textContent = S.voice < 0.02 ? "silent" : S.voice < 0.25 ? "behind" : S.voice < 0.6 ? "in the band" : "out front";
   };
   $("play").onclick = () => { S.playing ? stopAmbient() : startAmbient(); render(); };
+  // the listening test
+  if ($("ltstart")) $("ltstart").onclick = () => { LT.on = true; ltNext(); render(); };
+  if ($("ltclear")) $("ltclear").onclick = () => { LT.log = []; ltSave(); render(); };
+  if ($("ltstop")) $("ltstop").onclick = () => { LT.on = false; LT.trial = null; render(); };
+  if ($("ltplay")) $("ltplay").onclick = () => { ltPlay(); render(); };
+  if ($("ltbad")) $("ltbad").onclick = () => ltRate(0);
+  if ($("ltok")) $("ltok").onclick = () => ltRate(1);
+  if ($("ltgood")) $("ltgood").onclick = () => ltRate(2);
   $("occ").onchange = (e) => { S.occ = e.target.value; render(); };
   $("intim").oninput = (e) => {
     S.intimacy = +e.target.value;
@@ -1127,6 +1329,29 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 .bench h3{margin:0 0 .35rem}
 .bench .v{font-family:ui-monospace,monospace;font-size:.8rem}
 .sung{font-size:1.15rem;letter-spacing:.02em;margin:.2rem 0}
+/* the listening test */
+.lt{width:100%;border-collapse:collapse;margin:.7rem 0 .2rem;font-size:.86rem}
+.lt th{text-align:left;font-weight:400;opacity:.6;padding:.25rem .5rem .35rem 0;border-bottom:1px solid var(--line)}
+.lt td{padding:.4rem .5rem .4rem 0;border-bottom:1px solid var(--line);vertical-align:top}
+.lt td b{font-family:var(--mono);color:var(--accent)}
+.ltwhat{display:block;opacity:.55;font-size:.8rem;max-width:34rem;margin-top:.1rem}
+.ltn{font-family:var(--mono);opacity:.75;white-space:nowrap}
+.ltbar{display:inline-block;width:7rem;height:.55rem;background:var(--chipbg);border-radius:3px;
+  overflow:hidden;vertical-align:middle;margin-right:.5rem}
+.ltbar i{display:block;height:100%;background:var(--accent)}
+.ltnum{font-family:var(--mono);opacity:.8}
+.ltnone{opacity:.35}
+.ltnow{margin:.6rem 0 .2rem}
+.ltrate{margin-top:.45rem;transition:opacity .15s}
+.ltrate.off{opacity:.32;pointer-events:none}
+.ltb{min-width:5.2rem}
+.ltb.bad{border-color:#a4553c}
+.ltb.ok{border-color:#8a7a4a}
+.ltb.good{border-color:#4f8a72}
+.ltlast{margin:.45rem 0 0;opacity:.7}
+.ltlast b{font-family:var(--mono);color:var(--accent)}
+.ltjson{width:100%;font-family:var(--mono);font-size:.7rem;background:var(--chipbg);
+  color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:.4rem;resize:vertical}
 .sung span{margin-right:.5rem}
 .chain{display:flex;flex-wrap:wrap;gap:.4rem .2rem;align-items:center;margin:.3rem 0 .6rem}
 .link{display:flex;align-items:center;gap:.5rem}
@@ -1144,11 +1369,12 @@ function exposeForTests() {
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
     loadSamples, sampleSource, sampledFor, SAMPLE_BANK, slidesTo, FAMILIES, FAMILIES,
-    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs,
+    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs, retune, TRIALS, LT,
     buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S };
 }
 
 export function mount() {
+  ltLoad();
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
