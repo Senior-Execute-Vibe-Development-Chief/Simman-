@@ -256,3 +256,62 @@ compared across grids. That is what `tools/resgate.mjs` adds.
 - The `resgate` bands encode a **known, open gap** (~1.3-2.2× capacity dilution from
   1-D coast/river terms). They are a ratchet to be tightened as that closes — never a
   target to tune toward. If a change improves them, re-baseline downward and say so.
+
+---
+
+## THE MARTIN EFFECT — recognizable difference without scripting
+
+> **For anything a human hears, reads, or sees at a glance, emergence selects
+> from a catalog of real-world *archetypes* scored by world state — never assigns
+> outcomes by place name. Peoples must feel distinct by vibe before the player
+> opens the codex.**
+
+Named after George R.R. Martin's worldbuilding move: copy **life-shaped texture**
+closely enough that lifelong priors fire ("maritime north," "river court,"
+"steppe herders") while the map stays invented. You recognize **families** of real
+things; the instances are still emergent. A fully alien output and a fully random
+one both fail the same way — **everyone blends together.**
+
+This is **not** a fourth loophole in rule 2. Rule 2 bans *fitting the answer*
+(`if (onNile) giveEgypt`). The Martin Effect builds the **selector**: a library of
+measured forms (scales, typology frames, heraldic grammars…) and a mechanism that
+asks which forms this people's **materials, spectra, society, and contact** can
+support. The bench traditions in `musicTraditions.js` are the proof the catalog
+works; derived peoples were failing because they never got to use it.
+
+### When it applies
+
+Use it when **all** of these hold:
+
+1. A human consumes the output directly (music, language texture, flags…).
+2. Free generation is **unmusical, illegible, or samey** despite correct physics.
+3. Real cultures cluster into **namable families** experts recognize.
+4. Families can be **scored from state** without naming the people.
+
+Pure sim mechanics (claim costs, population, trade) stay unconstrained.
+
+### Right vs wrong
+
+```
+WRONG:  if (biome === "delta") scale = maqamRast
+WRONG:  free roughness crawl → arbitrary chromatic degrees (derived music today)
+WRONG:  one archetype hard-coded per people forever
+
+RIGHT:  score all archetypes from spectrum + capacity + literacy; seeded pick among top ties
+RIGHT:  compose *inside* the winning degree set; vary texture/rhythm/orchestration emergently
+RIGHT:  contact edges drift archetype weights (borrowFrom) — history moves taste, not scripts
+```
+
+### First application
+
+**Music tuning** — `docs/martin-effect.md` (principle), `docs/music-archetypes-plan.md`
+(implementation). Derived peoples get `matchArchetype()` instead of raw
+`deriveScale` minima; bench traditions unchanged. Keep a **small wild bucket** for
+honest inharmonic frames; it should be rare, not the default.
+
+### One-sentence check
+
+> Would a player who never opened the codex still tell two peoples apart by vibe
+> — without us naming either people in the code?
+
+If not: more archetype breadth or better scoring — not more free parameters.

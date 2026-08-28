@@ -13,12 +13,17 @@ Modules: `src/sim/musicInstruments.js`, `musicTuning.js`, `musicGenome.js`,
 ## The chain
 
 ```
-biome + geology + crafts → MATERIALS  →  BODIES  →  SPECTRA  →  roughness minima  →  SCALE
+biome + geology + crafts → MATERIALS  →  BODIES  →  SPECTRA  →  archetype match  →  SCALE
 language prosody         → RHYTHM
 surplus + stratification → TEXTURE
 literacy                 → FORM
 world state right now    → OCCASION
 ```
+
+**Martin Effect (2026-08):** derived peoples select scale from a catalog of measured
+tuning families scored by spectrum and society — see `docs/martin-effect.md` and
+`docs/music-archetypes-plan.md`. Raw roughness-crawl remains for Lab debug.
+Bench traditions (`musicTraditions.js`) are unchanged known-answer tests.
 
 ### Tuning is the spine
 
