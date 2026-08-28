@@ -1698,3 +1698,82 @@ argument", and nothing before today pushed a median city off the founding stamp.
 **No verdict.** One window remains, and the population gap is the thing to watch in
 it — if it widens, the mechanism needs the graveyard re-examined before it can ship;
 if it closes as the world matures, reading 1 gains ground.
+
+---
+
+## 25. WAVE 5 VERDICT — the disqualifier holds, two of three separations do not
+
+All four arms completed. Final window, against three controls, maturity overlapping
+(controls claimed 44.4-50.8, treated 39.9-50.1):
+
+| arm | claimed% | urban% | bind% | medCore | total su | urban su | ended |
+|---|---|---|---|---|---|---|---|
+| ctrl clean | 44.42 | 28.21 | 44.5 | — | 421,981 | 119,060 | 371 |
+| ctrl chaos1 | 50.83 | 20.61 | 40.2 | 12.5 | 409,448 | 84,399 | 387 |
+| ctrl ref3 | 44.88 | 20.60 | 42.5 | 14.6 | 406,018 | 83,628 | 345 |
+| `+AGGLOM_LOCAL` | 39.86 | 15.28 | 45.0 | 18.1 | 322,544 | 49,299 | 410 |
+| `+AGG` chaos | 40.24 | 15.38 | 45.6 | 18.1 | 317,968 | 48,916 | 361 |
+| `+AGG+ULAB` | 44.37 | 13.49 | 42.4 | 14.3 | 321,131 | 43,305 | 426 |
+| `+AGG+ULAB` chaos | 50.05 | 11.53 | 42.7 | 14.7 | 345,294 | 39,830 | 420 |
+
+```
+urban%     ctrl [20.6, 28.2]   trt [11.5, 15.4]   SEPARATED, treated lower  (as predicted)
+bind%      ctrl [40.2, 44.5]   trt [42.4, 45.6]   overlap
+medCore    ctrl [12.5, 14.6]   trt [14.3, 18.1]   overlap
+total pop  ctrl [406k, 422k]   trt [318k, 345k]   SEPARATED, treated LOWER  ← disqualifier
+urban abs  ctrl [ 84k, 119k]   trt [ 40k,  49k]   SEPARATED, treated LOWER
+```
+
+### 25.1 §24.1 does not survive one more window
+
+§24 called window 9 *"the strongest separation any mechanism has produced this
+lap"* on three measures. **Two of the three are gone one window later.** `bind%` and
+the median core both overlap the control band at 40k. Only the urban-share
+separation survived, and the population disqualifier not only held but is now a
+clean separation in the wrong direction.
+
+That is the fifth time this lap a separation reported at window N failed at window
+N+1, and the second time I published the enthusiasm before the run finished when
+the run had one window left. The rule this keeps writing itself into: **on a running
+arm, report the reading and withhold the adjective.**
+
+### 25.2 The fact that reframes the mechanism
+
+**Absolute urban population is 47% of control.** Not the share — the count.
+
+```
+urban absolute   treated 47% of control
+rural absolute   treated 89% of control
+total            treated 79% of control
+```
+
+The treated world does not concentrate more people into cities. It has **fewer than
+half as many urbanites**, a slightly smaller countryside, and ~21% fewer people
+overall, with more settlements dying in-window (361-426 against 345-387).
+
+That kills the reading offered in §24.2 — *"concentrating people into cores puts
+them under the urban graveyard"* — because there is no extra concentration to pay
+for. Something is destroying urban population rather than accumulating it, and the
+median core rising while the urban total halves means the surviving cores are
+bigger and far fewer.
+
+**No mechanism is offered for that here.** Three candidate stories are available and
+this data distinguishes none of them; writing one down would be the exact error §10
+and §14 were retracted for.
+
+### 25.3 Where `AGGLOM_LOCAL` actually stands
+
+The mechanism is right in principle — §21's finding stands untouched: the
+concentration engine really does read imports only, a self-fed city really does get
+no target, and that really is why the founding stamp is still load-bearing. **What
+does not follow is that this implementation of the fix is shippable.** It is
+measured, it is behind a `def: 0` lever, it is byte-identical when off, and its
+first full measurement says it costs a fifth of the world's people and half its
+urbanites.
+
+Next step is diagnosis, not iteration: find where the urban population goes. The
+`ended` counts and the halved urban total point at the register churning — cities
+being minted and dissolved rather than growing — which would also explain a rising
+median core (survivorship) with a falling urban total. That is checkable directly
+against the founding/ending flows the probe already prints, and it should be checked
+before any further lever is written.
