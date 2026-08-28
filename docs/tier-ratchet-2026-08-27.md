@@ -2396,3 +2396,82 @@ Both errors have the same shape — comparing against whatever arm happened to e
 rather than against the arm the question requires. The foreground technique makes the
 fix cheap: a purpose-built control now costs five minutes and cannot be lost, so
 there is no longer any excuse for reusing an ill-matched one.
+
+---
+
+## 33. WHAT IS STILL BROKEN — the standing list
+
+### A. Blocking any ship decision
+
+1. **The population cost is unexplained.** `AGGLOM_LOCAL` costs 21-28% of world
+   population and **halves absolute urban population** (§25, §27). The churn
+   explanation was refuted by arithmetic (§27.1); the cap hypothesis (§27.3) is named
+   and untested. Until this has a mechanism, the lever cannot ship.
+
+2. **`URBAN_AGGLOM = 0.13` is a fitted constant** (§23, conceded to the owner). The
+   dose-response that would settle whether it is load-bearing — and whether the cap is
+   what moves population, one sweep answering both — has been launched twice and lost
+   twice (§31, §32). **Still unrun.**
+
+3. **The mature tail is unmeasured for everything built since wave 6.** Waves 4-6
+   showed the median core only clears the floor at 32k-36k. The 28k horizon forced by
+   §31.4 cannot see it. Every current verdict is an early-world verdict.
+
+### B. Structural defects found, not fixed
+
+4. **The mint tests gathering, not sustainability** (§29.4, the owner's own framing).
+   A momentary core reading decides whether a city exists. Needs per-site state across
+   the `SITE_CITY_IVL` rebuild, which owes `npm run coverage`.
+
+5. **The `STARVE_SHED` seam** (§11, §16): the fed-ness melt reaches the capacity
+   spike and not the size read, so a starving core still reports full size. Never
+   measured. May be made moot by `AGGLOM_LOCAL` (§21.4) — that itself is untested.
+
+6. **The mode never clears, at any floor.** 27-41% of the register sits at whatever
+   the lowest floor happens to be — 12.00su, then 8.00su, then 0.01su — in *every*
+   configuration tried. Removing a floor moves the mode; it has never removed it.
+   Something other than the floor sets that share and it has not been found. This is
+   the deepest open question on the register.
+
+7. **The resolution anchor** (§5b) remains an owner decision, still blocking the last
+   Phase-2 site (`MIN_SETT_DIST`).
+
+### C. Known-broken, deliberately parked
+
+8. `FARM_RES` — convicted (§12, §18): buys its ceiling by pinning half the register.
+9. `GRAIN_PRICE_BY_TIER` — the load-bearing ratchet leg (§4); needs `_foodSupply`
+   fixed from retained-net to production-relative first.
+10. `HINTERLAND_BY_TIER` / `CORE_BY_TIER` — the territory half of the ratchet, never
+    touched (§5).
+11. The urban graveyard's `min(1, urbShare/0.3)` saturation — named in `CORE_LOCAL`'s
+    own text as *"the honest boundary of the safety argument"*, and never tested in a
+    regime where cores actually concentrate.
+
+### D. Method and instrument debt
+
+12. **`npm run validate` is a no-op for every lever built today** — its arm pins
+    `LAND_KNOW = 0` and `urbanCoreR` returns 0, so the edited lines never execute. The
+    repo's standard gate proves nothing for this whole family of changes.
+13. The live-arm gate (`npm run livegate`) exists but its horizon/grid defaults were
+    reasoned, never calibrated.
+14. **Background arms do not survive in this environment.** Foreground works and
+    cannot be lost, but caps a run at ~10 minutes ≈ 28k steps at `tw=480`.
+15. **There is no absolute world-population standard in the repo** (§28.2) — found by
+    inventing one and reporting it as a failed test. Worth deciding whether one should
+    exist.
+
+### E. Nothing has shipped
+
+Every lever built this lap is `def: 0` and byte-identical when off. **None has been
+through a gate ladder**, and item 12 means the usual ladder would not test them
+anyway.
+
+| lever | state |
+|---|---|
+| `HAUL_PAID` | measured inert |
+| `FARM_RES` | convicted; also blocked on the anchor |
+| `URBAN_LABOR` | passes on pin and ceiling; population question open |
+| `AGGLOM_LOCAL` | right diagnosis, unexplained population cost |
+| `STAMP_RETIRE` | breaks the 12k pin; costs unquantified at the tail |
+| `VIABLE_UNITS` | works; exposes that the mode is not floor-driven |
+| `TOWN_MINT` | built, then superseded by the owner's design — delete or keep for a town register |
