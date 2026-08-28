@@ -1,0 +1,54 @@
+[harness] tree 60a58520
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"WAR_FINISH":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"CORE_LOCAL":1,"MARKET_PULL":0,"PRICE_GROSS":0,"HAUL_PAID":0,"URBAN_LABOR":0}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — ARMED: ~1151y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — ARMED: ~929y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — ARMED: ~3173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — ARMED: ~5373y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — ARMED: ~3251y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (136,72) (24.0E -18.0N) score 1.13 pkg=tubers(suit 0.54) — ARMED: ~5599y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~6790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[fooddiag-arm] label=ratchet W=480 seed=8817 steps=24000 SIM_TUNE=DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1,FOUND_DRIFT=1,ABSORB_ORG_ERA=1,WAR_FINISH=1,SETT_STRIDE=3,TRADE_STRIDE=5,CORE_LOCAL=1,MARKET_PULL=0,PRICE_GROSS=0,HAUL_PAID=0,URBAN_LABOR=0
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.29)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 5.41)
+
+=== [ratchet] window 8000->12000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=39MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=0 PRICE_GROSS=0 HAUL_PAID=0 URBAN_LABOR=0 CORE_LOCAL=1
+    MACHINE 8000 12000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+
+=== [ratchet] window 12000->16000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=50MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=0 PRICE_GROSS=0 HAUL_PAID=0 URBAN_LABOR=0 CORE_LOCAL=1
+    MACHINE 12000 16000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+[peopleSim] AGRICULTURE INVENTED at (196,36) (114.0E 36.0N) — the basin farms; a city will rise when its market gathers one (score 4.55)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+
+=== [ratchet] window 16000->20000  realms=0  settled=0  claimed=0.0%
+    urbanShare=0.00%  maxCore=0.0su  mode=0su (0/0)
+    crossBorderFarm=0.0% (0/0 farmed tiles)
+    CRASH_RISK heap=33MB terrHeap n=0 cap=4096 transPeakN=0 transCap=1024
+    MARKET_PULL=0 PRICE_GROSS=0 HAUL_PAID=0 URBAN_LABOR=0 CORE_LOCAL=1
+    MACHINE 16000 20000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+[transHeap] step=23712 cap=2048 peakN=1139 pushes=8306 (0.0MB backing)
+
+=== [ratchet] window 20000->24000  realms=6  settled=81  claimed=1.9%
+    urbanShare=9.26%  maxCore=1263.5su  mode=1.50su (59/78)
+    crossBorderFarm=1.2% (13/1063 farmed tiles)
+    CRASH_RISK heap=104MB terrHeap n=0 cap=4096 transPeakN=1139 transCap=2048
+    MARKET_PULL=0 PRICE_GROSS=0 HAUL_PAID=0 URBAN_LABOR=0 CORE_LOCAL=1
+    MACHINE 20000 24000 6 1.934 4 1 0 1 4 0 6934 67982 0.00 0.00 0.00
+[fooddiag-arm] done in 30s
