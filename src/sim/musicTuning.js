@@ -135,6 +135,16 @@ export function cutPitches(power, frameCents, haveCents) {
   return [...out.values()].sort((a, b) => a - b);
 }
 
+// cents: below this, a step reads as an inflection of one degree rather than as
+// two degrees. Used by BOTH ways a degree can arrive — see `inside` below and
+// the invention loop under it.
+const STEP_FLOOR = 120;
+// how much relative spread a set of steps may have and still be a scale — the
+// diatonic is 0.26, slendro 0.06, pelog 0.35. Used where the degrees are MADE
+// (`deriveScale`) and where they are chosen from (`deriveMode`).
+const EVEN_SPREAD = 0.35;
+const EVEN_W = 0.55;
+
 export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpec = null, power = 1 } = {}) {
   const curve = dissonanceCurve(spec);
   const mins = minimaOf(curve);
@@ -170,12 +180,39 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
     ? framePool.reduce((a, b) => (b.prom > a.prom ? b : a))
     : { ratio: 2, cents: 1200, prom: 0 };
 
-  // candidate degrees: prominent minima strictly inside the frame
-  const inside = mins
+  // CANDIDATE DEGREES: prominent minima strictly inside the frame — and no two
+  // of them on top of each other.
+  //
+  // The invention loop sixty lines below already refuses a cut that lands
+  // within `STEP_FLOOR` of a degree already placed, and the comment there says
+  // exactly why: Plomp-Levelt's roughness PEAK is a couple of hundred cents
+  // wide in this register, so for a sparse or inharmonic spectrum the
+  // least-rough new pitch is one crammed against a pitch already there, and
+  // minimising roughness honestly returns a CLUSTER. That is a fact about the
+  // curve, not about how a degree came to be chosen — but the rule was only
+  // applied to degrees that arrived by CUTTING, and never to the ones that
+  // arrived by LISTENING, in the same function, on the same scale.
+  //
+  // So a scale built entirely from minima could crawl, and did. Measured on
+  // seed 1041: nine degrees at 0 158 315 443 597 718 837 960 1079, every one
+  // of them `found`, steps of 158 157 128 154 121 119 123 119 121. That is a
+  // chromatic ladder, and no subset of it is a mode — of all 56 six-note
+  // subsets the best available still had a semitone in it. The mode search was
+  // being blamed for a set it was handed.
+  //
+  // Deepest first, and a minimum that lands inside the floor of one already
+  // taken is the same degree heard twice, so it goes.
+  const inside = [];
+  for (const m of mins
     .filter(m => m.ratio > 1.02 && m.ratio < frame.ratio - 0.012 && depth(m) >= minDepth)
-    .sort((a, b) => b.prom - a.prom)
-    .slice(0, Math.max(1, cap - 1))
-    .sort((a, b) => a.ratio - b.ratio);
+    .sort((a, b) => b.prom - a.prom)) {
+    if (inside.length >= Math.max(1, cap - 1)) break;
+    const c = 1200 * Math.log2(m.ratio);
+    if (c < STEP_FLOOR || frame.cents - c < STEP_FLOOR) continue;
+    if (inside.some(d => Math.abs(1200 * Math.log2(d.ratio) - c) < STEP_FLOOR)) continue;
+    inside.push(m);
+  }
+  inside.sort((a, b) => a.ratio - b.ratio);
 
   let degrees = [{ ratio: 1, cents: 0, prom: Infinity, found: true }, ...inside.map(d => ({ ...d, found: true }))];
   // WHERE THE TIMBRE GIVES NO GUIDANCE, A TRADITION MEASURES INSTEAD.
@@ -195,14 +232,67 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
   // is a scale missing a degree there. So the maker goes on cutting until the
   // gaps are steps, and stops when the instruments run out of pitches (`cap`),
   // which is the honest reason a small pipe in a wide frame keeps its gaps.
-  const ringGaps = () => {
+  const stepsNow = () => {
     const cs = degrees.map(d => d.cents).sort((a, b) => a - b);
-    let worst = 0;
-    for (let i = 0; i < cs.length; i++) worst = Math.max(worst, (i + 1 < cs.length ? cs[i + 1] : frame.cents) - cs[i]);
-    return worst;
+    const out = [];
+    for (let i = 0; i < cs.length; i++) out.push((i + 1 < cs.length ? cs[i + 1] : frame.cents) - cs[i]);
+    return out;
   };
-  const want = Math.max(4, Math.min(cap, 7));
-  if (degrees.length < want || (degrees.length < cap && ringGaps() > STEP_CEIL)) {
+  const ringGaps = () => Math.max(...stepsNow());
+  // …AND "THE GAPS ARE STEPS" IS AN EVENNESS QUESTION, not a width one.
+  //
+  // `STEP_CEIL` says a gap past about a fourth is a leap. That is true and it
+  // is far too permissive to stop on: measured, it alone left the corpus at 4.4
+  // degrees a scale, where the world's sit at five to seven, because a set of
+  // 400-cent gaps satisfies it completely and is not a scale anyone plays.
+  //
+  // `deriveMode` already has the better-evidenced form of the same statement
+  // and real tunings to back it: a scale is a RUN OF COMPARABLE STEPS, and they
+  // sit under about a third of relative spread — the diatonic is 0.26, slendro
+  // 0.06, pelog 0.35. So the maker goes on cutting while the steps are still
+  // uneven, and stops when they are comparable or the body runs out of room.
+  // That also puts each new degree where one is missing rather than anywhere it
+  // fits, which is the difference between filling seed 1037's 417-cent gap and
+  // stranding a pitch at 141.
+  const uneven = () => {
+    const st = stepsNow();
+    if (st.length < 2) return true;
+    const mean = st.reduce((a, x) => a + x, 0) / st.length;
+    if (!(mean > 0)) return false;
+    const cv = Math.sqrt(st.reduce((a, x) => a + (x - mean) * (x - mean), 0) / st.length) / mean;
+    return cv > EVEN_SPREAD;
+  };
+  const wants = () => ringGaps() > STEP_CEIL || uneven();
+  // A SCALE IS FINISHED WHEN ITS GAPS ARE STEPS — not when it reaches a count.
+  //
+  // The paragraph above states the mechanism exactly: the maker goes on cutting
+  // until the gaps are steps, and stops when the instruments run out of
+  // pitches. Then a third condition was bolted across it — `want = max(4,
+  // min(cap, 7))`, a floor saying a scale needs seven degrees — and a floor on
+  // the COUNT is the answer written down. It fired even when every gap was
+  // already a step, which is the case it did the damage in.
+  //
+  // Measured on seed 1037: the curve heard 0 417 698 879 1020, a clean
+  // pentatonic set whose widest gap is 417 cents, well inside the 500 a fourth
+  // allows. Nothing needed filling. `want` invented two degrees anyway, one of
+  // them at 141 cents — a pitch 39 cents from any note either side of it, which
+  // is what the ear picks out of that people's music immediately and what no
+  // amount of work on the MODE could have removed, because the mode can only
+  // choose among degrees the scale hands it.
+  //
+  // A people whose spectrum offers five clean degrees has a five-degree scale.
+  // That is most of the world's music, and it arrives here by the frame being
+  // full rather than by a count being met. The floor that remains is the gap
+  // rule's own: no gap wider than a fourth means at least three degrees in an
+  // octave, whatever the spectrum says.
+  // BOTH CONDITIONS, not either. The maker cuts while there is somewhere a cut
+  // is NEEDED (a gap too wide to be a step) and while there is room on the body
+  // to put one (`cap`, which now counts pitches per FRAME rather than per
+  // instrument). Either alone is a quota: `want` was one, and turning this
+  // conjunction into a disjunction is the same mistake wearing `cap` — measured,
+  // it filled every scale to the body's limit and took invented degrees from
+  // 27% to 39% and stranded pitches from 149 to 193.
+  if (degrees.length < cap && wants()) {
     // Dividing the frame into equal parts is the ANSWER written down, not the
     // mechanism — and it was supplying nearly half of every pitch in the
     // system, so most scales were an equal division in disguise and sounded
@@ -214,8 +304,29 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
     // steps — but it arrives there rather than starting there, and where the
     // timbre has any structure at all it finds that instead.
     const lo = 1.02, hi = frame.ratio - 0.012;
-    while (degrees.length < want || (degrees.length < cap && ringGaps() > STEP_CEIL)) {
+    while (degrees.length < cap && wants()) {
       let best = null, bestCost = Infinity;
+      // A MAKER CUTS WHERE THE HOLE IS.
+      //
+      // This searched the whole frame, so the loop could run BECAUSE a gap was
+      // too wide and then place its degree nowhere near it. Measured on seed
+      // 1037: the heard set 0 417 698 879 1020 has a 417-cent hole and the cut
+      // went in at 141, filling nothing and stranding a pitch 44 cents from any
+      // note either side of it — the one a listener picks out of that people's
+      // music immediately. The condition on the loop and the choice inside it
+      // were answering different questions.
+      //
+      // Somebody who has noticed their scale has a hole in it cuts INTO the
+      // hole. Which is also the only place a new degree can improve anything:
+      // everywhere else is already a step. So the gap decides where, the cut
+      // lattice decides which divisions are available in there, and roughness
+      // decides between those — three rules, each doing its own job.
+      const cs = degrees.map(d => d.cents).sort((a, b) => a - b);
+      let gapLo = 0, gapHi = frame.cents, widest = 0;
+      for (let i = 0; i < cs.length; i++) {
+        const top = i + 1 < cs.length ? cs[i + 1] : frame.cents;
+        if (top - cs[i] > widest) { widest = top - cs[i]; gapLo = cs[i]; gapHi = top; }
+      }
       // WHERE THE CANDIDATES COME FROM. This used to sweep a four-cent grid
       // across the whole frame — a continuum, offered to a question that has
       // no answer on one. Plomp–Levelt's roughness PEAK is a couple of hundred
@@ -231,6 +342,7 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
       for (const c of cutPitches(power, frame.cents, degrees.map(d => d.cents))) {
         const r = Math.pow(2, c / 1200);
         if (r < lo || r > hi) continue;
+        if (c <= gapLo || c >= gapHi) continue;
         if (degrees.some(d => Math.abs(d.cents - c) < STEP_FLOOR)) continue;
         const set = [...degrees.map(d => d.ratio), r, frame.ratio];
         let cost = 0, n = 0;
@@ -267,6 +379,28 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
         }
         const kk = cs.length, mean = sum / kk;
         const cv = mean > 0 ? Math.sqrt(Math.max(0, sum2 / kk - mean * mean)) / mean : 0;
+        // AND A CUT THAT LEAVES A HOLE HAS NOT FILLED ONE.
+        //
+        // Restricting the search to the gap is necessary and it is not enough:
+        // on seed 1037 the widest gap is the 417 cents from the tonic, and 141
+        // is INSIDE it. What that cut leaves is 141 and 276 — one step and most
+        // of a hole — where a cut at 200 leaves 200 and 217, two steps. The
+        // maker went in to remove a hole; a division that lopsided half-fails
+        // at the only thing it was for.
+        //
+        // So the balance of the split is part of the cost. This is local to the
+        // gap being filled and says nothing about any other interval in the
+        // scale, which is what keeps it from becoming the pull toward equal
+        // division that the note below is about.
+        const bal = Math.max(c - gapLo, gapHi - c) / Math.max(1, Math.min(c - gapLo, gapHi - c));
+        cost *= 1 + EVEN_W * (bal - 1);
+        // A BOUND, NOT A PULL. Made monotone in the spread this drives every
+        // scale toward equal division, which is the fault the paragraph above
+        // exists to prevent: measured, distinct modes across 240 peoples fell
+        // from 68% to 43% and one 275-500-700-975 pentatonic turned up in
+        // twenty-two of them. Real tunings are not equal, they are COMPARABLE,
+        // so this stays a ceiling — and what tells the search where to cut is
+        // not a pull toward evenness but the hole itself. See `gapLo`/`gapHi`.
         cost *= 1 + EVEN_W * (cv > EVEN_SPREAD ? Math.pow(cv / EVEN_SPREAD - 1, 2) : 0);
         if (cost < bestCost) { bestCost = cost; best = { c, r }; }
       }
@@ -346,13 +480,8 @@ export function ensembleSpectrum(insts, weights) {
  * a harmonic spectrum, so harmonic-instrument peoples tend to land on the
  * brighter set on their own, and metal-tuned ones do not.
  */
-const STEP_FLOOR = 120;     // cents: below this, a step reads as an inflection
 const STEP_CEIL = 500;      // cents: above this, a gap reads as a leap, not a step
 const CRAWL_COST = 0.09;
-// how much relative spread a set of steps may have and still be a scale — the
-// diatonic is 0.26, slendro 0.06, pelog 0.35
-const EVEN_SPREAD = 0.35;
-const EVEN_W = 0.55;
 export function deriveMode(spec, degrees, size = 5, frameRatio = 2, stepShare = 0.65) {
   const n = degrees.length;
   if (n <= size) return degrees.map((_, i) => i);

@@ -355,7 +355,43 @@ export function musicOf(people) {
   // melodic body sets the ceiling. A six-hole pipe tradition stays pentatonic
   // because of the pipe, not because anyone chose pentatonicism.
   const melodic = insts.filter(i => i.cap >= 3);
-  const cap = melodic.length ? Math.max(...melodic.map(i => i.cap)) : 3;
+  // HOW MANY PITCHES A BODY OFFERS INSIDE ONE FRAME, which is not how many it
+  // has — and `cap` is how many it has. The difference is the whole of why a
+  // koto tradition is pentatonic: `rangeOf`'s own comment says a seven-bar
+  // balafon covers an octave and a thirteen-string koto two and a half, so
+  // those thirteen strings are five to the octave, not thirteen.
+  //
+  // Handing the raw count to `deriveScale` asked for nine degrees in an octave
+  // from ensembles whose widest body offered six. Measured on seed 1041, that
+  // produced 0 158 315 443 597 718 837 960 1079 — a chromatic ladder, from
+  // which no subset is a mode.
+  //
+  // How the count converts depends on how the body chooses its pitches, which
+  // this file already models:
+  //   "hole"  — fixed apertures. The fingerings give this many pitches in a
+  //             register and then REPEAT on the overblow, so the count is
+  //             already per frame. A six-hole pipe tradition stays pentatonic
+  //             because of the pipe, exactly as claimed.
+  //   "stop"  — one length shortened by a finger. The stops are spread along
+  //             the whole compass, so a fourteen-stop neck over 2.2 octaves
+  //             offers 6.4 in one of them.
+  //   "fixed" — one resonator per pitch, and the maker cuts as many as the
+  //             scale has. Such a body is BUILT to the scale: it reflects the
+  //             density rather than bounding it, and so it does not vote.
+  // (The conversion is in octaves rather than frames. Since the singer joined
+  // the frame spectrum, 118 peoples in 120 repeat at one.)
+  const perFrame = (i) => {
+    const f = FAMILIES[i.fam] || {};
+    if (f.pitchBy === "hole") return i.cap;
+    if (f.pitchBy === "stop" && f.span) return i.cap / f.span;
+    return 0;
+  };
+  const offered = melodic.length ? Math.max(0, ...melodic.map(perFrame)) : 0;
+  // Where nothing bounds it — an ensemble of bars and lyres, every one of them
+  // built to whatever scale the people already had — the spectrum and the gap
+  // rule decide between them, which is what `deriveScale` does when `cap` is
+  // not the binding constraint.
+  const cap = offered > 0 ? Math.round(offered) : 9;
   // a literate tradition with fixed-pitch instrument SETS regularizes its
   // steps; an oral one keeps the ratios it found
   const fixedSets = insts.some(i => i.fam === "barSet" || i.fam === "bell");
