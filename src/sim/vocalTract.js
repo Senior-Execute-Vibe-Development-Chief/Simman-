@@ -784,8 +784,20 @@ export function scoreSong(syls, notes, opts = {}) {
   const rnd = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
   const spans = [];                                   // [{t0, t1, f}] for the f0 track
   let t = 0.03, beat = 0.03;                          // where the voice IS · where the beat says it should be
+  // A MELISMA IS SEVERAL NOTES ON ONE SYLLABLE — the single thing a voice does
+  // that no instrument can, and the reason a sung line can be faster than the
+  // words in it. The vowel is already sounding when the next note arrives, so
+  // that note has no consonant to get through, claims no new syllable, and
+  // changes nothing but the pitch. The syllable's CODA waits for the last note
+  // of the run: closing it and reopening the vowel is not a run, it is the word
+  // said twice.
+  let si = 0;
   notes.forEach((nt, i) => {
-    const syl = syls.length ? syls[i % syls.length] : { on: [], nu: [{ h: 2, b: 1, r: 0 }], co: [] };
+    const mel = !!nt.melisma && i > 0;
+    if (!mel && i > 0) si++;
+    const base = syls.length ? syls[si % syls.length] : { on: [], nu: [{ h: 2, b: 1, r: 0 }], co: [] };
+    const runOn = !!(notes[i + 1] && notes[i + 1].melisma);
+    const syl = { on: mel ? [] : (base.on || []), nu: base.nu, co: runOn ? [] : (base.co || []) };
     // consonants keep their spoken cost — the tongue does not slow down
     // because the note is long
     for (const c of syl.on || []) t += scoreCons(B, c, t, [1], false, acc) + 0.004;

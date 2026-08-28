@@ -248,6 +248,9 @@ function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
       // the note lasts until the next one starts: a singer joins them
       dur: Math.max(0.1, ((g[i + 1] ? g[i + 1].b : e.b + e.dur) - e.b) * spb),
       vel: e.vel * gain,
+      // a note the singer took past their syllable budget rides the vowel
+      // already sounding — `scoreSong` gives it no consonant and no new word
+      melisma: !!e.melisma,
     }));
     // A TEXT runs on: the second breath-group takes the syllables the first
     // left off at. A VOCABLE REFRAIN restarts — it has no next word to reach,
@@ -277,7 +280,9 @@ function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
     const prev = THROAT.get(m.people.seed);
     if (prev) prev.damp(at);
     THROAT.set(m.people.seed, playSung(A, pcm, notes, at, S.voice));
-    syl += g.length;
+    // and a run-on note consumed no syllable, so the next breath group takes
+    // up where the WORDS left off, not where the notes did
+    syl += g.filter(e => !e.melisma).length;
   }
 }
 

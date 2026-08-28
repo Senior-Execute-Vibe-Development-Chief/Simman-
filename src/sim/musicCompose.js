@@ -31,7 +31,25 @@ import { hash32 } from "./peopleSim/rng.js";
 import { nPVI } from "./musicGenome.js";
 import { articRate, melodicCapacity, FAMILIES } from "./musicInstruments.js";
 import { dissonance } from "./musicTuning.js";
+import { prosodyOf } from "./languagePhonetics.js";
 const FAM = (i) => FAMILIES[i.fam] || {};
+
+// ── the singer's body, in seconds ────────────────────────────────────────
+// Three durations of human articulation, each meaning something on its own
+// and none of them tuned to any outcome here. Together they say how fast a
+// people can be sung and how late the sung note arrives.
+//
+//  · a sung vowel is the nucleus of the syllable and the part carrying the
+//    pitch — around a fifth of a second at a comfortable pace;
+//  · each consonant slot the phonotactics allow adds a gesture on top of it,
+//    which is why a CV tongue runs at six syllables a second where a CCVCC one
+//    manages four;
+//  · and a note does not start when the syllable does. The pitch arrives with
+//    the vowel, behind whatever consonant opens it — voice onset time, tens of
+//    milliseconds, the same order as a bow settling into Helmholtz motion.
+const VOWEL_SECS = 0.18;
+const SEGMENT_SECS = 0.06;
+const ONSET_SECS = 0.035;
 
 // `artic` is how much of the gap to the next note a note actually sounds for.
 // `descent` is how strongly breath declination shows. `bright` is which final
@@ -1954,14 +1972,81 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // THE VOICE, on the line the instrument is playing — but not in unison with
   // it. Two players on one melody, each ornamenting it their own way, is
   // heterophony, and it is the commonest way a sung tradition and its
-  // instruments sound together anywhere in the world. The instrument takes the
-  // plain version; the singer holds the structural notes and lets the runs go.
+  // instruments sound together anywhere in the world.
+  //
+  // THE SINGER IS A BODY, and was the only one in the room not treated as one.
+  // Every other player's version of the line is DERIVED: how fast it can
+  // re-articulate decides how much of the line it takes (`share`, above), how
+  // it is driven decides how late it speaks (`lag`), and where its bottom note
+  // sits decides which octave it plays in. The singer got a switch instead —
+  // strong notes only if anything else was leading, every note if not, a flat
+  // 1.35x on the durations, and an octave picked by subtracting one from
+  // whatever body happened to be leading.
+  //
+  // That is heterophony written as a special case, and it sounded like one. On
+  // a slow line the singer was cut to a third of it for no reason — measured
+  // across the bench and six seeds, the sung part was 51% of the line and as
+  // little as 11%, at tempi where the line runs 1.2 to 2.2 notes a second and
+  // any human can sing every note of it. What was left landed on exactly the
+  // player's attack, on exactly the player's pitch, 100% of the time: a chorus
+  // effect on the lead, not a second person in the room. So derive the
+  // singer's part from the singer, using the mechanisms already here.
   if (E.sing) {
-    const sung = ST.lead ? lead.filter((e, i) => e.strong || i === 0 || i === lead.length - 1) : lead;
-    for (const e of sung) {
-      ev.push({ ...e, role: "voice", inst: -1, vel: e.vel * (ST.lead ? 1.05 : 1),
-        dur: e.dur * (ST.lead ? 1.35 : 1), oct: e.oct + (music.melody.breathBound ? 0 : -1) });
+    const pros = prosodyOf(music.people.lang);
+    // ── 1. HOW MUCH OF THE LINE. A singer is bound by the SYLLABLE, and a
+    // syllable is a jaw cycle with segments in it: an open CV nucleus is one
+    // gesture, and every consonant slot a language allows on either side of it
+    // adds another segment's worth of articulation. So the ceiling is not
+    // `articRate`'s ten notes a second — that is fingers — it is however many
+    // syllables this people's own phonotactics fit into a second, which is why
+    // an open-syllable tongue can be sung faster than a cluster-heavy one.
+    const sylC = ((music.people.lang || {}).prof || {}).sylC ?? 1;
+    const sylSecs = (VOWEL_SECS + SEGMENT_SECS * sylC) / Math.max(0.5, pros.rate);
+    const asks = lead.length / Math.max(0.05, (SLOTS / G.div) * spb);
+    const share = Math.min(1, (1 / sylSecs) / Math.max(0.001, asks));
+    // ── 2. WHERE THE SINGER SINGS is not this function's to say, and the
+    // constant that said it — `oct + (breathBound ? 0 : -1)` — was a guess made
+    // without the one number that decides it. A singer picks a key: they move
+    // the whole phrase by whole octaves until it sits in their compass, and
+    // which octave that is depends on the CONCERT PITCH the piece is played at,
+    // which the composer does not choose and cannot see. The renderer does, and
+    // already does this properly — least of the breath group outside the voice,
+    // then most centred in it, the group moving together so no fold ever lands
+    // inside a breath. So say the one thing that is true here, which is that
+    // the singer is on the line, and leave the key to whoever knows the pitch.
+    // ── 3. WHEN. The voice is a driven body, so it speaks late — and later
+    // than any of them, because a consonant has to get out of the way before
+    // the vowel carrying the pitch arrives. That delay is voice onset time and
+    // it is tens of milliseconds, the same order as a bow settling.
+    const vlag = (ONSET_SECS * (0.6 + (hash32(seed, "sing", 0) % 997) / 997 * 0.8)) / spb;
+    const sung = [];
+    for (const e of lead) {
+      // A SINGER WHO IS OUT OF SYLLABLES DOES NOT GO QUIET — they run the extra
+      // notes on the vowel they are already on. That is melisma, and it is the
+      // most characteristic thing a voice does that no instrument can; dropping
+      // those notes instead is what made the sung part a skeleton. So keep
+      // every note, and mark the ones past the syllable budget as belonging to
+      // the syllable before them. A run-on note has no consonant behind it and
+      // so no fresh attack, which is why it is the softer of the two.
+      const own = e.strong || e.last || !sung.length
+        || hash32(seed, "syl", Math.round(e.b * 96)) % 1000 < share * 1000;
+      sung.push({ ...e, role: "voice", inst: -1, melisma: !own,
+        vel: e.vel * (own ? 1 : 0.86),
+        b: e.b + Math.min(vlag, e.dur * 0.25) });
     }
+    // ── 4. AND A SUNG NOTE LASTS UNTIL THE NEXT ONE. A phrase is one breath
+    // and the voicing runs right through it; only the last note is released.
+    // The old block multiplied each duration by 1.35 instead — a number the
+    // renderer never read, because `fireVoiceLine` already lengthens each note
+    // to where the next one starts. All it did was hold every sung note a
+    // third of the way into the note after it in everything that reads the
+    // composer's own output, which is the longest-lasting collision there is
+    // and exactly what the heterophony loop above refuses to write.
+    sung.forEach((e, i) => {
+      const nx = sung[i + 1];
+      if (nx) e.dur = Math.max(e.dur * 0.5, nx.b - e.b);
+      ev.push(e);
+    });
   }
   // and whatever thinness the seats could not absorb comes out of the hands of
   // the players who stayed — see `hush` above. This is what turns the section
@@ -1988,7 +2073,14 @@ export function composePiece(music, occKey = "peace", syls = null) {
       const plan = ambientBar(music, { occ: occKey, intimacy: 1, bar: cycle });
       for (const e of plan.events) {
         const o = { ...e, b: beat + e.b };
-        if (o.role === "voice" && syls && syls.length) o.syl = syls[sylAt++ % syls.length];
+        // A MELISMA IS SEVERAL NOTES ON ONE SYLLABLE. `ambientBar` marks the
+        // notes the singer took past their syllable budget; those carry the
+        // syllable already sounding rather than claiming the next one, which
+        // is the whole difference between a run and a patter song.
+        if (o.role === "voice" && syls && syls.length) {
+          o.syl = syls[sylAt % syls.length];
+          if (!o.melisma) sylAt++;
+        }
         ev.push(o);
       }
       beat += plan.beats;

@@ -1,0 +1,119 @@
+// A PINNED TRADITION MUST BE THE TRADITION IT SAYS IT IS.
+//
+// `musicTraditions.js` is the bench: seven entries that declare, as data, what
+// a takht or a sizhu or a sankyoku is made of, tuned to and led by. Everything
+// measured on the bench is only worth reading if the engine actually produces
+// what the table declares — and twice now it has not, silently, for the whole
+// life of the field:
+//
+//   · `finalIdx` was written on every entry and read by nothing. Five of the
+//     seven were being played from the wrong tonic, which is a different maqām
+//     and a different rāg, so every measurement taken on them was a measurement
+//     of something else.
+//   · `role` was written on every body and read by nothing. That one turned out
+//     TRUE — the composer derives the same assignment from weight and capacity
+//     98 times in a hundred — and the right response to a true declaration
+//     nothing checks is not to start obeying it (that would destroy the very
+//     independence that makes the agreement evidence) but to assert it, so the
+//     next drift in the derivation is caught here instead of by ear.
+//
+// So: every fact a tradition declares is checked against what the engine does
+// with it. Cheap, and it runs in `npm test`.
+import { TRADITIONS, applyTradition } from "../src/sim/musicTraditions.js";
+import { foundLanguage } from "../src/sim/language.js";
+import { foundPeople, musicOf } from "../src/sim/musicGenome.js";
+import { ensembleFor, composePiece, OCCASIONS, finalFor, modeDegree } from "../src/sim/musicCompose.js";
+import { makeInstrument } from "../src/sim/musicInstruments.js";
+import { finalsOf } from "../src/sim/musicTuning.js";
+
+let failures = 0;
+function check(name, ok, detail = "") {
+  if (ok) console.log(`  ok   ${name}`);
+  else { failures++; console.error(`  FAIL ${name}${detail ? ` — ${detail}` : ""}`); }
+}
+
+const W = () => ({ seed: 1, step: 0, languages: new Map(), _nextLanguageId: 1 });
+const build = (key) => applyTradition(
+  musicOf(foundPeople(7, foundLanguage(W(), { seed: 7 }), {})), key, { makeInstrument, finalsOf });
+
+const OCCS = Object.keys(OCCASIONS);
+const t0 = performance.now();
+console.log(`[music] ${Object.keys(TRADITIONS).length} pinned traditions x ${OCCS.length} occasions`);
+
+for (const key of Object.keys(TRADITIONS)) {
+  const T = TRADITIONS[key];
+  const m = build(key);
+
+  // ── the scale is the one the table names, to the cent ──
+  const got = m.scale.degrees.map(d => Math.round(d.cents));
+  check(`${key}: plays its own scale [${got.join(" ")}]`,
+    got.length === T.scale.length && got.every((c, i) => Math.abs(c - T.scale[i]) < 1),
+    `declared [${T.scale.join(" ")}]`);
+
+  // ── and calls home the degree it names, on every occasion ──
+  const fi = T.finalIdx ?? 0;
+  const wrong = OCCS.filter(o => finalFor(m, o) !== fi);
+  check(`${key}: home is degree ${fi} whatever the occasion`, wrong.length === 0,
+    wrong.map(o => `${o}→${finalFor(m, o)}`).join(" "));
+
+  // ── every body it lists is heard. A tradition that names five instruments
+  // and plays three is not that tradition — this is what left the Arabic riqq
+  // and the Japanese shamisen silent in every piece for months.
+  const heard = new Set();
+  for (const o of OCCS) for (const e of composePiece(m, o).events || []) heard.add(e.inst);
+  const mute = T.insts.map((s, i) => [s, i]).filter(([, i]) => !heard.has(i));
+  check(`${key}: all ${T.insts.length} bodies play`, mute.length === 0,
+    mute.map(([s]) => s.label || s.fam).join(", "));
+
+  // ── and each does the job the table says it does. Derived independently by
+  // `ensembleFor` from weight and capacity; asserted, never read, so that the
+  // agreement stays a measurement.
+  for (const occ of OCCS) {
+    const E = ensembleFor(m, occ, 1);
+    const role = new Map();
+    const put = (k, r) => { if (k != null && !role.has(k)) role.set(k, r); };
+    put(E.lead, "lead"); put(E.elab, "elab"); put(E.drone, "drone");
+    for (const k of (E.marks || [])) put(k, "mark");
+    for (const k of (E.het || [])) put(k, "het");
+    put(E.pulse, "pulse");
+    for (const k of (E.perc || [])) put(k, "pulse");
+    put(E.core, "core"); put(E.bass, "bass"); put(E.ost, "ost");
+    const bad = T.insts.map((s, i) => [s, i]).filter(([s, i]) => {
+      if (!s.role) return false;
+      const g = role.get(i) || "SILENT";
+      if (g === s.role) return false;
+      // heterophony IS carrying the line — every player on one tune is what the
+      // word means, so a declared lead playing `het` is the texture working
+      if (s.role === "lead" && g === "het") return false;
+      // and a loud outdoor occasion picks its own lead: a war band is fronted
+      // by a double reed over a drum, never by a court zither. That override is
+      // `ensembleFor`'s and it is right.
+      if (s.role === "lead" && OCCASIONS[occ].lead === "loud") return false;
+      return true;
+    });
+    check(`${key}/${occ}: bodies do their declared jobs`, bad.length === 0,
+      bad.map(([s, i]) => `${s.label || s.fam} declares ${s.role} plays ${role.get(i) || "SILENT"}`).join("; "));
+  }
+}
+
+// ── and one thing about every people, pinned or not: the mode's home has to be
+// a degree the mode contains. `modeDegree` maps a mode index onto a scale
+// index, and a final outside it is a tonic the melody can never land on.
+for (let s = 0; s < 60; s++) {
+  const seed = 1000 + s * 37;
+  const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
+  const bad = OCCS.filter(o => {
+    const f = finalFor(m, o);
+    return !(Number.isInteger(f) && f >= 0 && f < m.mode.size)
+      || !Number.isInteger(modeDegree(m, f));
+  });
+  if (bad.length) { check(`seed ${seed}: home is inside the mode`, false, bad.join(" ")); break; }
+  if (s === 59) check("60 derived peoples: home is inside the mode", true);
+}
+
+const secs = ((performance.now() - t0) / 1000).toFixed(1);
+if (failures > 0) {
+  console.error(`[music] ${failures} check(s) FAILED in ${secs}s`);
+  process.exit(1);
+}
+console.log(`[music] all checks passed in ${secs}s`);

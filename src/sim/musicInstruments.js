@@ -455,9 +455,22 @@ function modeAmps(ratios, fam, mat, f0 = 220) {
     if (drivenHere) {
       // A held body is not excited once and left; it is driven continuously,
       // so its steady spectrum is set by the valve that drives it, not by a
-      // contact. What it does share with a struck body is that the driver
-      // touches it somewhere, and a driver over a node cannot feed that mode.
-      return Math.abs(Math.sin(Math.PI * n * beta)) / Math.pow(n, 0.85);
+      // contact.
+      //
+      // WHETHER THERE IS A CONTACT AT ALL depends on the driver. A BOW touches
+      // the string a fraction of the way along, and a bow over a node cannot
+      // feed that mode — that is a real comb and `bowed` declares the 0.09
+      // where the contact sits. Breath, a reed and a pair of lips do not: they
+      // drive an air column at its END, at a pressure antinode, which feeds
+      // every mode there is. There is no node to sit over.
+      //
+      // Every wind in this table nevertheless got the comb, because none of
+      // them declares a `beta` and the default is 0.4 — and sin(π·n·0.4) is
+      // exactly zero at n = 5 and n = 10. So the fifth and tenth partial of
+      // every flute, pipe, reed, horn, panpipe and free reed in this world
+      // were silenced, by a default that was never meant to describe them.
+      const combed = fam.drive === "bow" ? Math.abs(Math.sin(Math.PI * n * beta)) : 1;
+      return combed / Math.pow(n, 0.85);
     }
     return contactSpectrum(r * f0, tau)
       * Math.abs(Math.sin(Math.PI * n * beta))
