@@ -8,7 +8,7 @@
 //
 //   materials  ← biome + geology + crafts          (what can be built at all)
 //   spectra    ← the physics of those bodies       (musicInstruments.js)
-//   tuning     ← roughness minima of those spectra (musicTuning.js — the spine)
+//   tuning     ← Martin archetype match on those spectra (musicArchetypes.js)
 //   rhythm     ← the LANGUAGE's own prosody        (languagePhonetics.prosodyOf)
 //   melody     ← tuning + tone + breath declination
 //   texture    ← surplus, stratification, literacy
@@ -25,6 +25,8 @@
 import { hash32 } from "./peopleSim/rng.js";
 import { MATERIALS, FAMILIES, makeInstrument, melodicCapacity, CARRIES } from "./musicInstruments.js";
 import { ensembleSpectrum, deriveScale, deriveMode, finalsOf, LENGTH_POWER } from "./musicTuning.js";
+import { MARTIN_ON } from "./martin.js";
+import { applyTuningArchetype, matchTuningArchetype } from "./musicArchetypes.js";
 import { prosodyOf } from "./languagePhonetics.js";
 
 // ── biomes: what grows and what can be dug ───────────────────────────────
@@ -474,7 +476,12 @@ export function musicOf(people) {
   // for a bar. See `cutPitches`.
   const refFam = FAMILIES[(insts[refJ] || insts[0] || {}).fam] || {};
   const power = LENGTH_POWER[refFam.vib] ?? 1;
-  const scale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated, power });
+  const rawScale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated, power });
+  const scale = MARTIN_ON
+    ? applyTuningArchetype(rawScale, matchTuningArchetype({
+      spec, radiated, cap: Math.min(cap, 9), pull, power, insts, seed: people.seed, refJ,
+    }))
+    : rawScale;
   // The mode: what they actually sing out of the scale they found. Its size
   // is bounded twice over — by how much scale material exists and how much
   // theory the tradition can carry (a written tradition sustains a larger

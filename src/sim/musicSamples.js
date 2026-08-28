@@ -25,6 +25,7 @@
 
 import { SAMPLE_BANK, NAMED_BANK } from "./musicSampleManifest.js";
 import { MATERIALS, dampTime, radiatedLevel, slideSecs } from "./musicInstruments.js";
+import { quantizeToScaleHz } from "./musicArchetypes.js";
 
 /**
  * ONE LEVEL CONVENTION FOR EVERY RECORDING, measured here rather than assumed.
@@ -286,9 +287,11 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   if (!b) return null;
   const mat = MATERIALS[inst.mat] || MATERIALS.wood;
   const ctx = A.ctx;
+  const tonic = opts?.tonicHz || A.tonicHz || 220;
+  const qFreq = (A.music && !b.unpitched) ? quantizeToScaleHz(freq, A.music, tonic) : freq;
   const got = b.unpitched
-    ? { e: b.entries[Math.abs(Math.round(freq)) % b.entries.length], hz: freq }
-    : pick(b.entries, freq);
+    ? { e: b.entries[Math.abs(Math.round(qFreq)) % b.entries.length], hz: qFreq }
+    : pick(b.entries, qFreq);
   const one = got && got.e;
   if (!one || !one.buf) return null;
 

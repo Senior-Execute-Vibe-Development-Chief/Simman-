@@ -151,7 +151,27 @@ function verticalOf(m) {
   };
 }
 
-console.log("[music] coherence gates (30 derived peoples, peace ambient bar)");
+// ── Martin-selected archetypes for every derived people ───────────────────
+const archetypes = new Set();
+for (let s = 0; s < 50; s++) {
+  const seed = 3000 + s * 17;
+  const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
+  check(`seed ${seed}: Martin tuning family chosen`, !!m.scale.martin?.id,
+    m.scale.derivedBy || "no martin");
+  archetypes.add(m.scale.martin.id);
+}
+check("50 derived peoples: at least 6 distinct tuning families", archetypes.size >= 6,
+  `${archetypes.size} families: ${[...archetypes].join(", ")}`);
+
+// mean ET distance — Martin scales should stay sample-friendly
+let maxEt = 0;
+for (let s = 0; s < 30; s++) {
+  const seed = 4000 + s * 23;
+  const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
+  maxEt = Math.max(maxEt, m.scale.tetErr ?? 0);
+}
+check("Martin: mean degree ET error under 45¢", maxEt < 45, `worst ${maxEt.toFixed(1)}¢`);
+
 let maxSemis = 0, maxPoly = 0;
 for (let s = 0; s < 30; s++) {
   const seed = 2000 + s * 41;

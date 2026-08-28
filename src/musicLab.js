@@ -105,6 +105,7 @@ function audio() {
     }).catch(() => { /* synthesis is a working instrument */ });
   }
   A.sampled = S.sampled;
+  if (P) { A.music = P; A.tonicHz = tonicOf(P); }
   if (A.ctx.state === "suspended") A.ctx.resume();
   return A;
 }
@@ -971,8 +972,12 @@ function tuningHTML(m) {
   const sung = fromHome.map((c, i) => noteName(tonic * Math.pow(2, c / 1200), modeSpell[i]));
   const degSpell = spell(d.map((x, i) => midiOfHz(degreeHz(m, tonic, i, 0))));
   const tween = sung.filter(n => n.between).length;
+  const mart = m.scale.martin;
   return `<div class="card">
-    <h2>The scale they found <span class="count">— derived, not chosen</span></h2>
+    <h2>The scale they play <span class="count">— ${mart
+      ? `Martin: ${esc(mart.label)} (${esc(mart.family)})`
+      : "derived, not chosen"}</span></h2>
+    ${mart ? `<p class="note tight">Pitch vocabulary selected from measured tuning families scored against this people's bodies and society (fit ${(mart.score * 100).toFixed(0)}%). ${esc(mart.provenance)}. The curve below is still the physics; the degrees are the catalog match.</p>` : ""}
     <p class="note">Two tones sound rough when their partials beat against each other. This curve is
       that roughness, computed across every interval from the ensemble's own spectrum, using
       Plomp &amp; Levelt's measured listening data. <strong>The dips are where this people's
