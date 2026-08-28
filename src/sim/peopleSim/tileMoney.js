@@ -1,14 +1,20 @@
 // ── Per-tile circulating coin (farm-gate payments + rural fiscal sinks) ──
-// docs/money-field-2026-08-28.md — Phase A: farm-gate credit; Phase B: tax + rent.
+// docs/money-field-2026-08-28.md — Phase A: pay; B: tax+rent; C: salt/iron/tithe/loss.
 
 import { getPolity } from "./entities.js";
-import { getWealthReserve, techEff } from "./settlement.js";
-import { recordOut, OUT_TRIBUTE } from "./money.js";
-import { T } from "./tuning.js";
+import { techEff } from "./settlement.js";
+import { recordIn, recordOut, IN_GOODS, IN_PILGRIM, OUT_PILGRIM, OUT_TRIBUTE } from "./money.js";
+import { localP } from "./inflation.js";
+import { G_MATERIALS, G_METAL } from "./goods.js";
+import { IDENTITY_K } from "./identityField.js";
+import { T, rNormPop } from "./tuning.js";
 
 const TRIB_FOOD_PER_POP = 0.0030;
 const TRIBUTE_RATE = 0.10;
 const EXTRACT_CHIEF = 0.3;
+const SALT_PER_POP = 0.00015;   // inelastic salt need (scaled like goods-layer per-capita rates)
+const IRON_PER_POP = 0.0008;    // tools/fittings — matches goods.js METAL_PC scale
+const METALLURGY_GATE = 0.15;   // iron market purchases emerge with smelting knowledge
 
 export function ensureTileWealth(world) {
   const N = world.N;
@@ -212,7 +218,131 @@ export function updateTileFiscalSinks(world, interval) {
     }
   }
 
+  let saltCoin = 0, ironCoin = 0, faithCoin = 0, lossCoin = 0;
+  const deposits = world.deposits;
+  const faiths = world.faiths;
+  const twGrid = world.tw;
+  const rn = rNormPop(world);
+
+  const arriveFromTile = (ti, holy) => {
+    if (!(T.PILGRIM_RANGE > 0)) return 1;
+    const tx = ti % twGrid, ty = (ti / twGrid) | 0;
+    let dx = Math.abs(tx - (holy.pos.x | 0));
+    if (dx > twGrid / 2) dx = twGrid - dx;
+    const dy = ty - (holy.pos.y | 0);
+    const dist = Math.sqrt(dx * dx + dy * dy) / rn;
+    return 1 / (1 + dist / T.PILGRIM_RANGE);
+  };
+
+  const tileFaithAt = (ti, terrS) => {
+    const faiId = world.tileFaithId, faiShr = world.tileFaithShr;
+    if (faiId) {
+      const base = ti * IDENTITY_K;
+      const fid = faiId[base];
+      if (fid >= 0) return { fid, share: (faiShr[base] || 0) / 255 };
+    }
+    if (terrS?.faithMix?.length) return { fid: terrS.faithMix[0][0], share: terrS.faithMix[0][1] };
+    return { fid: -1, share: 0 };
+  };
+
+  const saltScarcity = (market, ti) => {
+    let p = 1;
+    if (T.GOODS_PRICES && market._gPrice) p = market._gPrice[G_MATERIALS] || 1;
+    else p = localP(world, market);
+    const localSalt = (deposits?.salt?.[ti] || 0) + (market.localRes?.salt || 0) * 0.25;
+    const cheap = Math.min(1, localSalt * 2);
+    return Math.max(0.25, p * (1 - 0.4 * cheap));
+  };
+
+  const ironScarcity = (market) => {
+    if (T.GOODS_PRICES && market._gPrice) return Math.max(0.25, market._gPrice[G_METAL] || 1);
+    return localP(world, market);
+  };
+
+  for (let ti = 0; ti < world.N; ti++) {
+    if ((pf[ti] || 0) <= 0 || !elev || elev[ti] <= 0) continue;
+    const people = pf[ti] * bridge;
+    const terrOid = terr ? terr[ti] : -1;
+    const terrS = terrOid >= 0 && byId ? byId.get(terrOid) : null;
+    if (!terrS || terrS.mode !== "settled") continue;
+    const polId = terrS.countryId >= 0 ? terrS.countryId : (co ? co[ti] : -1);
+    const c = polId >= 0 && world.countries ? world.countries.get(polId) : null;
+    const capS = c ? c.capital : terrS;
+    const mz = monetizationTile(world, ti, capS, terrS);
+    if (mz <= 0) continue;
+
+    const coinHere = tw[ti] || 0;
+    if (coinHere <= 0) continue;
+
+    // Phase C — salt (necessity purchase at the market)
+    const saltNeed = people * SALT_PER_POP * localP(world, terrS) * dt * ivl;
+    if (saltNeed > 0) {
+      const saltDue = saltNeed * saltScarcity(terrS, ti) * mz;
+      const paid = Math.min(coinHere, saltDue);
+      if (paid > 0) {
+        tw[ti] -= paid;
+        terrS.wealth = (terrS.wealth || 0) + paid;
+        recordIn(terrS, IN_GOODS, paid);
+        saltCoin += paid;
+      }
+    }
+
+    // Phase C — iron/tools (metallurgy-gated)
+    const metallurgy = capS?.knowledge?.metallurgy ?? terrS.knowledge?.metallurgy ?? 0;
+    if (metallurgy >= METALLURGY_GATE) {
+      const ironNeed = people * IRON_PER_POP * dt * ivl * metallurgy;
+      const ironDue = ironNeed * ironScarcity(terrS) * mz;
+      const paid = Math.min(tw[ti] || 0, ironDue);
+      if (paid > 0) {
+        tw[ti] -= paid;
+        terrS.wealth = (terrS.wealth || 0) + paid;
+        recordIn(terrS, IN_GOODS, paid);
+        ironCoin += paid;
+      }
+    }
+
+    // Phase C — faith tithe (rural pilgrimage intensity)
+    if (T.PILGRIM_W > 0 && faiths) {
+      const { fid, share } = tileFaithAt(ti, terrS);
+      if (fid >= 0 && share > 0) {
+        const f = faiths.get(fid);
+        const origin = f ? (f.originSettlementId ?? -1) : -1;
+        if (origin >= 0 && origin !== terrS.id) {
+          const holy = byId.get(origin);
+          if (holy && holy.mode === "settled") {
+            const titheDue = people * TRIB_FOOD_PER_POP * T.PILGRIM_W * share
+              * arriveFromTile(ti, holy) * mz * dt * ivl;
+            const paid = Math.min(tw[ti] || 0, titheDue);
+            if (paid > 0) {
+              tw[ti] -= paid;
+              recordOut(terrS, OUT_PILGRIM, paid);
+              holy.wealth = (holy.wealth || 0) + paid;
+              recordIn(holy, IN_PILGRIM, paid);
+              faithCoin += paid;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Phase C — coin loss on tiles (same rate as settlement specie drain)
+  if (T.COIN_LOSS_RATE > 0) {
+    const lossMul = T.COIN_LOSS_RATE * dt * ivl;
+    for (let ti = 0; ti < world.N; ti++) {
+      const w = tw[ti] || 0;
+      if (w <= 0) continue;
+      const loss = w * lossMul;
+      tw[ti] = w - loss;
+      lossCoin += loss;
+    }
+  }
+
   world._tileFiscalTax = taxCoin;
   world._tileFiscalRent = rentCoin;
   world._tileFiscalInKind = inKind;
+  world._tileFiscalSalt = saltCoin;
+  world._tileFiscalIron = ironCoin;
+  world._tileFiscalFaith = faithCoin;
+  world._tileFiscalLoss = lossCoin;
 }

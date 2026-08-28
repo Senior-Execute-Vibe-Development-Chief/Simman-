@@ -37,6 +37,10 @@ function run(arm) {
       tax: world._tileFiscalTax || 0,
       rent: world._tileFiscalRent || 0,
       inKind: world._tileFiscalInKind || 0,
+      salt: world._tileFiscalSalt || 0,
+      iron: world._tileFiscalIron || 0,
+      faith: world._tileFiscalFaith || 0,
+      loss: world._tileFiscalLoss || 0,
     },
     invariantHits: world.debug?.invariantHits || {},
   };
