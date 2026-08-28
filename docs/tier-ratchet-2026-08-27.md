@@ -2546,3 +2546,76 @@ Partly.
   than the floor sets that share, and more arms of the same shape will keep
   re-measuring it rather than explaining it. **It is the deepest open item and it is
   not run-shaped.**
+
+---
+
+## 35. IS THE POPULATION DROP BAD? — checked against history, mostly NO
+
+> Owner: *"is this a bad thing? how does this line up to real life"*
+
+### 35.1 The one axis with a real-world benchmark says the CONTROL is wrong
+
+| 36k-40k | urban | rural | total | **urban %** |
+|---|---|---|---|---|
+| control clean | 119M | 302M | 421M | **28.3%** |
+| control chaos1 | 84M | 325M | 409M | **20.5%** |
+| control ref3 | 83M | 322M | 405M | **20.5%** |
+| `+AGG+STAMP` | 41M | 268M | 309M | **13.3%** |
+| `+AGG+STAMP` chaos | 41M | 280M | 321M | **12.8%** |
+| `+AGG+STAMP+ULAB` | 36M | 272M | 308M | **11.7%** |
+
+Against the historical record for share of population in places over ~10,000:
+
+```
+Roman Empire at peak     ~10-15%   (within the empire, not the world)
+World c.1500 CE            ~5-8%
+World c.1800 CE              ~7%
+England 1800                ~20%   ← the most urbanised large country on earth
+Netherlands 1700            ~30%   ← the outlier of the pre-industrial world
+```
+
+**The control worlds run at 20-28%.** That is England-in-1800 at the low end and
+Dutch-Republic-outlier at the high end — for a world that is nowhere near
+industrial. **The treated worlds run at 11.7-13.3%**, which sits inside the plausible
+band for a mature pre-industrial world.
+
+### 35.2 Most of the "lost" population is the excess urbanites
+
+```
+control clean   421M total, 119M urban      treated  309M total, 41M urban
+   total gap 112M   of which urban gap 78M  →  70% of the loss is city-dwellers
+
+control chaos1  409M total,  84M urban      treated  321M total, 41M urban
+   total gap  88M   of which urban gap 43M  →  49% of the loss is city-dwellers
+```
+
+**Half to seventy percent of the population drop is urban population that should not
+have existed at that urbanisation rate.** Put the other way: at 12% urban and 309M
+people, a world should hold ~37M urbanites. The treated arms hold 36-41M. The control
+holds 119M against a 12%-implied 50M — **2.4× too many.**
+
+On that reading the drop is not a cost at all. It is the removal of population the
+control was carrying *because* its cities were unphysically large, which is the
+pathology this entire lap set out to fix.
+
+### 35.3 What that does NOT settle
+
+- **The rural half is unexplained.** 30-50M (10-15%) of the gap is countryside, and
+  there is no benchmark for how peopled a countryside should be at a given claimed
+  fraction. It could be a correction or a defect; nothing here distinguishes them.
+- **"Which total is right" is unanswerable as posed.** 309M ≈ a 1000 CE world,
+  421M ≈ a 1450 CE world — both are real figures. Deciding between them needs to know
+  what development level the world has actually reached, and CLAUDE.md's two-clock
+  warning is exactly that the displayed calendar cannot answer it.
+- **The mechanism is still unexplained** (§27.1, §34.1). Knowing the outcome is
+  probably fine is not the same as knowing why it happens, and a mechanism whose
+  effect nobody can account for should not ship on the grounds that its output looks
+  reasonable — that is fitting the outcome, in the other direction.
+
+### 35.4 Standing correction
+
+This is the third time this lap that a "cost" turned out to be a correction once
+checked against an external standard rather than against the control (§28.2 was the
+first, on population; §32.1 the second, on churn). **The control is not the target.**
+The control is a world with a known pathology, and measuring against it will keep
+reporting fixes as regressions.
