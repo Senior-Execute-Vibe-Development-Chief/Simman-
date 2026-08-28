@@ -385,7 +385,11 @@ export function computeTerritory(world) {
     const o = owner[ti];
     if (o < 0) continue;
     if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
-    if (clip && clipped(o, ti)) {   // catchment tile no longer within its owner's country (borders shifted)
+    // T.MARKET_PULL: cross-border assignment is TRADE, not annexation — a market
+    // buying a foreign field's harvest does not move _countryOwner (TILE_POLITY
+    // stamps political land from the capital alone). Skip the clip release so a
+    // bid-won foreign tile is not confiscated before the pass re-contests it.
+    if (clip && clipped(o, ti) && !mktPull) {   // catchment tile no longer within its owner's country (borders shifted)
       if (graceT > 0) {
         if (clipAt[ti] === 0) clipAt[ti] = world.step + 1;              // dispute begins — keep working
         else if (world.step + 1 - clipAt[ti] > graceT) { owner[ti] = -1; clipAt[ti] = 0; }   // the new order stood — release
@@ -575,11 +579,14 @@ export function computeTerritory(world) {
         // Walk THROUGH water (so a navy reaches the far shore) but don't
         // CLAIM water tiles — borders shouldn't bleed into the ocean.
         // Land tiles are claimed normally; water tiles just propagate
-        // the cost frontier. CATCHMENT_CLIP: claim only tiles inside the
-        // claimant's own country (the cost frontier still walks THROUGH
-        // out-of-country land, so a member can reach its country's ground
-        // beyond a wild gap, but it never works foreign/wild soil).
-        if ((mktPull || lk < 0) && elev[ni] > 0 && inCountry(oid, ni)) owner[ni] = oid;
+        // the cost frontier. Off MARKET_PULL, CATCHMENT_CLIP: claim only
+        // tiles inside the claimant's own country (the cost frontier still
+        // walks THROUGH out-of-country land, so a member can reach its
+        // country's ground beyond a wild gap, but it never works foreign
+        // soil). Under MARKET_PULL the bid may cross borders — Rome bought
+        // Egyptian grain before it owned Egypt — and _territoryOwner records
+        // who is farming for whom, not who rules the tile politically.
+        if ((mktPull || lk < 0) && elev[ni] > 0 && (mktPull || inCountry(oid, ni))) owner[ni] = oid;
         heap.push(ni, nd);
       }
     }
