@@ -24,6 +24,7 @@ import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.R
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, updateTribute, SIZE_REF } from "./entities.js";
+import { updateTileFiscalSinks } from "./tileMoney.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -2321,6 +2322,7 @@ export function updatePolities(world) {
   // every polity (realm or nation of the land) skims the field people under
   // its borders in kind; realm overflow monetises at the capital's market.
   updateTribute(world, T.POLITY_INTERVAL | 0);
+  if (T.TILE_MONEY > 0) updateTileFiscalSinks(world, T.POLITY_INTERVAL | 0);
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
@@ -3522,7 +3524,7 @@ export function updatePolities(world) {
       // cash — and that over-extraction feeds the over-tax grievance into revolt
       // (the "raise taxes for the war → the provinces rise up" loop). 1× at the base
       // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
-      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
+      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0 && !(T.TILE_MONEY > 0)) {
         const taxMul = (gov._taxRate ?? T.TAX_BASE) / T.TAX_BASE;
         // Serfdom skims a HEAVIER share of the harvest — bound peasants kept at subsistence,
         // their surplus extracted as labour-rent up to the lord/state (the serf breadbasket).

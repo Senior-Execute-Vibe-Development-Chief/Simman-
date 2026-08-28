@@ -33,6 +33,11 @@ function run(arm) {
     tileIn,
     sellersWithTile,
     debugCoin,
+    tileFiscal: {
+      tax: world._tileFiscalTax || 0,
+      rent: world._tileFiscalRent || 0,
+      inKind: world._tileFiscalInKind || 0,
+    },
     invariantHits: world.debug?.invariantHits || {},
   };
 }
@@ -49,3 +54,4 @@ const on = run({ ...base, TILE_MONEY: 1 });
 console.log("TILE_MONEY=0", JSON.stringify(off));
 console.log("TILE_MONEY=1", JSON.stringify(on));
 console.log(`tile coin share (on arm): ${(on.tileTotal / (on.debugCoin || 1)).toFixed(3)}`);
+if (on.tileFiscal) console.log("tile fiscal (on)", on.tileFiscal);
