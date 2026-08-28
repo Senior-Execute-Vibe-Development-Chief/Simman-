@@ -1,4 +1,4 @@
-[harness] tree 02532ef
+[harness] tree f98e64f
 [SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"SETT_STRIDE":3,"TRADE_STRIDE":5,"POP_FIELD_WORKERS":0,"CORE_LOCAL":1,"AGGLOM_LOCAL":1,"URBAN_LABOR":1,"STAMP_RETIRE":1,"VIABLE_UNITS":1,"DISSOLVE_CORE":0.2,"MINING_RATE":5.0000001}
 [peopleSim] hearth pin Nile picked at tile (277,80) (27.7E 30.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
@@ -86,7 +86,7 @@
     ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
     !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
     MACHINE 16000 20000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
-    [119s]
+    [118s]
 [transHeap] step=21192 cap=2048 peakN=1641 pushes=25687 (0.0MB backing)
 [peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
 [transHeap] step=22704 cap=65536 peakN=60937 pushes=173328 (0.5MB backing)
@@ -104,4 +104,17 @@
     MASS  urban=2494su rural=103271su urbanShare=2.36%
     ARMING  blockRan=83.0%  bind=48.9%  diskBound=37.5%  [CORE_LOCAL=1 LAND_KNOW=1]
     MACHINE 20000 24000 15 0.888 14 1 0 1 8 0 2494 103271 82.95 48.86 37.50
-    [182s]
+    [171s]
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+
+=== window 24000->28000  realms=226  claimed=10.4%  settled=476
+    FLOWS in-window   founded=70 ended=52 seceded=36 shattered=24
+    FLOWS per realm   founded=0.5809 ended=0.4315 seceded=0.2988 shattered=0.1992   (meanRealms=121)
+    WAR in-window     began=2276 ended=2089 captured=0 sacked=21
+    WAR per realm     began=18.8880 captured=0.0000
+    CORES p10=0.0 p50=4.5 p90=61.4 max=311.6su  |  MODE 0.01su held by 150/475 (31.6%)  <- the pin
+    URBSHARE/sett p50=0.035 p90=0.148 max=1.000  |  >=0.30 (graveyard saturated): 9/476 (1.9%)
+    MASS  urban=10214su rural=200200su urbanShare=4.85%
+    ARMING  blockRan=82.4%  bind=37.8%  diskBound=21.2%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 24000 28000 226 10.356 70 52 36 24 2276 0 10214 200200 82.35 37.82 21.22
+    [349s]

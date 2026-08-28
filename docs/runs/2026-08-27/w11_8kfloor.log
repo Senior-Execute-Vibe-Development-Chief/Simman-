@@ -1,5 +1,5 @@
-[harness] tree 02532ef
-[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"SETT_STRIDE":3,"TRADE_STRIDE":5,"POP_FIELD_WORKERS":0,"CORE_LOCAL":1,"AGGLOM_LOCAL":1,"URBAN_LABOR":1,"STAMP_RETIRE":1,"VIABLE_UNITS":1,"DISSOLVE_CORE":0.2,"MINING_RATE":5.0000001}
+[harness] tree f98e64f
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"SETT_STRIDE":3,"TRADE_STRIDE":5,"POP_FIELD_WORKERS":0,"CORE_LOCAL":1,"AGGLOM_LOCAL":1,"URBAN_LABOR":1,"STAMP_RETIRE":1,"DISSOLVE_CORE":0.2}
 [peopleSim] hearth pin Nile picked at tile (277,80) (27.7E 30.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
@@ -29,7 +29,7 @@
     ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
     !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
     MACHINE 0 4000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
-    [25s]
+    [24s]
 [peopleSim] AGRICULTURE INVENTED at (333,81) (69.8E 29.2N) — the basin farms; a city will rise when its market gathers one (score 7.79)
 [peopleSim] AGRICULTURE INVENTED at (277,80) (27.7E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.74)
 [peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.51)
@@ -45,7 +45,7 @@
     ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
     !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
     MACHINE 4000 8000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
-    [49s]
+    [48s]
 
 === window 8000->12000  realms=0  claimed=0.0%  settled=0
     FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
@@ -71,7 +71,7 @@
     ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
     !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
     MACHINE 12000 16000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
-    [96s]
+    [95s]
 [peopleSim] AGRICULTURE INVENTED at (387,72) (110.3E 36.0N) — the basin farms; a city will rise when its market gathers one (score 3.54)
 [peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.07)
 
@@ -86,22 +86,33 @@
     ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
     !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
     MACHINE 16000 20000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
-    [119s]
+    [117s]
 [transHeap] step=21192 cap=2048 peakN=1641 pushes=25687 (0.0MB backing)
 [peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
-[transHeap] step=22704 cap=65536 peakN=60937 pushes=173328 (0.5MB backing)
 [peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
-[transHeap] step=23208 cap=131072 peakN=68596 pushes=184596 (1.0MB backing)
 [peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.05)
+[transHeap] step=23712 cap=65536 peakN=39081 pushes=137317 (0.5MB backing)
 
-=== window 20000->24000  realms=15  claimed=0.9%  settled=88
-    FLOWS in-window   founded=14 ended=1 seceded=0 shattered=1
-    FLOWS per realm   founded=1.8667 ended=0.1333 seceded=0.0000 shattered=0.1333   (meanRealms=8)
-    WAR in-window     began=8 ended=0 captured=0 sacked=0
-    WAR per realm     began=1.0667 captured=0.0000
-    CORES p10=0.0 p50=8.0 p90=70.6 max=709.1su  |  MODE 0.01su held by 26/85 (30.6%)  <- the pin
-    URBSHARE/sett p50=0.019 p90=0.100 max=0.305  |  >=0.30 (graveyard saturated): 1/88 (1.1%)
-    MASS  urban=2494su rural=103271su urbanShare=2.36%
-    ARMING  blockRan=83.0%  bind=48.9%  diskBound=37.5%  [CORE_LOCAL=1 LAND_KNOW=1]
-    MACHINE 20000 24000 15 0.888 14 1 0 1 8 0 2494 103271 82.95 48.86 37.50
-    [182s]
+=== window 20000->24000  realms=16  claimed=1.5%  settled=102
+    FLOWS in-window   founded=8 ended=0 seceded=1 shattered=0
+    FLOWS per realm   founded=1.0000 ended=0.0000 seceded=0.1250 shattered=0.0000   (meanRealms=8)
+    WAR in-window     began=14 ended=2 captured=0 sacked=0
+    WAR per realm     began=1.7500 captured=0.0000
+    CORES p10=1.6 p50=8.0 p90=98.0 max=742.8su  |  MODE 8.00su held by 41/97 (42.3%)  <- the pin
+    URBSHARE/sett p50=0.052 p90=0.383 max=1.000  |  >=0.30 (graveyard saturated): 14/102 (13.7%)
+    MASS  urban=4637su rural=80178su urbanShare=5.47%
+    ARMING  blockRan=84.3%  bind=37.3%  diskBound=26.5%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 20000 24000 16 1.461 8 0 1 0 14 0 4637 80178 84.31 37.25 26.47
+    [165s]
+
+=== window 24000->28000  realms=276  claimed=10.9%  settled=475
+    FLOWS in-window   founded=43 ended=54 seceded=108 shattered=7
+    FLOWS per realm   founded=0.2945 ended=0.3699 seceded=0.7397 shattered=0.0479   (meanRealms=146)
+    WAR in-window     began=2965 ended=2725 captured=0 sacked=9
+    WAR per realm     began=20.3082 captured=0.0000
+    CORES p10=3.1 p50=8.0 p90=69.9 max=594.1su  |  MODE 8.00su held by 171/473 (36.2%)  <- the pin
+    URBSHARE/sett p50=0.086 p90=0.302 max=1.000  |  >=0.30 (graveyard saturated): 48/475 (10.1%)
+    MASS  urban=13781su rural=188730su urbanShare=6.80%
+    ARMING  blockRan=89.7%  bind=42.7%  diskBound=28.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 24000 28000 276 10.867 43 54 108 7 2965 0 13781 188730 89.68 42.74 28.00
+    [340s]

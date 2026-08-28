@@ -2318,3 +2318,81 @@ and 95-98) and finishes in ~8 minutes, which fits inside the observed uptime.
 What it costs: the mature tail. Waves 4-6 showed the median core only clears the
 floor at 32k-36k, so a 28k arm cannot see that. The tail needs either a calmer
 machine or a resumable probe; neither is being built now.
+
+---
+
+## 32. WAVE 11 COMPLETE — and §31.2's "halves the churn" is RETRACTED
+
+Four arms run to 28k in the FOREGROUND, inside the tool call, so nothing could
+outlive the turn. All completed cleanly (301-349s, exit 0, 7 windows each). That
+technique is the fix for §31.4's problem and should be the default from here: a 28k
+`tw=480` arm costs five minutes and cannot be lost.
+
+Final window (24k-28k), with a **proper internal control** — `w11_nohyst` carries the
+identical lever stack and differs ONLY in the dissolve bar:
+
+| arm | dissolve bar | claimed% | urban% | bind% | p50 core | mode | total su | ended | settled |
+|---|---|---|---|---|---|---|---|---|---|
+| ctrl clean | 10,000 | 11.38 | 7.68 | 37.9 | — | — | 235,051 | 70 | — |
+| ctrl chaos1 | 10,000 | 12.91 | 7.04 | 32.6 | 12.0 | 12.00 @ 44% | 233,594 | 77 | 498 |
+| ctrl ref3 | 10,000 | 10.70 | 7.35 | 33.3 | 12.0 | 12.00 @ 45% | 237,054 | 70 | 518 |
+| **NO-HYST** | **10,000** | 11.40 | 5.11 | 37.9 | 5.1 | 0.01 @ 33% | 211,654 | **59** | 480 |
+| HYST | **2,000** | 8.80 | 5.58 | 40.7 | 6.5 | 0.01 @ 36% | 204,133 | **48** | 401 |
+| HYST chaos | **2,000** | 10.36 | 4.85 | 37.8 | 4.5 | 0.01 @ 32% | 210,414 | **52** | 475 |
+| HYST 8kfloor | **2,000** | 10.87 | 6.81 | 42.7 | 8.0 | 8.00 @ 36% | 202,511 | **54** | 473 |
+
+### 32.1 The retraction
+
+§31.2 reported that *"every arm with the owner's 2,000 dissolve bar roughly halves
+the churn (48-54) against both the controls (70-77) and every previous treated arm
+(95-98)"*.
+
+**The comparison was wrong.** Wave 8's supposed internal control, `w8_agglom052`,
+carried `URBAN_AGGLOM = 0.52` — a completely different lever at four times its
+shipped value. It was never a no-hysteresis control; it was a different experiment.
+So the "halving" was measured against the whole lever stack plus an unrelated dial,
+not against the dissolve bar.
+
+With a real control — same stack, only `DISSOLVE_CORE` differs:
+
+```
+raw ended            NO-HYST 59      HYST 48, 52      →  81-88% of control
+per settlement       NO-HYST 0.123   HYST 0.120, 0.109 →  89-97% of control
+```
+
+**The hysteresis reduces churn by roughly 10-20% raw, and by 3-11% once normalised
+for the fact that the treated arms hold fewer settlements to lose.** Not a halving.
+
+Most of the drop from the controls' 70-77 to the treated 48-54 comes from the OTHER
+levers in the stack, which the no-hysteresis arm already shows at 59.
+
+### 32.2 What else the dissolve bar does: essentially nothing
+
+Against its own control, every other measure overlaps:
+
+```
+urban%     NO-HYST 5.11    HYST 5.58, 4.85     straddles
+bind%      NO-HYST 37.9    HYST 40.7, 37.8     straddles
+p50 core   NO-HYST 5.1     HYST 6.5, 4.5       straddles
+mode share NO-HYST 33%     HYST 36%, 32%       straddles
+total pop  NO-HYST 212k    HYST 204k, 210k     at or slightly below
+```
+
+So on this evidence the 2,000 dissolve bar is a **small churn effect and nothing
+else** at this horizon. It does not move the pin, the median, or urbanisation.
+
+That is not a refutation of the design — §29's argument for hysteresis stands on its
+own logic, and the mature tail (32k-40k) where waves 4-6 showed the median finally
+moving is exactly what a 28k horizon cannot see. But it is a long way from what §31.2
+claimed, and the claim came from a control that was not a control.
+
+### 32.3 The method lesson, which is the same one twice
+
+§20 established that this world's run-to-run variance needs three control draws.
+§32.1 adds the other half: **a control must differ from the treatment in exactly one
+thing.** `w8_agglom052` differed in two, and I read the difference as if it were one.
+
+Both errors have the same shape — comparing against whatever arm happened to exist
+rather than against the arm the question requires. The foreground technique makes the
+fix cheap: a purpose-built control now costs five minutes and cannot be lost, so
+there is no longer any excuse for reusing an ill-matched one.
