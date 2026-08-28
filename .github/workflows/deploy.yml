@@ -30,6 +30,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # Music Lab — standalone page for phone/browser (synthesis only; samples
+      # are ~13MB and off-pitch by default anyway). Served at /Simman-/musiclab.html
+      - run: node tools/build_musiclab.mjs --no-samples dist/musiclab.html
       # The stale-tab detector's beacon: the app polls this file and offers a
       # reload when the deployed sha differs from the one baked into its bundle.
       - run: printf '{"sha":"%s"}' "$GITHUB_SHA" > dist/version.json
