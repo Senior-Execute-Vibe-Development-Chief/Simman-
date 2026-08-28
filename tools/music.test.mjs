@@ -10,6 +10,13 @@
 //     seven were being played from the wrong tonic, which is a different maqām
 //     and a different rāg, so every measurement taken on them was a measurement
 //     of something else.
+//   · putting a gamelan, a West African ensemble and a didgeridoo on this bench
+//     found five faults inside an hour that five melodic string-and-pipe
+//     traditions had never touched: the colotomic gong swept into the
+//     percussion section, a ten-kettle rack made the marker instead, the whole
+//     percussion block skipped for any people with no drum, the loud-occasion
+//     lead handed to a body that cannot play a tune, and a stage seat reserved
+//     for a "lead" that does not exist. A bench only tests what it contains.
 //   · `role` was written on every body and read by nothing. That one turned out
 //     TRUE — the composer derives the same assignment from weight and capacity
 //     98 times in a hundred — and the right response to a true declaration

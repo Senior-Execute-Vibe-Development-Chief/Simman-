@@ -1,4 +1,4 @@
-// ── Five real traditions, as a BENCH ──────────────────────────────────────
+// ── Eleven real traditions, as a BENCH ────────────────────────────────────
 //
 // `musicRefs.js` pins the INPUTS a tradition had and lets the engine derive
 // the rest, which is the right way to check a generator against reality. This
@@ -8,9 +8,18 @@
 // These are not the generator. Nothing here runs when a people is founded, no
 // derived people can reach this table, and no constant in it feeds back into
 // musicGenome, musicTuning or musicCompose. They are a KNOWN-ANSWER TEST: the
-// tuning, the ensemble, the metre and the texture of five traditions that
-// actually exist, written down from measurement, so that the synthesis and the
-// composer can be heard playing something whose right answer is known.
+// tuning, the ensemble, the metre and the texture of traditions that actually
+// exist, written down from measurement, so that the synthesis and the composer
+// can be heard playing something whose right answer is known.
+//
+// AND EACH ONE HAS TO TEST SOMETHING THE OTHERS DO NOT. A bench of five
+// melodic string-and-pipe traditions is a bench with a hole in it, and this one
+// had one: the code cites gamelan, slendro, pelog, colotomic form and ombak
+// twenty times, and West African drumming, claves and timelines ninety-seven
+// times, as the reasons its mechanisms work the way they do — with no entry for
+// either. Those two are now here, and with them the cases nothing covered: an
+// equal temperament with functional harmony over it, a twelve-beat compás, an
+// ensemble carrying essentially ONE pitch, and tuned steel.
 //
 // That makes fitting DETECTABLE rather than hiding it. If a maqam played on an
 // oud through this engine does not sound like an oud playing a maqam, the
@@ -63,43 +72,15 @@ export const TRADITIONS = {
   },
 
   celtic: {
-    label: "Irish and Scottish — Mixolydian",
-    gloss: "major with a flat seventh, pipes and fiddle over a drone",
-    // THE FLAT SEVENTH IS THE WHOLE THING. Take a major scale, lower its
-    // seventh, and you have the modal colour that most Irish and Scottish
-    // dance music actually lives in — the one that lets a tune sit over a
-    // single drone forever without ever wanting to resolve upward, which is
-    // why a bagpipe can play it at all.
-    //
-    // Just, because a fiddle and a pipe chanter are tuned to each other by ear
-    // and a drone is what they tune against: 9/8, 5/4, 4/3, 3/2, 5/3, 16/9.
-    frame: 1200,
-    scale: [0, 204, 386, 498, 702, 884, 996],
-    mode: [0, 204, 386, 498, 702, 884, 996],
-    finalIdx: 0,
-    insts: [
-      { fam: "reedPipe", mat: "reed", label: "chanter", cap: 9, weight: 1.0, role: "lead" },
-      { fam: "reedPipe", mat: "reed", label: "drones", cap: 1, weight: 0.9, role: "drone" },
-      { fam: "bowed", mat: "gut", frame: "wood", label: "fiddle", cap: 14, weight: 0.8 },
-      { fam: "fluteOpen", mat: "wood", label: "whistle", cap: 8, weight: 0.6 },
-      { fam: "frameDrum", mat: "hide", frame: "wood", label: "bodhrán", cap: 1, weight: 0.5 },
-    ],
-    rhythm: { tempo: 132, meterKind: "compound", beats: 2, div: 3, density: 0.9, syncopation: 0.12, swing: 0.15 },
-    texture: { kind: "drone", size: 3, ornament: 0.9, sustains: true, courtly: 0.1 },
-    melody: { step: 0.8, arch: 0.36, descent: 0.45, breathBound: true, toneBound: false, reach: 9 },
-    note: "A bagpipe has no dynamics and cannot stop: everything expressive it does is ornament, which is why the chanter's grace-note vocabulary is the size it is.",
-  },
-
-  celticPipes: {
-    label: "Highland pipes — as measured",
-    gloss: "the real chanter scale, neutral third and all: not a mode anybody wrote down",
-    // The Highland pipe scale as MEASURED off a chanter rather than as
-    // idealised: a third at 341 cents that is neither major nor minor, a
-    // seventh at 1010, and a fourth two cents flat. It is kept beside the
-    // Mixolydian above for the same reason maqām Rast is kept beside
-    // Ḥijāzkār — it is one of the bench's two genuinely neutral intervals,
-    // and a reference bench that holds only the intervals a keyboard can play
-    // is not testing anything.
+    label: "Highland pipes",
+    gloss: "the measured pipe scale — neither just nor equal — over a fixed drone",
+    // TWO CELTIC ENTRIES WERE ONE TRADITION TWICE. The other held an idealised
+    // just Mixolydian on the identical five instruments, and with a common
+    // practice entry now in the table the plain diatonic is covered. What only
+    // this one has is a REAL MEASURED TUNING that is neither just nor equal:
+    // the Highland chanter's third sits at 341 cents and its seventh at 1010,
+    // both far enough off the twelve-tone grid (41 cents at the worst) to be
+    // audibly its own thing rather than a rounding of anybody else's.
     frame: 1200,
     scale: [0, 197, 341, 495, 700, 890, 1010],
     mode: [0, 197, 341, 495, 700, 890, 1010],
@@ -108,15 +89,14 @@ export const TRADITIONS = {
       { fam: "reedPipe", mat: "reed", label: "chanter", cap: 9, weight: 1.0, role: "lead" },
       { fam: "reedPipe", mat: "reed", label: "drones", cap: 1, weight: 0.9, role: "drone" },
       { fam: "bowed", mat: "gut", frame: "wood", label: "fiddle", cap: 14, weight: 0.8 },
-      { fam: "fluteOpen", mat: "wood", label: "whistle", cap: 8, weight: 0.6 },
-      { fam: "frameDrum", mat: "hide", frame: "wood", label: "bodhrán", cap: 1, weight: 0.5 },
+      { fam: "fluteOpen", mat: "iron", label: "whistle", cap: 8, weight: 0.6 },
+      { fam: "frameDrum", mat: "hide", frame: "wood", label: "bodhrán", cap: 1, weight: 0.4, role: "pulse" },
     ],
-    rhythm: { tempo: 132, meterKind: "compound", beats: 2, div: 3, density: 0.9, syncopation: 0.12, swing: 0.15 },
-    texture: { kind: "drone", size: 3, ornament: 0.9, sustains: true, courtly: 0.1 },
+    rhythm: { tempo: 116, meterKind: "duple", beats: 4, div: 2, density: 0.72, syncopation: 0.2, swing: 0.12 },
+    texture: { kind: "drone", size: 4, ornament: 0.85, sustains: true, courtly: 0.15 },
     melody: { step: 0.8, arch: 0.36, descent: 0.45, breathBound: true, toneBound: false, reach: 9 },
-    note: "Given as measured, so the third sits between major and minor where a chanter really puts it — the interval that makes pipe music sound like nothing else and like nothing on a piano.",
+    note: "A bagpipe cannot be stopped, tongued or dynamically shaded: every note is the same loudness and the line is articulated by grace notes alone, which is why the ornament figure is the highest on the bench. The chanter reed is modelled as a conical reed pipe, which it is.",
   },
-
   hindustani: {
     label: "Hindustani — rāg Bhairavī",
     gloss: "every degree flattened but the fourth and fifth, sitār over a tānpūrā",
@@ -195,34 +175,200 @@ export const TRADITIONS = {
     note: "The oud is fretless, so its 16 pitches are a statement about the neck's length rather than about frets. Ḥijāzkār asks nothing of the qānūn's mandal levers, which is exactly the difference from Rast.",
   },
 
-  arabicRast: {
-    label: "Arabic — maqām Rast",
-    gloss: "the mother maqām: a NEUTRAL third and seventh, playable on nothing with frets",
-    // Rast: the third (355) and the seventh (1053) are NEUTRAL — neither major
-    // nor minor, and not a quarter-tone grid either. They are the intervals
-    // that make a maqām unplayable on a keyboard and are the whole sound.
+  gamelan: {
+    label: "Javanese gamelan — pélog",
+    gloss: "tuned bronze, a scale that is nobody else's, and a cycle marked by gongs",
+    // THE ENTRY THIS ENGINE MOST NEEDED. Its comments cite slendro, pélog,
+    // colotomic form and ombak as the reasons half its mechanisms exist — the
+    // inharmonic tuning path, the non-octave frame, the nested `marks` — and
+    // there was nothing to check any of it against.
     //
-    // This is the bench's only quarter-tone tradition and it is here as a TEST
-    // rather than as a demonstration: a recorded instrument bank is sampled at
-    // equal-tempered pitches, so a scale built on neutral steps never lands on
-    // one and every note of it is resampled. Ḥijāzkār above never is. Switching
-    // between the two is the cleanest way to hear what that costs.
+    // Pélog is the case no derived people and no other bench entry produces: a
+    // seven-tone scale whose degrees sit BETWEEN the cracks of every grid, up
+    // to 88 cents off equal temperament, and which differs audibly from one
+    // gamelan to the next because each set is tuned as a set and to itself.
+    // These are near the Central Javanese averages. Nothing about them is just,
+    // and that is not an error to be corrected — it is what a scale looks like
+    // when it is derived from bronze bars whose partials are 1 : 2.756 : 5.404.
     frame: 1200,
-    scale: [0, 204, 355, 498, 702, 906, 1053],
-    mode: [0, 204, 355, 498, 702, 906, 1053],
+    scale: [0, 120, 258, 539, 675, 785, 1088],
+    // a pathet uses five of the seven; the other two are there and are avoided
+    mode: [0, 120, 539, 675, 785],
     finalIdx: 0,
     insts: [
-      { fam: "luteNeck", mat: "gut", frame: "wood", label: "oud", cap: 16, weight: 1.0, role: "lead" },
-      { fam: "lyre", mat: "gut", frame: "wood", label: "qānūn", cap: 14, weight: 0.85 },
-      { fam: "fluteOpen", mat: "reed", label: "nāy", cap: 9, weight: 0.75 },
-      { fam: "bowed", mat: "gut", frame: "wood", label: "kamānja", cap: 14, weight: 0.6 },
-      { fam: "drum", mat: "clay", frame: "clay", label: "darbūka", cap: 3, weight: 0.55, role: "pulse" },
-      { fam: "frameDrum", mat: "hide", frame: "wood", label: "riqq", cap: 1, weight: 0.45 },
+      { fam: "barSet", mat: "bronze", frame: "wood", label: "saron", cap: 7, weight: 1.0, role: "lead" },
+      { fam: "bell", mat: "bronze", frame: "wood", label: "bonang", cap: 10, weight: 0.85 },
+      { fam: "barSet", mat: "bronze", frame: "wood", label: "gendèr", cap: 13, weight: 0.8 },
+      { fam: "gong", mat: "bronze", frame: "wood", label: "gong ageng", cap: 1, weight: 0.7, role: "mark" },
+      { fam: "barSet", mat: "wood", frame: "wood", label: "gambang", cap: 17, weight: 0.5 },
+      { fam: "drum", mat: "hide", frame: "wood", label: "kendang", cap: 3, weight: 0.6, role: "pulse" },
+      { fam: "fluteOpen", mat: "bamboo", label: "suling", cap: 6, weight: 0.4 },
     ],
-    rhythm: { tempo: 104, meterKind: "duple", beats: 4, div: 4, density: 0.75, syncopation: 0.4, swing: 0 },
-    texture: { kind: "heterophony", size: 5, ornament: 0.85, sustains: true, courtly: 0.5 },
-    melody: { step: 0.75, arch: 0.44, descent: 0.6, breathBound: false, toneBound: false, reach: 10 },
-    note: "The qānūn's mandal levers are what let a fixed-pitch zither play a neutral third at all — and there is no lever anywhere in this engine's sample banks, which is the point of keeping this entry.",
+    rhythm: { tempo: 68, meterKind: "duple", beats: 8, div: 2, density: 0.5, syncopation: 0.05, swing: 0 },
+    texture: { kind: "heterophony", size: 6, ornament: 0.4, sustains: true, courtly: 0.85 },
+    melody: { step: 0.7, arch: 0.38, descent: 0.5, breathBound: false, toneBound: false, reach: 10 },
+    note: "The bonang is a rack of kettle gongs, taken here as a tuned bell set because that is the nearer physical model — a kettle is a plate closed into a shell, not a bar. Ombak, the beating between deliberately mistuned pairs, is in the synthesis but not in this table: it is a property of how a set is tuned, not of the scale.",
+  },
+
+  westAfrican: {
+    label: "West African ensemble",
+    gloss: "an iron bell holds the cycle, everything else interlocks against it",
+    // THE OTHER ENTRY THIS ENGINE KEPT CITING AND NEVER HAD. `drumEnsemble`,
+    // the clave and timeline machinery and the comment naming "the organising
+    // principle of West African drumming" were all written with nothing to
+    // check them against.
+    //
+    // What it tests that nothing else does: a composite where no single player
+    // is playing the pattern you hear, a metre that is felt in 12 against 4,
+    // and an ensemble whose fixed reference is a BELL rather than a melody
+    // instrument — the timeline everybody else counts from.
+    //
+    // The tuning is the Mande balafon's, which is close to an equal division of
+    // the octave into seven. That is a genuinely different answer from every
+    // other scale here: no just ratios, no semitones, seven steps of about 171
+    // cents each, and it comes from the same place pélog does — bars, tuned as
+    // a set, by ear, to themselves.
+    frame: 1200,
+    scale: [0, 171, 343, 514, 686, 857, 1029],
+    mode: [0, 171, 343, 514, 686, 857, 1029],
+    finalIdx: 0,
+    insts: [
+      { fam: "barSet", mat: "wood", frame: "gourd", label: "balafon", cap: 18, weight: 1.0, role: "lead" },
+      { fam: "lamella", mat: "iron", frame: "gourd", label: "kalimba", cap: 9, weight: 0.7 },
+      { fam: "clappers", mat: "iron", label: "gankogui", cap: 2, weight: 0.9, role: "pulse" },
+      { fam: "drum", mat: "hide", frame: "wood", label: "djembe", cap: 3, weight: 0.85 },
+      { fam: "drum", mat: "hide", frame: "wood", label: "dundun", cap: 2, weight: 0.7 },
+      { fam: "rattle", mat: "gourd", label: "shekere", cap: 1, weight: 0.5 },
+    ],
+    // twelve pulses felt as four — the compound metre the engine's timelines
+    // were written for and have never been asked to carry
+    rhythm: { tempo: 108, meterKind: "compound", beats: 4, div: 3, density: 0.9, syncopation: 0.72, swing: 0 },
+    texture: { kind: "polyphony", size: 6, ornament: 0.35, sustains: false, courtly: 0.05 },
+    melody: { step: 0.62, arch: 0.34, descent: 0.5, breathBound: false, toneBound: false, reach: 12 },
+    note: "A kora would be the melodic body of a Mande ensemble and there is no harp-lute in this engine; the balafon leads instead, which is the other one. The gankogui is a double iron bell taken as clappers — two struck iron bodies of different pitch, which is what it is.",
+  },
+
+  european: {
+    label: "European common practice",
+    gloss: "equal temperament, and the one texture this engine does not write",
+    // THE ENTRY THAT IS EXPECTED TO FAIL, and is here for that reason.
+    //
+    // Everything else on this bench is heterophonic or monophonic — one line,
+    // however many versions of it. Common practice is neither: it is
+    // FUNCTIONAL HARMONY, independent voices moving so that their vertical
+    // intervals resolve, and `ensembleFor` says in as many words that
+    // independent lines are beyond what this composer writes. So this entry
+    // will come out as a heterophonic quintet on a diatonic scale, which is
+    // Palestrina played by a gamelan.
+    //
+    // That is worth having written down. A bench exists to make a missing
+    // mechanism audible rather than arguable, and the missing one here is
+    // voice-leading. It also supplies the only equal temperament in the table,
+    // which is the reference every other tuning is measured against.
+    frame: 1200,
+    scale: [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
+    mode: [0, 200, 400, 500, 700, 900, 1100],
+    finalIdx: 0,
+    insts: [
+      { fam: "bowed", mat: "gut", frame: "wood", label: "violin", cap: 16, weight: 1.0, role: "lead" },
+      { fam: "bowed", mat: "gut", frame: "wood", label: "cello", cap: 14, weight: 0.8 },
+      { fam: "fluteOpen", mat: "iron", label: "flute", cap: 12, weight: 0.7 },
+      { fam: "reedPipe", mat: "reed", label: "oboe", cap: 12, weight: 0.65 },
+      { fam: "horn", mat: "bronze", label: "horn", cap: 8, weight: 0.6 },
+      { fam: "struckString", mat: "iron", frame: "wood", label: "harpsichord", cap: 24, weight: 0.75 },
+    ],
+    rhythm: { tempo: 96, meterKind: "duple", beats: 4, div: 2, density: 0.7, syncopation: 0.12, swing: 0 },
+    texture: { kind: "polyphony", size: 5, ornament: 0.3, sustains: true, courtly: 1.0 },
+    melody: { step: 0.72, arch: 0.5, descent: 0.5, breathBound: false, toneBound: false, reach: 12 },
+    note: "Equal temperament is given as the twelve, with a major mode drawn from it, because that is what the instruments are built to and what the repertoire modulates through. The failure to expect is vertical: this engine writes one line in several versions, and common practice is several lines in one harmony.",
+  },
+
+  flamenco: {
+    label: "Flamenco",
+    gloss: "the Andalusian cadence, a twelve-beat compás, and hands",
+    // Phrygian dominant, which shares its lower half with Ḥijāzkār and parts
+    // from it at the seventh — a flat one here against a leading tone there.
+    // That is deliberate: the two entries sound related because they ARE, and
+    // what separates them on this bench is not the scale but everything else.
+    // A takht is six built bodies playing a slow modal line; this is one
+    // guitar, two pairs of hands and a box, at speed, over a metre nothing else
+    // in the table has.
+    frame: 1200,
+    scale: [0, 112, 386, 498, 702, 814, 996],
+    mode: [0, 112, 386, 498, 702, 814, 996],
+    finalIdx: 0,
+    insts: [
+      { fam: "luteNeck", mat: "gut", frame: "wood", label: "guitarra", cap: 20, weight: 1.0, role: "lead" },
+      { fam: "claps", mat: "none", label: "palmas", cap: 1, weight: 0.8, role: "pulse" },
+      { fam: "drum", mat: "wood", frame: "wood", label: "cajón", cap: 2, weight: 0.7 },
+      { fam: "clappers", mat: "wood", label: "zapateado", cap: 1, weight: 0.5 },
+    ],
+    // COMPÁS: twelve beats accented 3 6 8 10 12, which is neither a duple nor a
+    // compound metre but an additive one. The engine has no additive metre, so
+    // this is given as twelve in three and the accent pattern is what the
+    // syncopation figure has to carry — another gap this entry makes audible.
+    rhythm: { tempo: 132, meterKind: "compound", beats: 4, div: 3, density: 0.82, syncopation: 0.68, swing: 0.06 },
+    texture: { kind: "heterophony", size: 3, ornament: 0.8, sustains: false, courtly: 0.1 },
+    melody: { step: 0.7, arch: 0.42, descent: 0.7, breathBound: false, toneBound: false, reach: 11 },
+    note: "Palmas are two pairs of hands playing different patterns, not one; the engine's percussion section gives them separate parts, which is the right shape. Rasgueado, golpe and the guitar's percussive use of its own top are not modelled — this is the nylon-strung lute playing notes.",
+  },
+
+  aboriginal: {
+    label: "Aboriginal Australian",
+    gloss: "one pitch, and everything else in timbre and rhythm",
+    // THE EXTREME CASE, and the reason to have it is that the engine has
+    // almost nothing to do. A didgeridoo is a lip-driven natural tube: it
+    // sounds its fundamental continuously and can be overblown to one "toot"
+    // roughly a tenth above, and that is the whole pitch inventory. Everything
+    // a listener follows is articulation — the tongue, the cheeks, the voice
+    // hummed through the drone, the breath cycled in through the nose — over
+    // clapsticks keeping a fixed pulse.
+    //
+    // So this entry asks what happens to a melodic engine when there is no
+    // melody. If it produces a line, the line is invented; if it produces a
+    // drone with rhythm on it, the mechanisms are honest about their inputs.
+    frame: 1200,
+    scale: [0, 386],
+    mode: [0, 386],
+    finalIdx: 0,
+    insts: [
+      { fam: "horn", mat: "wood", label: "didgeridoo", cap: 2, weight: 1.0, role: "drone" },
+      { fam: "clappers", mat: "wood", label: "clapsticks", cap: 1, weight: 0.9, role: "pulse" },
+    ],
+    rhythm: { tempo: 104, meterKind: "duple", beats: 4, div: 2, density: 0.95, syncopation: 0.35, swing: 0 },
+    texture: { kind: "drone", size: 2, ornament: 0.9, sustains: true, courtly: 0 },
+    melody: { step: 0.95, arch: 0.2, descent: 0.4, breathBound: false, toneBound: false, reach: 2 },
+    note: "Circular breathing means the drone never stops, and the engine has no way to say that — a sustained body here still articulates note by note. The vocalised overtones and the formant work that carry the music are not modelled at all. This entry is a measurement of what is missing more than a rendering of the tradition.",
+  },
+
+  caribbean: {
+    label: "Trinidadian steel band",
+    gloss: "tuned oil drum, in equal temperament, over an iron",
+    // Tuned steel: a pan note is an area of a stretched steel dish, hammered so
+    // that its octave and twelfth are tuned INTO it. That makes it the one body
+    // on this bench whose partials were deliberately put in harmonic relation
+    // by a maker rather than being a property of the shape — the opposite
+    // procedure to a gamelan's, on the same material, and it is why a pan reads
+    // as pitched where a gong does not.
+    //
+    // It also plays equal temperament, so the pair with `european` isolates
+    // exactly one variable: same tuning, entirely different bodies and metre.
+    frame: 1200,
+    scale: [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
+    mode: [0, 200, 400, 500, 700, 900, 1000],
+    finalIdx: 0,
+    insts: [
+      { fam: "barSet", mat: "iron", frame: "iron", label: "tenor pan", cap: 29, weight: 1.0, role: "lead" },
+      { fam: "barSet", mat: "iron", frame: "iron", label: "double second", cap: 22, weight: 0.85 },
+      { fam: "barSet", mat: "iron", frame: "iron", label: "cello pan", cap: 12, weight: 0.7 },
+      { fam: "clappers", mat: "iron", label: "iron", cap: 1, weight: 0.8, role: "pulse" },
+      { fam: "drum", mat: "hide", frame: "wood", label: "congas", cap: 3, weight: 0.6 },
+      { fam: "rattle", mat: "iron", label: "shak-shak", cap: 1, weight: 0.4 },
+    ],
+    rhythm: { tempo: 124, meterKind: "duple", beats: 4, div: 2, density: 0.85, syncopation: 0.6, swing: 0.05 },
+    texture: { kind: "heterophony", size: 5, ornament: 0.3, sustains: false, courtly: 0.1 },
+    melody: { step: 0.68, arch: 0.44, descent: 0.5, breathBound: false, toneBound: false, reach: 14 },
+    note: "A pan is taken as a struck bar set in iron, which gets the material and the definite pitch right and the geometry wrong: a bar is free at both ends and a pan note is a region of a dish under tension from every side. The flat seventh in the mode is the calypso one, not a modal accident.",
   },
 
   japanese: {

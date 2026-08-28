@@ -1524,8 +1524,15 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   // 46% → 17%, and the melody instruments stay a proper spread. What is left
   // is a bell or a gong setting the pitch for a line it cannot play, which is
   // Chinese court music and is the answer rather than a fault.
+  // …AND A LOUD OCCASION STILL NEEDS A BODY THAT CAN PLAY THE TUNE. This claim
+  // asked only how the body is driven, so any reed or pair of lips took the
+  // melody whatever it could do with it — measured on a didgeridoo, a lip-driven
+  // tube with a fundamental and one overblown note, which was handed the line
+  // for a war piece. Reed and lip first, as the record says, among bodies that
+  // clear the same bar as everyone else who plays the tune.
   const lead = loud
-    ? (claim(x => x.i.drive === "reed" || x.i.drive === "lip") ?? claim(x => x.m > CARRIES * 0.44))
+    ? (claim(x => (x.i.drive === "reed" || x.i.drive === "lip") && x.m > CARRIES * 0.44)
+      ?? claim(x => x.m > CARRIES * 0.44))
     : claim(x => x.m > CARRIES);
   // the elaborating part is the FASTEST pitched body, not the second-best one
   // the elaborating part is the FASTEST pitched body — but not one whose
@@ -1553,7 +1560,30 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   // never played a note — measured, the Arabic riqq, a second frame drum, and
   // the rattle and scraper this table gained last week were all silent in
   // every piece, in ensembles of four and five bodies.
-  const perc = rank.filter(x => !taken.has(x.k) && x.i.kind === "struck" && x.i.cap <= 2)
+  // A body that cannot be re-articulated is not a part. What it does in every
+  // tradition that has one is MARK — one stroke where the cycle turns, left to
+  // ring, and the loudest thing in the bar precisely because it is the rarest.
+  // A NESTED PUNCTUATION NEEDS NESTED BODIES. A colotomic ensemble marks the
+  // cycle, then its quarters, then their quarters — on gongs of different
+  // sizes, never on one gong struck sixteen times. So collect however many
+  // un-articulable bodies there are, largest first, and mark exactly as many
+  // levels as there are bodies to mark them with.
+  //
+  // CLAIMED BEFORE THE PERCUSSION SECTION, and gated on pitch count as well as
+  // on ring. Both were wrong until a gamelan was put on the bench and neither
+  // could be argued about afterwards: the gong ageng — one pitch, two thirds of
+  // a stroke a second — was being swept into the percussion section as an
+  // ordinary drum, while the bonang, a rack of TEN tuned kettles, was made the
+  // colotomic marker because it also rings. Exactly backwards, and the comment
+  // above already said why: the mark is the body that cannot be re-articulated
+  // AND has nothing to re-articulate with.
+  const marks = [];
+  for (let i = 0; i < 3; i++) { const k = claim(x => x.r < 1.6 && x.i.cap <= 2); if (k == null) break; marks.push(k); }
+  const mark = marks.length ? marks[0] : null;
+  // …AND NOT A BODY THAT CANNOT BE RE-STRUCK. A percussion section is made of
+  // bodies you can hit repeatedly; one that rings for a second and a half is
+  // the `marks` case above, which now claims before this does.
+  const perc = rank.filter(x => !taken.has(x.k) && x.i.kind === "struck" && x.i.cap <= 2 && x.r >= 1.6)
     .map(x => (taken.add(x.k), x.k));
   const elab = elab0 && !taken.has(elab0.k) ? (taken.add(elab0.k), elab0) : null;
   // ── HETEROPHONY IS EVERY CAPABLE BODY ON THE SAME LINE ──
@@ -1586,17 +1616,7 @@ export function ensembleFor(music, occKey, intimacy = 1) {
       .map(x => (taken.add(x.k), x.k))
     : [];
   const core = claim(x => x.m > 0.08 && x.r < 6);
-  // A body that cannot be re-articulated is not a part. What it does in every
-  // tradition that has one is MARK — one stroke where the cycle turns, left to
-  // ring, and the loudest thing in the bar precisely because it is the rarest.
-  // A NESTED PUNCTUATION NEEDS NESTED BODIES. A colotomic ensemble marks the
-  // cycle, then its quarters, then their quarters — on gongs of different
-  // sizes, never on one gong struck sixteen times. So collect however many
-  // un-articulable bodies there are, largest first, and mark exactly as many
-  // levels as there are bodies to mark them with.
-  const marks = [];
-  for (let i = 0; i < 3; i++) { const k = claim(x => x.r < 1.6); if (k == null) break; marks.push(k); }
-  const mark = marks.length ? marks[0] : null;
+
   // A DRONE ONLY EXISTS IN A DRONE TEXTURE. `textureOf` decides that from the
   // ensemble's size and whether anything sustains, and it is definitional: a
   // heterophony is many versions of one line and a polyphony is many lines,
@@ -1822,8 +1842,16 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // whatever thinness the seats could not absorb comes out of the dynamics
   const want = floor + spare * thin;
   const hush = Math.min(1, want / Math.max(1e-6, seats));
-  const onStage = new Set(["lead",
-    ...roster.filter(r => r !== "lead").slice(0, Math.max(0, seats - 1))]);
+  // THE MELODY KEEPS ITS SEAT — WHEN THERE IS ONE. "lead" was written into the
+  // stage set unconditionally and the remaining seats counted from `seats - 1`,
+  // so an ensemble with no lead gave its only seat to a part that does not
+  // exist and everybody who does exist was cut. Found by putting a didgeridoo
+  // and a pair of clapsticks on the bench: nothing clears the melodic bar, so
+  // there is no lead, so the drone — the entire pitched content of that
+  // tradition — was silent in every piece.
+  const hasLead = roster.includes("lead");
+  const onStage = new Set([...(hasLead ? ["lead"] : []),
+    ...roster.filter(r => r !== "lead").slice(0, Math.max(0, seats - (hasLead ? 1 : 0)))]);
   const audible = (role) => onStage.has(role);
 
   // THE MARK. One stroke where the cycle turns, left to ring, and the LOUDEST
@@ -2077,11 +2105,18 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         vel: ST.ost.vel * 0.7, role: "ost", damped: true });
     }
   }
-  if (ST.pulse && O.perc > 0.15 && audible("pulse")) {
+  // A PEOPLE WITH NO DRUM STILL HAS PERCUSSION. This whole block was gated on
+  // `ST.pulse`, the timekeeper, which `ensembleFor` only ever claims from a
+  // MEMBRANE — so an ensemble of clappers, rattles and scrapers had every one
+  // of them claimed into the section and then skipped it entirely. The peoples
+  // who most need their idiophones heard are exactly the ones with no hide to
+  // stretch, and they were silent.
+  const percBodies = [...(ST.pulse ? [ST.pulse.k] : []), ...(E.perc || [])];
+  if (percBodies.length && O.perc > 0.15 && (ST.pulse ? audible("pulse") : true)) {
     // Lowest body takes the first part, which is the one that carries the
     // downbeat — that ordering is the body's own register, not a rule about
     // which drum is the "main" one.
-    const section = [ST.pulse.k, ...(E.perc || [])]
+    const section = percBodies
       .map(k => ({ k, i: music.insts[k] }))
       .filter(x => x.i)
       .sort((a, b) => (FAM(a.i).low || 200) - (FAM(b.i).low || 200));
@@ -2099,7 +2134,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       const body = play[pi % play.length];
       for (const h of part.hits) {
         ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.35, inst: body.k, deg: 0,
-          oct: -1, vel: h.vel * O.perc * ST.pulse.vel * 2.2,
+          oct: -1, vel: h.vel * O.perc * (ST.pulse ? ST.pulse.vel : 0.5) * 2.2,
           role: "pulse", stroke: h.stroke, voice: pi });
       }
     });
