@@ -1896,3 +1896,75 @@ A town register therefore needs the wither threshold re-grounded on what it clai
 to mean (a site too small to sustain itself — hundreds of people, not thousands),
 not just the tier definitions changed. That is a separate lever from
 `T.STAMP_RETIRE` and is **not** being built while wave 6 runs.
+
+---
+
+## 27. WAVE 5 DIAGNOSIS — the churn hypothesis is refuted; a cap hypothesis replaces it (unproven)
+
+§25.3 said the next step was to check the founding/ending flows before writing
+another lever. Done, over the full 40k run:
+
+| arm | founded | ended | net | urban su by window |
+|---|---|---|---|---|
+| ctrl clean | 234 | 883 | −649 | 5418 → 18058 → 31104 → 64186 → **119060** |
+| ctrl chaos1 | 303 | 950 | −647 | 5351 → 16452 → 29765 → 63454 → **84399** |
+| ctrl ref3 | 273 | 874 | −601 | 5830 → 17419 → 40585 → 60480 → **83628** |
+| AGG | 287 | 977 | −690 | 5723 → 15436 → 26607 → 39004 → **49299** |
+| AGG chaos | 268 | 995 | −727 | 5511 → 17628 → 25706 → 38875 → **48916** |
+| AGG+ULAB | 273 | 1068 | −795 | 4931 → 12103 → 22493 → 31515 → **43305** |
+| AGG+ULAB chaos | 261 | 1148 | −887 | 4619 → 13248 → 20115 → 32508 → **39830** |
+
+### 27.1 REFUTED: the register is not churning itself apart
+
+§25.3 offered churn — cities minted and dissolved rather than growing — as the
+leading candidate, since it would explain a halved urban total alongside a rising
+median. **It does not survive arithmetic.** Foundings are flat across every arm
+(261-303 against controls 234-303). Endings are higher, but only by **10-25%**
+(977-1148 against 874-950). A quarter more deaths cannot produce a **56% smaller**
+urban population. The churn is real and much too small.
+
+### 27.2 The trajectories, which say something different
+
+The shape is the finding, not the endpoint:
+
+```
+controls   last window   64186 → 119060   (+85%)   ACCELERATING
+treated    last window   39004 →  49299   (+26%)   DECELERATING
+```
+
+Through window 8 the arms are within ~20% of each other. They separate in the last
+two windows, and they separate because the **controls take off** while the treated
+arms flatten. Whatever is happening is a *late* phenomenon in a mature world, and it
+is the control that does the unusual thing.
+
+### 27.3 HYPOTHESIS, explicitly not a finding
+
+`T.AGGLOM_LOCAL` does two things, and §21 only argued for the first:
+
+1. it widens the pull from imports to the whole economy — the intended fix; and
+2. **it thereby binds `uTarget = URBAN_AGGLOM × pull` to 13% of a city's own
+   region**, where under the import basis a hub whose imports dwarfed its own land
+   had a target with no effective ceiling.
+
+If (2) is what is biting, everything observed follows: the runaway tail is capped, so
+absolute urban population falls; the urban spike is **additive capacity**
+(`applyUrbanSpikes`: `cap[ti] += e.k`, §16.1), so smaller spikes mean less total
+capacity and a smaller world population; and self-fed cities still gain their first
+target, so the median core rises. Supporting: control max cores read 1055-1234su
+against treated 432-681su — the treated tails are two to three times smaller.
+
+**This is a story that fits, which is exactly the kind of thing this document has
+retracted four times.** It is written here as a hypothesis with a name, not a result.
+
+**The test it implies:** if the cap is the mechanism, then raising `URBAN_AGGLOM`
+under `AGGLOM_LOCAL` should restore both the tail and the world population — and
+that is the *same arm* §23.2 already queued to decide whether `URBAN_AGGLOM` is a
+fitted constant. One experiment answers both questions:
+
+- population and tail recover as the dial rises → the cap is the mechanism, **and**
+  the dial is load-bearing, so the owner's cardinal-rule objection stands and
+  `URBAN_AGGLOM` must be replaced by a mechanism rather than re-tuned;
+- population stays flat as the dial rises → the cap is not the mechanism, and the
+  dial is not the answer being painted on.
+
+Either way it is the next arm after wave 6, and it now earns its slot twice over.
