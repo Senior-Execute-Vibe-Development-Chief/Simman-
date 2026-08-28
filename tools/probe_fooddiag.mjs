@@ -18,15 +18,17 @@
 //   node tools/probe_fooddiag.mjs [seed]
 //   npm run fooddiag
 import { spawnSync } from "node:child_process";
-import { mkdirSync, createWriteStream } from "node:fs";
+import { mkdirSync, createWriteStream, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dir, "..");
-const SEED = +(process.argv[2] || 8817);
-const LIVE = process.argv.includes("--live");
-const CHAOS = process.argv.includes("--chaos");
+const argv = process.argv.slice(2);
+const LIVE = argv.includes("--live");
+const CHAOS = argv.includes("--chaos");
+const seedArg = argv.find(a => !a.startsWith("--"));
+const SEED = +(seedArg || 8817);
 const W = LIVE ? 960 : 480;
 const STEPS = LIVE ? 28000 : 24000;
 
@@ -80,11 +82,9 @@ for (const arm of ARMS) {
 }
 
 // Summary: parse last MACHINE line from each arm log
-import { readFileSync } from "node:fs";
-
 function lastMachine(path) {
   try {
-    const lines = readFileSync(path, "utf8").split("\n").filter(l => l.includes("MACHINE "));
+    const lines = readFileSync(path, "utf8").split("\n").filter(l => /\bMACHINE\s+\d/.test(l));
     return lines[lines.length - 1]?.trim() || "";
   } catch { return ""; }
 }
