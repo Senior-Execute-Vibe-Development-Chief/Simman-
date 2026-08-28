@@ -3588,3 +3588,80 @@ improved and slightly overshot, **political map collapsed from 10 states to 4.**
 Next is that collapse — why does pricing land integrate the political map, and is the
 integration real or an artefact of `CATCHMENT_CLIP` (the catchment may only work its
 own country's ground, so a bid that crosses a border is silently clipped).
+
+---
+
+## 50. THE FARM-FIELD OVERHAUL — should vs is, and what is left
+
+### 50.1 How it SHOULD operate
+
+A farmed tile makes one decision each pass:
+
+1. **Compelled** — a liege or landlord with a claim takes the harvest. *(deferred,
+   owner's call — §42)*
+2. **Sold** — otherwise it goes to the market that nets the producer most at the farm
+   gate: the buyer's price minus what the journey costs, over real terrain, roads,
+   rivers and ports.
+3. **Unsold** — beyond the range where freight eats the price, nobody buys and the
+   harvest feeds the people standing on it.
+
+One market per tile, switchable each pass. Reach is what a market wins, never an
+allowance it is granted.
+
+### 50.2 How it operates NOW
+
+Built and working:
+
+| piece | state |
+|---|---|
+| bid seeds the frontier, `−haulTiles·(bid/meanBid)` | ✅ |
+| bid = hunger (`_scarcity`), not the tier label | ✅ |
+| finite range — frontier stops where freight eats the price (`nd >= 0`) | ✅ |
+| range grows with the age's carriage (roads, wagons, refrigeration leap) | ✅ |
+| carriage over real terrain **plus roads and ports** | ✅ |
+| both straight-line geometric phases removed | ✅ |
+| owned land contestable — a field can change buyer | ✅ |
+| the two food books agree on supply (`PRICE_GROSS`) | ✅ |
+
+**And one thing that is NOT as designed, still in place:**
+
+```js
+if ((mktPull || lk < 0) && elev[ni] > 0 && inCountry(oid, ni)) owner[ni] = oid;
+                                           ^^^^^^^^^^^^^^^^^^
+```
+
+**A bid cannot cross a political border.** `CATCHMENT_CLIP` still gates every claim, so
+a market may only ever win ground its own country already holds.
+
+### 50.3 Why that is very likely the polity collapse
+
+If a market can only buy from its own country's soil, then **the only way to reach a
+better supply is for your country to get bigger.** The bid rule turns economic hunger
+into territorial pressure — which is exactly a mechanism for consolidation, and the
+gate measured **10 polities → 4** with every new warning downstream of it.
+
+It is also internally inconsistent. The peer grain market shipped in v47 is explicitly
+**cross-border** — its own description says *"the road+sea network goods trade uses,
+cross-border like goods trade"*. So today grain may be **bought** across a border but
+the land it grows on may not be **assigned** across one. And history is unambiguous:
+Rome bought Egyptian grain before it owned Egypt, Athens ran on Black Sea wheat from
+cities it did not rule, the Hansa moved Baltic rye across a dozen polities.
+
+**The deeper point:** `_territoryOwner` conflates *"who farms this"* with *"whose
+grain this is."* Under a market rule those separate — buying a foreign field's harvest
+is **trade**, and it should not move a border. `CATCHMENT_CLIP`'s own rationale (a
+catchment must not CREATE a border) is right and is *not* what the clip currently
+does; it prevents the trade instead.
+
+### 50.4 What is left
+
+1. **Cross-border bidding** — the gap above. Not "delete the clip": separate *the
+   grain flowing* from *the land changing hands*. **This is the next build.**
+2. **Compulsion** — liege and landlord claims outranking the bid, with culture/faith/
+   language preference. Owner deferred it deliberately.
+3. **The mature window** on the live arm — runtime still overshoots around 24k.
+4. **Retire what the rule replaces** — `reachBudget`/`ORG_REACH`/`TERRITORY_BASE`,
+   `CORE_BY_TIER`, `HINTERLAND_BY_TIER`, `GRAIN_PRICE_BY_TIER`, `FARM_RES`. Only after
+   the above measures clean.
+5. **Zipf −1.23** sits marginally past the steep edge of the −0.8..−1.2 envelope.
+   Watch, not act.
