@@ -493,7 +493,7 @@ function retune(m, how) {
   return { ...m, scale: { ...m.scale, degrees, frame } };
 }
 
-const LT = { trial: null, log: [], on: false, last: null };
+const LT = { trial: null, log: [], on: false, last: null, skipped: 0 };
 function ltLoad() {
   try { LT.log = JSON.parse(localStorage.getItem("musiclab.listen") || "[]"); } catch { LT.log = []; }
   if (!Array.isArray(LT.log)) LT.log = [];
@@ -501,15 +501,42 @@ function ltLoad() {
 function ltSave() {
   try { localStorage.setItem("musiclab.listen", JSON.stringify(LT.log)); } catch { /* private window */ }
 }
-/** Draw the next trial: a people at random from a fixed pool, a condition at
- *  random. The pool is fixed so the same peoples recur across conditions —
- *  which is what makes the comparison within-subject and the ablation work. */
+/**
+ * Draw the next trial: a people at random, a condition at random.
+ *
+ * DRAWN FROM THE WHOLE CORPUS, NOT A HAND-PICKED DOZEN. A fixed shortlist is a
+ * thumb on the scale — whichever peoples I chose would decide the answer — so
+ * the seed is random over a wide range and the sample is of the generator
+ * rather than of my taste.
+ *
+ * AND IT HAS TO BE A SONG. Some peoples come out degenerate: seed 1040 has five
+ * bodies of which two are melodic, a three-degree scale, and NO body that
+ * clears the bar to carry a line, so its piece is 44 events over 18 seconds
+ * with no lead part in it — a bass, an inner voice and a wordless choir. That
+ * is not quiet, it is nearly empty, and rating it says nothing about tuning or
+ * arrangement because there is no tune and barely an arrangement. It is a real
+ * fault and it belongs in the thinness problem, not in this test's data.
+ *
+ * So a draw is admissible if the piece has a lead part and enough notes to be
+ * one — four a second across the whole ensemble, which is the sparsest thing
+ * anyone would call a performance. Rejections are counted and shown, because
+ * how OFTEN the generator produces something unratable is itself a number worth
+ * having.
+ */
 function ltNext() {
-  const pool = [1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042, 1043, 1044, 2025, 4242];
-  const seed = pool[Math.floor(Math.random() * pool.length)];
-  const cond = TRIALS[Math.floor(Math.random() * TRIALS.length)];
-  LT.trial = { seed, cond: cond.key, played: false };
-  return LT.trial;
+  for (let tries = 0; tries < 24; tries++) {
+    const seed = 1000 + Math.floor(Math.random() * 4000);
+    let piece;
+    try { piece = composePiece(build(seed, "random"), "peace", null, 0.85); } catch { continue; }
+    const secs = piece.totalBeats * 60 / piece.tempo;
+    const hasLead = piece.events.some(e => e.role === "lead");
+    if (!hasLead || piece.events.length < secs * 4) { LT.skipped++; continue; }
+    const cond = TRIALS[Math.floor(Math.random() * TRIALS.length)];
+    LT.trial = { seed, cond: cond.key, played: false, secs: Math.round(secs) };
+    return LT.trial;
+  }
+  LT.trial = null;
+  return null;
 }
 function ltPlay() {
   const t = LT.trial;
@@ -532,17 +559,43 @@ function ltPlay() {
   // each condition changes one layer and leaves a finished piece behind.
   const wasSampled = A.sampled;
   if (t.cond === "modelled") A.sampled = false;
-  for (const ev of piece.events) {
-    if (ev.role === "voice") continue;
+  const played = piece.events.filter((ev) => {
+    if (ev.role === "voice") return t.cond !== "novoice";
     // `plain` keeps a complete ensemble — a line, its accompaniment and its
     // percussion — and drops only the doublings and the decoration, which is
     // what a listener means by "too much going on"
-    if (t.cond === "plain" && ev.role === "het") continue;
+    return !(t.cond === "plain" && ev.role === "het");
+  });
+  // LEVEL-MATCHED, because loudness is the strongest confound in any listening
+  // test and two of these conditions take players out. Measured, `plain` peaked
+  // at 0.24 against `full`'s 0.59 — a listener would rate it worse for being
+  // quiet, whatever they thought of the music, and the test would report that
+  // the arrangement is at fault.
+  //
+  // The correction depends on WHAT was removed, because that decides how the
+  // sources were summing in the first place.
+  //
+  // `novoice` takes out an independent line. Independent sources sum
+  // incoherently — N of them are sqrt(N) louder than one — so the cost is the
+  // square root of the fraction kept.
+  //
+  // `plain` takes out the HETEROPHONY, which is not independent: those parts
+  // are the same line played at small offsets, so they sum much closer to
+  // coherently, and the cost is nearer the fraction itself. Using the square
+  // root for both left `plain` 2.4 dB down where `tuned12` was dead level.
+  //
+  // Either way it is also what a real smaller ensemble does: five players do
+  // not each play softer because there are not eight of them.
+  const share = piece.events.length / Math.max(1, played.length);
+  const gain = Math.min(1.8, t.cond === "plain" ? share : Math.sqrt(share));
+  const spb = spbOf(piece);
+  for (const ev of played) {
+    if (ev.role === "voice") continue;
     const e = t.cond === "plain" && ev.ornDeg != null ? { ...ev, ornDeg: undefined } : ev;
-    fireEvent(m, e, t0 + e.b * spbOf(piece), spbOf(piece), 1);
+    fireEvent(m, e, t0 + e.b * spb, spb, gain);
   }
   if (t.cond !== "novoice") {
-    fireVoiceLine(m, piece.events.filter(e => e.role === "voice"), t0, spbOf(piece), 1,
+    fireVoiceLine(m, piece.events.filter(e => e.role === "voice"), t0, spb, gain,
       { syls: hymn.syls, acc: hymn.acc, rotate: true });
   }
   A.sampled = wasSampled;
@@ -620,6 +673,9 @@ function listenHTML() {
             on seed ${LT.last.seed} — you called it
             ${["bad", "ok", "good"][LT.last.score]}.</p>` : ""}
         </div>`}
+    ${LT.skipped ? `<p class="note tight">${LT.skipped} draw${LT.skipped === 1 ? "" : "s"} skipped as
+      unratable — no part carrying a line, or fewer than four notes a second across the whole
+      ensemble. That count is a measurement in its own right.</p>` : ""}
     <table class="lt">
       <tr><th>what was changed</th><th>n</th><th>mean (bad 0 · good 2)</th><th>rated bad</th></tr>
       ${rows.map(r => `<tr><td><b>${esc(r.key)}</b><span class="ltwhat">${esc(r.what)}</span></td>
