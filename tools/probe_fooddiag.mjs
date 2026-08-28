@@ -79,11 +79,13 @@ for (const arm of ARMS) {
   console.log(`[fooddiag] arm ${arm.name} ok → ${logPath}`);
 }
 
-// Summary: parse last MACHINE line from emergent vs ratchet
+// Summary: parse last MACHINE line from each arm log
+import { readFileSync } from "node:fs";
+
 function lastMachine(path) {
   try {
-    const lines = spawnSync("grep", ["MACHINE", path], { encoding: "utf8" }).stdout.trim().split("\n");
-    return lines[lines.length - 1] || "";
+    const lines = readFileSync(path, "utf8").split("\n").filter(l => l.includes("MACHINE "));
+    return lines[lines.length - 1]?.trim() || "";
   } catch { return ""; }
 }
 
