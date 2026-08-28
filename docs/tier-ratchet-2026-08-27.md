@@ -2766,3 +2766,76 @@ from opposite ends.
   `state-birth` §"Proposed mechanism (NOT built)", `egypt-autopsy` §"The mechanism
   direction (not built — owner's call)"). None of them contradicts today's work; they
   are separate unbuilt arcs.
+
+---
+
+## 38. DO CITIES NEED CATCHMENTS? — the owner's question, and the precise answer
+
+> Owner: *"do cities NEED catchments? didnt we go over the system of a farmed tile
+> sends food to whoever will pay better, or whoever is easier, or whoever forces them
+> to?"*
+
+Yes to the rule, and the answer separates cleanly into two halves that this lap has
+been treating as one.
+
+### 38.1 What DIES: the catchment as a SIZED BUDGET
+
+Everything §37 named. `reachBudget` hands each settlement an area determined by its
+organisation tech — a fixed allowance, spent by a Dijkstra frontier. Under the owner's
+rule there is no allowance to spend: each field decides where its surplus goes, and a
+city's supply zone is **whatever it wins**. A city that pays more reaches further
+because it pays more, not because a budget said it may.
+
+That retires, in one move:
+
+- `reachBudget` and `T.ORG_REACH` — the tech-gated area allowance (§37.1);
+- the geometric partition — a plain Euclidean Voronoi already reproduces the live one
+  to within 14.2% of tiles, so the Dijkstra is mostly decoration;
+- `HINTERLAND_BY_TIER` and `CORE_BY_TIER` — the **territory half of the tier ratchet**,
+  the two legs this lap never touched (§5). Under a bid rule a big city's belt is an
+  outcome, so there is nothing left for a tier table to grant;
+- `T.FARM_RES` (built today) — it scales a *radius*, and under the rule there is no
+  radius. **That lever becomes moot rather than merely blocked.**
+
+### 38.2 What SURVIVES: the catchment as an EXCLUSIVE assignment
+
+`gravity-partition-memo-2026-08-27.md` §1 examined precisely this and its
+recommendation is the opposite of "delete the partition":
+
+> **RECOMMENDATION: keep `world._territoryOwner` strictly EXCLUSIVE. Do not nest
+> tiles.** … *LAND (which fields feed which market): exclusive. A field is in one
+> manor, one parish, one contado. Bracton's 6⅔-mile rule is a rule* enforcing
+> *exclusivity.*
+
+So a field still feeds exactly **one** market, and that is not an implementation
+convenience — English market-franchise law set a minimum spacing between markets for
+exactly this reason.
+
+The partition also does a **second job** that the food rule does not touch: under
+`ONE_POP`, a settlement's census is the field over its owned tiles. Kill the partition
+and nothing defines whose people are whose. It stays for administration and census;
+only the **food ledger** stops reading it as a sized allowance.
+
+### 38.3 The precise answer
+
+**Cities need a catchment in the sense of "each field feeds one market." They do not
+need a catchment sized by a technology budget.** The size should be an *outcome* of
+who outbids or compels whom — which is exactly work-plan item 3's rule, and exactly
+what the owner described.
+
+That reframes §37: the inert size term is not a bug to be fixed by making
+`reachBudget` scale with city size. **Making it scale would be painting the effect** —
+handing big cities bigger circles because big cities should have bigger circles. The
+cause is that the assignment has no economics in it at all.
+
+### 38.4 What this says about today's work
+
+Honestly: a good deal of this lap patched a subsystem the plan proposes to replace.
+`FARM_RES` is moot under item 3 (§38.1). `AGGLOM_LOCAL` reads `_landFood`, which under
+item 3 becomes "food this city won at the farm gate" rather than "food inside my
+circle" — the lever's *argument* survives that change, its *inputs* are redefined by it.
+
+What survives item 3 untouched: **`URBAN_LABOR`** (a farmer who moves to the city stops
+farming — true under any partition), **`STAMP_RETIRE`** and **`VIABLE_UNITS`** (both
+about floors on the core, not about land), and the whole measurement discipline this
+lap built.
