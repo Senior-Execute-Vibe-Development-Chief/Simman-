@@ -340,6 +340,28 @@ export function musicOf(people) {
   // point: it must not be able to outvote the ensemble. A gamelan's degrees
   // still come from its metal — that is the whole premise, and pelog is not a
   // just scale — but they are chosen by people who can also sing.
+  // ONE SINGER, AND DELIBERATELY THE SAME ONE FOR EVERY PEOPLE — which is a
+  // known cost, recorded here because two ways of varying it were tried and
+  // both were worse.
+  //
+  // A flat 220 Hz means every culture hears the same throat, so every culture
+  // finds its consonances in the same places and the corpus converges: 24% of
+  // modes distinct across 240 peoples. Real voices differ and this engine
+  // derives by how much, so giving each people its own seemed obviously right.
+  // Measured, it is not. Reading the pitch off `voiceRange`'s floor the way
+  // `ensembleSpectrum` reads a body's — floor times 1.5 — drops the singer a
+  // fifth below the instruments, and roughness is critical-band dependent, so
+  // it is not the same measurement: stranded pitches went from 11 to 139 and
+  // peoples with a fifth from 94% to 63%. Keeping the register and moving it
+  // only by `f0k`, the +-15% the language model actually knows, still cost 89%
+  // of degrees standing in a dip down to 81%.
+  //
+  // The reason is the mechanism working: the singer pulls the minima ONTO the
+  // simple ratios precisely by being harmonic and in the ensemble's register.
+  // Moving them adds error, not variety. Whatever restores the world's variety
+  // has to come from the bodies, which is where the differences between real
+  // traditions come from anyway — not from detuning the one thing every people
+  // shares.
   const voiceHere = Array.from({ length: 10 }, (_, i) => ({ f: 220 * (i + 1), a: Math.pow(0.82, i) }));
   const spec = ensembleSpectrum(insts, tuneW)
     .concat(voiceHere.map(p2 => ({ f: p2.f, a: p2.a * 0.34 })));
@@ -372,7 +394,7 @@ export function musicOf(people) {
   // it comes from the harmonic series of the voice — which every gamelan
   // player also owns. So the singer joins the ensemble that decides this, at
   // one member's weight, and cannot be outvoted by a body nobody can sing.
-  const voiceSpec = Array.from({ length: 10 }, (_, i) => ({ f: 220 * (i + 1), a: Math.pow(0.82, i) }));
+  const voiceSpec = voiceHere;
   const radiated = ensembleSpectrum(insts, insts.map(i => i.weight))
     .concat(voiceSpec.map(p2 => ({ f: p2.f, a: p2.a * 0.34 })));
   // how many pitches the ensemble can actually sound: the best-endowed
@@ -418,8 +440,30 @@ export function musicOf(people) {
   const cap = offered > 0 ? Math.round(offered) : 9;
   // a literate tradition with fixed-pitch instrument SETS regularizes its
   // steps; an oral one keeps the ratios it found
-  const fixedSets = insts.some(i => i.fam === "barSet" || i.fam === "bell");
-  const pull = Math.max(0, Math.min(0.85, people.soc.literacy * 0.5 + (fixedSets ? 0.25 : 0) + people.know.organization * 0.2 - 0.25));
+  // A FIXED-PITCH SET MAKES A TUNING STABLE, NOT EQUAL — and this term said
+  // equal. Owning a bar set contributed 0.25 all by itself, which is the whole
+  // of the -0.25 offset, so ANY people who had cast a set of bars was pulled
+  // toward equal division of their frame no matter how little else they had:
+  // measured, 78% of peoples had a nonzero pull, mean 0.232, and it slid every
+  // degree 8 to 20 cents off the dip it had just been chosen for. Which is
+  // exactly the fault a listener reports — a vertical line that no longer
+  // stands in a dip — arriving after all the work of finding the dip.
+  //
+  // Two things wrong with it. Equal division is "the ANSWER written down", in
+  // the words of the invention loop that was rewritten to stop producing it,
+  // so one half of this system removes equal temperament as a mechanism while
+  // the other re-imposes it at the end. And a set of cast bars is the archetype
+  // of a FIXED tuning, not an equal one: slendro is near-equal at 0.06 relative
+  // spread and pelog is the most unequal thing on the bench at 0.35, and both
+  // are played on bronze that cannot be retuned.
+  //
+  // What actually equalises a tuning is wanting to play the same thing from
+  // more than one starting degree — which is why keyboards and written notation
+  // drove temperament and why traditions that never move their tonic never
+  // needed it. Of the drivers here, literacy and a standardising administration
+  // are that; the metal is not. (`fixedSets` was also still the two family
+  // names `barSet` and `bell`, the same list `isFixed` above stopped using.)
+  const pull = Math.max(0, Math.min(0.85, people.soc.literacy * 0.5 + people.know.organization * 0.2 - 0.25));
   // AND THE BODY THE SCALE IS CUT FROM is the one everybody tunes to — the
   // same instrument chosen just above, for the same reason. Where its timbre
   // offers no consonance to find, what is left is its GEOMETRY: how its pitch
