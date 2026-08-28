@@ -2987,3 +2987,81 @@ itself. Recomputed each pass, so it is genuinely adaptive:
 remainder.
 **Under the rule:** price and compulsion decide who gets the harvest; there is no
 remainder step, because the grain went to its buyer at the farm gate.
+
+---
+
+## 41. A PER-TILE MONEY MAP — the owner's proposal, and what it would need to balance
+
+> Owner: *"now that land is decoupled from a specific city forever, what do you think
+> of a per tile Money map? When a farm tile sells its produce to a city, the city gives
+> what it payed for the food to THAT TILE. Then, what did rural farmers and people
+> spend money on?"*
+
+### 41.1 Why it is more than bookkeeping: it makes the bid real
+
+Under §40 a tile goes to whoever pays most at the farm gate. **If nobody receives that
+payment, the price is an accounting fiction** — a bid with no counterparty, which is
+exactly the kind of thing that becomes a fitted constant later. A per-tile money field
+gives the bid a payee and closes the loop.
+
+Three things fall out that are currently missing or hand-built:
+
+- **The rent gradient becomes emergent.** What two tiles earn for the same harvest
+  differs by carriage to their buyer. That difference *is* von Thünen's rent, appearing
+  as a measured field rather than a formula.
+- **Work-plan item 5 (*"untapped surplus should pull a city"*) becomes free.** A tile
+  accumulating money that no market is capturing is, by definition, unserved demand —
+  and that is where a new market wants to exist.
+- **Switching gets a consequence.** A tile that changes buyer earns differently, so the
+  reallocation has a visible economic trace instead of being invisible bookkeeping.
+
+### 41.2 What exists today, verified
+
+- **`money.js` is provenance reporting, not conservation.** Its own header: *"Tracks,
+  per settlement, WHERE its coin comes from and WHERE it goes … as a smoothed per-tick
+  rate"* for the info panel. It does not conserve anything.
+- **Wealth is settlement-only.** ~20 per-tile fields exist (`_cageField`, `_popNext`,
+  `_tileValue`, …) and **none holds money**. The infrastructure pattern is routine; the
+  quantity is new.
+- **The countryside is modelled as outside the market entirely.** Under `T.ONE_BOOK`,
+  civic demand is `min(people, _urbanPop)` — the urban core — on the stated grounds
+  that *"the census counts subsistence people the market neither feeds nor taxes"*.
+
+**That last point is the real answer to the owner's question.** Rural people do not
+spend money today because the model says they are not in the market. A per-tile money
+field would bring them in, and then the sinks are not optional — they are what stops
+coin piling up on the land forever while city treasuries drain.
+
+### 41.3 What rural people actually spent money on, strongest first
+
+1. **Tax in coin — and this is the big one.** Historically, *tax in coin is why
+   peasants sold grain at all*: the Roman land tax, China's Single Whip reform
+   consolidating dues into silver, European hearth and land taxes. Fiscal demand
+   created the rural market. It is also the sink with the most machinery already
+   present (the fisc, tribute, the levy tree).
+2. **Rent to whoever holds the claim** — `FARM_RENT = 0.4` already exists, and under
+   §40's rule the claim-holder is already identified for compulsion.
+3. **Salt and iron.** The two things every rural household must buy and few places
+   make. Salt is the model case — inelastic, needed for preserving, geographically
+   concentrated, and taxed for exactly that reason (the *gabelle*, the Chinese salt
+   monopoly). `goods.js` already carries the vector.
+4. **Tithe** to a faith, which the codebase models.
+
+### 41.4 Recommendation, and the risk
+
+**Do it — but after the bid rule, not with it.** Three reasons:
+
+- The bid rule works without it (willingness to pay can decide the assignment whether
+  or not the coin is tracked), so money is a follow-on, not a prerequisite.
+- Building both at once makes attribution impossible, which is this lap's most
+  expensive repeated lesson (§20, §32.1).
+- A new conserved quantity is a *different kind* of change from a re-seeded Dijkstra.
+  Sources and sinks must balance or the field inflates or drains, and that needs its
+  own measurement.
+
+**The named risk:** this is a second wealth system next to `s.wealth`, and the two must
+reconcile or the same coin is counted twice. `money.js`'s channels (`IN_FOOD` — *"sold
+surplus grain … agrarian export sector"*) already book food income to settlements. If a
+tile is paid and the settlement also books the sale, that is double-counting. Deciding
+which side holds the coin — and making the other a pure report — is the first design
+question, before any code.
