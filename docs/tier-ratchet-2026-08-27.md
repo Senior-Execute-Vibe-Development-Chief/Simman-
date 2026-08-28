@@ -3291,3 +3291,70 @@ identical collapse. The split earned its keep by killing my hypothesis in one ru
   the real one.
 
 Next is the live arm, not more building.
+
+---
+
+## 45. THE LIVE ARM KILLS IT — the runaway is real, and one fix solves three problems
+
+§44 reported the gate world passing with 0 warnings. The live arm at `tw=480`, first
+window with any register (20k-24k), says otherwise.
+
+| | claimed% | realms | urban% | bind% | ran% | urban su | rural su | p50 core | **max core** |
+|---|---|---|---|---|---|---|---|---|---|
+| controls (×3) | 2.26-2.35 | **15** | 5.08-5.32 | 29-34 | 76.4-76.8 | 5.3-5.8k | 100-104k | 12.0 | **357-452** |
+| `MARKET_PULL` | 3.37 | **5** | 3.76 | 16.4 | 33.9 | 7.8k | 201k | 3.3 | **2717** |
+| `MARKET_PULL` chaos | 2.27 | **7** | 2.59 | 10.5 | 22.1 | 5.5k | 206k | 1.5 | **2125** |
+
+**The runaway named as a risk in §42.6 is happening.** The largest core is **5-6×
+any control's** (2717 and 2125 against 357-452) while the median core collapses to
+1.5-3.3 and the register falls to a third of its size (5-7 realms against 15). The
+countryside doubles because the people are there — they simply have no market of
+their own. A handful of great markets outbid everyone and take the continent.
+
+`ran%` at 22-34% against the controls' 76% says it plainly: two thirds of settlements
+no longer have a measured core at all.
+
+### 45.1 Why the gate world passed and this did not
+
+The gate arm holds 39 settlements on a small map. **"Reaching everything" is not
+distinguishable from "reaching your neighbourhood" when there is barely anything to
+reach.** At `tw=480` with a real register, an unbounded frontier is a continent-taking
+frontier.
+
+That is the third cardinal rule exactly: *a mechanism validated only at the reference
+grid is unvalidated.* §44 should have said "passes the gate world" and stopped, and it
+did say that — but I ran it as the first check rather than the last, and the live arm
+took ten minutes.
+
+### 45.2 One fix, three problems
+
+The frontier has **no stopping rule**. It runs until a cheaper rival stops it, and
+`foodFalloff = 1/(1+cost·0.5)` only *discounts* a distant tile's yield — it never ends
+the claim. So a market's reach is bounded by nothing.
+
+**Work-plan item 4 is that stopping rule**, and it is already written:
+
+> *Real freight cost rises steadily with distance, so grain's value hits **exactly
+> zero** at a finite range. Von Thünen's rings END; ours fade forever … One law,
+> `max(0, 1 − d/D)`, with `D` the distance at which freight equals the grain's value —
+> derived from the same edict figure `HAUL_LAND_KM = 340 km` already in the code.*
+
+It fixes all three at once:
+
+- **the physics** — a market's reach ends where the grain is not worth carrying;
+- **the runaway** — no bidder can take a continent, because its bid buys distance
+  logarithmically and the range is finite;
+- **the runtime** — the 2× (§44.2) is the unbounded sweep; a bounded frontier settles
+  far fewer tiles. The live arm managed 6 windows in 560s where the controls do 7 in
+  300s, which currently puts the mature window out of reach.
+
+**So item 4 is not the independent follow-up the work plan filed it as. It is a
+prerequisite for item 3**, in the same way `PRICE_GROSS` was — and for the same
+reason: something that is a bounded quirk under the old rule becomes load-bearing when
+the bid decides who owns the land.
+
+### 45.3 Status
+
+`T.MARKET_PULL` is **built, off, and not shippable as it stands**. The mechanism is
+right; it is missing its boundary. Next is the decay law, then re-measure on the live
+arm — not more of the bid.
