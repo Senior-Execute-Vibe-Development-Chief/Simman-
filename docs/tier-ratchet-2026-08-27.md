@@ -2058,3 +2058,82 @@ lets real small settlements exist. The second pair is the dose-response §23.2 a
 sweep answering two questions: whether the 13% dial is a fitted constant (the owner's
 cardinal-rule objection), and whether the cap on runaway cities is what moves world
 population.
+
+---
+
+## 29. WHY THE CITIES ARE SMALL — early world, plus a mint/dissolve bar with no gap
+
+> Owner: *"why are most of the cities so small, less than historical city size? Is
+> that just an early game thing? Or do we now need to calibrate WHEN a city is
+> made?"*
+
+Both, and they separate cleanly.
+
+### 29.1 Most of it is the young world
+
+Median urban core, sim units (×1000 = people), by window:
+
+| arm | 20k | 24k | 28k | 32k | 36k |
+|---|---|---|---|---|---|
+| control | 12.0 | 12.0 | 12.0 | 12.0 | 12.5 |
+| `STAMP_RETIRE` | 8.0 | 8.0 | 8.0 | **17.2** | **15.6** |
+| `STAMP_RETIRE+ULAB` | 8.0 | 8.0 | 8.0 | **13.6** | **17.4** |
+
+With the stamp gone the median sits on the floor for three windows and then takes
+off, ending at **13,600-17,400 people** — above the 10,000 city threshold and a real
+distribution rather than a pin. The control never moves off 12.0 at all, which is
+the pin restated.
+
+The wave-7 readings that prompted the question (median 2,300-6,200) are from a world
+at **1.5% of land claimed**. It has not grown up yet.
+
+### 29.2 But the mode never clears the bar, at any maturity
+
+```
+STAMP_RETIRE   mode 8.00su held by  36% / 33% / 41% / 29% / 29%
+```
+
+Between 27% and 41% of the register sits at exactly the floor in every window,
+mature ones included. That is not an early-world effect and it is the residue the
+stamp's removal did not touch.
+
+### 29.3 The cause: the mint bar and the dissolve bar are the same number
+
+- **Mint** (`crystallize.js:1571`): `if (coreF < coreBarF) continue` —
+  `coreBarF = TIER_CORE[2] / bridge`, a gathered core of **10,000**.
+- **Dissolve** (`crystallize.js:1293`): `coreBar = TIER_CORE[2] * T.DISSOLVE_CORE`
+  — at the shipped `DISSOLVE_CORE = 1.0`, a core under **10,000**.
+
+**Identical, by explicit design.** `DISSOLVE_CORE`'s own description says so: *"the
+bar is the CITY BAR ITSELF, not a fraction of it… Values below 1 reopen a hysteresis
+gap if a future measurement ever wants one."*
+
+With the founding stamp present, that gap did not matter — the stamp held every core
+at 12,000, safely above both bars, which is exactly what made it a pin. **Remove the
+stamp and the missing hysteresis becomes the dominant behaviour:** mint at 10,000 →
+decay to the floor → sit under the bar → dissolve after `DISSOLVE_SUSTAIN` → another
+mints elsewhere. A steady-state churn parked at the line.
+
+That accounts for the doubled `ended` counts across waves 5 and 6, and for why the
+pinned share never falls below about a quarter whichever floor is removed.
+
+### 29.4 The deeper flaw: the mint tests gathering, not sustainability
+
+`coreF >= coreBarF` is a **momentary** reading — did a core gather this tick. It does
+not ask whether the basin can *keep* one. `cityBasinOkAt` was meant to cover that and
+measurably does not: every entity in the churn passed both tests at birth and then
+decayed to the floor.
+
+Two directions, and this is an owner decision rather than a bug fix:
+
+1. **Separate the bars** — `DISSOLVE_CORE < 1` reopens the hysteresis the code
+   already anticipated. Cheapest, uses an existing lever, no new constant. But it
+   only lets a city *dip* without dying; it does not stop the world founding cities
+   where cities cannot live.
+2. **Make the mint test sustainability** — the cause-level fix, and the one the
+   second cardinal rule prefers. A core that gathered once is not evidence a city can
+   persist; the mint should read something that predicts persistence (the basin's
+   sustained surplus rather than an instantaneous core).
+
+**Not built.** Wave 7 changes the floor these entities decay onto, so it may change
+the size of the problem before either fix is worth designing.
