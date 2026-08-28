@@ -2137,3 +2137,84 @@ Two directions, and this is an owner decision rather than a bug fix:
 
 **Not built.** Wave 7 changes the floor these entities decay onto, so it may change
 the size of the problem before either fix is worth designing.
+
+---
+
+## 30. THE OWNER'S HYSTERESIS — mint 10,000, dissolve 2,000 — and a self-inflicted lost wave
+
+> Owner: *"What about mint 10,000 dissolve 2000? I do want settlements to be ONLY
+> considered 'cities', dissolving at 2000 just gives places that used to be cities
+> some breathing room"*
+
+### 30.1 This is the better design, and it needs no code
+
+§29 offered two directions and I built the wrong one. `T.TOWN_MINT` lowers the MINT
+bar, which reverses the 2026-08-22 directive and turns the register into a settlement
+register. The owner wants the opposite: **the register stays a CITY register — only
+10,000-person cores mint — and the dissolve bar drops so a declining city has room to
+fall before the institution dies.**
+
+That is a strictly better answer to §29's problem, because §29's problem was never
+that the mint was too high. It was that **the two bars are the same number**, so a
+city has no room at all. Lowering the dissolve bar fixes exactly that and changes
+nothing about what qualifies as a city.
+
+It also needs **no new code and no new lever**: `DISSOLVE_CORE` is already a
+multiplier on `TIER_CORE[2]`, so `DISSOLVE_CORE = 0.2` puts the dissolve bar at
+**2.0 su = 2,000 people = `TIER_CORE[1]`**, this codebase's own town definition. The
+lever's description reserved sub-1 values for precisely this: *"Values below 1 reopen
+a hysteresis gap if a future measurement ever wants one."*
+
+And it is historically the right shape. `DISSOLVE_CORE`'s own text names the case:
+post-Roman Britain, where *"the countryside stayed peopled while the towns emptied
+and stopped being towns"*. A city does not stop being a city the moment it dips below
+the statistical threshold — it stops when it has fallen to a town and stayed there.
+
+**`T.TOWN_MINT` is therefore built but NOT the plan.** It stays at `def: 0`,
+byte-identical, and its description carries the research on where 10,000 comes from,
+which is worth keeping. It should be deleted if the town register is never wanted.
+
+### 30.2 The interaction that decides whether it works
+
+A 2,000 dissolve bar can only bite if cores can actually reach 2,000. `K_MIN_VIABLE`
+(§26) floors capacity at 8,000, and waves 5-6 measured 27-41% of the register sitting
+at exactly that floor. **Against an 8,000 floor, a 2,000 dissolve bar is inert for
+that whole population** — it would stop the churn by making the parked entities
+permanently safe, rather than by letting them recover or die.
+
+So the design is tested with and without `T.VIABLE_UNITS`, and that pairing is the
+wave's real question.
+
+### 30.3 I lost wave 7 to my own smoke runs
+
+All four wave-7 arms died between windows 7 and 8 with no error written — logs cut
+mid-line, no `FATAL`, nothing in `dmesg`, and 15GB free once they were gone. I ran
+`npm test` twice while four `tw=960` arms were live on a 16GB machine. The arms were
+almost certainly OOM-killed, and it was avoidable.
+
+**Standing rule, added to §6's method notes: do not run the gate suite while
+`tw=960` arms are on the machine.** The earlier session already lost a wave to
+`pkill` matching its own monitor; this is the same class of error — a tool I ran
+destroying the measurement I was waiting for.
+
+Lost: the `VIABLE_UNITS` pair and both `URBAN_AGGLOM` sweep doses. What survived is
+two windows of each, which is not enough for anything.
+
+### 30.4 Wave 8, launched
+
+```
+w8_hyst           full stack + VIABLE_UNITS + DISSOLVE_CORE=0.2    ← the owner's design
+w8_hyst_chaos     … + MINING_RATE=5.0000001                        ← its twin
+w8_hyst_nofloor   full stack + DISSOLVE_CORE=0.2, no VIABLE_UNITS  ← §30.2's interaction
+w8_agglom052      full stack + URBAN_AGGLOM=0.52, DISSOLVE_CORE=1  ← the dial sweep's high dose
+```
+
+All carry `CORE_LOCAL`, `AGGLOM_LOCAL`, `URBAN_LABOR`, `STAMP_RETIRE`; lever sets
+verified from each arm's own echoed header.
+
+**Pre-registered:** the churn should fall — `ended` back toward the control's
+345-387 from waves 5-6's 488-573 — while the median core and `bind` hold their
+wave-6 gains. The disqualifier is the opposite: if `ended` falls because the parked
+population became permanently safe rather than because cities recovered, the mode at
+the floor will persist and the median will not move. **Mode share and `ended` must be
+read together; either alone can be satisfied the wrong way.**
