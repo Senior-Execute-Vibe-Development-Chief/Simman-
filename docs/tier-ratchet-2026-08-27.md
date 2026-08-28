@@ -1968,3 +1968,93 @@ fitted constant. One experiment answers both questions:
   dial is not the answer being painted on.
 
 Either way it is the next arm after wave 6, and it now earns its slot twice over.
+
+---
+
+## 28. WAVE 6 VERDICT — `STAMP_RETIRE` separates on every measure, and three of them need re-reading
+
+All four arms to 40k. Final window, four treated draws against three controls:
+
+| arm | claimed% | urban% | bind% | medCore | mode | total | ended | realms |
+|---|---|---|---|---|---|---|---|---|
+| ctrl clean | 44.42 | 28.21 | 44.5 | — | — | 421,981 | 371 | 818 |
+| ctrl chaos1 | 50.83 | 20.61 | 40.2 | 12.5 | 12.0 @ 37% | 409,448 | 387 | 866 |
+| ctrl ref3 | 44.88 | 20.60 | 42.5 | 14.6 | 12.0 @ 35% | 406,018 | 345 | 857 |
+| STAMP | 38.38 | 13.35 | 49.7 | 15.6 | 8.0 @ 29% | 310,342 | 573 | 599 |
+| STAMP ch | 34.34 | 12.87 | 49.6 | 15.7 | 8.0 @ 28% | 322,414 | 488 | 606 |
+| STAMP+ULAB | 40.35 | 11.75 | 49.1 | 17.4 | 8.0 @ 27% | 308,543 | 513 | 650 |
+| STAMP+ULAB ch | 49.52 | 11.91 | 48.3 | 16.9 | 8.0 @ 28% | 298,511 | 490 | 635 |
+
+**Every one of six measures separates cleanly**, no overlap, no interpolation:
+
+```
+urban%     ctrl [20.6, 28.2]      trt [11.8, 13.3]      treated LOWER
+bind%      ctrl [40.2, 44.5]      trt [48.3, 49.7]      treated HIGHER
+medCore    ctrl [12.5, 14.6]      trt [15.6, 17.4]      treated HIGHER
+total pop  ctrl [406k, 422k]      trt [299k, 322k]      treated LOWER
+ended      ctrl [345,  387]       trt [488,  573]       treated HIGHER
+realms     ctrl [818,  866]       trt [599,  650]       treated LOWER
+```
+
+### 28.1 The pin is broken, and the mode moved down a floor
+
+The 12.00su mode is gone from every treated arm. In its place, 8.00su at 27-29% —
+`K_MIN_VIABLE`, §26 — down from 12.00su at 35-37%. So the stamp's removal both
+**shrank** the pinned share (36% → 28%) and **exposed the next floor down**.
+`bind%` at 48.3-49.7 is the highest reading of the entire lap, and the median core
+clears both controls in all four draws — the result wave 4 had to retract for
+insufficient evidence now holds with a 1.0-point gap and four draws.
+
+### 28.2 Three "costs" that were never measured against a standard
+
+§25 and §28's table call three measures costs. **The owner challenged that and was
+right.** Checked directly: `tools/stylized.mjs` contains **no absolute
+world-population bar**. Its only population standards are
+`"population ~ development (monotone)"` and `"civilization alive"`
+(≥20 settlements, pop > 500). The disqualifier §22.2 registered was invented for
+this lap, not taken from the repo, and then reported as a failed test.
+
+What the trajectories actually say:
+
+```
+population, millions of real people on catchment land, by window
+controls   105 → 235 → 354 → 412 → 422      (chaos1 431→409 and ref3 418→406: two of three TURN DOWN)
+treated     84 → 197 → 273 → 306 → 310      (still climbing at the end)
+```
+
+The treated world is **still growing** where two of three controls have peaked and
+declined. ~310M on settled land is a ~1000 CE world; the controls' ~420M is a ~1400s
+world. Both plausible, and the repo's actual standard — population rising with
+development — is met by both.
+
+On the one axis that *can* be checked against history, the treated world is the more
+accurate one: urbanisation 11.8-13.3% against history's 5-15% agrarian band, where
+the controls run 20.6-28.2%, well outside it.
+
+The same applies to the other two. **Settlement deaths**: no standard exists, most
+historical settlements failed, and the register keeps *growing* (19 → 243 → 485 →
+578 → 599), so this is higher turnover, not collapse. **Realm count**: 599-650
+against 818-866, with no benchmark for either — and 866 simultaneous polities is the
+harder number to defend, not the smaller one.
+
+**Corrected position: of the six separations, three are results in the intended
+direction and three are differences with no standard attached.** Calling the latter
+"costs" was a framing error, repeated across two waves.
+
+### 28.3 Wave 7, launched
+
+Four arms, verified from their own echoed headers:
+
+```
+w7_viable         AGGLOM_LOCAL + STAMP_RETIRE + VIABLE_UNITS
+w7_viable_chaos   … + MINING_RATE=5.0000001
+w7_agglom026      AGGLOM_LOCAL + URBAN_LABOR, URBAN_AGGLOM = 0.26   (2×)
+w7_agglom052      AGGLOM_LOCAL + URBAN_LABOR, URBAN_AGGLOM = 0.52   (4×)
+```
+
+The first pair tests whether removing the 8k floor dissolves the 8.00su mode and
+lets real small settlements exist. The second pair is the dose-response §23.2 and
+§27.3 both queued, against `w5_agg_ulab` (URBAN_AGGLOM = 0.13) as the low dose — one
+sweep answering two questions: whether the 13% dial is a fitted constant (the owner's
+cardinal-rule objection), and whether the cap on runaway cities is what moves world
+population.
