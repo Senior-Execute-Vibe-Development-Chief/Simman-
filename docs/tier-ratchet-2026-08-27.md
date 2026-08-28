@@ -3065,3 +3065,99 @@ surplus grain … agrarian export sector"*) already book food income to settleme
 tile is paid and the settlement also books the sale, that is double-counting. Deciding
 which side holds the coin — and making the other a pure report — is the first design
 question, before any code.
+
+---
+
+## 42. THE FARM-FIELD OVERHAUL — the spec
+
+### 42.1 The rule
+
+Every farmed tile makes one decision each pass, in this order:
+
+1. **Compelled** — if a liege or landlord holds a claim on that ground, the harvest
+   goes to them. No bid, no choice. *This is how Rome eats Egypt's harvest.*
+2. **Sold** — otherwise it goes to the market that nets the producer most **at the
+   farm gate**: the buyer's price, minus what the journey costs.
+3. **Unsold** — if no market clears the carriage, the harvest feeds the people
+   standing on it and goes nowhere.
+
+The tile still belongs to exactly **one** market at a time (§38.2). It may switch; it
+may not split.
+
+### 42.2 What a tile computes
+
+Delivered value falls with distance, so in logs the race is additive — which is why
+this is a re-seeded Dijkstra and not a new algorithm:
+
+```
+winner(tile) = argmin over markets i of   [ carriage(i → tile)  −  range · ln(bid_i) ]
+```
+
+A market that bids more starts further ahead and therefore reaches further. Carriage
+uses the **real** transport cost — roads, rivers, ports — where today the catchment
+sweep explicitly passes `ignoreRoads = true` (§40.1). **Roads would begin to shape
+supply zones, which they currently do not at all.**
+
+### 42.3 The bid — and the one thing that must be fixed first
+
+The obvious candidate is `s._grainPrice`. **It cannot be used as it stands:**
+
+```js
+s._grainPrice = GRAIN_PRICE_BY_TIER[s.tier] * scarcity;   // [2, 8, 14, 22]
+```
+
+A metropolis would outbid a town **11× on its tier label alone** — the ratchet the
+owner called *"utterly useless, and against our design philosophy"*, promoted from a
+side-grant to the thing that decides who owns the land. That is the exact
+fitted-outcome failure the second cardinal rule bans.
+
+**The bid is `scarcity` alone:**
+
+```js
+scarcity = clamp(0.5, 3, _foodDemand / _foodSupply)
+```
+
+Emergent, no tier, no table. And it does the tier table's job properly: a big market
+has more mouths, so its demand/supply ratio runs higher, so it bids more — **because
+it is hungry, not because it is labelled**. `GRAIN_PRICE_BY_TIER` becomes redundant
+rather than deleted, which is what §4 said the leg required.
+
+**The dependency, and it is real.** `scarcity` reads `_foodSupply`, which is the
+**retained** net after shipping up — and `foodHierarchy.js:264` already flags the
+consequence: *"a heavy exporter can read as short and price its exports dear."* Today
+that is a bounded pricing quirk. Under this rule it becomes **the thing that assigns
+land**, so a big exporter would bid for its own fields *because* it exports. The
+supply signal must go production-relative before the bid can be trusted. That is a
+prerequisite, not a follow-up.
+
+### 42.4 The code
+
+- `territory.js:322` — seed the heap at `−range·ln(bid)` instead of `0`.
+- Delete the budget cap and the `budget` Map (`reachBudget`, `T.ORG_REACH`,
+  `TERRITORY_BASE` go with it).
+- `territory.js:406` — stop passing `ignoreRoads = true`.
+- Compulsion pass before the bid, from the existing liege/claim data.
+- Behind `T.MARKET_PULL`, `def: 0`, byte-identical when off.
+
+Runtime unchanged — same heap, same relaxation, one changed seed (§39.1).
+
+### 42.5 What dies, what stays
+
+**Dies:** `reachBudget` / `T.ORG_REACH` / `TERRITORY_BASE`; `HINTERLAND_BY_TIER` and
+`CORE_BY_TIER` (the ratchet's territory half); `T.FARM_RES`; and
+`GRAIN_PRICE_BY_TIER` becomes redundant.
+
+**Stays:** the exclusive tile→settlement partition and every consumer of it (58 refs,
+none of which asks *how* a tile was assigned); the catchment aggregates; the census
+under `ONE_POP`; `URBAN_LABOR`, `STAMP_RETIRE`, `VIABLE_UNITS`.
+
+### 42.6 What is NOT decided
+
+1. **A minimum home block.** Should every settlement keep a guaranteed core it always
+   farms, or can a market be outbid down to nothing? A floor is stability; no floor is
+   honest. *Recommend: a small unconditional core, not tier-scaled.*
+2. **The switching margin.** Bids move every pass; without hysteresis borders will
+   flicker. Market-franchise law is the historical warrant for one. *Needs a form and
+   a measurement, not a guessed number.*
+3. **What counts as compulsion.** Liege-over-vassal only, or also a landholder inside
+   one realm? The second is more historical and more work.
