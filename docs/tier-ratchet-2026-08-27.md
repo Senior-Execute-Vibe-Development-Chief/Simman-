@@ -1847,3 +1847,52 @@ One window, a young world (claimed 1.3-1.7%), and the arms run to 40k. Whether t
 whether the entity count survives are all open. The pin moving from 12.00 to 8.00 is
 solid — two draws, a mode to a tenth of a point, and a constant that matches
 exactly. Everything downstream of it is not yet measured.
+
+### 26.5 The floor's twin: the wither cull, and what the comment gives away
+
+`K_MIN_VIABLE`'s comment says it *"matches the wither cull threshold"*.
+`settlement.js:3778`:
+
+```js
+// Withering: a settlement stuck below 8 people for too long (a stillborn
+// site whose territory can't feed it, or a post-famine zombie) dies.
+// Stable small forage hamlets sit at ~10–15 and never trip the timer.
+if (s.people < 8) { … dies after 2000/_dt … }
+```
+
+`s.people` is in **census units**; `POP_SCALE = 1000`. So the pair reads:
+
+| written as | actually means |
+|---|---|
+| capacity floored at 8 | no settlement's capacity may fall below **8,000 people** |
+| dies below 8 people | anything under **8,000 people** is culled |
+| *"small forage hamlets sit at ~10-15"* | forage hamlets of **10,000-15,000 people** |
+
+**That last line is the tell.** A forage hamlet is ten to fifteen *people*. The
+comment describes a headcount world, not a world where `s.people` is thousands. The
+constants are self-consistent with each other (both 8, deliberately matched) and
+inconsistent with the unit system they now run in.
+
+**Honest limit on this claim:** the repository's history is squashed to a single
+commit, so `git log -S` cannot date these constants against `POP_SCALE` and I
+**cannot prove** they predate the rescale. The evidence is internal — a comment that
+only parses in a headcount world — not historical. CLAUDE.md names this exact failure
+as *"the single most repeated mistake in [this codebase's] history"*, which raises
+the prior but is not itself evidence.
+
+### 26.6 This is a second, independent barrier to the town register
+
+The owner asked (2026-08-27) whether allowing sub-12k settlements would *"simulate
+large towns instead of cities that don't work"*. §on the stamp answered that
+`DISSOLVE_TOWNS` blocks it. That answer was incomplete.
+
+**Anything below 8,000 people is actively culled by the wither timer**, whatever the
+tier rules say. So the historically ordinary town — the 2,000-person borough, the
+Greek polis of a few thousand, the several thousand *Städte* of the Empire — cannot
+exist in this world for two independent reasons, and removing the tier bar alone
+would not create one.
+
+A town register therefore needs the wither threshold re-grounded on what it claims
+to mean (a site too small to sustain itself — hundreds of people, not thousands),
+not just the tier definitions changed. That is a separate lever from
+`T.STAMP_RETIRE` and is **not** being built while wave 6 runs.
