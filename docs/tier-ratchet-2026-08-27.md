@@ -3468,3 +3468,58 @@ Doing the diagnosis now, and the population result narrows it usefully: food per
 settlement is no longer the suspect. The comparison to run, per settlement against
 baseline, is **founding events, catchment tile count, and the mint's two bars** —
 whether new settlements are failing to be born, or being born and dying.
+
+---
+
+## 48. THE DIAGNOSIS — the gate world and the live arm disagree, and the live arm looks fine
+
+§46.4 said: measure whether settlements are failing to be born, or being born and
+dying. Done, on the live arm at `tw=480`, first window with a register (20k-24k):
+
+| | founded | ended | settled |
+|---|---|---|---|
+| control | 12 | 5 | **138** |
+| control 2 | 12 | 5 | **138** |
+| `MARKET_PULL` | **11** | **0** | **128** |
+
+**Founding is essentially identical (11 against 12), ending is LOWER (0 against 5),
+and the register is 128 against 138 — 7% down, not 60%.**
+
+### 48.1 The two arms disagree, and I was tuning against the wrong one
+
+The gate world says catastrophe: **16 settlements against 39.** The live arm says
+nearly normal: **128 against 138.** Same code, same lever.
+
+`food-system-design` §6.2 already warns that the gate world runs **~25× fewer realms**
+than the shipped one, and the gate harness pins a different world entirely
+(`DAWN_LIVE=0, STATE_RECORDS=0, PEER_SEATS=0, WAR_FINISH=0, SETT_STRIDE=1`).
+
+**Five of my six changes tonight were reasoned against the gate world's collapse** —
+the arm the repository itself documents as unrepresentative, and the same class of
+mistake §45.1 had just caught in the opposite direction. In §45 the gate passed and
+the live arm failed; here the gate fails and the live arm is close to fine. The lesson
+is not "trust the live arm over the gate", it is **the gate world is a smoke test and
+was never evidence about the shipped world in either direction.**
+
+Two of those five stand on their own merits regardless — the e-folding conversion
+(§46.2) was a real derivation error, and the frozen range (§47) was a fixed constant
+where the code beside it had a state-driven one. The other three were noise chased on
+a bad signal.
+
+### 48.2 What is now actually known
+
+- **The bid rule does not destroy the register on the live arm.** Founding holds,
+  deaths fall, the settled count is within 7%.
+- **The gate's `civilization alive` failure still blocks a flip** — it is a hard gate
+  and it is red. Whether that is the mechanism or the gate arm's own pathology is
+  undetermined.
+- **The mature window is still out of reach.** 6 windows in 550s; the sweep is
+  cheaper than the unbounded version but still above baseline, and 24k is where the
+  time runs out.
+
+### 48.3 Next
+
+Not another fix. The live arm to the mature window, which needs either a faster sweep
+or a horizon that fits — and a decision about whether the gate arm's verdict on this
+mechanism means anything at all, given it runs a world with a twenty-fifth of the
+realms and half the systems pinned off.
