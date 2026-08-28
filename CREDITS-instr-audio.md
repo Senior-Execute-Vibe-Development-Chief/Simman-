@@ -62,11 +62,22 @@ calls.
 | `scraper` | Guiro | a train of impacts as the scraper crosses the notches |
 | `panpipe` | pan flute | a raft of stopped pipes, one per pitch — **CC BY 3.0**, see below |
 | `musicalBow` | *(none)* | modelled: no openly-licensed recording exists |
+| `voice` | Choir Aahs | people singing, on the vowel that carries — **CC BY 3.0**, see below |
 
-**The one exception to CC0 in this bank is `panpipe`.** Nobody has published an
-openly-licensed multisampled panpipe; General MIDI's pan flute is a real
-recording of one, and it comes from FluidR3_GM under **CC BY 3.0** like the
-named bank below. The credit at the foot of the Lab covers it.
+**Two entries in this bank are not CC0: `panpipe` and `voice`.** Nobody has
+published an openly-licensed multisampled panpipe; General MIDI's pan flute is
+a real recording of one. And `voice` is not a family at all — it is the one
+body every people has without building it, and the engine can already sing a
+people's own words through a waveguide model of the vocal tract. That model
+stays where it belongs, in langLab, speaking; it is the wrong thing in an
+ensemble of recorded oud and koto, where a modelled throat gives itself away
+next to bodies a listener has a lifetime of practice judging. The music sings
+wordless — which is also the truer thing, since what carries any distance is
+the vowel and never the consonants that make speech intelligible — so the sung
+part is a recorded choir on an open vowel.
+
+Both come from FluidR3_GM under **CC BY 3.0** like the named bank below. The
+credit at the foot of the Lab covers them.
 
 `musicalBow` has no recording anywhere and plays MODELLED. That is not a gap
 to apologise for — it is what the modelled path is for, and a people that

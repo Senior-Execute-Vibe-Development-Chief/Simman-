@@ -1513,15 +1513,17 @@ export function ensembleFor(music, occKey, intimacy = 1) {
     // singing IS their music, and it is all there is to hear. Measured, that
     // is 3 peoples in 120.
     sing: (!loud && intimacy > 0.25) || lead == null,
-    // AND WORDS DO NOT CARRY AS FAR AS THE VOICE DOES. What makes speech
-    // intelligible is the consonants, and they are the quiet part: brief,
-    // 10-20 dB under the vowels they surround, and concentrated in the 2-8 kHz
-    // band that air absorbs fastest. The vowels are loud, long and low and
-    // travel like any other sustained tone. So across a square you hear that
-    // people are singing and not a syllable of what — roughly one doubling of
-    // distance sooner than the voice itself goes. A sung line past that point
-    // is a wordless one, not an absent one.
-    words: intimacy > 0.5,
+    // WORDS WERE A FLAG HERE FOR ONE COMMIT, AND NOTHING EVER READ IT. The
+    // acoustics behind it are true — consonants are what make speech
+    // intelligible and they are the quiet part, brief, well under the vowels
+    // they surround and in the band air absorbs fastest, so across a square you
+    // hear that people are singing and not a syllable of what. But the renderer
+    // does not choose between a worded voice and a wordless one at any distance:
+    // it sings wordless always, because a modelled throat next to recorded oud
+    // and koto gives itself away. A distance threshold selecting between two
+    // options when only one is ever taken is a decorative flag, which is the
+    // exact fault this session has spent its time removing from `finalIdx` and
+    // `role`. The fact lives where it is acted on, in `fireVoiceLine`.
   };
 }
 export function degreeHz(music, tonicHz, deg, oct = 0) {
@@ -2051,8 +2053,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       // so no fresh attack, which is why it is the softer of the two.
       const own = e.strong || e.last || !sung.length
         || hash32(seed, "syl", Math.round(e.b * 96)) % 1000 < share * 1000;
-      sung.push({ ...e, role: "voice", inst: -1, melisma: !own || !E.words,
-        wordless: !E.words,
+      sung.push({ ...e, role: "voice", inst: -1, melisma: !own,
         vel: e.vel * (own ? 1 : 0.86),
         b: e.b + Math.min(vlag, e.dur * 0.25) });
     }

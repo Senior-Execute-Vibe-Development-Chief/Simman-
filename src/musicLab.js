@@ -14,7 +14,7 @@ import { foundLanguage } from "./sim/language.js";
 import { langWord, langWordForm, langRealmName } from "./sim/language.js";
 import { phoneticPlan, prosodyOf, vocablesOf } from "./sim/languagePhonetics.js";
 import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE } from "./sim/languageLexicon.js";
-import { MATERIALS, FAMILIES, rangeOf } from "./sim/musicInstruments.js";
+import { MATERIALS, FAMILIES, rangeOf, makeVoice } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
@@ -227,12 +227,48 @@ function phraseFreqs(m, g) {
   }
 return best;
 }
-const THROAT = new Map();                 // one singer per people, and only one
-function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
-  const syls = voc && voc.syls;
-  if (!evs.length || !syls || !syls.length) return;
+/**
+ * THE SUNG LINE, ON A RECORDED CHOIR.
+ *
+ * This used to render each breath group through the vocal tract — a
+ * Kelly-Lochbaum waveguide of the real air column, singing the people's OWN
+ * WORDS, one syllable a note, in their own language. As an idea that is the
+ * best thing in this engine and it is not going anywhere: it is still what
+ * langLab speaks with, and it is the only reason a generated tongue can be
+ * heard at all rather than read.
+ *
+ * It is the wrong thing HERE, for two reasons that point the same way.
+ *
+ * The first is honest and unflattering: a physical model of a throat next to
+ * recorded oud, koto and violin announces itself as a synthesiser the moment
+ * it opens its mouth. Every other body in this ensemble is a real recording of
+ * a real instrument, and the one part a listener has a lifetime of practice
+ * judging was the one part that was modelled.
+ *
+ * The second is that the music does not need the words. What makes speech
+ * intelligible is the consonants, and they are the quiet part — brief, well
+ * under the vowels they surround, and in the band air absorbs fastest. Across
+ * a settlement you hear that people are singing and not a syllable of what.
+ * So a sung line heard as music is a wordless one whatever synthesises it, and
+ * a recorded choir on an open vowel is both the better sound and the truer one.
+ *
+ * The words stay on the page, where they are still theirs and still legible.
+ */
+const VOICE_BODY = new Map();
+function voiceBody(m) {
+  let v = VOICE_BODY.get(m.people.seed);
+  if (!v) VOICE_BODY.set(m.people.seed, v = makeVoice(m.people.seed));
+  return v;
+}
+function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
+  if (!evs.length) return;
   const A = Aud || audio();
+  const V = voiceBody(m);
   const sorted = [...evs].sort((a, b) => a.b - b.b);
+  // A BREATH GROUP MOVES TOGETHER. `phraseFreqs` picks the one octave that
+  // sits the whole group in the singer's compass, so the split has to happen
+  // before the pitches are chosen — a fold in the middle of a breath is an
+  // octave jump no singer makes.
   const groups = [];
   let cur = [];
   for (let i = 0; i < sorted.length; i++) {
@@ -240,52 +276,19 @@ function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
     const nx = sorted[i + 1];
     if (!nx || nx.b - (sorted[i].b + sorted[i].dur) > 0.9) { groups.push(cur); cur = []; }
   }
-  let syl = 0;
   for (const g of groups) {
     const line = phraseFreqs(m, g);
-    const notes = g.map((e, i) => ({
-      f: line[i],
+    g.forEach((e, i) => {
       // the note lasts until the next one starts: a singer joins them
-      dur: Math.max(0.1, ((g[i + 1] ? g[i + 1].b : e.b + e.dur) - e.b) * spb),
-      vel: e.vel * gain,
-      // a note the singer took past their syllable budget rides the vowel
-      // already sounding — `scoreSong` gives it no consonant and no new word
-      melisma: !!e.melisma,
-    }));
-    // A TEXT runs on: the second breath-group takes the syllables the first
-    // left off at. A VOCABLE REFRAIN restarts — it has no next word to reach,
-    // and its strongest attack belongs on the first note of every phrase,
-    // which is what makes it a refrain rather than a wandering.
-    const from = voc.rotate ? syl % syls.length : 0;
-    const rot = syls.slice(from).concat(syls.slice(0, from));
-    const pcm = sungLine(A.ctx.sampleRate, rot, notes, {
-      acc: voc.acc, seed: m.people.seed,
-      // VIBRATO is the only pitch motion a sung line has left now that the
-      // speech model's drift and jitter are held back for singing, and it is
-      // the motion a held note actually has. Depth is the tradition's, but the
-      // floor is the larynx's own: no singer holds a note dead flat.
-      vibrato: 22 + 48 * m.texture.ornament,
-      carry: 0.35 + 0.5 * Math.min(1, m.texture.size / 6),
-      key: `${m.people.seed}:${voc.rotate ? syl : "v"}:${from}`,
+      const dur = ((g[i + 1] ? g[i + 1].b : e.b + e.dur) - e.b) * spb;
+      // ONE THROAT. A voice channel is one singer, so starting a note releases
+      // the one being left — the same rule `fireEvent` applies to every player
+      // with one pair of hands, and what used to need a `THROAT` map of its own.
+      playNote(A, V, line[i], when0 + e.b * spb, Math.max(0.12, dur), e.vel * gain * S.voice,
+        { role: "voice", channel: `${m.people.seed}:voice`, damped: false });
     });
-    // ONE THROAT. A rendered line runs to the end of its last note, and
-    // nothing stops the next breath-group being scheduled before that — a long
-    // final note, or a bar whose voice part reaches past its own end, and the
-    // people are being sung by two of themselves at once. A singer releases
-    // the note they are leaving in order to start the next one, exactly as a
-    // player's free hand stops the string they are replacing; this is that
-    // hand, and it is the same voice-channel rule `fireEvent` already applies
-    // to every other part.
-    const at = when0 + g[0].b * spb;
-    const prev = THROAT.get(m.people.seed);
-    if (prev) prev.damp(at);
-    THROAT.set(m.people.seed, playSung(A, pcm, notes, at, S.voice));
-    // and a run-on note consumed no syllable, so the next breath group takes
-    // up where the WORDS left off, not where the notes did
-    syl += g.filter(e => !e.melisma).length;
   }
 }
-
 function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   const A = Aud || audio();
   const inst = m.insts[ev.inst] || m.insts[0];
@@ -812,17 +815,19 @@ function pieceHTML(m) {
     <h2>A piece <span class="count">— ${esc(OCCASIONS[S.occ].label)}</span></h2>
     <p class="note">The ambient layer above never repeats and goes nowhere. This is the other renderer:
       a whole piece with sections, built on one motif, developed as far as their literacy allows —
-      with a line sung in their own language.</p>
+      with a line sung over it.</p>
     <div class="controls">
       <button id="playPiece">Play the piece</button>
       ${pc ? `<span class="note tight">${pc.sections.length} sections · ${pc.totalBeats} beats · ${pc.tempo} bpm</span>` : ""}
     </div>
     ${pc ? `<div class="formline">${pc.sections.map(s =>
       `<div class="sec" style="flex:${s.beats}"><span>${esc(s.label)}</span></div>`).join("")}</div>
-      <h3>Sung</h3>
+      <h3>The words</h3>
       <p class="sung">${pc.words.map(w => `<span>${esc(w)}</span>`).join(" ")}</p>
-      <p class="note tight">Their own words, from the same lexicon that names their rivers — sung on
-        the scale their instruments derived.</p>` : ""}
+      <p class="note tight">Their own words, from the same lexicon that names their rivers, set to the
+        line the voice is singing. You will not hear them: what carries any distance at all is the
+        vowel, never the consonants that make speech intelligible, so the sung part is a wordless
+        one — a recorded choir rather than the vocal tract langLab speaks with.</p>` : ""}
   </div>`;
 }
 

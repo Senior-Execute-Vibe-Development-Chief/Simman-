@@ -112,6 +112,33 @@ const MAP = {
   // recorded is the normal case here rather than the odd one.
   claps:       { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Claps",
                  kind: "struck",  src: "Claps", why: "hands", unpitched: true },
+  // THE VOICE, WORDLESS. Not a family in `FAMILIES` — it is the one body every
+  // people has without building it, and `makeVoice` hands it out with
+  // `fam: "voice"`, which is what finds this bank.
+  //
+  // The engine can already sing a people's OWN LANGUAGE, through a
+  // Kelly-Lochbaum waveguide of the real air column, and that remains the right
+  // thing for hearing a tongue spoken and sung in langLab. It is not the right
+  // thing for music: a physical model of a throat is a research instrument, and
+  // next to recorded oud and koto it announces itself as a synthesiser every
+  // time it opens its mouth.
+  //
+  // And the music does not need the words. What carries across a settlement is
+  // the vowel, never the consonants that make speech intelligible — so a sung
+  // line heard as background is a wordless one whatever synthesises it, and a
+  // recorded choir on an open vowel is both the better sound and the truer one.
+  //
+  // Sampled at every semitone rather than the every-third this bank uses
+  // elsewhere. Shifting a recording drags its resonances along with the note,
+  // and a voice is the one body a listener has a lifetime of practice hearing:
+  // a minor third of shift is inaudible on a gong and unmistakable on a person.
+  // AND IT HAS TO COVER WHERE THE SINGERS ACTUALLY ARE. `voiceRange` puts a
+  // people's compass between 71 and 383 Hz depending on their speaking pitch,
+  // and `pick` folds an out-of-bank note by a whole OCTAVE rather than shifting
+  // it that far — so a bank starting at middle-C-below (131 Hz) would have sent
+  // every note under it an octave up. C2 to C5 covers every people's singer.
+  voice:       { gm: "choir_aahs", lo: "C2", hi: "C5", every: 1,
+                 kind: "sustain", src: "Choir Aahs", why: "people singing, on the vowel that carries" },
 };
 
 // ── note names to hertz ──────────────────────────────────────────────────
@@ -314,6 +341,9 @@ const RECORDED_MAT = {
   taiko_drum: "hide", bagpipe: "reed", fiddle: "gut",
   acoustic_guitar_nylon: "gut", dulcimer: "iron", pan_flute: "bamboo",
   reed_organ: "reed",
+  // a throat: no ore, no timber, no craft — the same body `MATERIALS.none`
+  // stands for, since the hands and the folds are the two everybody has
+  "Choir Aahs": "none",
 };
 // which engine family each named recording belongs to, so a derived body can
 // find it: the bench reaches these BY NAME, a generated people BY PHYSICS
@@ -332,7 +362,8 @@ function matOf(src) {
 // carries its own kind rather than being assumed plucked — which is what the
 // bank did, and it would have played the erhu as a note that simply stops.
 const GM_KIND = { bowed: "sustain", fluteOpen: "sustain", pipeStopped: "sustain",
-  reedPipe: "sustain", horn: "sustain", freeReed: "sustain", panpipe: "sustain" };
+  reedPipe: "sustain", horn: "sustain", freeReed: "sustain", panpipe: "sustain",
+  voice: "sustain" };
 const NAMED_FAM = {
   sitar: "luteNeck", acoustic_guitar_nylon: "luteNeck", shamisen: "luteNeck",
   koto: "lyre", dulcimer: "lyre",
@@ -340,6 +371,7 @@ const NAMED_FAM = {
   flute: "fluteOpen", pan_flute: "fluteOpen", shakuhachi: "fluteOpen",
   bagpipe: "reedPipe", reed_organ: "freeReed", pan_flute: "panpipe",
   taiko_drum: "drum",
+  choir_aahs: "voice",
 };
 
 /**
@@ -647,7 +679,7 @@ ${gen}
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
   "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
-  "sfzinstruments/aliexpress-erhu (CC0). Panpipes and the named bench " +
+  "sfzinstruments/aliexpress-erhu (CC0). Panpipes, the choir and the named bench " +
   "instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever

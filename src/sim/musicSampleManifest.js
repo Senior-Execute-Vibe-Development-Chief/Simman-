@@ -265,11 +265,32 @@ export const SAMPLE_BANK = {
     { hz: 0, secs: 0.658, file: "claps_4.mp3" },
     { hz: 0, secs: 0.467, file: "claps_5.mp3" },
   ] },
+  voice: { src: "Choir Aahs", kind: "sustain", unpitched: false, mat: "none", samples: [
+    { hz: 65.41, secs: 0, file: "voice_65.mp3" },
+    { hz: 73.42, secs: 0, file: "voice_73.mp3" },
+    { hz: 82.41, secs: 0, file: "voice_82.mp3" },
+    { hz: 92.5, secs: 0, file: "voice_93.mp3" },
+    { hz: 103.83, secs: 0, file: "voice_104.mp3" },
+    { hz: 116.54, secs: 0, file: "voice_117.mp3" },
+    { hz: 130.81, secs: 0, file: "voice_131.mp3" },
+    { hz: 146.83, secs: 0, file: "voice_147.mp3" },
+    { hz: 164.81, secs: 0, file: "voice_165.mp3" },
+    { hz: 185, secs: 0, file: "voice_185.mp3" },
+    { hz: 207.65, secs: 0, file: "voice_208.mp3" },
+    { hz: 233.08, secs: 0, file: "voice_233.mp3" },
+    { hz: 261.63, secs: 0, file: "voice_262.mp3" },
+    { hz: 293.66, secs: 0, file: "voice_294.mp3" },
+    { hz: 329.63, secs: 0, file: "voice_330.mp3" },
+    { hz: 369.99, secs: 0, file: "voice_370.mp3" },
+    { hz: 415.3, secs: 0, file: "voice_415.mp3" },
+    { hz: 466.16, secs: 0, file: "voice_466.mp3" },
+    { hz: 523.25, secs: 0, file: "voice_523.mp3" },
+  ] },
 };
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
   "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
-  "sfzinstruments/aliexpress-erhu (CC0). Panpipes and the named bench " +
+  "sfzinstruments/aliexpress-erhu (CC0). Panpipes, the choir and the named bench " +
   "instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever
