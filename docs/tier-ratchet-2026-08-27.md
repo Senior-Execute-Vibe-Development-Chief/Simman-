@@ -2667,3 +2667,102 @@ Item 12 is downgraded: the gate ladder **can** test these levers, by overriding 
 harness pin. It was never run that way because the `CORE_LOCAL` note said the gate
 was a no-op, and I carried that forward without checking whether `SIM_TUNE` could
 lift the pin. It can.
+
+---
+
+## 37. THE DEEP SWEEP — the mode that never clears has a named cause, already on the work plan
+
+Asked to look back across every file and write-up for remaining issues. The most
+important thing found is not new: it is a measurement already in
+`docs/food-system-design-2026-08-27.md` that nothing this lap connected to §33's
+deepest open item.
+
+### 37.1 A settlement's farmland does not depend on its size
+
+`territory.js:78`:
+
+```js
+export function reachBudget(s) {
+  const reach = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);
+  return TERRITORY_BASE + reach * T.ORG_REACH;
+}
+```
+
+**A settlement's economic catchment is a function of its organisation technology and
+nothing else.** Not population, not core size, not wealth, not the market it runs. A
+metropolis and a hamlet in the same realm share a reach level, so they get the same
+farming budget.
+
+`food-system-design-2026-08-27.md` measured what that produces:
+
+| measurement | value | arm |
+|---|---|---|
+| `reachBudget` max/p50 | **1.02-1.05** | every arm, both grids |
+| guaranteed belt's realised size ratio | 1.33× | tw=480, 28k, n=273 |
+| ρ(grain price, catchment tiles) | **−0.011** | same |
+
+and states the conclusion outright: *"The economic catchment at the register that
+ships **has no live size term at all**."*
+
+So the largest city in the world farms roughly **1.3× the area** of a hamlet, when
+Rome drew its grain from Egypt and North Africa.
+
+### 37.2 Why this is very likely the mode that never clears
+
+§33 item 6 recorded the deepest unexplained fact of the lap: **27-41% of the register
+sits at exactly whatever the lowest floor is, in every configuration** — 12.00su, then
+8.00su, then 0.01su. Removing a floor moves the pile; it has never removed it.
+
+The mechanism follows directly. `kLocal ≡ (local harvest)/perCapita`, and local
+harvest is the catchment's yield. **If every settlement farms the same-sized area,
+every settlement's `kLocal` converges** — so the size read
+`max(holdF, kLocal) + kBeyond` returns the floor for everyone whose imports are ~0,
+which is most of the register. The pile is not caused by the floor. **The floor is
+merely where the pile lands.**
+
+That predicts exactly what was observed: three different floors, three modes, the
+same 27-41% share each time — because the share is set by how many settlements have
+converged local food, not by the floor's value.
+
+It also explains a fact this lap kept re-deriving: why a city *needs* imports to grow.
+It is not an ontological choice in the size read (that was `CORE_LOCAL`'s target). It
+is that **a city physically cannot farm more land by being bigger**, so local food
+cannot be its growth path.
+
+**Not proven.** The clean test is per-settlement: at the mode, catchment tile counts
+and `kLocal` should be near-identical. That needs instrumentation the probe does not
+carry. But it is a named mechanism with an independent measurement behind it, which is
+more than either of the two hypotheses this lap already burned through.
+
+### 37.3 It is already the work plan's item 3, and this raises its priority
+
+`docs/food-work-plan-2026-08-27.md` §3 — *"THE ONE RULE (the prize)"* — lists four
+gaps as one missing decision, and **"the size term is inert" is one of them**. The
+others:
+
+- **no price in land assignment** (ρ = −0.011);
+- **straight lines, not terrain** — roads ignored; a plain Euclidean Voronoi
+  reproduces the live partition to within 14.2% of tiles;
+- **organisation gates farming** — a city's fields extend because its realm
+  discovered writing. That is also a cardinal-rule problem in its own right: a
+  *knowledge* gate on how much land a settlement can farm.
+
+The plan sequenced item 3 after `CORE_LOCAL` on the grounds that a pinned register
+cannot differentiate. **That reasoning now runs the other way too:** the pin does not
+fully clear *because* item 3 is unbuilt, so the two are the same problem approached
+from opposite ends.
+
+### 37.4 The rest of the sweep, briefly
+
+- **Zero `TODO`/`FIXME`/`HACK` markers** anywhere in `src/` or `tools/`. This
+  codebase records open work in prose, so a marker sweep finds nothing and is not
+  evidence of a clean tree.
+- **The temp probes** (`probe_orgspread{,2,3}_tmp.mjs`) flagged for deletion in
+  `food-system-design` §7.10 are **already gone** from the tree.
+- **Work-plan items 4 and 5 remain unbuilt**: the decay law (two different laws for
+  one physics, *"Von Thünen's rings END; ours fade forever"*) and untapped surplus
+  pulling a city into new farmland.
+- Older docs carry their own open sections (`resolution-collapse` §"Still open",
+  `state-birth` §"Proposed mechanism (NOT built)", `egypt-autopsy` §"The mechanism
+  direction (not built — owner's call)"). None of them contradicts today's work; they
+  are separate unbuilt arcs.
