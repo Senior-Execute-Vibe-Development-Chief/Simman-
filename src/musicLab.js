@@ -572,6 +572,37 @@ function instrumentsHTML(m) {
   </div>`;
 }
 
+/**
+ * WHAT NOTE IS THIS, ACTUALLY?
+ *
+ * Everything in the scale card is stated in cents, which is exact and which
+ * nobody hears in. What a listener hears is a pitch — so name it, at the
+ * frequency it really sounds at when this people plays.
+ *
+ * The naming is honest about its own limits. A twelve-tone name plus a cent
+ * deviation is a true description of any pitch, but a degree sitting a QUARTER
+ * TONE from both of its neighbours has no letter of its own in that system:
+ * maqām Rast's third is neither E nor E-flat, and calling it either and
+ * shrugging about the fifty cents is how it stops being Rast. Those are marked
+ * as sitting between the names rather than dressed up as one of them.
+ */
+const PITCH_NAMES = ["C", "C\u266f", "D", "E\u266d", "E", "F", "F\u266f", "G", "A\u266d", "A", "B\u266d", "B"];
+function noteName(hz) {
+  if (!(hz > 0)) return null;
+  const midi = 69 + 12 * Math.log2(hz / 440);
+  const near = Math.round(midi);
+  const cents = Math.round((midi - near) * 100);
+  return {
+    name: PITCH_NAMES[((near % 12) + 12) % 12] + (Math.floor(near / 12) - 1),
+    cents, hz,
+    // 35 cents is where a deviation stops reading as an out-of-tune version of
+    // the named note and starts reading as a pitch of its own — the boundary
+    // the quarter-tone accidentals exist for
+    between: Math.abs(cents) >= 35,
+  };
+}
+const signed = (c) => (c > 0 ? "+" : c < 0 ? "\u2212" : "\u00b1") + Math.abs(c);
+
 function tuningHTML(m) {
   const d = m.scale.degrees;
   const fin = finalFor(m, S.occ);
@@ -580,6 +611,11 @@ function tuningHTML(m) {
   const F = m.scale.frame.cents, L = m.mode.size;
   const fromHome = Array.from({ length: L }, (_, k) =>
     ((m.mode.cents[(fin + k) % L] - m.mode.cents[fin]) % F + F) % F).sort((a, b) => a - b);
+  // the pitch this people's home actually sounds at, so every name below is
+  // the note you hear rather than a note relative to an imaginary C
+  const tonic = tonicOf(m, S.occ);
+  const sung = fromHome.map(c => noteName(tonic * Math.pow(2, c / 1200)));
+  const tween = sung.filter(n => n.between).length;
   return `<div class="card">
     <h2>The scale they found <span class="count">— derived, not chosen</span></h2>
     <p class="note">Two tones sound rough when their partials beat against each other. This curve is
@@ -590,11 +626,13 @@ function tuningHTML(m) {
     <canvas id="curve"></canvas>
     <div class="degrees">${d.map((x, i) => {
       const nj = nearJust(x.ratio);
+      const nn = noteName(degreeHz(m, tonic, i, 0));
       return `<button class="deg${x.found ? "" : " measured"}${inMode.has(i) ? " inmode" : ""}${i === homeIdx ? " home" : ""}" data-deg="${i}"
           title="${x.found ? "heard — a roughness minimum of their own instruments" : "measured — an even division of their frame, where the timbre gave no dip to find"}">
         <span class="dc">${x.cents.toFixed(0)}<i>¢</i></span>
         <span class="dr">${x.ratio.toFixed(3)}</span>
-        <span class="dj">${nj ? esc(nj) : x.found ? "heard" : "measured"}</span></button>`;
+        <span class="dj">${nj ? esc(nj) : x.found ? "heard" : "measured"}</span>
+        <span class="dn${nn.between ? " tween" : ""}">${esc(nn.name)}<i>${signed(nn.cents)}</i></span></button>`;
     }).join("")}</div>
     <h3>What they actually sing out of it</h3>
     <p class="note tight">A scale is every interval that sits well against one note. A <strong>mode</strong>
@@ -609,6 +647,18 @@ function tuningHTML(m) {
     </div>
     <p class="note tight">${m.mode.size} notes, measured from home &mdash; steps of
       ${fromHome.slice(1).map((c, i) => Math.round(c - fromHome[i])).concat([Math.round(F - fromHome[fromHome.length - 1])]).join(", ")}¢.</p>
+    <h3>The notes you are hearing</h3>
+    <div class="noterow">${sung.map((n, i) => `<span class="pn${i === 0 ? " phome" : ""}${n.between ? " ptween" : ""}">
+      <b>${esc(n.name)}</b><i>${signed(n.cents)}¢</i><small>${n.hz.toFixed(0)} Hz</small></span>`).join("")}</div>
+    <p class="note tight">Named against equal temperament at the pitch this people's home actually
+      sounds, and the deviation is part of the name, not an error in it.
+      ${tween
+        ? `<strong>${tween} of these ${tween === 1 ? "sits" : "sit"} between the names</strong> — a
+           quarter tone from both neighbours, so no letter describes ${tween === 1 ? "it" : "them"}.
+           That is a real feature of the mode, and it is also why a recorded instrument, which was
+           sampled at equal-tempered pitches, never lands on ${tween === 1 ? "that note" : "those notes"}
+           without being resampled.`
+        : "Every one of them sits within a third of a semitone of a named pitch, so a recorded body can play some of this scale at the pitch it was actually recorded at."}</p>
     <div class="factrow">
       <div><span class="k">repeats at</span><b>${m.scale.frame.cents.toFixed(0)}¢</b>
         <span class="note tight">${Math.abs(m.scale.frame.cents - 1200) < 25 ? "an octave" : "not an octave"}</span></div>
@@ -945,6 +995,21 @@ canvas{width:100%;display:block}
 .dc i{font-style:normal;font-size:.7em;opacity:.7}
 .dr{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:var(--muted)}
 .dj{font-size:.7rem;color:var(--gloss);font-style:italic}
+.dn{font-family:ui-monospace,Menlo,monospace;font-size:.75rem;color:var(--ink);
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.dn i{font-style:normal;opacity:.55;margin-left:.25em}
+.dn.tween{color:var(--gloss);font-weight:600}
+.noterow{display:flex;flex-wrap:wrap;gap:.35rem;margin:.35rem 0 .5rem}
+.pn{display:flex;flex-direction:column;align-items:flex-start;gap:.02rem;
+  background:var(--chipbg);border:1px solid var(--line);border-radius:4px;padding:.28rem .5rem;
+  font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.pn b{font-size:1rem;font-weight:600;color:var(--ink)}
+.pn i{font-style:normal;font-size:.72rem;color:var(--muted)}
+.pn small{font-size:.68rem;color:var(--muted);opacity:.75}
+.pn.phome{background:var(--accent);border-color:var(--accent)}
+.pn.phome b,.pn.phome i,.pn.phome small{color:var(--accent-ink)}
+.pn.ptween{border-color:var(--gloss);border-style:dashed}
+.pn.ptween b{color:var(--gloss)}
 .factrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.8rem;margin:.3rem 0 .2rem}
 .factrow b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums;line-height:1.2}
 .instgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(13.5rem,1fr));gap:.6rem}
