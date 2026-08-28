@@ -1777,3 +1777,73 @@ being minted and dissolved rather than growing — which would also explain a ri
 median core (survivorship) with a falling urban total. That is checkable directly
 against the founding/ending flows the probe already prints, and it should be checked
 before any further lever is written.
+
+---
+
+## 26. REMOVING THE 12k STAMP REVEALED AN 8k FLOOR UNDERNEATH — `K_MIN_VIABLE`
+
+Owner: *"did you remove the 12k limit as well?"* — no, wave 5 tested the new
+concentration engine **with the old floor still in place**, a hybrid neither of us
+proposed. `T.STAMP_RETIRE` was built to close that, and its first window says
+something more interesting than expected.
+
+### 26.1 The pin did not go. It moved.
+
+```
+w6_stamp        CORES p10=1.5 p50=8.0 p90=134.2 max=682.9su | MODE 8.00su held by 31/85 (36.5%)
+w6_stamp_chaos  CORES p10=1.5 p50=8.0 p90=143.7 max=629.6su | MODE 8.00su held by 36/99 (36.4%)
+```
+
+The 12.00su mode is gone — the stamp really is retired, and `p10 = 1.5` shows real
+cores below it for the first time. **In its place is a mode at exactly 8.00su
+holding 36.5% of the register, replicated to a tenth of a point in the twin.**
+
+### 26.2 The second floor, named
+
+`settlement.js:119`:
+
+```js
+const K_MIN_VIABLE = 8;   // bare-survival floor (matches the wither cull threshold)
+```
+
+`settlement.js:3647`: `K = Math.max(K_MIN_VIABLE, foodK)`.
+
+The chain is direct. Under `STAMP_RETIRE` the size read is
+`coreEff = min(_coreF, kLocal + kBeyond)`, and `kLocal + kBeyond ≡ s._k / scale`
+identically (§10.1). So `_urbanPop = min(s.people, _coreF × scale, s._k)`. For any
+settlement whose food capacity falls under the floor, `s._k = K_MIN_VIABLE = 8`, and
+the reported core is **exactly 8.00su**.
+
+`_k` is in census units — the same units as `s.people` — so **`K_MIN_VIABLE = 8`
+means 8,000 people**. A constant labelled *"bare-survival floor"* is asserting that
+no settlement's carrying capacity may fall below eight thousand people.
+
+### 26.3 Why this matters more than the 12k stamp did
+
+It is the same defect one layer down, and worse on its own terms:
+
+- **The stamp at least had a reason** — the birth-crater handoff, measured, with a
+  mechanism behind it. `K_MIN_VIABLE` is a bare number with a comment.
+- **8,000 people is not bare survival.** Bare survival is a hamlet — tens or
+  hundreds. Eight thousand is a substantial town. The constant is off by two to
+  three orders of magnitude against the thing its own comment says it represents.
+- **It defeats the owner's design directly.** *"No minimum… if there is not enough
+  people for it to function, it falls apart"* cannot happen while every settlement's
+  capacity is floored at 8,000, because `DISSOLVE_CORE`'s bar is 10,000 and a
+  settlement pinned at 8,000 is permanently just below it — neither growing nor,
+  apparently, dying.
+
+This also reframes §25's unexplained result. The wave-5 world lost a fifth of its
+people and half its urbanites with no story available. A capacity floor at 8,000 per
+settlement interacts with a register that churns, and the churn was visible there
+(`ended` 361-426 against 345-387). **No claim is made that this explains wave 5** —
+that is precisely the kind of story this document has retracted four times — but it
+is now the first thing to check.
+
+### 26.4 What this does not yet say
+
+One window, a young world (claimed 1.3-1.7%), and the arms run to 40k. Whether the
+8k mode persists, whether the register churns itself apart without the stamp, and
+whether the entity count survives are all open. The pin moving from 12.00 to 8.00 is
+solid — two draws, a mode to a tenth of a point, and a constant that matches
+exactly. Everything downstream of it is not yet measured.
