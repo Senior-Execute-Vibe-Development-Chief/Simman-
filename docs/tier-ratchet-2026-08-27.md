@@ -2206,6 +2206,9 @@ two windows of each, which is not enough for anything.
 w8_hyst           full stack + VIABLE_UNITS + DISSOLVE_CORE=0.2    ← the owner's design
 w8_hyst_chaos     … + MINING_RATE=5.0000001                        ← its twin
 w8_hyst_nofloor   full stack + DISSOLVE_CORE=0.2, no VIABLE_UNITS  ← §30.2's interaction
+                  MISNAMED: "nofloor" means no floor-FIX, i.e. this arm KEEPS the
+                  8,000 floor. It is the control, not the treatment. Read it as
+                  "w8_hyst_8kfloor".
 w8_agglom052      full stack + URBAN_AGGLOM=0.52, DISSOLVE_CORE=1  ← the dial sweep's high dose
 ```
 
