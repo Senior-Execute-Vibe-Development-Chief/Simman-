@@ -75,6 +75,10 @@ export function initTileValue(world) {
   }
   return val;
 }
+// T.MARKET_PULL's shared carriage knowledge — see the localEdgeCost call below.
+// The route costs what the route costs, whoever is buying.
+const _MARKET_KN = {};
+
 export function reachBudget(s) {
   // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
   // they keep only their guaranteed core block, so the whole rural catchment
@@ -234,6 +238,36 @@ export function computeTerritory(world) {
     countryOf.set(s.id, s.countryId);
   }
 
+  // ── T.MARKET_PULL — the field sells to whoever nets its producer most ──
+  // docs/tier-ratchet-2026-08-27.md sections 38-43. The catchment stops being an
+  // AREA ALLOWANCE spent outward (reachBudget, a function of organisation tech
+  // and nothing else — so a metropolis farmed 1.02-1.05x a hamlet) and becomes
+  // the OUTCOME of a bid: delivered value falls with carriage, so in logs the
+  // race is additive and this is the SAME Dijkstra with a different starting
+  // potential. A market that bids more starts lower and reaches further.
+  //   BID = hunger x ability to pay. Hunger is _scarcity (demand/supply, the
+  // emergent signal) and NOT _grainPrice, which carries GRAIN_PRICE_BY_TIER and
+  // would let a metropolis outbid a town 11x on its label — promoting the
+  // ratchet from a side-grant to the thing that assigns land. Ability to pay is
+  // wealth, which is EARNED. The owner's crowding-out argument survives intact;
+  // only its source changes from granted to earned.
+  //   NORMALISED BY THE WORLD MEAN, which is what keeps this constant-free: the
+  // seed is -haulTiles*ln(A_i / Abar), so an average market seeds at exactly 0
+  // and only RELATIVE standing moves anyone. haulTiles is HAUL_LAND_KM/(km per
+  // tile) — the same edict-derived figure foodHierarchy already hauls grain on.
+  const mktPull = T.MARKET_PULL > 0;
+  const seedOf = new Map();
+  if (mktPull) {
+    let sum = 0, n = 0;
+    for (const s of byId.values()) {
+      const a = Math.max(1e-6, (s._scarcity || 1) * Math.max(1, s.wealth || 0));
+      seedOf.set(s.id, a); sum += a; n++;
+    }
+    const abar = n > 0 ? sum / n : 1;
+    const haulTiles = 340 / (40075 / tw);   // HAUL_LAND_KM at this grid's km-per-tile
+    for (const [id, a] of seedOf) seedOf.set(id, -haulTiles * Math.log(a / abar));
+  }
+
   // ── CATCHMENT_CLIP (T.CATCHMENT_CLIP): the economic catchment is REACTIVE to the
   // political map — a settlement may only work tiles its OWN country already holds
   // (world._countryOwner === its countryId), so the catchment CHOOSES within the
@@ -307,7 +341,12 @@ export function computeTerritory(world) {
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    const r = coreRadiusFor(s, world);
+    // T.MARKET_PULL: no guaranteed block. Carriage to the tile you stand on is
+    // zero, so no rival takes your doorstep without bidding enormously more —
+    // the home block is EMERGENT, and CORE_BY_TIER was the ratchet leg granting
+    // it by label. This loop is also pure Euclidean geometry (a square walk),
+    // one of the two straight-line phases that outranked the terrain-aware one.
+    const r = mktPull ? -1 : coreRadiusFor(s, world);
     for (let dy = -r; dy <= r; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
       for (let dx = -r; dx <= r; dx++) {
@@ -321,7 +360,19 @@ export function computeTerritory(world) {
       }
     }
     const home = sy * tw + sx;
-    if (elev[home] > 0) { cost[home] = 0; tcost[home] = 0; heap.push(home, 0); }
+    const seed = mktPull ? (seedOf.get(s.id) || 0) : 0;
+    if (elev[home] > 0) {
+      // T.MARKET_PULL: the guaranteed-core loop above is skipped, and that loop
+      // was the ONLY thing that set owner[] for a settlement's own tile. Without
+      // it the frontier pops home, reads owner/claimant -1, and bails — so NO
+      // settlement expands at all and the world dies (measured: 2 settlements,
+      // pop 38). The market rule removes the guaranteed BLOCK, not a market's
+      // claim to the ground it stands on: carriage there is zero, so it wins the
+      // tile on the bid anyway; this states it instead of leaving it to an
+      // ordering accident.
+      if (mktPull) { owner[home] = s.id; coreClaimed[home] = stamp; }
+      cost[home] = seed; tcost[home] = 0; heap.push(home, seed);
+    }
   }
 
   // ── Guaranteed farmland hinterland (nearest-wins distance Voronoi) ──
@@ -338,7 +389,11 @@ export function computeTerritory(world) {
   const capAt = world._tileCapturedAt;
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    const hr = hinterlandRadiusFor(s, world), hr2 = hr * hr;
+    // T.MARKET_PULL: the second straight-line phase goes too. `d2 = dx*dx+dy*dy`
+    // is a raw Euclidean Voronoi that claimed land BEFORE the terrain-aware
+    // frontier and then walled it off — so geometry won first and could not be
+    // overridden by terrain. Under the bid the belt is what a market wins.
+    const hr = mktPull ? -1 : hinterlandRadiusFor(s, world), hr2 = hr * hr;
     for (let dy = -hr; dy <= hr; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
       for (let dx = -hr; dx <= hr; dx++) {
@@ -397,13 +452,39 @@ export function computeTerritory(world) {
       const ni = ns[k];
       if (ni < 0) continue;
       const lk = base[ni];
-      if (lk >= 0 && lk !== oid) continue;   // someone's locked land: a wall
+      // T.MARKET_PULL: OWNED LAND IS CONTESTABLE. Off the lever a tile with any
+      // owner is a wall and only wilderness can be claimed — which means a field
+      // can never change buyer, so "sells to whoever pays most" would be inert
+      // on every tile already spoken for. Removing the wall is what makes the
+      // reallocation ADAPTIVE, and it is also where flicker would come from:
+      // measured, not damped pre-emptively (docs section 44).
+      if (!mktPull && lk >= 0 && lk !== oid) continue;   // someone's locked land: a wall
       // Tech×terrain edge cost from the OWNER's perspective. A neolithic
       // civ pays the full mountain/cold/river-crossing tariff; a civ with
       // construction/navigation/mobility pays less. Water tiles return
       // Infinity unless this civ has the nav floor (≥0.10), in which case
       // they cost ~3-12 (sail) and the claim can hop offshore.
-      const c = localEdgeCost(world, ti, ni, kn, true, true);  // reach ignores roads + the boat/land port tax (a settlement farms its hinterland on foot)
+      // T.MARKET_PULL: grain travels by CART AND BOAT, so roads and the port tax
+      // count. Off the lever both are ignored, on the stated ground that "a
+      // settlement farms its hinterland on foot" — true of walking to a field,
+      // false of selling to a market, which is what this now models. Roads
+      // currently reshape the food partition by exactly nothing.
+      // T.MARKET_PULL: the carriage cost is a property of the ROUTE, not of the
+      // buyer. Off the lever the cost is computed from the CLAIMANT's knowledge
+      // (kn) — an administrative-reach idea: a realm with engineering projects
+      // authority more cheaply over its own mountains. For a market that is
+      // wrong twice. Physically, moving grain over a pass costs what it costs
+      // whoever buys it. Algorithmically it is fatal: with the ownership wall
+      // removed a tile's claimant changes DURING the pass, so a source-dependent
+      // weight makes the graph non-stationary, Dijkstra's single-settle property
+      // fails, tiles re-relax from every rival in turn and the sweep blows up
+      // (measured: the gate run went from ~70s to past 400s and was killed).
+      // A shared neutral knowledge makes it a fixed-weight graph again — one
+      // clean additively-weighted Voronoi, each tile settled once — and roads
+      // and the port tax now count, which is the whole point.
+      const c = mktPull
+        ? localEdgeCost(world, ti, ni, _MARKET_KN, false, false)
+        : localEdgeCost(world, ti, ni, kn, true, true);  // reach ignores roads + the boat/land port tax (a settlement farms its hinterland on foot)
       if (c === Infinity) continue;
       const step = c * mul[k];               // TRUE haul cost (the river is already cheap via localEdgeCost)
       // Two forces shrink the EFFORT of advancing the border (the reach gate), leaving the true haul
@@ -419,7 +500,7 @@ export function computeTerritory(world) {
       // verdict in persistent-territory-spec. VALUE_PULL alone rides the banks.)
       eff /= (1 + T.VALUE_PULL * (val[ni] || 0));                        // pull onto the valued banks
       const nd = d + eff;
-      if (nd > bud) continue;                // owner can't reach further (in value-weighted effort)
+      if ((!mktPull || T.MARKET_CAP > 0) && nd > bud) continue;    // owner can't reach further (in value-weighted effort). T.MARKET_CAP keeps the allowance as a BOUND while the bid decides the ORDER — the diagnostic split (docs section 44)
       if (nd < cost[ni]) {
         cost[ni] = nd;
         tcost[ni] = tcHere + step;
@@ -431,7 +512,7 @@ export function computeTerritory(world) {
         // claimant's own country (the cost frontier still walks THROUGH
         // out-of-country land, so a member can reach its country's ground
         // beyond a wild gap, but it never works foreign/wild soil).
-        if (lk < 0 && elev[ni] > 0 && inCountry(oid, ni)) owner[ni] = oid;
+        if ((mktPull || lk < 0) && elev[ni] > 0 && inCountry(oid, ni)) owner[ni] = oid;
         heap.push(ni, nd);
       }
     }

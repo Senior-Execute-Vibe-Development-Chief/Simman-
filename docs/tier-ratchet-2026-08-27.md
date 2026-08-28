@@ -3227,3 +3227,67 @@ ratchet's elimination** — the same job, not a separate one.
 
 What remains after it: `ARMY_TIER_FRAC` (its own mechanism, military subsystem) and
 the `NEEDED_BY_TIER` judgment call.
+
+---
+
+## 44. `T.MARKET_PULL` BUILT — it runs, it passes, and three things I said were wrong
+
+Built to the §42 spec, minus compulsion (owner's call to separate it). Off by
+default, `hashbase` 7fb32527 / ebfb8021 unchanged, coverage clean, smoke green.
+
+### 44.1 The gate, with the lever ON
+
+| | levers OFF | **`MARKET_PULL + PRICE_GROSS`** |
+|---|---|---|
+| all hard gates | pass, 0 warnings | **pass, 0 warnings** |
+| settlements | 39 | **39** |
+| population | 18,974 | **27,853** (+47%) |
+| polities | 20 | **29** |
+| urbanisation | 6.3% | 5.2% |
+| Zipf slope | −0.80 | **−0.76** |
+| sim time | ~70s | **144s** |
+
+A bigger, more populous, more politically fragmented world — which is what removing
+an allowance and letting markets compete for land ought to produce.
+
+### 44.2 Three things I got wrong, found by building it
+
+**1. "The runtime cost is zero" (§39.1) — WRONG. It is 2×.** I reasoned that a
+re-seeded Dijkstra is the same algorithm. It is, but the *budget* was doing real work:
+with no allowance to exhaust, every frontier runs until a cheaper rival stops it, so
+the heap does far more. 70s → 144s at the gate arm. Whether that matters at `tw=960`
+is unmeasured and now a real question, not a footnote.
+
+**2. "Removing the budget starves everyone" — REFUTED by my own diagnostic.** The
+first full run collapsed the world to **2 settlements, pop 38**. I blamed the missing
+budget and built `T.MARKET_CAP` to test it. Keeping the budget changed *nothing* —
+identical collapse. The split earned its keep by killing my hypothesis in one run.
+
+**3. The actual cause was my bug, twice over.**
+
+- **The home tile was never claimed.** The guaranteed-core loop was the only code that
+  set `owner[]` for a settlement's own tile. Skipping it meant the frontier popped
+  home, read owner `-1`, and bailed — *no settlement expanded at all*. Removing the
+  guaranteed BLOCK is right; removing a market's claim to the ground it stands on was
+  an accident.
+- **The edge cost depended on the claimant.** `localEdgeCost(…, kn, …)` prices the
+  route from the *owner's* knowledge. With the ownership wall removed a tile's
+  claimant changes mid-pass, so the graph became non-stationary: Dijkstra's
+  single-settle property failed, tiles re-relaxed from every rival in turn, and the
+  run went past 400s and was killed. Fixed with a shared neutral carriage — which is
+  also **physically right**: moving grain over a pass costs what it costs whoever
+  buys it. The tech-dependent form was an *administrative-reach* idea wearing a
+  carriage's clothes.
+
+### 44.3 What is honest to say now
+
+- It runs, and it passes the repo's history gate with zero warnings.
+- The world it makes is plausible and *different*: +47% people, +45% polities.
+- **`Zipf −0.76` moved the wrong way** (baseline −0.80; envelope −0.8..−1.2). It
+  passed, but the city size-distribution got slightly shallower, and that is the
+  measure that killed `SEED_EXCLUSIVE`. Watch it.
+- **None of this is measured at the shipped grid**, and everything above is one arm at
+  the gate world, which §6.2 of `food-system-design` warns runs ~25× fewer realms than
+  the real one.
+
+Next is the live arm, not more building.

@@ -290,6 +290,11 @@ export function aggregateFoodHierarchy(world) {
       + ((T.PRICE_GROSS && T.GRAIN_MARKET > 0) ? (s._foodExportedPrev || 0) : 0);
     const scarcity = Math.min(3, Math.max(0.5,
       (s._foodDemand || 1) / Math.max(0.01, _priceSupply)));   // no `|| 1` on supply: a food-empty settlement must read as MOST scarce, not neutral (Math.max(0.01,…) guards the divide)
+    // T.MARKET_PULL reads this: the BID is hunger, not the tier label. Kept
+    // beside _grainPrice rather than derived from it, because _grainPrice
+    // carries GRAIN_PRICE_BY_TIER and dividing it back out would reintroduce
+    // the ratchet through the back door. Transient, rebuilt every aggregation.
+    s._scarcity = scarcity;
     s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
   }
 
