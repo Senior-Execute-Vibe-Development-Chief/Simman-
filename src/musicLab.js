@@ -465,6 +465,7 @@ const TRIALS = [
   { key: "plain",    what: "the same piece with the heterophony and the ornaments out — one line and its accompaniment" },
   { key: "novoice",  what: "the same piece with the singers out — instruments only" },
 ];
+const OCC_KEYS = Object.keys(OCCASIONS);
 const JUST_RATIOS = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 7 / 5, 3 / 2, 8 / 5, 5 / 3, 7 / 4, 9 / 5, 15 / 8, 2];
 
 /** Re-pitch a people's scale without touching anything else about them, so the
@@ -532,7 +533,12 @@ function ltNext() {
     const hasLead = piece.events.some(e => e.role === "lead");
     if (!hasLead || piece.events.length < secs * 4) { LT.skipped++; continue; }
     const cond = TRIALS[Math.floor(Math.random() * TRIALS.length)];
-    LT.trial = { seed, cond: cond.key, played: false, secs: Math.round(secs) };
+    // AND AN OCCASION. Every trial used to be `peace`, so the test could only
+    // ever report on the everyday repertoire — which is also the one occasion
+    // that had a systematic brightness bias in it. Drawing the occasion too
+    // means a rite and a lament get judged as well, and the log says which.
+    const occ = OCC_KEYS[Math.floor(Math.random() * OCC_KEYS.length)];
+    LT.trial = { seed, cond: cond.key, occ, played: false, secs: Math.round(secs) };
     return LT.trial;
   }
   LT.trial = null;
@@ -550,7 +556,7 @@ function ltPlay() {
   const m = retune(base, t.cond);
   const t0 = A.ctx.currentTime + 0.15;
   const hymn = hymnSyllables(base, 10);
-  const piece = composePiece(base, "peace", hymn.syls, 0.85);
+  const piece = composePiece(base, t.occ || "peace", hymn.syls, 0.85);
   t.secs = Math.round(piece.totalBeats * 60 / piece.tempo);
   // EVERY CONDITION IS A WHOLE PIECE. The first cut of this test muted layers —
   // the tune on its own, the accompaniment on its own — and a muted arrangement
@@ -605,7 +611,7 @@ const spbOf = (piece) => 60 / piece.tempo;
 function ltRate(score) {
   const t = LT.trial;
   if (!t || !t.played) return;
-  LT.log.push({ seed: t.seed, cond: t.cond, score, at: Date.now() });
+  LT.log.push({ seed: t.seed, cond: t.cond, occ: t.occ || "peace", score, at: Date.now() });
   // the judgement is made, so the sound stops — nothing carries into the next
   // trial, which would contaminate it
   if (A) silence(A);
@@ -669,8 +675,8 @@ function listenHTML() {
             <button id="ltgood" class="ltb good">Good</button>
             <button id="ltstop" class="ghost">Stop</button>
           </div>
-          ${LT.last ? `<p class="note tight ltlast">last one was <b>${esc(LT.last.cond)}</b>
-            on seed ${LT.last.seed} — you called it
+          ${LT.last ? `<p class="note tight ltlast">last one was <b>${esc(LT.last.cond)}</b>,
+            ${esc(OCCASIONS[LT.last.occ || "peace"].label)}, on seed ${LT.last.seed} — you called it
             ${["bad", "ok", "good"][LT.last.score]}.</p>` : ""}
         </div>`}
     ${LT.skipped ? `<p class="note tight">${LT.skipped} draw${LT.skipped === 1 ? "" : "s"} skipped as
@@ -682,6 +688,20 @@ function listenHTML() {
         <td class="ltn">${r.n || ""}</td><td>${bar(r.mean)}</td>
         <td class="ltn">${r.badPct == null ? "" : Math.round(r.badPct * 100) + "%"}</td></tr>`).join("")}
     </table>
+    ${(() => {
+      const by = new Map();
+      for (const r of LT.log) {
+        const k = r.occ || "peace";
+        const b = by.get(k) || { n: 0, sum: 0 };
+        b.n++; b.sum += r.score; by.set(k, b);
+      }
+      if (by.size < 2) return "";
+      return `<table class="lt"><tr><th>occasion</th><th>n</th><th>mean</th></tr>${
+        [...by].sort((a, b) => b[1].sum / b[1].n - a[1].sum / a[1].n).map(([k, b]) =>
+          `<tr><td><b>${esc((OCCASIONS[k] || {}).label || k)}</b></td><td class="ltn">${b.n}</td>
+           <td><span class="ltbar"><i style="width:${Math.round(b.sum / b.n / 2 * 100)}%"></i></span>
+           <span class="ltnum">${(b.sum / b.n).toFixed(2)}</span></td></tr>`).join("")}</table>`;
+    })()}
     ${done >= 6 ? `<p class="note tight">Paste this back to have it read:</p>
       <textarea class="ltjson" readonly rows="3">${esc(JSON.stringify(LT.log))}</textarea>` : ""}
   </div>`;

@@ -55,12 +55,34 @@ const ONSET_SECS = 0.035;
 // `descent` is how strongly breath declination shows. `bright` is which final
 // the mode is heard from. None of these replace a mechanism; they scale it.
 export const OCCASIONS = {
-  peace:    { label: "everyday",  bright: 1,  tempo: 1.06, density: 1.15, reg: 0.35, perc: 0.7,  orn: 0.7,  drone: 0.4,  descent: 0.8,  artic: 0.98,  lead: null },
+  // EVERYDAY IS THE UNMARKED CASE: a people plays from its OWN home.
+  //
+  // This asked for `bright: 1`, and `finalFor` reads that as the extremum —
+  // rotate the mode onto whichever of its degrees has the most of itself inside
+  // its own harmonic series. Measured across 240 peoples, that moved 70% of
+  // them off degree 0, landed 137 of them on the SAME degree, and took the
+  // share whose mode contains a major third from 8% to 54%. Everything sounded
+  // brighter and more like everything else, on the one occasion a listener
+  // hears most.
+  //
+  // Degree 0 is not an arbitrary choice of home. It is the pitch the entire
+  // scale was derived AGAINST — every minimum on the dissonance curve was
+  // measured from it — so rotating away from it for the default repertoire
+  // discards the derivation and asks the question the bench already answered:
+  // a maqām rotated onto a different degree is a different maqām. That was
+  // fixed for the seven pinned traditions and left running for every derived
+  // people in the world.
+  //
+  // Rotating the final for affect is real and stays: a rite and a lament take
+  // the darkest degree, a festival the brightest. What changes is that the
+  // everyday piece is now a people's own tonic, which is also the only one that
+  // differs between them.
+  peace:    { label: "everyday",  bright: 0,  tempo: 1.06, density: 1.15, reg: 0.35, perc: 0.7,  orn: 0.7,  drone: 0.4,  descent: 0.8,  artic: 0.98,  lead: null },
   rite:     { label: "rite",      bright: -1, tempo: 0.74, density: 0.8,  reg: 0,    perc: 0.3,  orn: 1.2,  drone: 1,    descent: 1.05, artic: 1.05, lead: "sustain" },
   war:      { label: "war",       bright: 0,  tempo: 1.3,  density: 1.15, reg: -0.6, perc: 1,    orn: 0.3,  drone: 0.5,  descent: 0.85, artic: 0.8,  lead: "loud" },
   mourning: { label: "mourning",  bright: -1, tempo: 0.64, density: 0.62,  reg: -0.4, perc: 0.16, orn: 1,    drone: 0.9,  descent: 1.35, artic: 1.1,    lead: "sustain" },
   festival: { label: "festival",  bright: 1,  tempo: 1.22, density: 1.3,  reg: 0.5,  perc: 1,    orn: 0.7,  drone: 0.35, descent: 0.85, artic: 0.86, lead: null },
-  work:     { label: "work",      bright: 1,  tempo: 1,    density: 1.2, reg: 0.2,  perc: 0.9,  orn: 0.4,  drone: 0.35, descent: 0.95, artic: 0.9, lead: null },
+  work:     { label: "work",      bright: 0,  tempo: 1,    density: 1.2, reg: 0.2,  perc: 0.9,  orn: 0.4,  drone: 0.35, descent: 0.95, artic: 0.9, lead: null },
 };
 
 // ── the grid ─────────────────────────────────────────────────────────────
