@@ -299,6 +299,8 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   // they are replacing and leaves everything else ringing. A marker stroke
   // belongs to no channel — its ring is the point.
   playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
+    music: m,
+    tonicHz: tonicOf(m),
     symp: inst.symp ? sympPitches(m) : null,
     role: ev.role === "het" ? "het" : ev.role || "lead",
     stroke: ev.stroke,
@@ -316,6 +318,8 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   if (ev.ornDeg != null) {
     const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct);
     playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5, {
+      music: m,
+      tonicHz: tonicOf(m),
       role: ev.role === "het" ? "het" : ev.role || "lead",
       damped: true,
       channel: `${m.people.seed}:${ev.role}:${ev.inst}:orn`,
@@ -556,8 +560,11 @@ function ltPlay() {
   setDistance(A, 0.85, base.texture.courtly);
   const m = retune(base, t.cond);
   const t0 = A.ctx.currentTime + 0.15;
-  const hymn = hymnSyllables(base, 10);
-  const piece = composePiece(base, t.occ || "peace", hymn.syls, 0.85);
+  const hymn = hymnSyllables(m, 10);
+  const piece = composePiece(m, t.occ || "peace", hymn.syls, 0.85);
+  const prevMusic = A.music, prevTonic = A.tonicHz;
+  A.music = m;
+  A.tonicHz = tonicOf(m, t.occ);
   t.secs = Math.round(piece.totalBeats * 60 / piece.tempo);
   // EVERY CONDITION IS A WHOLE PIECE. The first cut of this test muted layers —
   // the tune on its own, the accompaniment on its own — and a muted arrangement
@@ -606,6 +613,8 @@ function ltPlay() {
       { syls: hymn.syls, acc: hymn.acc, rotate: true });
   }
   A.sampled = wasSampled;
+  A.music = prevMusic;
+  A.tonicHz = prevTonic;
   t.played = true;
 }
 const spbOf = (piece) => 60 / piece.tempo;

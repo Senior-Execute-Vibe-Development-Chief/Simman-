@@ -288,7 +288,8 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   const mat = MATERIALS[inst.mat] || MATERIALS.wood;
   const ctx = A.ctx;
   const tonic = opts?.tonicHz || A.tonicHz || 220;
-  const qFreq = (A.music && !b.unpitched) ? quantizeToScaleHz(freq, A.music, tonic) : freq;
+  const music = opts?.music || A.music;
+  const qFreq = (music && !b.unpitched) ? quantizeToScaleHz(freq, music, tonic) : freq;
   const got = b.unpitched
     ? { e: b.entries[Math.abs(Math.round(qFreq)) % b.entries.length], hz: qFreq }
     : pick(b.entries, qFreq);

@@ -25,8 +25,31 @@
 import { hash32 } from "./peopleSim/rng.js";
 import { MATERIALS, FAMILIES, makeInstrument, melodicCapacity, CARRIES } from "./musicInstruments.js";
 import { ensembleSpectrum, deriveScale, deriveMode, finalsOf, LENGTH_POWER } from "./musicTuning.js";
-import { applyTuningArchetype, ARCHETYPE_TUNING_ON, matchTuningArchetype } from "./musicArchetypes.js";
+import { applyTuningArchetype, ARCHETYPE_PHYS_FIT_MIN, ARCHETYPE_TUNING_ON, matchTuningArchetype } from "./musicArchetypes.js";
 import { prosodyOf } from "./languagePhonetics.js";
+
+/** How many mode degrees sit stranded between ET names (>=35¢ off). */
+function strandedInMode(spec, scale, people) {
+  const roomInFrame = Math.max(3, Math.floor(scale.frame.cents / 150));
+  const modeSize = Math.max(4, Math.min(7, roomInFrame,
+    Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4)));
+  const stepShare = 0.62 + (hash32(people.seed, "mus", "step") / 4294967296) * 0.26;
+  const modeIdx = deriveMode(spec, scale.degrees, modeSize, scale.frame.ratio, stepShare);
+  return modeIdx.filter(i => Math.abs(scale.degrees[i].cents - Math.round(scale.degrees[i].cents / 100) * 100) >= 35).length;
+}
+
+/** Raw deriveScale vs catalog archetype — keep whichever mode plays cleaner. */
+function pickTunedScale(rawScale, archMatch, spec, people) {
+  if (!ARCHETYPE_TUNING_ON || archMatch.physFit < ARCHETYPE_PHYS_FIT_MIN) return rawScale;
+  const archScale = applyTuningArchetype(rawScale, archMatch);
+  const rawS = strandedInMode(spec, rawScale, people);
+  const archS = strandedInMode(spec, archScale, people);
+  if (archS < rawS) return archScale;
+  if (archS > rawS) return rawScale;
+  // tied: only stamp a named family when the ensemble genuinely supports it
+  if (archMatch.physFit >= 0.88 && archMatch.score >= 0.72) return archScale;
+  return rawScale;
+}
 
 // ── biomes: what grows and what can be dug ───────────────────────────────
 // Availability, not presence — the roll below decides. Mirrors the classes
@@ -476,11 +499,13 @@ export function musicOf(people) {
   const refFam = FAMILIES[(insts[refJ] || insts[0] || {}).fam] || {};
   const power = LENGTH_POWER[refFam.vib] ?? 1;
   const rawScale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated, power });
-  const scale = ARCHETYPE_TUNING_ON
-    ? applyTuningArchetype(rawScale, matchTuningArchetype({
-      spec, radiated, cap: Math.min(cap, 9), pull, power, insts, seed: people.seed, refJ,
-    }))
-    : rawScale;
+  const archMatch = matchTuningArchetype({
+    spec, radiated, cap: Math.min(cap, 9), pull, power, insts, seed: people.seed, refJ,
+  });
+  // A catalog scale only wins when its degrees sit in THIS ensemble's dips.
+  // Forcing a maqām onto a panpipe that found something else is the main
+  // source of "odd scales" on bare lines (measured: 44% stranded vs 8% raw).
+  const scale = pickTunedScale(rawScale, archMatch, spec, people);
   // The mode: what they actually sing out of the scale they found. Its size
   // is bounded twice over — by how much scale material exists and how much
   // theory the tradition can carry (a written tradition sustains a larger

@@ -9,6 +9,8 @@ import { dissonanceCurve, minimaOf } from "./musicTuning.js";
 
 /** `ARCHETYPE_TUNING=0` restores raw deriveScale for probes. */
 export const ARCHETYPE_TUNING_ON = !(typeof process !== "undefined" && process.env?.ARCHETYPE_TUNING === "0");
+/** Below this, the catalog scale is a worse fit than what deriveScale found. */
+export const ARCHETYPE_PHYS_FIT_MIN = 0.58;
 
 function bandFit(value, min, max) {
   if (min > max) [min, max] = [max, min];
@@ -199,6 +201,9 @@ export function scoreTuningArchetype(arch, ctx) {
   if (arch.wild && ens.metallophoneRef) s += 0.04;
   if (pull > 0.55 && arch.sampleEt > 0.7) s += 0.06 * pull;
   if (ens.fixedPitch && !arch.harmonic) s += 0.05;
+  // Whole-tone and chromatic grids need a literate keyboard tradition — not a
+  // random panpipe ensemble (measured: wholeTone on seed 1037, 22¢ off dips).
+  if ((arch.id === "wholeTone" || arch.id === "twelveTet") && pull < 0.45 && cap < 10) s -= 0.22;
   return s;
 }
 
@@ -212,7 +217,8 @@ export function matchTuningArchetype(ctx) {
     a => scoreTuningArchetype(a, scoredCtx),
     { seed, tag: "tuning", epsilon: 0.04, topK: 4 },
   );
-  return { archetype: picked, score, ranked: ranked.slice(0, 6) };
+  const fit = picked ? physFit(mins, picked) : 0;
+  return { archetype: picked, score, physFit: fit, ranked: ranked.slice(0, 6) };
 }
 
 /** Replace free-crawled degrees with the winning archetype; keep physics curve. */
@@ -231,6 +237,7 @@ export function applyTuningArchetype(rawScale, match) {
       family: arch.family,
       label: arch.label,
       score: match.score,
+      physFit: match.physFit,
       provenance: arch.provenance,
       finalIdx: arch.finalIdx ?? 0,
     },
