@@ -299,7 +299,21 @@ export function computeTerritory(world) {
     // integral(exp(-d/340)) = 340, the linear's over [0,D] is D/2, so D = 2*340 =
     // 680 km. That is a derivation from the edict figure already in the tree, not
     // a constant tuned until the world survived.
-    const haulTiles = 2 * 340 / (40075 / tw);   // HAUL_LAND_KM, converted e-folding -> finite range
+    // ...AND THE RANGE GROWS WITH THE AGE'S CARRIAGE, exactly as foodHierarchy's
+    // haul curve already does. A flat range would be a fixed constant that never
+    // moves with development — a neolithic world and an industrial one hauling
+    // grain equally far — which is the first cardinal rule broken in space. The
+    // multiplier here is the SAME expression foodHaulArrive uses, term for term:
+    // roads (construction) + wagons (mobility), plus the industrial leap at
+    // cons > 0.85 that the original comment names as "rail / refrigeration /
+    // canning". Faster carriage and better preservation both mean more of the
+    // cargo is still worth something further out, which is what a longer ring IS.
+    // Read from the age's best carriage (_MARKET_KN), same argument as the edge
+    // cost: grain moves on the best shipping available, not the buyer's own.
+    const _mk = _MARKET_KN;
+    const _cons = _mk.construction || 0, _mob = _mk.mobility || 0;
+    const _techRange = 1 + (_cons * 0.6 + _mob * 0.4 + Math.max(0, _cons - 0.85) * 5) * T.FOOD_HAUL_TECH;
+    const haulTiles = (2 * 340 / (40075 / tw)) * _techRange;   // HAUL_LAND_KM, e-folding -> finite range, x the age's carriage
     // THE DECAY LAW (work-plan item 4). Freight rises STEADILY with distance, so
     // the farm-gate net is A_i - freight*d and hits EXACTLY ZERO at a finite
     // range — von Thuenen's rings END. The first build used an exponential haul

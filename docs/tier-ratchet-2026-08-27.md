@@ -3414,3 +3414,57 @@ go missing?** Under the bid rule, compare against the baseline, per settlement:
 catchment tile count, worked tiles, `_landFood`, and `s._k`. One of those four
 diverges first and that is the mismatch. Everything above was an attempt to guess
 which, and the guessing lost four rounds in a row.
+
+---
+
+## 47. DOES THE RANGE GROW WITH TECH? — yes, it already did, and my ring had frozen it
+
+> Owner: *"does the decay distance and max food travel distance change with the tech
+> available to the farmers? as in, the faster they move the less food spoils per Km.
+> And things like salt and refrigeration making storing food BETTER, decay slower?"*
+
+Every part of that is already modelled — in the haul curve immediately beside the one
+the bid rule replaced. `foodHierarchy.js`:
+
+```js
+const cons = k.construction || 0, mob = k.mobility || 0;
+range *= 1 + (cons * 0.6 + mob * 0.4 + Math.max(0, cons - 0.85) * 5) * T.FOOD_HAUL_TECH;
+// Transport tech of the shipping region: roads (construction) + wagons (mobility),
+// plus an industrial leap (rail / refrigeration / canning) as construction passes ~0.85.
+```
+
+- **faster movement, less spoilage per km** → the roads and wagons terms;
+- **preservation — salt, canning, refrigeration** → the `cons > 0.85` industrial leap,
+  named in the comment;
+- **water** → a separate corridor term scaled by seamanship;
+- and it reads `child.knowledge` — **the shipping region's** tech, i.e. the farmers',
+  exactly as the owner framed it.
+
+**My ring did none of this.** `haulTiles = 2·340/kmPerTile` was a flat constant: a
+neolithic world and an industrial one hauling grain equally far, forever. That is the
+first cardinal rule broken in space — a fixed number where the code beside it already
+had a state-driven one. It is a defect independent of whether it rescues anything, and
+it is now fixed by reusing the same expression term for term.
+
+### 47.1 The measurement
+
+| | settlements | population | polities |
+|---|---|---|---|
+| baseline (levers off) | **39** | 18,974 | 20 |
+| bid rule, frozen range | 16 | 6,145 | 9 |
+| **bid rule, tech-scaled range** | 16 | **11,126** | 11 |
+
+**Population nearly doubled; the register did not move.** That is informative on its
+own: the settlements that exist are much better fed, so the shortfall is not food per
+settlement. **It is founding or survival.**
+
+### 47.2 Stopping here, as promised
+
+That was the fifth change reasoned from a story. It was a real repair — the frozen
+range had to go regardless — but the register is still 16 against 39 and I said in
+§46.4 that the next step was a diagnosis, not a fifth fix.
+
+Doing the diagnosis now, and the population result narrows it usefully: food per
+settlement is no longer the suspect. The comparison to run, per settlement against
+baseline, is **founding events, catchment tile count, and the mint's two bars** —
+whether new settlements are failing to be born, or being born and dying.
