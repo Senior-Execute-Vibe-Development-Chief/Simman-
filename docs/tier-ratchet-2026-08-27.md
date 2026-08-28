@@ -2299,3 +2299,22 @@ w9_nohyst       VIABLE_UNITS + DISSOLVE_CORE=1      ← internal control, no hys
 
 `w8_hyst_nofloor` is renamed `w9_8kfloor` so the name says what the arm does. All
 carry `CORE_LOCAL`, `AGGLOM_LOCAL`, `URBAN_LABOR`, `STAMP_RETIRE`.
+
+### 31.4 The restarts are frequent — horizon cut to 28k
+
+Wave 9 died after ONE window. `/proc/uptime` read 23 seconds at the check; the
+previous check read 47 seconds. **Two container restarts inside about seven
+minutes.**
+
+At `tw=480` a 40k arm takes roughly 90 minutes and reaches the first mature window
+(24k-28k) at about 8 minutes. Against a machine whose uptime is measured in minutes,
+a 40k arm cannot finish — waves 7, 8 and 9 all died, at windows 7, 7 and 6.
+
+**Wave 10 runs to 28,000 steps instead of 40,000.** That is not a compromise on the
+third cardinal rule — it is the same `tw=480` app-proxy grid — only on horizon. It
+reaches the window where every wave-8 contrast appeared (churn 48-54 against 70-77
+and 95-98) and finishes in ~8 minutes, which fits inside the observed uptime.
+
+What it costs: the mature tail. Waves 4-6 showed the median core only clears the
+floor at 32k-36k, so a 28k arm cannot see that. The tail needs either a calmer
+machine or a resumable probe; neither is being built now.
