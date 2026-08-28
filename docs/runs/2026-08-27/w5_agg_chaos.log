@@ -129,3 +129,15 @@
     ARMING  blockRan=93.0%  bind=45.2%  diskBound=24.8%  [CORE_LOCAL=1 LAND_KNOW=1]
     MACHINE 28000 32000 574 21.778 67 255 208 19 9018 0 25706 264689 92.98 45.21 24.83
     [1095s]
+
+=== window 32000->36000  realms=759  claimed=31.5%  settled=953
+    FLOWS in-window   founded=79 ended=312 seceded=224 shattered=30
+    FLOWS per realm   founded=0.1185 ended=0.4681 seceded=0.3361 shattered=0.0450   (meanRealms=667)
+    WAR in-window     began=8703 ended=8107 captured=0 sacked=15
+    WAR per realm     began=13.0578 captured=0.0000
+    CORES p10=11.0 p50=14.1 p90=108.1 max=618.7su  |  MODE 12.00su held by 339/949 (35.7%)  <- the pin
+    URBSHARE/sett p50=0.096 p90=0.445 max=1.000  |  >=0.30 (graveyard saturated): 154/953 (16.2%)
+    MASS  urban=38875su rural=289561su urbanShare=11.84%
+    ARMING  blockRan=92.8%  bind=44.7%  diskBound=24.7%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 32000 36000 759 31.532 79 312 224 30 8703 0 38875 289561 92.76 44.70 24.66
+    [2126s]
