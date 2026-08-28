@@ -447,10 +447,15 @@ export function musicOf(people) {
       //   either way. `cap` is that pitch count and this file already calls it
       //   "the melodic body sets the ceiling".
       //
-      //   THE VOICE. Melodies are singable even when nobody sings them, and a
-      //   comfortable compass is about a tenth, a practised one about a twelfth
-      //   — 1.4 to 1.6 octaves. That is a fact about folds and breath, not about
-      //   a culture, which is why it is a range and not a knob.
+      //   WHAT READS AS ONE TUNE. Roughly a tenth to a twelfth — 1.4 to 1.6
+      //   octaves — beyond which a line stops being heard as one shape and
+      //   starts being heard as wandering. This was first written down here as
+      //   the SINGER's comfortable compass, and that was wrong: it is the same
+      //   bound whether or not anybody opens their mouth. The evidence is the
+      //   bench itself. Five of its seven entries are led by a guqin, a sitār,
+      //   an oud and a koto, every one of which reaches two octaves or more,
+      //   and every one of them declares a reach inside this band anyway. Not
+      //   one of those numbers is a singer's. What limits them is a listener.
       //
       // Checked against all seven pinned traditions, which declare their reach
       // as data: every one falls inside min(cap, 1.4-1.6 frames), and the pipes

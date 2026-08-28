@@ -1501,9 +1501,27 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   return {
     lead, elab: elab ? elab.k : null, core, drone, bass, ost, pulse, perc, mark, marks, het,
     voices, occ,
+    // ── IS THERE SINGING, AND ARE THERE WORDS IN IT ──
+    //
     // It sings unless the occasion is a loud outdoor one, where nothing
-    // unamplified carries over the reeds and the drums.
-    sing: !loud && intimacy > 0.25,
+    // unamplified carries over the reeds and the drums — OR unless there is
+    // nothing else in the room that can state a tune. That second clause is
+    // what this file already asserts two hundred lines up: a society with a
+    // rich vocal tradition and no melodic instrument is common and one with
+    // melodic instruments and no singing is unattested, so a people whose
+    // bodies cannot carry a line does not fall silent at a distance — the
+    // singing IS their music, and it is all there is to hear. Measured, that
+    // is 3 peoples in 120.
+    sing: (!loud && intimacy > 0.25) || lead == null,
+    // AND WORDS DO NOT CARRY AS FAR AS THE VOICE DOES. What makes speech
+    // intelligible is the consonants, and they are the quiet part: brief,
+    // 10-20 dB under the vowels they surround, and concentrated in the 2-8 kHz
+    // band that air absorbs fastest. The vowels are loud, long and low and
+    // travel like any other sustained tone. So across a square you hear that
+    // people are singing and not a syllable of what — roughly one doubling of
+    // distance sooner than the voice itself goes. A sung line past that point
+    // is a wordless one, not an absent one.
+    words: intimacy > 0.5,
   };
 }
 export function degreeHz(music, tonicHz, deg, oct = 0) {
@@ -2033,7 +2051,8 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       // so no fresh attack, which is why it is the softer of the two.
       const own = e.strong || e.last || !sung.length
         || hash32(seed, "syl", Math.round(e.b * 96)) % 1000 < share * 1000;
-      sung.push({ ...e, role: "voice", inst: -1, melisma: !own,
+      sung.push({ ...e, role: "voice", inst: -1, melisma: !own || !E.words,
+        wordless: !E.words,
         vel: e.vel * (own ? 1 : 0.86),
         b: e.b + Math.min(vlag, e.dur * 0.25) });
     }
@@ -2065,7 +2084,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
  * looping. `syls` (optional) is a line of the people's own language, sung one
  * syllable per note.
  */
-export function composePiece(music, occKey = "peace", syls = null) {
+export function composePiece(music, occKey = "peace", syls = null, intimacy = 1) {
   const secs = sectionsOf(music, occKey);
   const sections = [];
   let beat = 0, cycle = 0, sylAt = 0;
@@ -2073,7 +2092,13 @@ export function composePiece(music, occKey = "peace", syls = null) {
     const start = beat;
     const ev = [];
     for (let c = 0; c < sec.cycles; c++) {
-      const plan = ambientBar(music, { occ: occKey, intimacy: 1, bar: cycle });
+      // HOW CLOSE THE LISTENER IS STANDING, which this function used to assert
+      // was the front row and nothing else. The looping path has honoured the
+      // distance control all along — `ambientBar` takes it, and who is audible,
+      // how many players turn up and whether there is any singing all follow
+      // from it — so a whole piece ignoring it meant the one thing you cannot
+      // hear from across a settlement was the only thing the piece would play.
+      const plan = ambientBar(music, { occ: occKey, intimacy, bar: cycle });
       for (const e of plan.events) {
         const o = { ...e, b: beat + e.b };
         // A MELISMA IS SEVERAL NOTES ON ONE SYLLABLE. `ambientBar` marks the

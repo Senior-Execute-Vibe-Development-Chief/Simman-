@@ -402,9 +402,15 @@ function playPiece() {
   // one clock at a time: the piece and the ambience share a people, so they
   // also share voice channels, and each was damping the other's notes mid-note
   if (S.playing) stopAmbient();
-  setDistance(A, 0.9);
+  // WHERE THE LISTENER IS STANDING GOVERNS THE PIECE TOO. This forced 0.9 —
+  // the front row — whatever the distance control said, and then asked the
+  // composer for a piece written for the front row as well. So the one thing
+  // the control could never show you was the thing it is for: what this
+  // people's music sounds like from across their settlement, which is the
+  // music a listener in the world actually hears. Same slider, both ends.
+  setDistance(A, S.intimacy);
   const hymn = hymnSyllables(P, 10);
-  const piece = composePiece(P, S.occ, hymn.syls);
+  const piece = composePiece(P, S.occ, hymn.syls, S.intimacy);
   S.piece = { ...piece, words: hymn.words };
   const spb = 60 / piece.tempo;
   const t0 = A.ctx.currentTime + 0.15;
