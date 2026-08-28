@@ -504,7 +504,7 @@ async function buildNamed() {
       // rebuild the entry from what is already on disk, so the manifest can be
       // regenerated without re-fetching three megabytes of soundfont
       const lo = midiOf(spec.lo), hi = midiOf(spec.hi), entries = [];
-      for (let mi = lo; mi <= hi; mi += 4) {
+      for (let mi = lo; mi <= hi; mi += 2) {
         const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
         const file = `${spec.gm}_${Math.round(hz)}.mp3`;
         if (existsSync(join(dir, file))) entries.push({ hz, file });
@@ -519,12 +519,17 @@ async function buildNamed() {
     }
     const map = gmNotes(spec.gm);
     if (!map || !map.size) continue;
-    // one sample every four semitones across the instrument's own range: close
-    // enough that nothing shifts more than a tone, which is where a stretched
-    // body starts sounding like a cartoon of itself
+    // ONE SAMPLE EVERY TWO SEMITONES, so nothing is ever dragged more than a
+    // hundred cents. It was every four, which caps the drag at a WHOLE TONE —
+    // and the guidance every sampling manual gives is two or three semitones,
+    // for the good reason that past about that the moving formants stop
+    // sounding like the instrument and start sounding like a tape speed. It
+    // also decides how often a scale lands on a recording exactly: on a
+    // four-semitone grid only three pitch classes in twelve are represented,
+    // so whether a people's scale ever hits one is close to luck.
     const lo = midiOf(spec.lo), hi = midiOf(spec.hi);
     const entries = [];
-    for (let mi = lo; mi <= hi; mi += 4) {
+    for (let mi = lo; mi <= hi; mi += 2) {
       const b64 = map.get(nameOf(mi)) || map.get(SHARP[((mi % 12) + 12) % 12].replace("b", "#") + (Math.floor(mi / 12) - 1));
       if (!b64) continue;
       const raw = Buffer.from(b64, "base64");

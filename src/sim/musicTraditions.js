@@ -110,14 +110,30 @@ export const TRADITIONS = {
   },
 
   arabic: {
-    label: "Arabic — maqām Rast",
-    gloss: "neutral third and seventh, oud and qānūn, heterophonic",
-    // Rast: the third (355) and the seventh (1053) are NEUTRAL — neither major
-    // nor minor, and not a quarter-tone grid either. They are the intervals
-    // that make a maqām unplayable on a keyboard and are the whole sound.
+    label: "Arabic — maqām Ḥijāzkār",
+    gloss: "two Ḥijāz tetrachords a tone apart, oud and qānūn, heterophonic",
+    // ḤIJĀZKĀR IS BUILT TWICE. A maqām is assembled out of `ajnās` — tetrachords
+    // — and this one is the same jins stated on the tonic and again on the
+    // fifth: Ḥijāz on C is C D♭ E F, Ḥijāz on G is G A♭ B C, and the whole
+    // scale is those two with a tone between them. The augmented second in the
+    // middle of each is the sound everybody outside the tradition means when
+    // they say "Arabic".
+    //
+    // Given as its JUST reading, the way rāg Yaman below is: 16/15, 5/4, 4/3,
+    // 3/2, 8/5, 15/8. That is not a convenience — a jins is tuned by ear
+    // against a drone and a fretless neck, and those are the ratios an ear
+    // lands on. It also makes the symmetry exact: 112, 274, 112 | 204 | 112,
+    // 274, 112, the same tetrachord twice.
+    //
+    // Ḥijāzkār has NO neutral degrees. Every note of it sits within fourteen
+    // cents of a named pitch, which is why it survives being played on
+    // anything — and it is why `arabicRast` below is kept as well: Rast's
+    // neutral third and seventh are the case this bench exists to test, and
+    // dropping the only quarter-tone tradition on it to gain a recognisable
+    // one would have been trading a measurement for a preference.
     frame: 1200,
-    scale: [0, 204, 355, 498, 702, 906, 1053],
-    mode: [0, 204, 355, 498, 702, 906, 1053],
+    scale: [0, 112, 386, 498, 702, 814, 1088],
+    mode: [0, 112, 386, 498, 702, 814, 1088],
     finalIdx: 0,
     insts: [
       { fam: "luteNeck", mat: "gut", frame: "wood", label: "oud", cap: 16, weight: 1.0, role: "lead" },
@@ -130,8 +146,40 @@ export const TRADITIONS = {
     // maqsūm: dum - tak tak - dum - tak, four beats
     rhythm: { tempo: 104, meterKind: "duple", beats: 4, div: 4, density: 0.75, syncopation: 0.4, swing: 0 },
     texture: { kind: "heterophony", size: 5, ornament: 0.85, sustains: true, courtly: 0.5 },
+    // a Ḥijāz melody LEAPS its augmented second on purpose rather than
+    // stumbling over it, so it is less stepwise than Rast is
+    melody: { step: 0.66, arch: 0.44, descent: 0.6, breathBound: false, toneBound: false, reach: 10 },
+    note: "The oud is fretless, so its 16 pitches are a statement about the neck's length rather than about frets. Ḥijāzkār asks nothing of the qānūn's mandal levers, which is exactly the difference from Rast.",
+  },
+
+  arabicRast: {
+    label: "Arabic — maqām Rast",
+    gloss: "the mother maqām: a NEUTRAL third and seventh, playable on nothing with frets",
+    // Rast: the third (355) and the seventh (1053) are NEUTRAL — neither major
+    // nor minor, and not a quarter-tone grid either. They are the intervals
+    // that make a maqām unplayable on a keyboard and are the whole sound.
+    //
+    // This is the bench's only quarter-tone tradition and it is here as a TEST
+    // rather than as a demonstration: a recorded instrument bank is sampled at
+    // equal-tempered pitches, so a scale built on neutral steps never lands on
+    // one and every note of it is resampled. Ḥijāzkār above never is. Switching
+    // between the two is the cleanest way to hear what that costs.
+    frame: 1200,
+    scale: [0, 204, 355, 498, 702, 906, 1053],
+    mode: [0, 204, 355, 498, 702, 906, 1053],
+    finalIdx: 0,
+    insts: [
+      { fam: "luteNeck", mat: "gut", frame: "wood", label: "oud", cap: 16, weight: 1.0, role: "lead" },
+      { fam: "lyre", mat: "gut", frame: "wood", label: "qānūn", cap: 14, weight: 0.85 },
+      { fam: "fluteOpen", mat: "reed", label: "nāy", cap: 9, weight: 0.75 },
+      { fam: "bowed", mat: "gut", frame: "wood", label: "kamānja", cap: 14, weight: 0.6 },
+      { fam: "drum", mat: "clay", frame: "clay", label: "darbūka", cap: 3, weight: 0.55, role: "pulse" },
+      { fam: "frameDrum", mat: "hide", frame: "wood", label: "riqq", cap: 1, weight: 0.45 },
+    ],
+    rhythm: { tempo: 104, meterKind: "duple", beats: 4, div: 4, density: 0.75, syncopation: 0.4, swing: 0 },
+    texture: { kind: "heterophony", size: 5, ornament: 0.85, sustains: true, courtly: 0.5 },
     melody: { step: 0.75, arch: 0.44, descent: 0.6, breathBound: false, toneBound: false, reach: 10 },
-    note: "The oud is fretless, so its 16 pitches are a statement about the neck's length rather than about frets; the qānūn's mandal levers are what let a fixed-pitch zither play a neutral third at all.",
+    note: "The qānūn's mandal levers are what let a fixed-pitch zither play a neutral third at all — and there is no lever anywhere in this engine's sample banks, which is the point of keeping this entry.",
   },
 
   japanese: {
