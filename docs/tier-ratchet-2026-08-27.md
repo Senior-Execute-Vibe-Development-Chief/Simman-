@@ -2619,3 +2619,51 @@ checked against an external standard rather than against the control (§28.2 was
 first, on population; §32.1 the second, on churn). **The control is not the target.**
 The control is a world with a known pathology, and measuring against it will keep
 reporting fixes as regressions.
+
+---
+
+## 36. THE HISTORY-SHAPE GATE PASSES WITH THE FULL STACK ON
+
+§33 item 12 said `npm run validate` is a no-op for this family of levers because its
+arm pins `LAND_KNOW = 0`. **That was half-right and I overstated it.** `stylized.mjs`
+imports `buildSim` from `_harness.mjs`, which applies `SIM_TUNE` — so the pin can
+simply be overridden and the gate CAN test these levers.
+
+Run with `CORE_LOCAL, AGGLOM_LOCAL, URBAN_LABOR, STAMP_RETIRE, VIABLE_UNITS,
+DISSOLVE_CORE=0.2, LAND_KNOW=1`, against the same gate at defaults:
+
+| | levers OFF | **full stack ON** |
+|---|---|---|
+| all hard gates | pass, 0 warnings (budget 2) | **pass, 0 warnings** |
+| urbanisation | 6.3% | **12.8%** (gate band 2-25%) |
+| Zipf slope (urban cores) | −0.80 (27 cities) | **−0.87** (19 cities) — envelope −0.8..−1.2 |
+| settlements | 39 | **24** |
+| population | 18,974 | **18,844** (−0.7%) |
+| polities | 20 | 19 |
+
+### 36.1 The arming check: the levers are not inert here
+
+Urbanisation doubles and the settlement count falls 38%. Whatever else is true, the
+edited lines executed — this is not the silent no-op that made `CORE_LOCAL`'s first
+kill-shot worthless.
+
+### 36.2 Three things worth noting
+
+- **Zipf moves toward the middle of its envelope**, −0.80 → −0.87. The city
+  size-distribution is the single hardest stylized fact in this file and the stack
+  improves it rather than degrading it.
+- **Population is unchanged at this arm** (−0.7%). The 20-28% drop measured at
+  `tw=480` over 40k does **not** appear here. Either it is a large-grid/long-horizon
+  phenomenon or it depends on the register scale; this arm cannot distinguish them,
+  but it does mean the population effect is not intrinsic to the mechanism.
+- **The register shrinks 39 → 24 settlements.** That is `STAMP_RETIRE` doing what it
+  was built to do, and it is the number to watch: a dawn world should hold ~10 cities
+  and an iron-age one ~100 (CLAUDE.md), so 24 is not obviously wrong — but it is a
+  38% cut and nothing independently says which count is right.
+
+### 36.3 Standing correction to §33
+
+Item 12 is downgraded: the gate ladder **can** test these levers, by overriding the
+harness pin. It was never run that way because the `CORE_LOCAL` note said the gate
+was a no-op, and I carried that forward without checking whether `SIM_TUNE` could
+lift the pin. It can.
