@@ -318,7 +318,31 @@ export function musicOf(people) {
   const refI = insts.findIndex(isFixed);
   const refJ = refI >= 0 ? refI : insts.findIndex(i => i.cap >= 3);
   const tuneW = insts.map((i, k) => i.weight * (k === refJ ? 5 : 1));
-  const spec = ensembleSpectrum(insts, tuneW);
+  // AND THE SINGER IS IN THIS ROOM TOO.
+  //
+  // `makeVoice` states the case in its own comment and this line did not act on
+  // it: a culture's ear is calibrated on the spectrum it hears most, and the
+  // spectrum it hears most is a human throat. The singer was added to the
+  // ensemble that decides the FRAME, for exactly that reason, and octave
+  // equivalence stopped being negotiable. Then the degrees — the part a
+  // listener actually names — went on being decided by the built bodies alone.
+  //
+  // The consequence is measurable and it is what gets reported by ear. Judged
+  // across five peoples: the two that sound wrong have 1 of 4 and 0 of 3 of
+  // their degrees on a ratio anyone has a name for, the two that sound right
+  // have 4 of 4 and 2 of 4. The curve's DEPTH separated none of them — 0.193 to
+  // 0.226 across all five — so this is not about how much consonance structure
+  // there is, it is about whether the structure is one a human ear shares. A
+  // spectrum with no octave in it has no fifth either, and a scale derived from
+  // it lands between every note a listener knows.
+  //
+  // One member's weight, the same as for the frame, and that limit is the
+  // point: it must not be able to outvote the ensemble. A gamelan's degrees
+  // still come from its metal — that is the whole premise, and pelog is not a
+  // just scale — but they are chosen by people who can also sing.
+  const voiceHere = Array.from({ length: 10 }, (_, i) => ({ f: 220 * (i + 1), a: Math.pow(0.82, i) }));
+  const spec = ensembleSpectrum(insts, tuneW)
+    .concat(voiceHere.map(p2 => ({ f: p2.f, a: p2.a * 0.34 })));
   // …but the reference's authority is over WHERE THE DEGREES SIT, not over
   // whether the octave exists. What interval a people's music repeats at is a
   // question about everything they actually play, at the shares they play it
