@@ -29,7 +29,7 @@
 // food balance, offerings at a holy see, a coronation.
 import { hash32 } from "./peopleSim/rng.js";
 import { nPVI } from "./musicGenome.js";
-import { articRate, melodicCapacity, FAMILIES } from "./musicInstruments.js";
+import { articRate, melodicCapacity, FAMILIES, CARRIES } from "./musicInstruments.js";
 import { dissonance } from "./musicTuning.js";
 import { prosodyOf } from "./languagePhonetics.js";
 const FAM = (i) => FAMILIES[i.fam] || {};
@@ -538,7 +538,16 @@ function scoreLine(music, degs, pat, descent, cells, prior) {
   let lo = degs[0], top = degs[0];
   for (const d of degs) { if (d < lo) lo = d; if (d > top) top = d; }
   const range = top - lo;
-  const span = Math.min(1, range / Math.max(2, M.reach * 0.6)) * (range > M.reach ? 0.4 : 1);
+  // A TUNE USES ITS COMPASS, and this term stopped asking it to at 60% of one.
+  // `min(1, range / (reach * 0.6))` is the same no-gradient shape as the leap
+  // term below, whose comment records what that costs: past the threshold the
+  // search is indifferent, so it settles wherever it first arrives. Measured,
+  // the derived corpus crossed 64% of its compass — the saturation point, to
+  // within noise — and sat there while every pinned tradition ranged over 65
+  // to 92%. `reach` is already the ceiling, derived from the body and the
+  // voice; what a line does inside it should be rewarded all the way up, and
+  // leaving it is the fault the cliff is for.
+  const span = range > M.reach ? 0.4 : range / M.reach;
   // A MELODY IS MOSTLY STEPS. Pitch proximity is the most robust thing anyone
   // has measured about melody anywhere, and counting leaps against the BAR
   // rather than against the notes let it be bought cheaply: a twenty-six-note
@@ -1321,12 +1330,6 @@ function drumEnsemble(music, G, cycleSlots, seed, hands, dens) {
 }
 
 /** Assign instruments to parts. */
-// What a body has to score to be trusted with the line at all: definite
-// enough to make a pitch, reaching enough to make a phrase out of pitches, and
-// able to keep sounding for as long as the notes last. Everything that plays
-// the melody — the lead, the elaboration, the heterophonic voices — is held to
-// this same bar, because they are all doing the same job.
-const CARRIES = 0.45;
 
 export function ensembleFor(music, occKey, intimacy = 1) {
   const occ = OCCASIONS[occKey] || OCCASIONS.peace;

@@ -23,7 +23,7 @@
 // Nothing here is wired into the world sim. Like the Language Lab, this is a
 // standalone derivation the Music Lab drives; the sim stays silent.
 import { hash32 } from "./peopleSim/rng.js";
-import { MATERIALS, FAMILIES, makeInstrument } from "./musicInstruments.js";
+import { MATERIALS, FAMILIES, makeInstrument, melodicCapacity, CARRIES } from "./musicInstruments.js";
 import { ensembleSpectrum, deriveScale, deriveMode, finalsOf, LENGTH_POWER } from "./musicTuning.js";
 import { prosodyOf } from "./languagePhonetics.js";
 
@@ -394,6 +394,14 @@ export function musicOf(people) {
   const tone = people.lang ? (people.lang.prof.tone | 0) : 0;
   const roll = (tag) => hash32(people.seed, "mus", tag) / 4294967296;
   const leadWind = insts.some(i => i.drive === "breath" || i.drive === "reed") && roll("lead") < 0.6;
+  // WHICH BODY WILL STATE THE TUNE. `ensembleFor` decides this every bar, by
+  // exactly this rule — capability is a threshold and centrality is the ranking
+  // — and the melody's compass is a property of that body, so the same rule has
+  // to be answerable here. One note long enough for the body to be judged on is
+  // the tradition's own grid step: a beat over its subdivision.
+  const noteSecs = (60 / Math.max(1, rhythm.tempo)) / Math.max(1, rhythm.div || 2);
+  const carrier = insts.filter(i => melodicCapacity(i, noteSecs) > CARRIES)
+    .sort((a, b) => b.weight - a.weight)[0] || null;
   const modeCents = modeIdx.map(i => scale.degrees[i].cents);
   const modeSteps = modeCents.slice(1).map((c, i) => c - modeCents[i]).concat([scale.frame.cents - modeCents[modeCents.length - 1]]);
   return {
@@ -418,11 +426,38 @@ export function musicOf(people) {
       // a breath-led line arches harder than a string-led one, because the
       // arch IS the breath
       arch: (leadWind || texture.kind === "monophony" ? 0.5 : 0.34) + roll("arch") * 0.22,
-      // Compass, in MODE steps. Melodies live inside roughly an octave and a
-      // bit — the range a voice covers comfortably and an instrument is built
-      // around. A line free to roam two and a half frames reads as erratic
-      // rather than as a tune.
-      reach: Math.max(3, Math.round(modeIdx.length * (0.7 + roll("rng") * 0.35))),
+      // COMPASS, in MODE STEPS — the smaller of two things, and it was neither.
+      //
+      // The old line rolled 0.7 to 1.05 FRAMES off the mode's size, which is
+      // narrower than a person naturally sings and narrower than every tradition
+      // on the bench: measured over 240 peoples, the derived line lived in four
+      // degrees where the pinned ones spread over 5.5 to 8.3, and inside a band
+      // that small there are so few intervals available that the same ones keep
+      // coming back — figure reuse ran 0.10 against the bench's 0.02 to 0.07.
+      // A tune that shuffles inside a fifth and repeats itself is what "wanders
+      // and goes nowhere" sounds like, and the comment above the line already
+      // said "an octave and a bit" while the code said less than an octave.
+      //
+      // What actually bounds a melody is TWO limits, and a tune takes whichever
+      // bites first:
+      //
+      //   THE BODY. A nine-fingering chanter has nine notes, so a pipe tune has
+      //   a compass of nine notes — which is why Irish fiddle tunes stay inside
+      //   the pipe compass on an instrument that could go half an octave further
+      //   either way. `cap` is that pitch count and this file already calls it
+      //   "the melodic body sets the ceiling".
+      //
+      //   THE VOICE. Melodies are singable even when nobody sings them, and a
+      //   comfortable compass is about a tenth, a practised one about a twelfth
+      //   — 1.4 to 1.6 octaves. That is a fact about folds and breath, not about
+      //   a culture, which is why it is a range and not a knob.
+      //
+      // Checked against all seven pinned traditions, which declare their reach
+      // as data: every one falls inside min(cap, 1.4-1.6 frames), and the pipes
+      // — the only body-bound entry — land on exactly their nine.
+      reach: Math.max(3, Math.round(Math.min(
+        carrier ? carrier.cap : modeIdx.length * 2,
+        modeIdx.length * (1.4 + roll("tess") * 0.22)))),
     },
     cap, pull,
   };

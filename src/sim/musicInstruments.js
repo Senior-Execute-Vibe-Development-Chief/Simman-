@@ -839,6 +839,16 @@ export function dampTime(inst) {
   return 0.03 * (ELEMENT[fam.vib] ?? 1) * (m.dens / (f * f)) / REF;
 }
 
+/** What a body has to score on `melodicCapacity` to be trusted with the line
+ *  at all: definite enough to make a pitch, reaching enough to make a phrase
+ *  out of pitches, and able to keep sounding for as long as the notes last.
+ *  Everything that plays the melody — the lead, the elaboration, the
+ *  heterophonic voices — is held to this same bar, because they are all doing
+ *  the same job, and so is the genome when it asks how wide a tune this
+ *  people's own tunes can be. It lives here, next to the function it is a
+ *  threshold on. */
+export const CARRIES = 0.45;
+
 /**
  * MELODIC CAPACITY: can this body be the thing a listener follows?
  *
