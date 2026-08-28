@@ -3523,3 +3523,68 @@ Not another fix. The live arm to the mature window, which needs either a faster 
 or a horizon that fits — and a decision about whether the gate arm's verdict on this
 mechanism means anything at all, given it runs a world with a twenty-fifth of the
 realms and half the systems pinned off.
+
+---
+
+## 49. THE GATE'S VERDICT WAS ITS PIN SET — the bid rule measures WELL on the live levers
+
+§48.3 asked whether the gate arm's failure means anything, given it runs a world with
+a twenty-fifth of the realms and half the systems pinned off. Answered directly: the
+same gate, with the **live lever set** (`DAWN_LIVE, STATE_RECORDS, PEER_SEATS,
+WAR_FINISH, FOUND_DRIFT, …`) overriding the harness pins.
+
+| | bid rule OFF | **bid rule ON** |
+|---|---|---|
+| hard failures | none | **none** |
+| soft warnings | 2 (budget 2) | **4** |
+| settlements | 120 | **115** (−4%) |
+| population | 86,397 | **95,562** (+11%) |
+| urbanisation | 14.1% | **9.7%** |
+| Zipf slope | −0.89 | **−1.23** |
+| polities | 10 | **4** |
+
+**The 16-against-39 catastrophe was entirely the gate arm's default pins.** On the
+live levers the register is within 4% — matching the live arm's 7% (§48) rather than
+the gate's 60%. Two independent arms now agree, and the arm that disagreed was the one
+running a world nobody ships.
+
+### 49.1 What improved, and one of them is the hard one
+
+- **Urbanisation 14.1% → 9.7%.** The untreated world sits *above* history's 5-15%
+  agrarian band at this arm; the bid rule brings it inside. That is the same
+  correction §35 measured, arriving from a different mechanism.
+- **Population +11%** with 4% fewer settlements — bigger, better-fed places.
+- **Zipf −0.89 → −1.23.** The city size-distribution is the hardest stylized fact in
+  the file and the measure that killed `SEED_EXCLUSIVE`. It moved a long way toward
+  the steep end of the −0.8..−1.2 envelope — **and marginally past it.** Read as a
+  real improvement in shape that has now overshot slightly, not as a pass.
+
+### 49.2 The one real problem: the political map collapses
+
+**Polities 10 → 4**, and **all four new soft warnings are downstream of that single
+number**:
+
+```
+warn  empire land tail: n/a   (4 landed polities)
+warn  polity lifespans: n/a   (0 fallen polities)
+warn  wars per 1000 steps per polity: 0.03   (0.1/1k across 4 realms)
+warn  wars amid succession crises: 0/3
+```
+
+Four large states, no state ever falls, and almost no war. That is a world with the
+history taken out of it, and it is the thing to explain before this can ship — not the
+register, not the food, not the population.
+
+It is also consistent with the live arm's own reading (§45: 5-7 realms against 15),
+which I had attributed to the runaway. The runaway is now fixed and **the polity
+collapse survived it**, so they were two different things and only one is solved.
+
+### 49.3 Status
+
+`T.MARKET_PULL` + `T.PRICE_GROSS`: no hard failures on the live levers, register and
+population healthy, urbanisation corrected into history's band, Zipf substantially
+improved and slightly overshot, **political map collapsed from 10 states to 4.**
+
+Next is that collapse — why does pricing land integrate the political map, and is the
+integration real or an artefact of `CATCHMENT_CLIP` (the catchment may only work its
+own country's ground, so a bid that crosses a border is silently clipped).
