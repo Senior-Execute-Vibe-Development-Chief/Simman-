@@ -266,8 +266,11 @@ export function textureOf(people, insts) {
   // a surplus question before it is a musical one
   const size = Math.max(1, Math.round(0.6 + people.soc.surplus * 3.6 + people.soc.urban * 2.6));
   const sustains = insts.some(i => i.kind === "sustain");
-  const kind = size >= 6 && people.soc.literacy > 0.6 ? "polyphony"
-    : size >= 4 ? "heterophony"
+  // Heterophony needs enough players that doubling the line is audible as
+  // several versions, not as mud — size >= 4 handed it to almost every
+  // settled people and stacked elab + het + voice on the same degrees.
+  const kind = size >= 7 && people.soc.literacy > 0.6 ? "polyphony"
+    : size >= 5 ? "heterophony"
     : size >= 2 && sustains ? "drone"
     : "monophony";
   return {

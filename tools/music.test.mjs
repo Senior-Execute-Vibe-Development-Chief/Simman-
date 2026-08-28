@@ -29,7 +29,7 @@
 import { TRADITIONS, applyTradition } from "../src/sim/musicTraditions.js";
 import { foundLanguage } from "../src/sim/language.js";
 import { foundPeople, musicOf } from "../src/sim/musicGenome.js";
-import { ensembleFor, composePiece, OCCASIONS, finalFor, modeDegree } from "../src/sim/musicCompose.js";
+import { ensembleFor, composePiece, ambientBar, OCCASIONS, finalFor, modeDegree, degreeHz } from "../src/sim/musicCompose.js";
 import { makeInstrument } from "../src/sim/musicInstruments.js";
 import { finalsOf } from "../src/sim/musicTuning.js";
 
@@ -117,6 +117,54 @@ for (let s = 0; s < 60; s++) {
   if (bad.length) { check(`seed ${seed}: home is inside the mode`, false, bad.join(" ")); break; }
   if (s === 59) check("60 derived peoples: home is inside the mode", true);
 }
+
+// ── coherence: texture choices that were audible as mud in vertical probes ──
+const MELODIC = new Set(["lead", "het", "elab", "voice", "core", "bass", "ost", "pad"]);
+function verticalOf(m) {
+  const plan = ambientBar(m, { occ: "peace", bar: 0, intimacy: 0.85 });
+  const ev = (plan.events || [])
+    .filter(e => MELODIC.has(e.role) && e.deg != null)
+    .map(e => ({ t: e.b, dur: e.dur || 0.5, hz: degreeHz(m, 220, e.deg, e.oct || 0), role: e.role }))
+    .filter(e => e.hz > 0);
+  ev.sort((a, b) => a.t - b.t);
+  let pairs = 0, semis = 0, poly = 0, n = 0;
+  for (let i = 0; i < ev.length; i++) {
+    const a = ev[i], aEnd = a.t + Math.min(a.dur, 1.2);
+    let over = 0;
+    for (let j = i + 1; j < ev.length && ev[j].t < aEnd; j++) {
+      const b = ev[j];
+      if (b.t + Math.min(b.dur, 4) <= a.t) continue;
+      over++;
+      let r = b.hz / a.hz; if (r < 1) r = 1 / r;
+      if (r > 4.2) continue;
+      const oc = ((Math.round(1200 * Math.log2(r)) % 1200) + 1200) % 1200;
+      if ((oc >= 30 && oc <= 140) || (oc >= 1060 && oc <= 1170)) semis++;
+      pairs++;
+    }
+    poly += over; n++;
+  }
+  const roles = new Set((plan.events || []).map(e => e.role));
+  const hetOn = (plan.events || []).some(e => e.role === "het");
+  return {
+    pairs, semis: pairs ? semis / pairs : 0, poly: n ? poly / n : 0,
+    elabHet: roles.has("elab") && hetOn,
+  };
+}
+
+console.log("[music] coherence gates (30 derived peoples, peace ambient bar)");
+let maxSemis = 0, maxPoly = 0;
+for (let s = 0; s < 30; s++) {
+  const seed = 2000 + s * 41;
+  const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
+  const E = ensembleFor(m, "peace", 0.85);
+  check(`seed ${seed}: at most two heterophonic doublings`, (E.het || []).length <= 2,
+    `${(E.het || []).length} het`);
+  const v = verticalOf(m);
+  maxSemis = Math.max(maxSemis, v.semis);
+  maxPoly = Math.max(maxPoly, v.poly);
+}
+check("coherence: semitone clash share stays under 18%", maxSemis < 0.18, `worst ${(100 * maxSemis).toFixed(1)}%`);
+check("coherence: mean simultaneous melodic parts under 2.45", maxPoly < 2.45, `worst ${maxPoly.toFixed(2)}`);
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);
 if (failures > 0) {

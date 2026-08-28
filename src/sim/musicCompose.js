@@ -1613,6 +1613,7 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   // having no bass part and no ostinato is the right answer, not a gap.
   const het = (music.texture.kind === "heterophony" || music.texture.kind === "polyphony")
     ? rank.filter(x => !taken.has(x.k) && x.m > CARRIES && FAM(x.i).tune !== "series")
+      .slice(0, 2)
       .map(x => (taken.add(x.k), x.k))
     : [];
   const core = claim(x => x.m > 0.08 && x.r < 6);
@@ -2021,6 +2022,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // continuously. This is where the music lives in every tuned-metal tradition
   // and the engine simply did not have it — implement the gong and the core
   // and leave this out and you have left out most of the onsets.
+  //
   if (ST.elab && audible("elab") && ST.elab.k !== (ST.lead && ST.lead.k)) {
     // AND IT SUBDIVIDES. One note per grid slot is a ceiling the elaborating
     // instruments of these traditions go straight through: a Javanese peking
@@ -2201,6 +2203,9 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       const own = e.strong || e.last || !sung.length
         || hash32(seed, "syl", Math.round(e.b * 96)) % 1000 < share * 1000;
       sung.push({ ...e, role: "voice", inst: -1, melisma: !own,
+        // the voice sits above the lead, not in unison with it — measured,
+        // `het+voice` and `elab+voice` were top clash pairs when it doubled
+        oct: (e.oct || 0) + 1,
         vel: e.vel * (own ? 1 : 0.86),
         b: e.b + Math.min(vlag, e.dur * 0.25) });
     }

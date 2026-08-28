@@ -42,7 +42,7 @@ const S = {
   // instrument and the model sounds like this people's instrument, and those
   // are not the same virtue — so it is a switch, and the bench exists to make
   // the difference audible rather than arguable.
-  sampled: true,
+  sampled: false,
   // How much voice is in the mix. The synthesis path is calibrated so a
   // singer and a player agree on what a velocity means (musicSynth), but how
   // much SINGING you want over an ensemble is a listener's call and not a
