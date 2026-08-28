@@ -2839,3 +2839,85 @@ What survives item 3 untouched: **`URBAN_LABOR`** (a farmer who moves to the cit
 farming — true under any partition), **`STAMP_RETIRE`** and **`VIABLE_UNITS`** (both
 about floors on the core, not about land), and the whole measurement discipline this
 lap built.
+
+---
+
+## 39. WHAT IT WOULD COST TO REPLACE THE CATCHMENT RULE — measured, not estimated
+
+> Owner: *"Would that be expensive? Would it be a big change? It is a pretty big
+> feature we are chasing"*
+
+### 39.1 The runtime cost is ZERO, because it is the same algorithm
+
+`territory.js:322` — the assignment is a multi-source Dijkstra on a persistent
+`MinHeap`, and every settlement seeds it identically:
+
+```js
+const home = sy * tw + sx;
+if (elev[home] > 0) { cost[home] = 0; tcost[home] = 0; heap.push(home, 0); }
+```
+
+Every source starts at **0**, and `reachBudget` caps how far each may expand. The
+work plan's rule is `argmin_i [cost(i,ti) − haulTiles · ln A_i]`, which is the
+**identical Dijkstra with a different starting potential**:
+
+```js
+heap.push(home, -haulTiles * Math.log(A_i));      // and drop the budget cap
+```
+
+A settlement that bids more starts lower and therefore wins tiles further out. This is
+the standard additively-weighted Voronoi; the relaxation loop, the heap and the
+complexity are unchanged. **If anything it is cheaper** — the budget bookkeeping
+(`budget` Map, per-pop rescale, the cap test in the frontier) all goes away.
+
+### 39.2 The code change is small; the INTERFACE does not move
+
+Measured blast radius: **58 references to `world._territoryOwner` across 12 files.**
+That number looks frightening and mostly is not, because **the output is the same data
+structure**. The partition stays an exclusive `Int32Array` of tile → settlement
+(§38.2). Consumers ask *"who owns this tile"*; none of them ask how it was decided.
+
+The catchment aggregates are similarly small: `_terrTiles` 14 refs, `_terrFertSum` 8,
+`_terrFarmedWt` 7, `_terrWorkTiles` 6. They keep their meanings.
+
+What actually changes inside `territory.js` (688 lines total):
+
+- the seed potential (one line);
+- deleting the budget cap and the `budget` Map (~10 lines);
+- defining `A_i` — the bid — from existing quantities (`_grainPrice`, unmet demand);
+- compulsion taking precedence over the bid where a liege/landlord claim exists.
+
+**Estimate: a small diff behind a `def: 0` lever, byte-identical when off.** The plan
+already names it `T.MARKET_PULL`.
+
+### 39.3 What DIES, and it is a lot of code
+
+- `reachBudget`, `T.ORG_REACH`, `TERRITORY_BASE` — the tech-gated allowance (§37.1);
+- `HINTERLAND_BY_TIER`, `CORE_BY_TIER` — the ratchet's territory half (§38.1);
+- `T.FARM_RES` — moot, there is no radius to scale;
+- arguably the levy tree and the peer market fold in too (the plan: *"three systems
+  become one"*), though that should be a later step, not this one.
+
+### 39.4 The expensive part is MEASUREMENT, not code
+
+Every catchment changes shape, so everything calibrated against the old shape must be
+re-run and possibly re-baselined: `resgate`'s bands, the stylized territory facts, the
+empire-area tail, the food gates. That is the *"blast radius is large"* the plan
+warns about — and it is a measurement bill, not an implementation one.
+
+Two named risks, both with the plan's own mitigations:
+
+- **Runaway** — one great city outbids the world. The haul falloff already bounds
+  reach, and compulsion resolves the cases where it should not be a bid at all.
+- **Flicker** — bids move tick to tick and borders oscillate. A switching margin, with
+  real historical warrant: market-franchise law existed to stop exactly this.
+
+### 39.5 The honest shape of it
+
+**A small, high-leverage diff with a large measurement bill.** Not a rewrite. The
+thing that makes it feel big is that it deletes four mechanisms and re-baselines the
+gates — not that the new rule is hard to write.
+
+Sequencing, given §37.2: this is very likely the cause of the pin that this entire lap
+has been chasing from the other end. If that holds, it subsumes rather than follows
+the remaining floor work.
