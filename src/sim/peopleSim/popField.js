@@ -2121,7 +2121,19 @@ export function deriveOnePop(world) {
         // exactly 0. Zero new constants.
         const kLocal = T.CORE_LOCAL ? ((s._k || 0) * (1 - importShare)) / scale : 0;
         const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
-        coreEff = Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);
+        // T.STAMP_RETIRE — NO MINIMUM. The owner's design: a city is born holding
+        // whatever its site actually gathered, sustains itself from there, and
+        // falls apart when it cannot. The stamp stops being a FLOOR under the
+        // size read; what a city IS becomes what its economy holds, full stop.
+        // Only legitimate once T.AGGLOM_LOCAL gives a self-fed city a real
+        // concentration target (§21) — without that the 2026-08-07 birth crater
+        // reopens, which is why this lever must never be read as independent of
+        // that one. Zero new constants: the birth SEED is untouched (the site law
+        // still gathers the pile before the mint), it simply stops being floored
+        // forever after.
+        coreEff = T.STAMP_RETIRE
+          ? Math.min(_coreF, kLocal + kBeyond)
+          : Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);
         // THE ARMING CHECK — the instrument this repo keeps needing and keeps
         // not having. TWO mechanisms were "validated" in regimes where their
         // edited line never ran (SUCCESSOR_STATES at tw=240, where an orphan
@@ -2154,7 +2166,7 @@ export function deriveOnePop(world) {
         // whether it still holds at tw=960 is a question no metric could answer.
         // Now it can: this is the share of the register the ceiling actually
         // binds for.
-        s._coreDiskBound = _coreF < (Math.max(holdF, kLocal) + kBeyond) ? 1 : 0;
+        s._coreDiskBound = _coreF < (T.STAMP_RETIRE ? (kLocal + kBeyond) : (Math.max(holdF, kLocal) + kBeyond)) ? 1 : 0;
       }
       s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
@@ -2198,7 +2210,9 @@ export function deriveOnePop(world) {
     // one law — and the import economy takes over the moment it grows past
     // it. Existing constants only; cities minted by other paths (colonies,
     // plantations) carry no stash and are untouched.
-    if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0) {
+    // T.STAMP_RETIRE also lifts the stamp off the CAPACITY spike — "no minimum"
+    // has to mean both sites (§11 named them), or the floor simply moves.
+    if (T.CORE_HOLD && !T.STAMP_RETIRE && s._coreHoldCapF > 0 && _coreF > 0) {
       // T.STARVE_SHED: the floor yields to SUSTAINED starvation — "hold what
       // arrived" was food-blind, so a chronically unfed core kept its full
       // capacity and the field logistic kept growing it through famine. The
