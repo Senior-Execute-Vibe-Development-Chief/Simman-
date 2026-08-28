@@ -12,8 +12,11 @@
 // MUST be recaptured on the merged build; the two blocks below are each line's
 // pre-merge anchor, kept for provenance (reset either line via the SIM_TUNE in its
 // entry).
-// Current baseline (2500 steps): ebfb8021/7fb32527 — UNCHANGED through the
-// v48 GRAIN_PROVISION flip (2026-08-26; same coinage-gate transparency) and the
+// Current baseline (2500 steps): 90386d96/2355b538 — v52 TILE_MONEY default ON
+// (per-tile farm-gate coin + tile fiscal sinks + unserved-coin founding pull;
+// SAVE_VERSION 52, v<52 guard pins OFF). Prior v51 pair: 87b8ca76 (8817 at
+// v51 emergent food stack; 31337 unchanged through v51 on this horizon).
+// UNCHANGED through the v48 GRAIN_PROVISION flip (2026-08-26; same coinage-gate transparency) and the
 // v47 GRAIN_MARKET flip (2026-08-25): the open grain market is gated on the
 // market institution (techEff.market — coined money), which no 320-grid
 // society holds by step 2500, so zero trades, zero capacity add-back, and the

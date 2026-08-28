@@ -1,6 +1,6 @@
 # Spec — per-tile money field (farm-gate payments & rural sinks)
 
-**Status:** Phase A+B+C+D built (`T.TILE_MONEY`, def 0) · **Date:** 2026-08-28 · **Companion:**
+**Status:** Phase A–E shipped (`T.TILE_MONEY` def 1, SAVE_VERSION 52) · **Date:** 2026-08-28 · **Companion:**
 `docs/tier-ratchet-2026-08-27.md` §41 (owner proposal), §42 (farm-field rule),
 `docs/food-system-design-2026-08-27.md` §1 (Mode M vs Mode C), PR #75 /
 `MARKET_PULL` cross-border bidding (built).
@@ -106,7 +106,7 @@ lever is on. Until then, tile coin is invisible to `localP` — intentional A/B.
 ### 4.3 Lever
 
 ```js
-T.TILE_MONEY   // def 0 — per-tile circulating coin at the farm gate
+T.TILE_MONEY   // def 1 (v52) — per-tile circulating coin at the farm gate
 ```
 
 Ship behind `SAVE_VERSION` guard like v51 food stack. Old saves: field absent, all
