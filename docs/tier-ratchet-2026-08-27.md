@@ -1537,3 +1537,90 @@ Two disciplines carried from wave 4, both bought with retractions:
   output is "unmatchable", not a ratio against the one control that reaches.
 - **No claim from a single draw**, including — especially — an unasked-for bonus
   finding. §13.3 and §17.1 both died that way.
+
+---
+
+## 23. THE OWNER ON `URBAN_AGGLOM` — §22.1 conceded, and the test that settles it
+
+> Owner: *"and then what is that 13 percent number? that feels like a cardinal rule
+> violation"*
+
+### 23.1 §22.1 is conceded
+
+§22.1 argued that widening the basis makes `URBAN_AGGLOM = 0.13` *meaningful* — that
+it stops being "13% of import-fed capacity" (no independent referent) and becomes
+"13% of a region's capacity stands in its city", an urbanisation rate sitting inside
+history's 5-15% agrarian band. I called that "the second cardinal rule's own test
+passing."
+
+**That argument is weaker than it was written.** Urbanisation is an OUTPUT of
+history — the joint result of agricultural surplus, transport cost, crowd disease,
+and the labour cost of taking a farmer off the land. Setting a dial to 0.13 and
+observing 13% urbanisation is dialling in the answer. The rule's own words:
+
+> *"A constant with no independent physical meaning… If `RIVER_UNIFY_FLOOR = 0.85`
+> exists only because it makes Egypt come out ~1M km², it is a fitted answer, not a
+> mechanism."*
+
+Giving a fitted constant a more physical-sounding *interpretation* does not convert
+it into a mechanism. §22.1 confused a nicer name for a better cause, which is the
+exact failure the rule describes. The owner applied the rule correctly against a
+claim I had published with confidence.
+
+**What is defensible, and stays:** the `TIER_CORE` bars (2,000 / 10,000 / 40,000)
+are *definitions of words*, grounded on what the literature calls a town, a city and
+a metropolis. A constant that only LABELS an outcome is not a fitted answer. The
+distinction that matters is whether the constant **drives**: `TIER_CORE` reads a
+core and names it; `URBAN_AGGLOM` sets what the core becomes. Only the second is the
+violation.
+
+### 23.2 `URBAN_LABOR` may make the dial deletable
+
+The reason `URBAN_AGGLOM` has to exist is that the model had no force setting the
+urbanisation *level* — only a distribution across cities. `T.URBAN_LABOR`, built
+today at the owner's direction, supplies exactly that missing force: move a farmer
+into the city and farm output falls, so capacity falls, so the flow reverses. That
+is a genuine negative feedback on urban size, and it is the physics that should set
+the level.
+
+**The test, cheap and decisive:** run with `URBAN_AGGLOM` set to something
+implausible — 0.5, then 1.0 — with `URBAN_LABOR` and `AGGLOM_LOCAL` on.
+
+- If the world still settles near a sane urbanisation rate, **the dial is not
+  load-bearing and can be deleted.** The equilibrium is set by the physics and
+  `URBAN_AGGLOM` is only the speed at which it is approached.
+- If urbanisation tracks the dial, **it IS the answer being painted on**, the owner
+  is right without qualification, and it has to be replaced by a mechanism rather
+  than re-tuned.
+
+Either outcome is worth having and neither depends on wave 5's result. Queued behind
+wave 5 (the machine is full); it is a better question than anything else pending.
+
+### 23.3 The stamp, per the owner's design
+
+> Owner: *"maybe when the city is born, pull an immediate amount of people from
+> around into it, somewhere less than 3k, and have them sustain from there? no
+> minimum? and if they get less than a certain sustaining population, or something
+> emergent like there is not enough people for it to function basically, it falls
+> apart?"*
+
+Birth small, grow or die on the world's terms, no floor. That is how cities happened
+and it is the cardinal-rule-clean form.
+
+The precise change: **the stamp must stop DRIVING.** Today `_coreHoldCapF` floors
+the core at 12,000 regardless of what the world says, and §21 established why it is
+still load-bearing — the concentration engine gave a self-fed city no target at all.
+`T.AGGLOM_LOCAL` removes that reason. Once a self-fed city builds a real core from
+its own surplus, the stamp has nothing left to do and the birth seed can be whatever
+the site actually gathers.
+
+The dissolve half already exists (`DISSOLVE_CORE` tests the core against the city
+bar). What is missing is not the death rule — it is letting the core FALL in the
+first place, which the stamp prevents. So the order is forced: `AGGLOM_LOCAL` must
+land before the stamp can go, and this is the second reason (after §16.3's
+dissolution risk) not to pull it early.
+
+Note also that a city born at ~3,000 IS a town for a while, which reverses the
+owner's 2026-08-22 directive (*"towns should not exist, anything smaller than a city
+should not be anything"*). That is the owner's call to reverse and is flagged here
+only so the reversal is deliberate rather than incidental.
