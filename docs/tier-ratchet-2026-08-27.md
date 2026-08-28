@@ -2475,3 +2475,74 @@ anyway.
 | `STAMP_RETIRE` | breaks the 12k pin; costs unquantified at the tail |
 | `VIABLE_UNITS` | works; exposes that the mode is not floor-driven |
 | `TOWN_MINT` | built, then superseded by the owner's design — delete or keep for a town register |
+
+---
+
+## 34. THE DIAL SWEEP RAN — §27.3's cap hypothesis is REFUTED
+
+Four doses of `URBAN_AGGLOM` across an 8× range, one lever varied, everything else
+identical (`CORE_LOCAL + AGGLOM_LOCAL + URBAN_LABOR`), all four run to 28k in the
+foreground and completed.
+
+| dial | claimed% | urban% | urban su | max core | total su | p50 core |
+|---|---|---|---|---|---|---|
+| 0.065 | 11.11 | 5.73 | 11,645 | 1205.2 | 203,272 | 12.0 |
+| **0.13** (shipped) | 9.57 | 6.38 | 13,245 | 841.2 | 207,704 | 12.0 |
+| 0.26 | 10.94 | 4.54 | 9,319 | 248.6 | 205,474 | 12.0 |
+| 0.52 | 13.18 | 8.82 | 18,931 | 930.7 | 214,676 | 12.0 |
+| *controls (no `AGGLOM_LOCAL`)* | 10.7-12.9 | 7.04-7.68 | — | 466-696 | **233,594-237,054** | 12.0 |
+
+### 34.1 REFUTED: the cap is not what costs the population
+
+§27.3 hypothesised that `AGGLOM_LOCAL` binds each city to 13% of its own region,
+capping the runaway tail, and that the tail was propping up world population. The
+test it implied: **raise the dial and the population should come back.**
+
+It does not. **An 8× dial range moves total population by 6%** (203k → 215k) while
+the gap to the controls is **12-14%** (234-237k). Even at four times the shipped
+value the treated world stays ~9% below control. A cap that can be relaxed eightfold
+without closing the gap is not what created the gap.
+
+**So the population cost remains unexplained**, and both of my explanations are now
+dead — churn refuted by arithmetic (§27.1), the cap refuted by measurement here.
+That is the honest state: the mechanism costs a fifth of the world's people and
+nobody knows why.
+
+### 34.2 INCONCLUSIVE: whether the dial is a painted-on answer
+
+The owner's cardinal-rule objection (§23) predicted one of two shapes. Neither
+appeared cleanly:
+
+```
+dial   ×8       urban%   5.73 → 6.38 → 4.54 → 8.82     ×1.5, and NOT MONOTONE
+```
+
+Urbanisation does not track the dial — 8× the input gives 1.5× the output, and the
+0.26 dose reads *lower* than both 0.065 and 0.13. On its face that says the system
+resists the dial and other forces (the graveyard, the hinterland cap, `URBAN_LABOR`'s
+food feedback) dominate the level, which would mean the constant is **not** simply
+setting the answer.
+
+**But this cannot be claimed from these runs.** Four doses, one draw each, no twins —
+and §20 established that this world's run-to-run spread at matched maturity is
+comparable to the effects being measured. The non-monotonicity is exactly as
+consistent with four noisy draws as with a real response curve. `max core` swinging
+1205 → 841 → 249 → 931 across the same doses is the tell: that is the statistic §14.1
+was already retracted for reading off single arms.
+
+**Settling it needs twins at each dose** — eight runs, ~40 minutes of foreground.
+Cheap now that arms cannot be lost, and it is the next thing to run.
+
+### 34.3 Answering the owner's question: is it "a few solid runs"?
+
+Partly.
+
+- **Runs settle problems A1 and A2** (§33) — the population cost and the dial. One is
+  now settled negatively (the cap is out); the other needs twins.
+- **Runs cannot settle A3** (the mature tail). That needs a run longer than the tool
+  timeout, so it needs either a calm machine or a resumable probe.
+- **Runs cannot settle B6** — *the mode never clears at any floor*, 27-41% of the
+  register in every configuration tried. That is a diagnosis problem: something other
+  than the floor sets that share, and more arms of the same shape will keep
+  re-measuring it rather than explaining it. **It is the deepest open item and it is
+  not run-shaped.**
