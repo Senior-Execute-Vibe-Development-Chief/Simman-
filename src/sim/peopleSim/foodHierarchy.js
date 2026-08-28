@@ -227,6 +227,21 @@ export function aggregateFoodHierarchy(world) {
   // /tick" row instead of freezing at its last value.
   for (const s of world.settlements) {
     if (s._foodImportRate) s._foodImportRate *= 0.9;
+    // T.PRICE_GROSS — stash the value the scarcity price needs BEFORE it rolls.
+    // The capacity book already treats exports as production it still owns
+    // (settlement.js: foodK = (_foodSupply + _foodExported)/perCapita, "selling
+    // grain is a downward-take, and the market cannot drag a catchment's
+    // carrying capacity below what its own land grows"). The scarcity price
+    // below does NOT, and reads the RETAINED net instead — so the same
+    // settlement, in the same tick, is priced against one supply figure and
+    // sized against another. foodHierarchy's own comment already names the
+    // consequence: "a heavy exporter can read as short and price its exports
+    // dear". Today that is a bounded pricing quirk. Under the bid rule
+    // (docs/tier-ratchet-2026-08-27.md section 42) scarcity becomes the thing
+    // that ASSIGNS LAND, so an exporter would bid for its own fields BECAUSE it
+    // exports — a runaway on a measurement artefact. Transient, derived,
+    // rebuilt every aggregation; never persisted.
+    s._foodExportedPrev = s._foodExported || 0;
     if (s._foodExported) s._foodExported = 0;   // T.GRAIN_MARKET capacity add-back: rolls each aggregation; updateSettlement (earlier in the tick) read the previous pass's value
   }
   // Goods-flow overlay recorder (render-only; the worker sets _wantGoodsFlows
@@ -267,8 +282,14 @@ export function aggregateFoodHierarchy(world) {
     // same-/near-tier pair. The 0.5–3 clamp bounds it and coin stays conserved; a truer
     // supply signal (production-relative, not retained-relative) is a scoped follow-up,
     // deliberately not bolted on here where it would destabilise the validated economy.
+    // T.PRICE_GROSS: price against the SAME supply the capacity book uses —
+    // production-relative, exports added back — so the two agree. Zero new
+    // constants and no new term: it is the identical _foodExported the capacity
+    // add-back already applies, gated on the same T.GRAIN_MARKET.
+    const _priceSupply = (s._foodSupply || 0)
+      + ((T.PRICE_GROSS && T.GRAIN_MARKET > 0) ? (s._foodExportedPrev || 0) : 0);
     const scarcity = Math.min(3, Math.max(0.5,
-      (s._foodDemand || 1) / Math.max(0.01, s._foodSupply)));   // no `|| 1` on supply: a food-empty settlement must read as MOST scarce, not neutral (Math.max(0.01,…) guards the divide)
+      (s._foodDemand || 1) / Math.max(0.01, _priceSupply)));   // no `|| 1` on supply: a food-empty settlement must read as MOST scarce, not neutral (Math.max(0.01,…) guards the divide)
     s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
   }
 
