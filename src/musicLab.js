@@ -18,7 +18,7 @@ import { MATERIALS, FAMILIES, rangeOf, makeVoice } from "./sim/musicInstruments.
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
-import { makeAudio, setDistance, playNote, sungLine, playSung } from "./sim/musicSynth.js";
+import { makeAudio, setDistance, playNote, sungLine, playSung, silence } from "./sim/musicSynth.js";
 import { loadSamples, sampledFor } from "./sim/musicSamples.js";
 import { slidesTo } from "./sim/musicInstruments.js";
 import { SAMPLE_BANK, SAMPLE_CREDIT } from "./sim/musicSampleManifest.js";
@@ -350,8 +350,13 @@ function startAmbient() {
   S.playing = true; pump();
 }
 function stopAmbient() {
+  // CLEARING THE TIMER ONLY STOPS WHAT HAS NOT BEEN SCHEDULED YET. The
+  // scheduler runs a couple of seconds ahead and the bodies ring for as long as
+  // they ring — a gong for eighteen seconds, a bell for eight — so this used to
+  // leave the room sounding well after the button said it had stopped.
   if (SCHED.timer) clearInterval(SCHED.timer);
   SCHED.timer = null; S.playing = false;
+  if (A) silence(A);
 }
 function pump() {
   if (!A) return;
@@ -405,6 +410,10 @@ function playPiece() {
   // one clock at a time: the piece and the ambience share a people, so they
   // also share voice channels, and each was damping the other's notes mid-note
   if (S.playing) stopAmbient();
+  // AND A SECOND PRESS REPLACES THE FIRST. A piece is scheduled all at once,
+  // so pressing play again simply laid another whole performance over the one
+  // still running — two tempi, two ensembles, the same people.
+  silence(A);
   // WHERE THE LISTENER IS STANDING GOVERNS THE PIECE TOO. This forced 0.9 —
   // the front row — whatever the distance control said, and then asked the
   // composer for a piece written for the front row as well. So the one thing
@@ -507,6 +516,8 @@ function ltPlay() {
   if (!t) return;
   const A = audio();
   if (S.playing) stopAmbient();
+  // a trial replaces the trial before it — "play again" must not stack
+  silence(A);
   setDistance(A, 0.85);
   const base = build(t.seed, "random");
   const m = retune(base, t.cond);
@@ -549,6 +560,9 @@ function ltRate(score) {
   const t = LT.trial;
   if (!t || !t.played) return;
   LT.log.push({ seed: t.seed, cond: t.cond, score, at: Date.now() });
+  // the judgement is made, so the sound stops — nothing carries into the next
+  // trial, which would contaminate it
+  if (A) silence(A);
   ltSave();
   // REVEALED ONLY NOW. Blind while you are judging it, named the moment you
   // have, because a pattern you notice yourself is worth as much as one that
@@ -1011,6 +1025,7 @@ function pieceHTML(m) {
       with a line sung over it.</p>
     <div class="controls">
       <button id="playPiece">Play the piece</button>
+      <button id="stopPiece" class="ghost">◼ Stop</button>
       ${pc ? `<span class="note tight">${pc.sections.length} sections · ${pc.totalBeats} beats · ${pc.tempo} bpm</span>` : ""}
     </div>
     ${pc ? `<div class="formline">${pc.sections.map(s =>
@@ -1146,9 +1161,9 @@ function redraw() {
 
 function wire() {
   const $ = (id) => document.getElementById(id);
-  $("roll").onclick = () => { S.seed = (S.seed + 1) >>> 0; $("seed").value = S.seed; regen(); render(); };
-  $("seed").onchange = (e) => { S.seed = (+e.target.value | 0) >>> 0; regen(); render(); };
-  $("ref").onchange = (e) => { S.ref = e.target.value; regen(); render(); };
+  $("roll").onclick = () => { if (A) silence(A); S.seed = (S.seed + 1) >>> 0; $("seed").value = S.seed; regen(); render(); };
+  $("seed").onchange = (e) => { if (A) silence(A); S.seed = (+e.target.value | 0) >>> 0; regen(); render(); };
+  $("ref").onchange = (e) => { if (A) silence(A); S.ref = e.target.value; regen(); render(); };
   $("trad").onchange = (e) => { S.trad = e.target.value; if (S.playing) stopAmbient(); regen(); render(); };
   $("voice").oninput = (e) => {
     S.voice = +e.target.value;
@@ -1159,7 +1174,7 @@ function wire() {
   // the listening test
   if ($("ltstart")) $("ltstart").onclick = () => { LT.on = true; ltNext(); render(); };
   if ($("ltclear")) $("ltclear").onclick = () => { LT.log = []; ltSave(); render(); };
-  if ($("ltstop")) $("ltstop").onclick = () => { LT.on = false; LT.trial = null; render(); };
+  if ($("ltstop")) $("ltstop").onclick = () => { if (A) silence(A); LT.on = false; LT.trial = null; render(); };
   if ($("ltplay")) $("ltplay").onclick = () => { ltPlay(); render(); };
   if ($("ltbad")) $("ltbad").onclick = () => ltRate(0);
   if ($("ltok")) $("ltok").onclick = () => ltRate(1);
@@ -1183,6 +1198,7 @@ function wire() {
       S.blend > 0.05 ? ` &nbsp;·&nbsp; blending with ${esc(PB.people.name)} <span class="np2">of the ${esc(PB.people.biomeLabel)}</span>` : ""}`;
   };
   $("playPiece").onclick = () => { playPiece(); render(); };
+  if ($("stopPiece")) $("stopPiece").onclick = () => { if (A) silence(A); };
   document.querySelectorAll("button[data-inst]").forEach(b => {
     b.onclick = () => {
       const inst = P.insts[+b.dataset.inst];
@@ -1370,7 +1386,8 @@ function exposeForTests() {
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
     loadSamples, sampleSource, sampledFor, SAMPLE_BANK, slidesTo, FAMILIES, FAMILIES,
     fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs, retune, TRIALS, LT,
-    buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S };
+    buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S,
+    audio, silence, stopAmbient, startAmbient, playPiece };
 }
 
 export function mount() {

@@ -72,6 +72,9 @@ const ROLE_PAN = { lead: 0, voice: 0, elab: 0.32, core: -0.22, het: 0.4, bass: 0
 const dB = (d) => Math.pow(10, d / 20);
 
 /** Master chain: role buses → limiter → soft clip, with a real room. */
+// the mix level `silence` ducks through and restores
+const MASTER_GAIN = 0.42;
+
 export function makeAudio(ctx) {
   const out = ctx.createGain(); out.gain.value = 0.9;
   // A safety limiter, then a tanh soft-clip. Web Audio hard-clips at the
@@ -92,7 +95,7 @@ export function makeAudio(ctx) {
   for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(1.2 * x) / 1.2; }
   shaper.curve = curve; shaper.oversample = "4x";
 
-  const master = ctx.createGain(); master.gain.value = 0.42;
+  const master = ctx.createGain(); master.gain.value = MASTER_GAIN;
   const tone = ctx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 16000; tone.Q.value = 0.5;
   const dry = ctx.createGain(); dry.gain.value = 0.78;
   const wet = ctx.createGain(); wet.gain.value = 0.26;
@@ -119,7 +122,34 @@ export function makeAudio(ctx) {
     else g.connect(master);
     buses[role] = g;
   }
-  return { ctx, master, tone, dry, wet, verb, comp, buses, bodies: new Map(), voices: new Map() };
+  // EVERY SOUNDING SOURCE, so that stopping can actually stop.
+  //
+  // A scheduled note lives in the audio graph, not in the scheduler: clearing
+  // the timer that would have queued the NEXT bar does nothing to the two
+  // seconds already queued, and nothing at all to a body still ringing. A gong
+  // rings for eighteen seconds and a bell for eight, so "stop" left the room
+  // sounding long after the button said it had stopped.
+  //
+  // TRACKED AT THE CONTEXT, not at the call sites. Tracking them by hand was
+  // tried first and got it wrong inside ten minutes: `playPluck` and `playSung`
+  // looked like the only two places a source is made, and there are seven, in
+  // five files — the recorded-sample path among them, which is the default, so
+  // the fix silenced the modelled bodies and left the ones actually playing.
+  // Wrapping the two factory methods once means a source cannot be created
+  // without being seen, including by code written after this.
+  const live = new Set();
+  for (const kind of ["createBufferSource", "createOscillator", "createConstantSource"]) {
+    const make = ctx[kind];
+    if (typeof make !== "function") continue;
+    ctx[kind] = function wrapped(...args) {
+      const node = make.apply(ctx, args);
+      live.add(node);
+      node.addEventListener("ended", () => live.delete(node));
+      return node;
+    };
+  }
+  return { ctx, master, tone, dry, wet, verb, comp, buses, live,
+    bodies: new Map(), voices: new Map() };
 }
 /** A room, made of decaying noise — no impulse response file to ship. The two
  *  channels are independent so the tail is wide rather than a point source. */
@@ -138,6 +168,40 @@ function roomIR(ctx, secs, decay) {
   }
   return buf;
 }
+/**
+ * STOP MEANS STOP: every source sounding right now is ended, and the ones
+ * scheduled after this call are left alone.
+ *
+ * Two details that both turned out to matter.
+ *
+ * THE SET IS SNAPSHOT FIRST. `silence` is called at the START of playing
+ * something new — that is what stops a second press from laying a whole second
+ * performance over the first — so killing whatever is in the set when the timer
+ * fires would kill the notes just scheduled. Take the doomed list now, empty
+ * the set now, and anything added afterwards is somebody else's music.
+ *
+ * AND THE MIX DUCKS RATHER THAN THE NOTES BEING CUT. Ending a buffer mid-cycle
+ * is a step discontinuity, which is a click, and a click across a whole
+ * ensemble at once is the loudest thing this page can make. So the master ramps
+ * away over about ten milliseconds, the sources end fifty milliseconds in, and
+ * the mix is restored ten milliseconds after that — all on the audio clock, all
+ * finished long before the 150 ms lead-in every player here schedules against.
+ */
+export function silence(A) {
+  if (!A || !A.live) return;
+  const doomed = [...A.live];
+  A.live.clear();
+  A.voices.clear();
+  if (!doomed.length) return;
+  const t = A.ctx.currentTime, g = A.master.gain;
+  try {
+    if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t); else g.cancelScheduledValues(t);
+  } catch { /* older engines */ }
+  g.setTargetAtTime(0.0001, t, 0.010);
+  g.setValueAtTime(MASTER_GAIN, t + 0.06);
+  for (const n of doomed) { try { n.stop(t + 0.05); } catch { /* never started */ } }
+}
+
 /** Distance: far away, a settlement's music is dark and mostly reflection. */
 export function setDistance(A, intimacy) {
   const k = clamp(intimacy, 0, 1);
