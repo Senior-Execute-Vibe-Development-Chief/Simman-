@@ -259,56 +259,25 @@ compared across grids. That is what `tools/resgate.mjs` adds.
 
 ---
 
-## THE MARTIN EFFECT — recognizable difference without scripting
+## THE MARTIN EFFECT — recognizable vibe, not scripting
 
-> **For anything a human hears, reads, or sees at a glance, emergence selects
-> from a catalog of real-world *archetypes* scored by world state — never assigns
-> outcomes by place name. Peoples must feel distinct by vibe before the player
-> opens the codex.**
+> **Human-facing output (music, language, flags, names) should feel like
+> recognizable *families* of real things — scored from world state, never
+> assigned by place name.** Like GRRM's trick: copy life-shaped texture enough
+> that priors fire ("maritime north," "river court"), while the map stays invented.
+> Fully alien and fully random both make everyone blend together.
 
-Sim-wide principle — not music-only. Shared code: `src/sim/martin.js`.
-Registry: `MARTIN_DOMAINS` (tuning, language, emblem, name). **Music tuning
-ships first** (`src/sim/musicArchetypes.js`); language typology and emblem
-grammars follow the same contract.
-
-Named after George R.R. Martin's worldbuilding move: copy **life-shaped texture**
-closely enough that lifelong priors fire ("maritime north," "river court,"
-"steppe herders") while the map stays invented. You recognize **families** of real
-things; the instances are still emergent. A fully alien output and a fully random
-one both fail the same way — **everyone blends together.**
-
-This is **not** a fourth loophole in rule 2. Rule 2 bans *fitting the answer*
-(`if (onNile) giveEgypt`). The Martin Effect builds the **selector**: libraries of
-measured forms and mechanisms that ask which forms this people's **materials,
-spectra, society, and contact** can support. Pure sim mechanics (claim costs,
-population, trade) never use Martin.
-
-Full write-up: `docs/martin-effect.md`. Music work order: `docs/music-archetypes-plan.md`.
-
-### When it applies
-
-Use it when **all** of these hold:
-
-1. A human consumes the output directly (music, language texture, flags, names…).
-2. Free generation is **unmusical, illegible, or samey** despite correct physics.
-3. Real cultures cluster into **namable families** experts recognize.
-4. Families can be **scored from state** without naming the people.
-
-### Right vs wrong
+Not a fourth cardinal rule — a **style note** on top of rule 2. Rule 2 bans
+`if (onNile) giveEgypt`. This bans free-generation soup. When free derivation
+sounds samey or unmusical, **pick from a catalog of measured forms** using the
+same emergent inputs (materials, society, contact) — don't name the people.
 
 ```
 WRONG:  if (biome === "delta") scale = maqamRast
-WRONG:  free roughness crawl → arbitrary chromatic degrees
-WRONG:  one archetype hard-coded per people forever
-
-RIGHT:  pickAmong(catalog, scoreFn, { seed }) — see martin.js
-RIGHT:  compose *inside* the winning archetype; vary texture/rhythm emergently
-RIGHT:  contact edges drift archetype weights — history moves taste, not scripts
+WRONG:  arbitrary chromatic crawl because physics allows it
+RIGHT:  score pentatonic / maqām / pélog families from spectrum + capacity; seeded tie-break
 ```
 
-### One-sentence check
-
-> Would a player who never opened the codex still tell two peoples apart by vibe
-> — without us naming either people in the code?
-
-If not: more archetype breadth or better scoring — not more free parameters.
+Sim mechanics (claims, population, trade) never use this. First code path:
+`musicArchetypes.js` for derived peoples' scales. Language typology and emblem
+pools already rhyme with the same idea.

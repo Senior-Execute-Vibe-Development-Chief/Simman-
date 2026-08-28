@@ -1,8 +1,8 @@
 # Music tuning archetypes — implementation plan
 
-Companion to `docs/martin-effect.md`. This is the **first Martin application**:
-replace free roughness-crawled scales for derived peoples with **scored selection**
-from a pre-approved catalog.
+Companion to the Martin Effect note in `CLAUDE.md`. Replaces free
+roughness-crawled scales for derived peoples with scored selection from a
+pre-approved catalog.
 
 ---
 
@@ -138,4 +138,4 @@ Removes the “wobbly resample” failure mode for recorded bodies.
 - Sim ambient wiring (still Lab-only).
 - Per-archetype composition rule overrides (texture stays emergent).
 
-See `docs/martin-effect.md` for the principle; this doc is the work order.
+See `CLAUDE.md` for the style rule; this doc is the work order.

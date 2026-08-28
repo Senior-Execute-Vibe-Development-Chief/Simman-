@@ -1,11 +1,47 @@
-// ── Tuning archetypes — Martin-selected pitch vocabulary ─────────────────
+// ── Tuning archetypes — measured scales for derived peoples ──────────────
 //
-// Measured scales that actually work for human ears and for the sample bank.
-// Derived peoples never read `musicTraditions.js` (bench only); they score
-// THIS catalog from spectrum, capacity, and society. See docs/martin-effect.md.
+// Free roughness-crawl often lands on unmusical degree sets. Derived peoples
+// score THIS catalog from spectrum, capacity, and society — never by culture
+// name. Bench traditions (`musicTraditions.js`) stay separate known-answer tests.
+import { hash32 } from "./peopleSim/rng.js";
 import { FAMILIES } from "./musicInstruments.js";
 import { dissonanceCurve, minimaOf } from "./musicTuning.js";
-import { bandFit, etErr, pickAmong, stepSpread } from "./martin.js";
+
+/** `ARCHETYPE_TUNING=0` restores raw deriveScale for probes. */
+export const ARCHETYPE_TUNING_ON = !(typeof process !== "undefined" && process.env?.ARCHETYPE_TUNING === "0");
+
+function bandFit(value, min, max) {
+  if (min > max) [min, max] = [max, min];
+  if (value >= min && value <= max) return 1;
+  if (value < min) return Math.max(0, 1 - (min - value) / Math.max(1, min));
+  return Math.max(0, 1 - (value - max) / Math.max(1, max));
+}
+
+function stepSpread(cents, frameCents = 1200) {
+  if (cents.length < 2) return 0;
+  const steps = [];
+  for (let i = 1; i < cents.length; i++) steps.push(cents[i] - cents[i - 1]);
+  steps.push(frameCents - cents[cents.length - 1]);
+  const mean = steps.reduce((a, b) => a + b, 0) / steps.length;
+  if (mean < 1) return 0;
+  const var_ = steps.reduce((s, x) => s + (x - mean) ** 2, 0) / steps.length;
+  return Math.sqrt(var_) / mean;
+}
+
+function etErr(cents) {
+  if (!cents.length) return 0;
+  return cents.reduce((s, c) => s + Math.abs(c - Math.round(c / 100) * 100), 0) / cents.length;
+}
+
+function pickAmong(items, scoreOf, { seed = 0, tag = "pick", epsilon = 0.05, topK = 4 } = {}) {
+  const ranked = items
+    .map(item => ({ item, score: scoreOf(item) }))
+    .sort((a, b) => b.score - a.score || String(a.item.id).localeCompare(String(b.item.id)));
+  const best = ranked[0]?.score ?? -Infinity;
+  const pool = ranked.filter(r => r.score >= best - epsilon).slice(0, topK);
+  const pick = pool[hash32(seed >>> 0, "arch", tag) % pool.length] || ranked[0];
+  return { picked: pick?.item ?? null, score: pick?.score ?? best, ranked };
+}
 
 const D = (cents, prom = 1) => ({ cents, ratio: Math.pow(2, cents / 1200), prom, found: true });
 
@@ -188,9 +224,9 @@ export function applyTuningArchetype(rawScale, match) {
     ...rawScale,
     degrees,
     frame,
-    derivedBy: `martin:${arch.id}`,
+    derivedBy: `archetype:${arch.id}`,
     tetErr: etErr(arch.scale),
-    martin: {
+    archetype: {
       id: arch.id,
       family: arch.family,
       label: arch.label,

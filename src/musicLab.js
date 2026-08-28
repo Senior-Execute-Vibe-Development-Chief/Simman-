@@ -972,12 +972,12 @@ function tuningHTML(m) {
   const sung = fromHome.map((c, i) => noteName(tonic * Math.pow(2, c / 1200), modeSpell[i]));
   const degSpell = spell(d.map((x, i) => midiOfHz(degreeHz(m, tonic, i, 0))));
   const tween = sung.filter(n => n.between).length;
-  const mart = m.scale.martin;
+  const arch = m.scale.archetype;
   return `<div class="card">
-    <h2>The scale they play <span class="count">— ${mart
-      ? `Martin: ${esc(mart.label)} (${esc(mart.family)})`
+    <h2>The scale they play <span class="count">— ${arch
+      ? `${esc(arch.label)} (${esc(arch.family)})`
       : "derived, not chosen"}</span></h2>
-    ${mart ? `<p class="note tight">Pitch vocabulary selected from measured tuning families scored against this people's bodies and society (fit ${(mart.score * 100).toFixed(0)}%). ${esc(mart.provenance)}. The curve below is still the physics; the degrees are the catalog match.</p>` : ""}
+    ${arch ? `<p class="note tight">Tuning family matched from measured catalogs (fit ${(arch.score * 100).toFixed(0)}%). ${esc(arch.provenance)}. The curve below is still the physics; the degrees are the catalog match.</p>` : ""}
     <p class="note">Two tones sound rough when their partials beat against each other. This curve is
       that roughness, computed across every interval from the ensemble's own spectrum, using
       Plomp &amp; Levelt's measured listening data. <strong>The dips are where this people's

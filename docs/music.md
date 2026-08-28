@@ -20,9 +20,8 @@ literacy                 → FORM
 world state right now    → OCCASION
 ```
 
-**Martin Effect (2026-08):** derived peoples select scale from a catalog of measured
-tuning families scored by spectrum and society — see `docs/martin-effect.md` and
-`docs/music-archetypes-plan.md`. Raw roughness-crawl remains for Lab debug.
+**Archetype tuning (2026-08):** derived peoples select scale from measured families
+in `musicArchetypes.js` — see CLAUDE.md (Martin Effect style note).
 Bench traditions (`musicTraditions.js`) are unchanged known-answer tests.
 
 ### Tuning is the spine
