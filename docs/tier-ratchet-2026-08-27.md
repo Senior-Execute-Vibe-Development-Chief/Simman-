@@ -2921,3 +2921,69 @@ gates — not that the new rule is hard to write.
 Sequencing, given §37.2: this is very likely the cause of the pin that this entire lap
 has been chasing from the other end. If that holds, it subsumes rather than follows
 the remaining floor work.
+
+---
+
+## 40. WOULD A TILE SWITCH BUYERS? — yes, and it is completely unlike today
+
+> Owner: *"would a farm tile now be able to give its food to a DIFFERENT city,
+> adaptively, if that city can pay more, or actually if you MAKE MORE MONEY selling
+> there than another city? This would be different to how it works now?"*
+
+### 40.1 Today the tile does not choose at all
+
+Two facts, both verified in the tree rather than quoted from the plan:
+
+**Roads are explicitly ignored.** `territory.js:406`:
+
+```js
+const c = localEdgeCost(world, ti, ni, kn, true, true);
+// reach ignores roads + the boat/land port tax (a settlement farms its hinterland on foot)
+```
+
+`ignoreRoads = true`, `noPortTax = true`, with a stated rationale. That rationale is
+**coherent under the current model and wrong under the owner's**: if a catchment is
+*the land you walk out to*, ignoring roads is right. If it is *the market you sell
+to*, grain travels by cart and boat and roads are the whole point.
+
+**Price has no influence whatsoever.** ρ(`_grainPrice`, catchment tiles) = **−0.011**
+(`food-system-design` §3.1). The assignment is walking cost, capped by an
+organisation-tech budget (§37.1). A tile is farmed by whoever is nearest on foot
+within their allowance — full stop.
+
+### 40.2 Today price moves only the LEFTOVERS
+
+Price *is* in the model, but downstream of the assignment. Once a settlement has
+harvested its assigned tiles, surplus moves between settlements two ways: **compelled**
+up the levy tree (child → liege), or **bought** on the peer market (deficit-driven,
+at the seller's price, through the haul physics).
+
+So the sequence today is: **geometry books the harvest to a city, then price haggles
+over what is left.** The farmer never had a buyer decision.
+
+### 40.3 Under the rule, the choice moves to the farm gate
+
+The tile picks its buyer: whoever nets the producer most after carriage wins the tile
+itself. Recomputed each pass, so it is genuinely adaptive:
+
+- a city in famine bids up → neighbouring fields **switch to it**, which is what a
+  grain shed does in a bad year;
+- a new road or port cuts the haul → that city's supply zone **extends along the
+  road**. Today roads change this by exactly nothing;
+- a city that grows rich pulls fields off a poorer neighbour — the crowding-out the
+  owner predicted, arriving as a consequence rather than a special case.
+
+**Two constraints keep it honest:**
+
+- **Exclusive, not split** (§38.2). A tile sells to ONE market at a time. It may
+  switch; it may not divide. Bracton's market-spacing rule is the historical warrant.
+- **Compulsion outranks price** — the owner's own *"or whoever forces them to"*. Where
+  a liege or landlord holds a claim the grain goes there whatever the bid. That is how
+  Rome eats Egypt's harvest: not proximity, not price — **ownership**.
+
+### 40.4 The one-line difference
+
+**Today:** walking distance decides who gets the harvest; price haggles over the
+remainder.
+**Under the rule:** price and compulsion decide who gets the harvest; there is no
+remainder step, because the grain went to its buyer at the farm gate.
