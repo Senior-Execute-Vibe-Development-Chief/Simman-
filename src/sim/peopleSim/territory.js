@@ -161,6 +161,10 @@ const _resR = (world) => (T.FARM_RES && world) ? rNormPop(world) : 1;
 // rung in shipped code, at every grid. Named, not touched: it belongs to the spacing
 // lap with the rest of the fifth site.)
 export function coreRadiusFor(s, world) {
+  // T.MARKET_PULL retires CORE_BY_TIER for catchment carving — the home block is
+  // emergent from the bid. armies.js still reads this for assault reach; use a
+  // minimal footprint so siege geometry does not inherit a discontinuous tier grant.
+  if (T.MARKET_PULL > 0) return 1;
   const t = s.tier | 0;
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
@@ -173,6 +177,8 @@ export function coreRadiusFor(s, world) {
 // Scaled by T.HINTERLAND_MULT (tuning.js); never smaller than the core.
 const HINTERLAND_BY_TIER = [3, 4, 6, 8];
 export function hinterlandRadiusFor(s, world) {
+  // T.MARKET_PULL retires HINTERLAND_BY_TIER — the farm belt is what the bid wins.
+  if (T.MARKET_PULL > 0) return coreRadiusFor(s, world);
   const t = s.tier | 0;
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
   return Math.max(coreRadiusFor(s, world), Math.round(base * T.HINTERLAND_MULT * _resR(world)));
