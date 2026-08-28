@@ -24,7 +24,7 @@
 // standalone derivation the Music Lab drives; the sim stays silent.
 import { hash32 } from "./peopleSim/rng.js";
 import { MATERIALS, FAMILIES, makeInstrument } from "./musicInstruments.js";
-import { ensembleSpectrum, deriveScale, deriveMode, finalsOf } from "./musicTuning.js";
+import { ensembleSpectrum, deriveScale, deriveMode, finalsOf, LENGTH_POWER } from "./musicTuning.js";
 import { prosodyOf } from "./languagePhonetics.js";
 
 // ── biomes: what grows and what can be dug ───────────────────────────────
@@ -326,7 +326,14 @@ export function musicOf(people) {
   // steps; an oral one keeps the ratios it found
   const fixedSets = insts.some(i => i.fam === "barSet" || i.fam === "bell");
   const pull = Math.max(0, Math.min(0.85, people.soc.literacy * 0.5 + (fixedSets ? 0.25 : 0) + people.know.organization * 0.2 - 0.25));
-  const scale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated });
+  // AND THE BODY THE SCALE IS CUT FROM is the one everybody tunes to — the
+  // same instrument chosen just above, for the same reason. Where its timbre
+  // offers no consonance to find, what is left is its GEOMETRY: how its pitch
+  // answers to its own length, which is 1/L for a string or a bore and 1/L²
+  // for a bar. See `cutPitches`.
+  const refFam = FAMILIES[(insts[refJ] || insts[0] || {}).fam] || {};
+  const power = LENGTH_POWER[refFam.vib] ?? 1;
+  const scale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated, power });
   // The mode: what they actually sing out of the scale they found. Its size
   // is bounded twice over — by how much scale material exists and how much
   // theory the tradition can carry (a written tradition sustains a larger

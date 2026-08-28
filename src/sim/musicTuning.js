@@ -76,7 +76,66 @@ export function minimaOf(curve) {
  * should be. `pull` — how strongly the tradition regularizes toward equal
  * steps (a notated, keyboard-ish tradition does; an oral one does not).
  */
-export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpec = null } = {}) {
+/**
+ * HOW A BODY'S PITCH ANSWERS TO ITS OWN SIZE.
+ *
+ * A maker does not choose a frequency. They cut a length — a string, a bore, a
+ * bar — and the pitch is whatever that length gives. What the cut DOES to the
+ * pitch is the body's physics and nothing else:
+ *
+ *   string, air column   f ∝ 1/L    halve it and you have the octave
+ *   bar, clamped tongue  f ∝ 1/L²   halve it and you have TWO octaves
+ *   membrane, plate      f ∝ 1/r
+ *
+ * That difference is the whole reason a string culture and a metallophone
+ * culture arrive at different scales from the same act.
+ */
+export const LENGTH_POWER = { string: 1, air: 1, membrane: 1, shell: 1, tongue: 2, bar: 2, plate: 2 };
+
+/**
+ * THE PITCHES A MAKER'S HANDS CAN ACTUALLY PRODUCE.
+ *
+ * Marking a length in halves, thirds, quarters, fifths and sixths is something
+ * you can do by folding and stepping; past about a sixth you cannot place the
+ * mark by eye. That bound is a claim about hands, not about music.
+ *
+ * And the cut is taken from a length you ALREADY HAVE, not only from the whole
+ * — which is how the monochord actually works, and how 三分損益 works: take two
+ * thirds of what you just found, then four thirds of that, and keep going. So
+ * the candidates are a lattice grown off the degrees already placed.
+ *
+ * For a string (power 1) the lattice is the just ratios — 3/2, 4/3, 5/4, 6/5.
+ * For a bar (power 2) it is their SQUARES — 9/8, 16/9, 25/16, 36/25 — which
+ * is a completely different set, and that is the prediction: a string-and-pipe
+ * people should land on just intervals and a metallophone people should not.
+ */
+const PARTS = [[2, 1], [3, 1], [3, 2], [4, 1], [4, 3], [5, 1], [5, 2], [5, 3], [5, 4], [6, 1], [6, 5]];
+export function cutPitches(power, frameCents, haveCents) {
+  const out = new Map();
+  for (const base of haveCents) {
+    const bR = Math.pow(2, base / 1200);
+    for (const [m, n] of PARTS) {
+      let r = bR * Math.pow(m / n, power);
+      // A CUT THAT OVERSHOOTS IS FOLDED BY THE OCTAVE, not by the frame. Where
+      // a people's pattern repeats is its own business; that halving a string
+      // gives the same note again is a fact about the string, and about ears,
+      // and is not up for negotiation. Folding by the frame instead asserted
+      // that 1200 and the frame were the same note — so a people repeating at
+      // 1156 had a forty-four-cent interval handed to it as a legitimate cut,
+      // and every degree grown off that one inherited the smear.
+      while (r >= 1.9995) r /= 2;
+      while (r < 1) r *= 2;
+      for (let oct = 0; ; oct++) {
+        const c = 1200 * Math.log2(r) + 1200 * oct;
+        if (c > frameCents - 1) break;
+        if (c >= 1) out.set(Math.round(c * 4), c);   // quarter-cent dedupe
+      }
+    }
+  }
+  return [...out.values()].sort((a, b) => a - b);
+}
+
+export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpec = null, power = 1 } = {}) {
   const curve = dissonanceCurve(spec);
   const mins = minimaOf(curve);
   const range = Math.max(...curve.ys) - Math.min(...curve.ys) || 1;
@@ -157,7 +216,19 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
     const lo = 1.02, hi = frame.ratio - 0.012;
     while (degrees.length < want || (degrees.length < cap && ringGaps() > STEP_CEIL)) {
       let best = null, bestCost = Infinity;
-      for (let c = 60; c < frame.cents - 60; c += 4) {
+      // WHERE THE CANDIDATES COME FROM. This used to sweep a four-cent grid
+      // across the whole frame — a continuum, offered to a question that has
+      // no answer on one. Plomp–Levelt's roughness PEAK is a couple of hundred
+      // cents wide in this register, so for a sparse or inharmonic spectrum
+      // the least-rough new pitch is one crammed against a pitch already
+      // there, and minimising roughness honestly returned a cluster: scales
+      // beginning 0, 130, 260, and modes with crawls in them that no one could
+      // sing and the mode search could not avoid.
+      //
+      // A maker does not sweep a continuum. They cut, and then they listen.
+      // The cutting is what produces the candidates; the listening — every
+      // line below this one, unchanged — chooses among them.
+      for (const c of cutPitches(power, frame.cents, degrees.map(d => d.cents))) {
         const r = Math.pow(2, c / 1200);
         if (r < lo || r > hi) continue;
         if (degrees.some(d => Math.abs(d.cents - c) < STEP_FLOOR)) continue;
