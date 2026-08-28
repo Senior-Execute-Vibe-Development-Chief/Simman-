@@ -458,12 +458,12 @@ function playPiece() {
 // at random, so stopping at any point leaves a balanced sample rather than a
 // truncated sweep.
 const TRIALS = [
-  { key: "full",    what: "the piece exactly as the engine makes it — the control" },
-  { key: "tuned12", what: "the same piece, same tune, same bodies, with every scale degree snapped to equal temperament" },
-  { key: "justdia", what: "the same piece again, with every degree snapped to the nearest simple whole-number ratio" },
-  { key: "melody",  what: "the tune alone, on the body that leads it — no accompaniment, no percussion" },
-  { key: "backing", what: "everything EXCEPT the tune — the accompaniment, the drone, the percussion" },
-  { key: "scale",   what: "no music at all: just the scale, one degree at a time, then each against the tonic" },
+  { key: "full",     what: "the piece exactly as the engine makes it — the control" },
+  { key: "tuned12",  what: "the same piece, same tune, same bodies, every scale degree snapped to equal temperament" },
+  { key: "justdia",  what: "the same piece again, every degree snapped to the nearest simple whole-number ratio" },
+  { key: "modelled", what: "the same piece on bodies synthesised from this people's own materials, instead of the recordings" },
+  { key: "plain",    what: "the same piece with the heterophony and the ornaments out — one line and its accompaniment" },
+  { key: "novoice",  what: "the same piece with the singers out — instruments only" },
 ];
 const JUST_RATIOS = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 7 / 5, 3 / 2, 8 / 5, 5 / 3, 7 / 4, 9 / 5, 15 / 8, 2];
 
@@ -522,40 +522,33 @@ function ltPlay() {
   const base = build(t.seed, "random");
   const m = retune(base, t.cond);
   const t0 = A.ctx.currentTime + 0.15;
-  if (t.cond === "scale") {
-    // no music at all — the tuning on its own, then each degree against the
-    // tonic, which is the only way to hear an interval rather than a tune
-    const lead = m.insts.find(i => i.cap >= 5) || m.insts[0];
-    const tonic = tonicOf(m, "peace");
-    const n = m.mode.size;
-    for (let i = 0; i <= n; i++) {
-      playNote(A, lead, degreeHz(m, tonic, modeDegree(m, i % n), i === n ? 1 : 0), t0 + i * 0.42, 0.4, 0.42,
-        { role: "lead", channel: "lt:run" });
-    }
-    for (let i = 1; i < n; i++) {
-      const at = t0 + (n + 1) * 0.42 + 0.3 + (i - 1) * 0.85;
-      playNote(A, lead, degreeHz(m, tonic, 0, 0), at, 0.8, 0.4, { role: "lead", channel: "lt:a" });
-      playNote(A, lead, degreeHz(m, tonic, modeDegree(m, i), 0), at, 0.8, 0.4, { role: "lead", channel: "lt:b" });
-    }
-    t.played = true;
-    return;
-  }
   const hymn = hymnSyllables(base, 10);
   const piece = composePiece(base, "peace", hymn.syls, 0.85);
-  const spb = 60 / piece.tempo;
-  const lead = new Set(["lead", "voice", "het", "elab"]);
+  t.secs = Math.round(piece.totalBeats * 60 / piece.tempo);
+  // EVERY CONDITION IS A WHOLE PIECE. The first cut of this test muted layers —
+  // the tune on its own, the accompaniment on its own — and a muted arrangement
+  // is not something anyone can rate: it sounds incomplete because it IS
+  // incomplete, which tells you nothing about whether the music is any good. So
+  // each condition changes one layer and leaves a finished piece behind.
+  const wasSampled = A.sampled;
+  if (t.cond === "modelled") A.sampled = false;
   for (const ev of piece.events) {
     if (ev.role === "voice") continue;
-    if (t.cond === "melody" && !lead.has(ev.role)) continue;
-    if (t.cond === "backing" && lead.has(ev.role)) continue;
-    fireEvent(m, ev, t0 + ev.b * spb, spb, 1);
+    // `plain` keeps a complete ensemble — a line, its accompaniment and its
+    // percussion — and drops only the doublings and the decoration, which is
+    // what a listener means by "too much going on"
+    if (t.cond === "plain" && ev.role === "het") continue;
+    const e = t.cond === "plain" && ev.ornDeg != null ? { ...ev, ornDeg: undefined } : ev;
+    fireEvent(m, e, t0 + e.b * spbOf(piece), spbOf(piece), 1);
   }
-  if (t.cond !== "backing") {
-    fireVoiceLine(m, piece.events.filter(e => e.role === "voice"), t0, spb, 1,
+  if (t.cond !== "novoice") {
+    fireVoiceLine(m, piece.events.filter(e => e.role === "voice"), t0, spbOf(piece), 1,
       { syls: hymn.syls, acc: hymn.acc, rotate: true });
   }
+  A.sampled = wasSampled;
   t.played = true;
 }
+const spbOf = (piece) => 60 / piece.tempo;
 function ltRate(score) {
   const t = LT.trial;
   if (!t || !t.played) return;
@@ -597,20 +590,25 @@ function listenHTML() {
   };
   return `<div class="card">
     <h2>Listening test <span class="count">— ${done} rated</span></h2>
-    <p class="note">Rating whole pieces gives a correlation, and two of those have already turned out
-      to be the wrong variable here. This is an <b>ablation</b>: the same people, one layer changed at
-      a time. The decisive pair is <b>full</b> against <b>equal temperament</b> — identical composition,
-      identical bodies, only the tuning moved. If the tempered one rates better, the scale is the fault.
-      If they rate the same, the scale is cleared however the curve looks, and <b>melody</b> versus
-      <b>backing</b> says which of the other two it is. <b>You are not told which you are hearing until
-      after you rate it.</b></p>
+    <p class="note">Rating pieces in the abstract gives a correlation, and two of those have already
+      turned out to be the wrong variable here. This is an <b>ablation</b>: the same people, one layer
+      changed at a time — but <b>every condition is a whole piece</b>, twenty to fifty seconds, because
+      a muted arrangement sounds incomplete for reasons that have nothing to do with whether the music
+      is any good. The decisive pair is <b>full</b> against <b>equal temperament</b>: identical
+      composition, identical bodies, only the tuning moved. If tempered rates better, the scale is the
+      fault; if they rate the same, the scale is cleared however the curve looks, and
+      <b>modelled</b>, <b>plain</b> and <b>novoice</b> divide the rest between the synthesis, the
+      arrangement and the singers. <b>You are not told which you are hearing until after you rate
+      it</b> — and you can rate as soon as you have decided, which stops the piece.</p>
     ${!LT.on
       ? `<div class="controls"><button id="ltstart">Start the test</button>
          ${done ? `<button id="ltclear" class="ghost">Clear ${done} ratings</button>` : ""}</div>`
       : `<div class="ltnow">
           <div class="controls">
-            <button id="ltplay">${t && t.played ? "↻ Play again" : "▶ Play"}</button>
-            <span class="note tight">${t && t.played ? "Now rate it." : "Listen, then rate it."}</span>
+            <button id="ltplay">${t && t.played ? "↻ From the top" : "▶ Play"}</button>
+            <span class="note tight">${t && t.played
+              ? `Playing${t.secs ? ` — about ${t.secs}s` : ""}. Rate it whenever you have decided; that stops it.`
+              : "A whole piece. Listen as long as you need, then rate it."}</span>
           </div>
           <div class="controls ltrate ${t && t.played ? "" : "off"}">
             <button id="ltbad" class="ltb bad">Bad</button>
