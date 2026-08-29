@@ -1,4 +1,6 @@
-// Browser mint-crash v2: open at 0.5×/Quarter, Play through first cities, catch error banner / [SimWorker].
+// Browser mint-crash: default Earth Sim (2× / Half → tw=960, seed 8817).
+// Wait for invent-jump mint-ready, Max through first cities, fail on error banner.
+// Repro of the ~35088 transport frontier OOM (road short-circuit ocean flood).
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -24,95 +26,118 @@ await new Promise((r) => server.listen(PORT, r));
 
 const errors = [];
 const logs = [];
-const browser = await chromium.launch({ executablePath: EXE, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+const browser = await chromium.launch({
+  executablePath: EXE,
+  headless: true,
+  args: ["--no-sandbox", "--disable-dev-shm-usage"],
+});
 let exitCode = 0;
+
+function bannerSnippet(t) {
+  if (!/internal error|worker reported an error|map view failed|Array buffer|frontier heap/i.test(t)) return null;
+  return (t.match(/.{0,60}(internal error|worker reported|map view failed|Array buffer|frontier heap).{0,220}/i) || [t.slice(0, 280)])[0];
+}
 
 try {
   const page = await browser.newPage();
   page.on("console", (msg) => {
     const t = msg.text();
-    if (/SimWorker|invent-jump|mint-ready|uncaught|TypeError|Error:|DataClone/i.test(t) || msg.type() === "error") {
+    if (/SimWorker|invent-jump|mint-ready|transHeap|uncaught|TypeError|Error:|DataClone|frontier heap|Array buffer/i.test(t) || msg.type() === "error") {
       logs.push(t);
-      console.log("C", msg.type(), t.slice(0, 350));
+      console.log("C", msg.type(), t.slice(0, 400));
     }
-    if (/\[SimWorker\]/.test(t) || /DataCloneError|popField worker pool died/i.test(t)) errors.push(t);
+    if (/\[SimWorker\]/.test(t) || /DataCloneError|popField worker pool died|frontier heap exceeded|Array buffer allocation failed/i.test(t)) {
+      errors.push(t);
+    }
   });
   page.on("pageerror", (e) => { errors.push("page: " + e.message); console.log("PAGE", e.message); });
 
   await page.goto(`http://localhost:${PORT}/Simman-/`, { waitUntil: "domcontentloaded", timeout: 120000 });
+  // Default boot is already Earth Sim / 2× / Half / seed 8817 — wait for genesis gather.
+  await page.waitForTimeout(5000);
 
-  // Wait for first boot world enough to show New World controls.
-  await page.waitForTimeout(8000);
-
-  // Open New World if needed, set 0.5× + Quarter, regenerate.
-  const clicked = await page.evaluate(() => {
+  // Ensure New World panel shows defaults (don't downscale — crash is tw=960-only).
+  await page.evaluate(() => {
     const byText = (re) => [...document.querySelectorAll("button")].find((b) => re.test((b.textContent || "").trim()));
-    // Try open "New" / world panel
     const nw = byText(/^New$|^World$|New world/i);
     if (nw) nw.click();
-    const half = byText(/^0\.5×$/);
-    const quarter = byText(/^Quarter$/);
+    const twoX = byText(/^2×$/);
+    const half = byText(/^Half$/);
+    if (twoX) twoX.click();
     if (half) half.click();
-    // Quarter button itself regenerates
-    if (quarter) { quarter.click(); return { half: !!half, quarter: true }; }
-    return { half: !!half, quarter: false };
   });
-  console.log("scale clicks", clicked);
 
-  // Wait for invent-jump mint-ready (or invent open)
+  // Wait for invent-jump mint-ready
   const t0 = Date.now();
   let openStep = null;
-  while (Date.now() - t0 < 420000) {
-    const hit = logs.find((l) => /mint-ready at step (\d+)/.test(l) || /invent-jump: farming at step/.test(l) && /mint-ready/.test(l));
+  while (Date.now() - t0 < 900000) {
     const m = logs.map((l) => l.match(/mint-ready at step (\d+)/)).find(Boolean);
     if (m) { openStep = +m[1]; break; }
-    const banner = await page.evaluate(() => {
-      const t = document.body.innerText || "";
-      if (/internal error|worker reported an error|map view failed/.test(t)) return t.match(/.{0,80}(internal error|worker reported|map view failed).{0,200}/)?.[0] || "banner";
-      return null;
-    });
-    if (banner) { errors.push(banner); break; }
-    await page.waitForTimeout(2000);
+    const body = await page.evaluate(() => document.body.innerText || "");
+    const b = bannerSnippet(body);
+    if (b) { errors.push(b); break; }
+    if (errors.length) break;
+    await page.waitForTimeout(3000);
   }
-  console.log("openStep", openStep, "err", errors.length);
+  console.log("openStep", openStep, "err", errors.length, "elapsed_ms", Date.now() - t0);
   if (errors.length) throw new Error("error before play");
+  if (openStep == null) throw new Error("timed out waiting for mint-ready");
 
-  // PLAY
+  // Max (or Play) — crash was under Max after first cities / crystallize ~35040
   await page.evaluate(() => {
+    const byText = (re) => [...document.querySelectorAll("button")].find((b) => re.test((b.textContent || "").trim()));
+    const max = byText(/^Max$/i) || [...document.querySelectorAll("button")].find((b) => /Max/i.test(b.textContent || ""));
     const play = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("▶"));
-    if (play) play.click();
+    if (max) max.click();
+    else if (play) play.click();
   });
-  console.log("pressed play");
+  console.log("pressed Max/Play");
 
-  // Watch step advance via console invent / settlements, and banner
   const t1 = Date.now();
   let lastCities = 0;
-  while (Date.now() - t1 < 240000) {
+  let sawPastCrashStep = false;
+  while (Date.now() - t1 < 600000) {
     const st = await page.evaluate(() => {
       const body = document.body.innerText || "";
-      const banner = /internal error|worker reported an error|map view failed/.test(body)
+      const banner = /internal error|worker reported an error|map view failed/i.test(body)
         ? (body.match(/.{0,40}(The simulation|The map view|worker reported).{0,220}/) || [body.slice(0, 260)])[0]
         : null;
-      // HUD often shows year + step somewhere — also count "Cities" style stats
       const cityM = body.match(/Cities\s+(\d+)/i) || body.match(/cities\s*[·:]\s*(\d+)/i);
-      const stepM = body.match(/\b(\d{4,6})\b(?=\s*(BCE|CE|BC|AD)?)/g);
-      return { banner, cities: cityM ? +cityM[1] : null, snippet: body.slice(0, 120).replace(/\s+/g, " ") };
+      const stepM = body.match(/\bstep\s*[·:]?\s*(\d{4,6})\b/i) || body.match(/\b(\d{5})\b/);
+      return {
+        banner,
+        cities: cityM ? +cityM[1] : null,
+        step: stepM ? +stepM[1] : null,
+        snippet: body.slice(0, 140).replace(/\s+/g, " "),
+      };
     });
     if (st.banner) {
       console.error("BANNER", st.banner);
       errors.push(st.banner);
       break;
     }
+    if (errors.length) break;
     if (st.cities != null && st.cities !== lastCities) {
-      console.log("cities", lastCities, "→", st.cities, st.snippet);
+      console.log("cities", lastCities, "→", st.cities, "step~", st.step, st.snippet);
       lastCities = st.cities;
     }
-    if (errors.length) break;
-    // Success: saw several cities and no error for a while after first city
-    if (lastCities >= 2 && Date.now() - t1 > 60000) { console.log("OK played with cities, no error"); break; }
+    // Historical crash ~35088; mint-ready was ~34575. Clear if we pass +800 post-mint or 2+ cities.
+    if (st.step != null && openStep != null && st.step >= openStep + 800) {
+      sawPastCrashStep = true;
+      console.log("OK past mint+800 (step", st.step, ") cities", lastCities);
+      break;
+    }
+    if (lastCities >= 2 && Date.now() - t1 > 90000) {
+      console.log("OK played with cities, no error");
+      break;
+    }
     await page.waitForTimeout(2500);
   }
   if (errors.length) exitCode = 1;
+  else if (!sawPastCrashStep && lastCities < 1) {
+    console.error("no cities and did not clear mint+800 window");
+    exitCode = 1;
+  }
 } catch (e) {
   console.error(e);
   exitCode = 1;
@@ -121,5 +146,5 @@ try {
   server.close();
 }
 console.log("\nERRORS", errors);
-console.log("LOGS_TAIL", logs.slice(-15));
+console.log("LOGS_TAIL", logs.slice(-20));
 process.exit(exitCode);
