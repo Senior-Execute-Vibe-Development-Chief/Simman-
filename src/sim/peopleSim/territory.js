@@ -667,8 +667,9 @@ function tallyTerritory(world, owner, cost, byId) {
     const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);   // climate scales the harvestable fertility
     if (f >= s._terrMinFert) {
       const w = foodFalloff(cost[ti] / _rn);
-      const surplus = landSurplusFrac(world, ti);
-      s._terrFertSum += f * w * _invA * surplus;
+      const gross = f * w * _invA;
+      const surplus = landSurplusFrac(world, ti, gross);
+      s._terrFertSum += gross * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
       // tiles that contribute nothing (claiming worthless land used to

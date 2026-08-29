@@ -12,10 +12,10 @@
 // MUST be recaptured on the merged build; the two blocks below are each line's
 // pre-merge anchor, kept for provenance (reset either line via the SIM_TUNE in its
 // entry).
-// Current baseline (2500 steps): 425dddd2/2355b538 — v54 LAND_SURPLUS default ON
-// (implied countryside retains share on tile; only surplus enters bid pool;
-// retires v53 T.COMPEL territory reassignment; SAVE_VERSION 54, v<54 guard pins
-// OFF). Prior v53 pair: 90386d96/2355b538 — v53 COMPEL + v52 TILE_MONEY.
+// Current baseline (2500 steps): a3a66047/66b4cddc — v54 LAND_SURPLUS (subtraction
+// form: surplus = grossFood − local mouths, not a density fraction — Nile surplus
+// falls out from fertility). Prior pair a2dd7243/425dddd2 was the density-fraction
+// cut (wrong physics). SAVE_VERSION 54.
 // UNCHANGED through the v48 GRAIN_PROVISION flip (2026-08-26; same coinage-gate transparency) and the
 // v47 GRAIN_MARKET flip (2026-08-25): the open grain market is gated on the
 // market institution (techEff.market — coined money), which no 320-grid
