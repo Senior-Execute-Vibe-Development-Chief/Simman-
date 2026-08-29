@@ -125,6 +125,13 @@ function _ensureTerrScratch(world, N) {
   return { cost2, tcost2, clm2 };
 }
 
+/** Persistent Int32 scratch of length N — replaces per-flood `owner.slice()` (allocation-wall). */
+function _ensureTerrOwnerCopy(world, key, N) {
+  let a = world[key];
+  if (!a || a.length !== N) a = world[key] = new Int32Array(N);
+  return a;
+}
+
 // After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
 // better on the SAME pass's effort metric (second-best slot). Marketing habit —
 // standing farm-gate relationships do not flip on float dust.
@@ -458,7 +465,15 @@ export function computeTerritory(world) {
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
-  const prevOwner = mktPull && T.MARKET_PULL_HYST > 1 ? owner.slice() : null;
+  // MARKET_PULL_HYST needs the pre-flood owner map — copy into a reused lane
+  // (owner.slice() allocated ~N×4 bytes every territory flood; under Max +
+  // first-city mint that was a steady ArrayBuffer stream into the allocation
+  // wall — docs/allocation-wall-2026-08-20.md).
+  let prevOwner = null;
+  if (mktPull && T.MARKET_PULL_HYST > 1) {
+    prevOwner = _ensureTerrOwnerCopy(world, "_terrPrevOwner", N);
+    prevOwner.set(owner);
+  }
   const { cost2, tcost2, clm2 } = mktPull && T.MARKET_PULL_HYST > 1
     ? _ensureTerrScratch(world, N)
     : { cost2: null, tcost2: null, clm2: null };
@@ -537,7 +552,9 @@ export function computeTerritory(world) {
   // a locked tile owned by someone else is a wall; only tiles that are
   // wilderness in the snapshot are contestable — and they go to whoever
   // reaches them cheapest (true multi-source Voronoi over the free land).
-  const base = owner.slice();
+  // Reuse lane — same allocation-wall reason as _terrPrevOwner above.
+  const base = _ensureTerrOwnerCopy(world, "_terrBaseOwner", N);
+  base.set(owner);
   // Claimant carrier: water tiles propagate the cost frontier but are never
   // OWNED, so re-deriving the claimant from owner[ti] at pop time lost it the
   // moment the frontier stepped offshore (budget/knowledge read as nobody's →

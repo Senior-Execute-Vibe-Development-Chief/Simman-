@@ -789,7 +789,7 @@ try{
       // Surface it. A STEP error means the worker paused the sim on a mid-step
       // throw — mirror that here so the play button tells the truth; the world
       // is still alive in the worker, so Save/Export can rescue the run.
-      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error'});
+      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error',stack:d.stack||null});
       if(d.where==='step'){playRef.current=false;setPlaying(false);}
     }
   };
@@ -805,7 +805,7 @@ try{
     //    let the user save.
     if(sawSnap.current){
       console.error('[SimWorker] uncaught worker error mid-run:',err.message);
-      setSimError({where:'worker',message:err.message||'uncaught worker error'});
+      setSimError({where:'worker',message:err.message||'uncaught worker error',stack:err.filename?`${err.filename}:${err.lineno}`:null});
       return;
     }
     console.warn('[SimWorker] error before first frame — falling back to main-thread sim:',err.message);
@@ -4971,17 +4971,24 @@ return(
     still running, a step error means it paused itself. */}
 {simError&&(
   <div className="au-parchment" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
-    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"center",padding:"8px 12px",
-    maxWidth:"min(560px,80%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
-    <span style={{fontSize:16,flexShrink:0}}>⚠</span>
-    <span style={{fontSize:12.5,lineHeight:1.4}}>
+    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"flex-start",padding:"8px 12px",
+    maxWidth:"min(640px,90%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
+    <span style={{fontSize:16,flexShrink:0,lineHeight:1.4}}>⚠</span>
+    <span style={{fontSize:12.5,lineHeight:1.4,minWidth:0}}>
       {simError.where==='step'
         ?`The simulation hit an internal error at step ${simError.step??'?'} and paused itself. The world is intact — use Save to keep it, then report seed ${world&&world.seed!=null?world.seed:seed}.`
         :simError.where==='snapshot'
         ?`The map view failed to refresh at step ${simError.step??'?'} — the simulation itself is still running. Save works; the view may recover on its own.`
         :`The simulation worker reported an error${simError.step!=null?` at step ${simError.step}`:''}. The world is intact — use Save to keep it.`}
-      <span style={{opacity:0.75}}> ({simError.message})</span>
+      <div style={{opacity:0.85,marginTop:4,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:11,wordBreak:"break-word"}}>
+        {simError.message}
+      </div>
     </span>
+    <button onClick={()=>{
+      const text=`where=${simError.where} step=${simError.step} seed=${world&&world.seed!=null?world.seed:seed}\n${simError.message}${simError.stack?"\n"+simError.stack:""}`;
+      try{navigator.clipboard.writeText(text);}catch{/* ignore */}
+    }} title="Copy error details"
+      style={{background:"transparent",border:"1px solid rgba(180,60,40,0.45)",cursor:"pointer",color:"var(--au-ink)",fontSize:11,padding:"2px 6px",flexShrink:0,borderRadius:3}}>Copy</button>
     <button onClick={()=>setSimError(null)} title="Dismiss"
       style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:16,padding:"0 2px",flexShrink:0}}>×</button>
   </div>

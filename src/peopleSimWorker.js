@@ -187,6 +187,11 @@ function journalTick() {
 let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
 let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
+// Max / quiet-ages: the UI cannot usefully paint 30Hz of history while the
+// worker burns unbounded steps — and that stream was the allocation-wall
+// killer (docs/allocation-wall-2026-08-20.md). Drop to ~4Hz under fastEpoch
+// so buffer-return + GC keep up through the mint-ready → first-cities burst.
+const SNAP_MS_FAST = 250;
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
 
 // ── The snapshot buffer pool (the 26.6k allocation wall, 2026-08-20) ─────────
@@ -524,6 +529,7 @@ let pageHidden = false;          // main thread posts {type:'visibility', hidden
 let _tickTimer = null;           // paced-mode setTimeout handle (cancellable on visibility flip)
 const _tickChan = new MessageChannel();
 _tickChan.port1.onmessage = () => tick();
+let _fastWakeN = 0;   // MessageChannel-only wake never idles the worker — GC starves
 function scheduleTick() {
   if (scheduled || !playing) return;
   scheduled = true;
@@ -531,7 +537,15 @@ function scheduleTick() {
   // same — don't wait on a throttled timer to burn catch-up. Paced + visible
   // (or background with nothing earned yet): wake on a timer.
   if (speed >= UNBOUNDED_TPS || fastEpochNow || (pageHidden && tickAccum >= 1)) {
-    _tickChan.port2.postMessage(0);
+    // Every 8th unbounded wake, yield via setTimeout(0) so the main thread can
+    // return snapshot buffers and the worker's young-gen can collect — without
+    // this, mint-ready Max play OOMs in MinHeap._grow within ~500 steps of the
+    // first cities (browser repro: "Array buffer allocation failed" @ ~35k).
+    if ((fastEpochNow || speed >= UNBOUNDED_TPS) && ((++_fastWakeN) & 7) === 0) {
+      _tickTimer = setTimeout(tick, 0);
+    } else {
+      _tickChan.port2.postMessage(0);
+    }
   } else {
     _tickTimer = setTimeout(tick, SNAP_MS);
   }
@@ -609,7 +623,9 @@ function tick() {
     lastNationLogStep = world.step;
   }
   const t = performance.now();
-  const snapEvery = pageHidden ? SNAP_MS_HIDDEN : SNAP_MS;
+  const snapEvery = pageHidden ? SNAP_MS_HIDDEN
+    : (fastEpochNow || speed >= UNBOUNDED_TPS) ? SNAP_MS_FAST
+    : SNAP_MS;
   if (t - lastSnap >= snapEvery) { buildSnapshot(); lastSnap = t; }
   // Still behind after a budgeted slice → channel-chain immediately (especially
   // important while hidden, where the next setTimeout may be seconds away).
