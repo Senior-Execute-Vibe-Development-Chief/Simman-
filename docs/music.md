@@ -310,7 +310,9 @@ music. Across 80 generated peoples:
   departures when written. A phrase *skeleton* (structural degrees on strong
   beats) is prior to surface melody; cadences close with length + weight +
   landing together. Lab **Bodies → form (plain tones)** hears only skeleton /
-  lead / bass / punctuation on simple oscillators.
+  lead / bass / punctuation on simple oscillators. A **piano roll** card shows
+  the same layers as pitch × time (preview of the piece plan; live playhead on
+  Ambience / Play).
 - **Melody** — structural degrees are the ones the roughness curve itself
   ranked most consonant. Phrases descend because subglottal pressure falls
   across a breath (the same declination the speech engine applies to f0), and
