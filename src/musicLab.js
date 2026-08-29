@@ -2,7 +2,8 @@
 // A standalone playground for the music system (docs/music.md). Dependency-
 // free vanilla DOM, deliberately outside the React app, exactly like the
 // Language Lab: served as /musiclab.html in dev, or bundled into one self-
-// contained page. It does not touch the world sim — the sim stays silent.
+// contained page. It can boot a lab-scale worldgen map and click a tile to
+// pin a people from that place; the live sim still stays silent.
 //
 // What the page is for: making the CAUSAL CHAIN audible and visible. Every
 // card is one link. What the land gives → what can be built → what those
@@ -16,7 +17,7 @@ import { phoneticPlan, prosodyOf, vocablesOf } from "./sim/languagePhonetics.js"
 import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE } from "./sim/languageLexicon.js";
 import { MATERIALS, FAMILIES, rangeOf, makeVoice } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
-import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
+import { foundPeople, musicOf, materialsOf, pinFromWorldTile, seedFromWorldTile } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree, formOrderOf, phraseBank, phraseSkeleton, occasionFor } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung, silence } from "./sim/musicSynth.js";
 import { loadSamples, sampledFor } from "./sim/musicSamples.js";
@@ -28,6 +29,8 @@ import { TRADITIONS, applyTradition } from "./sim/musicTraditions.js";
 import { makeInstrument } from "./sim/musicInstruments.js";
 import { finalsOf } from "./sim/musicTuning.js";
 import { buildMidiFile, buildMidiCsv, buildRollForAi } from "./sim/musicMidi.js";
+import { buildWorld } from "./sim/pipeline.js";
+import { classifyBiome } from "./sim/biomeClass.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 const S = {
@@ -56,8 +59,23 @@ const S = {
   // where the voice is present without fronting the band.
   voice: 0.18,
   seedB: 2015, refB: "random", playing: false, piece: null, tonic: 196,
+  // Last map pick (null until the user clicks land on the world card).
+  place: null,
 };
 let world, A = null, P = null, PB = null;   // audio, primary music, blend partner
+
+// World map for click-to-people. Lab resolution (not the shipped 1920 grid):
+// fast enough to generate in the browser, fine enough to read as a continent.
+const MAP = {
+  W: 320, H: 160,
+  seed: 8817,
+  status: "idle", // idle | loading | ready | error
+  err: "",
+  w: null, ter: null,
+  pick: null, // { x, y }
+};
+// Biome colours — same palette as WorldSim / render_biome.mjs (keep in sync).
+const MAP_BC = [[10,22,56],[20,48,95],[36,78,125],[194,182,140],[168,158,130],[235,240,248],[50,80,58],[45,78,48],[50,105,45],[25,100,52],[14,72,28],[192,176,82],[158,165,78],[210,185,140],[140,135,78],[78,118,48],[152,145,135],[42,110,38],[195,190,180]];
 
 function newWorld() { return { seed: 1, step: 0, languages: new Map(), _nextLanguageId: 1 }; }
 function build(seed, ref) {
@@ -82,6 +100,163 @@ function regen() {
   S.piece = null;
   ROLL.previewKey = "";
   if (!ROLL.live) ROLL.notes = [];
+  S.place = null;
+  MAP.pick = null;
+}
+
+/** Adopt a people pinned from a clicked world tile. */
+function adoptPlace(x, y) {
+  if (!MAP.w || !MAP.ter) return false;
+  const pin = pinFromWorldTile(MAP.w, MAP.ter, x, y);
+  if (!pin) return false;
+  const seed = seedFromWorldTile(MAP.seed, pin.place.x, pin.place.y);
+  world = newWorld();
+  world.seed = MAP.seed;
+  const lang = foundLanguage(world, { seed });
+  const people = foundPeople(seed, lang, pin);
+  people.name = langRealmName(lang, 1);
+  P = musicOf(people);
+  // Blend partner: a nearby land tile of a different biome, when one exists.
+  const nb = neighbourPlace(pin.place.x, pin.place.y);
+  if (nb) {
+    const seedB = seedFromWorldTile(MAP.seed, nb.place.x, nb.place.y);
+    const langB = foundLanguage(world, { seed: seedB });
+    const peopleB = foundPeople(seedB, langB, nb);
+    peopleB.name = langRealmName(langB, 2);
+    PB = musicOf(peopleB);
+    S.seedB = seedB;
+  } else {
+    PB = build(S.seedB, S.refB);
+  }
+  S.seed = seed;
+  S.ref = "random";
+  S.trad = "";
+  S.place = pin.place;
+  MAP.pick = { x: pin.place.x, y: pin.place.y };
+  S.piece = null;
+  ROLL.previewKey = "";
+  if (!ROLL.live) ROLL.notes = [];
+  return true;
+}
+
+/** Scan a short spiral for a different-biome land tile (border blend). */
+function neighbourPlace(x, y) {
+  const tw = MAP.ter.tw, th = MAP.ter.th;
+  const here = pinFromWorldTile(MAP.w, MAP.ter, x, y);
+  if (!here) return null;
+  for (let r = 2; r <= 18; r += 2) {
+    for (let a = 0; a < 12; a++) {
+      const nx = x + Math.round(Math.cos((a / 12) * Math.PI * 2) * r);
+      const ny = y + Math.round(Math.sin((a / 12) * Math.PI * 2) * r);
+      if (ny < 0 || ny >= th) continue;
+      const pin = pinFromWorldTile(MAP.w, MAP.ter, ((nx % tw) + tw) % tw, ny);
+      if (pin && pin.biome !== here.biome) return pin;
+    }
+  }
+  return null;
+}
+
+async function generateMap(seed = MAP.seed) {
+  MAP.status = "loading";
+  MAP.err = "";
+  MAP.seed = seed >>> 0;
+  MAP.pick = null;
+  S.place = null;
+  paintMap();
+  const status = document.getElementById("mapstatus");
+  if (status) status.textContent = "Generating world…";
+  await new Promise(r => setTimeout(r, 40));
+  try {
+    const { w, ter } = buildWorld({
+      W: MAP.W, H: MAP.H, seed: MAP.seed,
+      preset: "earth_sim", oceanLevel: 0.78, realWind: false,
+    });
+    MAP.w = w;
+    MAP.ter = ter;
+    MAP.status = "ready";
+  } catch (e) {
+    MAP.status = "error";
+    MAP.err = (e && e.message) || String(e);
+    MAP.w = null;
+    MAP.ter = null;
+  }
+  paintMap();
+  const st = document.getElementById("mapstatus");
+  if (st) st.textContent = mapStatusText();
+}
+
+function mapStatusText() {
+  if (MAP.status === "loading") return "Generating world…";
+  if (MAP.status === "error") return "Worldgen failed: " + MAP.err;
+  if (MAP.status !== "ready") return "Generate a world, then click land.";
+  if (S.place) {
+    const d = (S.place.deposits || []).join(", ") || "no metal/timber deposits underfoot";
+    return `${S.place.biomeLabel} at (${S.place.x}, ${S.place.y}) · ${d}`;
+  }
+  return "Click land to hear a people of that place.";
+}
+
+function paintMap() {
+  const cv = document.getElementById("worldmap");
+  if (!cv) return;
+  const W = MAP.W, H = MAP.H;
+  if (cv.width !== W) cv.width = W;
+  if (cv.height !== H) cv.height = H;
+  const ctx = cv.getContext("2d");
+  if (MAP.status !== "ready" || !MAP.w) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--chipbg").trim() || "#e8e0d2";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() || "#666";
+    ctx.font = "14px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.fillText(MAP.status === "loading" ? "Generating…" : "No world yet — press Generate", W / 2, H / 2);
+    return;
+  }
+  const elev = MAP.ter.tElev || MAP.w.elevation;
+  const moist = MAP.ter.tMoist || MAP.w.moisture;
+  const temp = MAP.ter.tTemp || MAP.w.temperature;
+  const dryA = MAP.ter.tDryFrac || MAP.w.dryFrac;
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  for (let i = 0; i < W * H; i++) {
+    const b = elev[i] <= 0
+      ? (elev[i] > -0.08 ? 2 : elev[i] > -0.25 ? 1 : 0)
+      : classifyBiome(elev[i], moist[i], temp[i], dryA ? dryA[i] : 0, 0);
+    const c = MAP_BC[b] || MAP_BC[0];
+    const o = i * 4;
+    d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  if (MAP.pick) {
+    const px = MAP.pick.x + 0.5, py = MAP.pick.y + 0.5;
+    ctx.strokeStyle = "#fff8e8";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#2a1a0a";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function mapClick(ev) {
+  if (MAP.status !== "ready" || !MAP.w) return;
+  const cv = ev.currentTarget;
+  const rect = cv.getBoundingClientRect();
+  const x = ((ev.clientX - rect.left) / rect.width) * MAP.W;
+  const y = ((ev.clientY - rect.top) / rect.height) * MAP.H;
+  if (A) silence(A);
+  S.playing = false;
+  if (!adoptPlace(x, y)) {
+    const st = document.getElementById("mapstatus");
+    if (st) st.textContent = "Ocean — click land.";
+    paintMap();
+    return;
+  }
+  render();
 }
 
 // ── audio plumbing ───────────────────────────────────────────────────────
@@ -1586,7 +1761,7 @@ function controlsHTML() {
     </div>
     <p class="note tight">The pinned endowments are calibration targets: they fix the <em>inputs</em> a
       real tradition had — its metals, its crafts, its society — and let the mechanism derive the music.
-      Nothing pins a scale or a rhythm.</p>
+      Nothing pins a scale or a rhythm. Or pick a place on the map above — that pins the land instead.</p>
     ${S.trad && TRADITIONS[S.trad] ? `<div class="bench">
       <h3>Bench: ${esc(TRADITIONS[S.trad].label)}</h3>
       <p class="note tight">${esc(TRADITIONS[S.trad].gloss)}. This is the other kind of check, and the
@@ -1600,6 +1775,22 @@ function controlsHTML() {
       <div class="row"><span class="k">ensemble</span><span class="v">${TRADITIONS[S.trad].insts.map(i => esc(i.label)).join(" · ")}</span></div>
       <p class="note tight">${esc(TRADITIONS[S.trad].note)}</p>
     </div>` : ""}
+  </div>`;
+}
+
+function mapHTML() {
+  return `<div class="card map-card">
+    <h2>Pick a place</h2>
+    <p class="note">The same worldgen the main sim uses, at a lab-scale grid. Click land and the
+      biome, ores and fertility of that tile become the people's endowment — then the music falls out
+      the usual way. Ocean does nothing.</p>
+    <div class="controls map-controls">
+      <label>World seed <input type="number" id="mapseed" value="${MAP.seed}" step="1" /></label>
+      <button id="mapgen"${MAP.status === "loading" ? " disabled" : ""}>${MAP.status === "loading" ? "Generating…" : "Generate"}</button>
+    </div>
+    <canvas id="worldmap" class="worldmap" width="${MAP.W}" height="${MAP.H}"
+      title="Click land to derive a musical culture from that place"></canvas>
+    <p class="note tight" id="mapstatus">${esc(mapStatusText())}</p>
   </div>`;
 }
 
@@ -1635,11 +1826,14 @@ function render() {
       <p class="tag">Give a culture a place, a set of crafts and a language, and its music follows.
         Nothing here picks a scale, a metre or an instrument: the land decides what can be built, the
         physics of those bodies decides which intervals sound consonant, and the tongue they speak
-        decides how the rhythm moves.</p>
+        decides how the rhythm moves. Click the map to pull that place from the same worldgen as the
+        main sim.</p>
     </header>
+    ${mapHTML()}
     ${controlsHTML()}
     ${transportHTML()}
     <p class="nowplaying">${esc(m.people.name)} <span class="np2">of the ${esc(m.people.biomeLabel)}</span>${
+      S.place ? ` <span class="np2">· map (${S.place.x}, ${S.place.y})</span>` : ""}${
       S.blend > 0.05 ? ` &nbsp;·&nbsp; blending with ${esc(PB.people.name)} <span class="np2">of the ${esc(PB.people.biomeLabel)}</span>` : ""}</p>
     ${tuningHTML(m)}
     ${instrumentsHTML(m)}
@@ -1666,6 +1860,7 @@ function redraw() {
   const roll = document.getElementById("pianoroll");
   if (roll) drawPianoRoll(roll, P);
   if (ROLL.live) startRollAnim();
+  paintMap();
 }
 
 function wire() {
@@ -1674,6 +1869,15 @@ function wire() {
   $("seed").onchange = (e) => { if (A) silence(A); S.seed = (+e.target.value | 0) >>> 0; regen(); render(); };
   $("ref").onchange = (e) => { if (A) silence(A); S.ref = e.target.value; regen(); render(); };
   $("trad").onchange = (e) => { S.trad = e.target.value; if (S.playing) stopAmbient(); regen(); render(); };
+  if ($("mapgen")) $("mapgen").onclick = () => {
+    const raw = $("mapseed") ? +$("mapseed").value : MAP.seed;
+    generateMap((raw | 0) >>> 0);
+  };
+  if ($("mapseed")) $("mapseed").onchange = (e) => { MAP.seed = (+e.target.value | 0) >>> 0; };
+  if ($("worldmap")) {
+    $("worldmap").onclick = mapClick;
+    $("worldmap").style.cursor = MAP.status === "ready" ? "crosshair" : "default";
+  }
   $("voice").oninput = (e) => {
     S.voice = +e.target.value;
     const sp = e.target.parentElement.querySelector(".slv");
@@ -1799,6 +2003,10 @@ canvas{width:100%;display:block}
 #curve{margin:.2rem 0 .5rem}
 #rhy{margin:.3rem 0 .5rem}
 #pianoroll{margin:.3rem 0 .55rem;background:var(--chipbg);border-radius:4px;border:1px solid var(--line)}
+.worldmap{width:100%;aspect-ratio:2/1;height:auto;border-radius:4px;border:1px solid var(--line);
+  image-rendering:pixelated;image-rendering:crisp-edges;background:var(--chipbg);margin:.35rem 0 .2rem}
+.map-controls{margin:.2rem 0 .35rem}
+.map-card h2{margin-bottom:.2rem}
 .rolllegs{display:flex;flex-wrap:wrap;gap:.35rem;margin:.15rem 0 .2rem}
 .rollchip{font:inherit;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;
   background:var(--card);color:var(--muted);border:1px solid var(--line);border-radius:999px;
@@ -1931,7 +2139,8 @@ function exposeForTests() {
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
     loadSamples, sampleSource, sampledFor, SAMPLE_BANK, slidesTo, FAMILIES, FAMILIES,
     fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs, retune, TRIALS, LT,
-    buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S,
+    buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S, MAP,
+    adoptPlace, generateMap, pinFromWorldTile, seedFromWorldTile,
     audio, silence, stopAmbient, startAmbient, playPiece };
 }
 
@@ -1944,6 +2153,8 @@ export function mount() {
   render();
   exposeForTests();
   window.addEventListener("resize", () => redraw());
+  // Boot a lab-scale world in the background so the map is clickable soon.
+  generateMap(MAP.seed);
 }
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
