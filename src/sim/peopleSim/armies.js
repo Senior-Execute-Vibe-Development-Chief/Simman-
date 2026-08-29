@@ -1766,29 +1766,7 @@ export function advanceFronts(world) {
       } else {
         tradeW = Math.min(1, trade / tradeRef);
       }
-      // The peace lasts as long as the war HURT (T.TRUCE_TOLL): duration also
-      // scales with the war's own toll — its reckoned dead over the
-      // belligerents' combined people. A war that bled the pair ~TOLL_GREAT
-      // (a GREAT war) buys a generation-plus treaty; a bloodless border
-      // skirmish buys only the base paper, so the marches stay restless
-      // (intended) while great rivalries become episodic instead of
-      // flickering on the flat truce clock. Measured need (war+slavery
-      // breakdown, 2026-07): ~50-60% of late declarations are the SAME pairs
-      // re-flaring the moment the flat truce lapses, ~70% of them
-      // non-trading, so the trade term alone cannot pace them — the toll is
-      // the pair-specific state that should. 0 = flat duration (byte-identical).
-      let tollW = 0;
-      if (T.TRUCE_TOLL > 0) {
-        const dead = world._warDead ? (world._warDead.get(key) || 0) : 0;
-        if (dead > 0) {
-          let pop = 0;
-          const ca = world.countries && world.countries.get(a), cb = world.countries && world.countries.get(b);
-          if (ca) for (const m of ca.members) pop += Math.max(0, m.people || 0);
-          if (cb) for (const m of cb.members) pop += Math.max(0, m.people || 0);
-          tollW = Math.min(1, dead / (Math.max(1, pop) * TOLL_GREAT));
-        }
-      }
-      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW + T.TRUCE_TOLL * tollW)) / (world._dt || 1);
+      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
       if (WDBG) WDBG.signed.push({ how, dur: Math.round(dur * (world._dt || 1)), age: world.step - (warBorn.get(key) ?? world.step),
         exhHi: Math.max(exh.get(a) || 0, exh.get(b) || 0), exhLo: Math.min(exh.get(a) || 0, exh.get(b) || 0) });

@@ -48,6 +48,7 @@
 
 import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach, granaryCap } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
+import { creditFarmGatePayment } from "./tileMoney.js";
 import { mergeReach } from "./roads.js";
 import { T, rNormPop } from "./tuning.js";
 
@@ -295,7 +296,13 @@ export function aggregateFoodHierarchy(world) {
     // carries GRAIN_PRICE_BY_TIER and dividing it back out would reintroduce
     // the ratchet through the back door. Transient, rebuilt every aggregation.
     s._scarcity = scarcity;
-    s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
+    // T.PRICE_GROSS retires GRAIN_PRICE_BY_TIER: grain is dear where it is scarce,
+    // not because the seller wears a metropolis label. The tier ladder was a
+    // fitted outcome; scarcity × demand/supply on the production-relative book is
+    // the cause. Legacy path (v<51 / lever off) keeps the table for save compat.
+    s._grainPrice = T.PRICE_GROSS > 0
+      ? scarcity
+      : GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
   }
 
   // ── children lists from the CURRENT liege tree ──────────────────────
@@ -376,9 +383,10 @@ export function aggregateFoodHierarchy(world) {
           const bought = price > 0 ? Math.min(rest, spare / price) : rest;
           if (bought > 0) {
             const pay = bought * price;
-            node.wealth -= pay; k.wealth = (k.wealth || 0) + pay;
+            node.wealth -= pay;
+            creditFarmGatePayment(world, k, pay);   // tile field or legacy seller.wealth
             recordOut(node, OUT_FOOD, pay);   // money-flow panel: grain bought
-            recordIn(k, IN_FOOD, pay);        //                   grain sold
+            recordIn(k, IN_FOOD, pay);        // turnover report — not seller.wealth when TILE_MONEY
             spare -= pay;
           }
           if (ts) { dbgLevied += levied; dbgBought += bought; dbgUnbought += Math.max(0, rest - bought); }
@@ -568,7 +576,8 @@ function grainMarketPass(world) {
       if (landed <= 1e-9) continue;
       const shipped = landed / fob;          // what LEAVES the farm gate (= landed when the lever is off)
       const pay = shipped * price;
-      s.wealth -= pay; p.wealth = (p.wealth || 0) + pay;
+      s.wealth -= pay;
+      creditFarmGatePayment(world, p, pay);
       recordOut(s, OUT_FOOD, pay);
       recordIn(p, IN_FOOD, pay);
       spare -= pay;

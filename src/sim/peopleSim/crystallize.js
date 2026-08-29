@@ -40,6 +40,7 @@ import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { reachBudget } from "./territory.js";   // T.MINT_REACH: the newborn's day-one reach (functions only — same ESM-cycle pattern as landKnow.js)
+import { unservedTileCoinPull } from "./tileMoney.js";
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -165,9 +166,7 @@ function capacitySpacingMul(fertTile, hostility) {
 }
 // The countryside a prospective site stands in: the population-field mass over
 // the market basin around it. This is the sim's own measure of "are there people
-// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN, and
-// T.INVENT_FIELD reads it for independent invention (see the floor note below).
-// Extracted verbatim from the urban-floor check so both ask one question.
+// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN.
 function townBasinMass(world, tx, ty, rB) {
   const pf = world.popField, tw = world.tw, th = world.th;
   let basin = 0;
@@ -1415,27 +1414,7 @@ function maybeSiteCities(world) {
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
   const basinBar1 = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell at 1× margin, field units
   const barOf = (k) => basinBar1 * leanAt(world, L.sites[k].ti); // T.LEAN_YEAR: × the SITE's own bad-year margin (per-basin)
-  // T.TOWN_MINT — the mint bar becomes the TOWN definition, not the CITY one.
-  // WHY 10,000 WAS THERE: it is the urban-history convention for comparative
-  // urbanisation statistics (de Vries's early-modern series; Chandler's lists use
-  // 20,000+). It is a STATISTICAL threshold, not a claim that smaller places were
-  // not cities. Historically "city" was a legal and institutional status, not a
-  // size: York and Norwich at ~10,000 were among the LARGEST in medieval England
-  // while most of its ~600 chartered boroughs held under 2,000, the Empire had
-  // thousands of chartered Staedte under 2,000, and most Greek poleis were a few
-  // thousand. Minting only at 10,000 therefore excludes the ordinary historical
-  // town entirely.
-  // ZERO NEW CONSTANTS: TIER_CORE[1] = 2 is this codebase's own town definition
-  // ("~2,000 urban people — the smallest agglomerations the literature calls
-  // towns", tuning.js CITY_CORE), sitting unused as a mint bar while the register
-  // minted only cities.
-  // THE HYSTERESIS IS THE POINT (section 29): the mint bar and the dissolve bar are
-  // both TIER_CORE[2] today, so a settlement mints and dissolves at the SAME size
-  // and the register churns at the line. Pair this with the EXISTING DISSOLVE_CORE
-  // multiplier below 1 — DISSOLVE_CORE=0.1 puts the dissolve bar at 1,000 against a
-  // 2,000 mint — and a settlement gets room to dip without dying, which is what
-  // DISSOLVE_CORE's own description reserved values below 1 for.
-  const coreBarF = TIER_CORE[T.TOWN_MINT ? 1 : 2] / bridge;     // the mint's core bar, field units
+  const coreBarF = TIER_CORE[2] / bridge;     // the mint's core bar, field units
   const coreR = urbanCoreR(world);
   // Eligibility is cached between cadence firings; the spike re-stamp runs
   // every tick from the cache so the field pass always holds the cores.
@@ -2137,13 +2116,7 @@ function maybeLandNations(world) {
       // pressure forms almost at once (the cradle belts saturate at the old
       // drive=1, near-byte-similar there), an open or unstorable one stays
       // tribal however long it is pressed — the Chichimeca, Australia.
-      if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
-        const cg = cageAt(world, st.ti);
-        const sp = cg > 0 ? basinStorablePeople(world, take, world.popField) : 0;
-        const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
-        const pr = cg * stor;
-        drive = drive >= 1 ? Math.min(1, pr * (1 + T.STATE_OPEN)) : pr;
-      } else if (drive < 1 && T.STATE_CAGE) {
+      if (drive < 1 && T.STATE_CAGE) {
         const cg = cageAt(world, st.ti);
         if (cg > 0) {
           const sp = basinStorablePeople(world, take, world.popField);
@@ -2236,14 +2209,7 @@ function maybeLandNations(world) {
           }
           if (drive2 >= 1) break;
         }
-        // T.STATE_OPEN lap 2: identical to the primary lane — contact
-        // multiplies the Carneiro drive, never overrides it (header above).
-        if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
-          const cg2 = cageAt(world, cand.ti);
-          const sp2 = cg2 > 0 ? basinStorablePeople(world, basin2.take, pf2) : 0;
-          const pr2 = cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0);
-          drive2 = drive2 >= 1 ? Math.min(1, pr2 * (1 + T.STATE_OPEN)) : pr2;
-        } else if (drive2 < 1 && T.STATE_CAGE) {
+        if (drive2 < 1 && T.STATE_CAGE) {
           const cg2 = cageAt(world, cand.ti);
           if (cg2 > 0) {
             const sp2 = basinStorablePeople(world, basin2.take, pf2);
@@ -2696,56 +2662,17 @@ export function maybeCrystallize(world) {
     // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
-    let independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    // INDEPENDENT INVENTION IS A PROPERTY OF A PEOPLE, NOT OF A TILE (T.INVENT_FIELD).
-    // As a flat per-tile floor it says that being five thousand km from the nearest
-    // farmer makes you no less likely to invent farming than being 130 tiles away —
-    // and because it is ADDED to the distance decay, beyond td ≈ 130 it dominates
-    // and CANCELS the decay entirely. Measured consequence (probe_wheretowns, 480/
-    // 8817): at step 200 the world holds settlements in NINE regions, the Central
-    // Asian steppe the most-settled of them; Siberia has a town at 67°N by step 264;
-    // Europe has ten towns before Mesopotamia has five. Every good valley on Earth
-    // invents urbanism at once, which is exactly what its own comment ("low so empty
-    // regions stay empty until colonised") was trying to prevent.
-    //
-    // The opportunity for invention is PEOPLE-TIME: farming and town-building are
-    // invented where many people have lived on workable land for a long time, which
-    // is why there were a handful of neolithic origins rather than one per valley.
-    // So the floor is scaled by the basin's own people, measured against the bar the
-    // sim ALREADY uses for "enough countryside to carry a town" — no new constant is
-    // introduced. A basin exactly at the bar keeps INDEPENDENT_RATE unchanged; ten
-    // times the people invents ten times as readily; empty land effectively never.
-    // The cradles invent first because that is where the people are, and secondary
-    // centres emerge as the field thickens — the shape of the real record, arrived at
-    // by mechanism rather than by tuning a rate until seven centres appear.
-    if (T.INVENT_FIELD > 0 && world.popField) {
-      independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
-    }
+    const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
     // T.INDEP_TECH — a town can only crystallize where the PACKAGE HAS ARRIVED.
-    // Three measured failures aimed this at the right variable and the right
-    // channel: INVENT_FIELD scaled the floor by basin PEOPLE → worse (every
-    // fireable site has people); INVENT_STAGGER's handout repair fixed what a
-    // newborn KNOWS → the dawn map did not move (the founding still happened);
-    // and gating the INDEPENDENT floor alone → byte-identical outcomes at 6k,
-    // which proved the floor NEVER BINDS under multi-hearth defaults — with
-    // seven hearths every fireable site sits within diffusion reach of some
-    // network, and the anachronisms (a steppe town at step 24, 61°N by step
-    // 144) ride the DIFFUSION term. That term is exp(−td/·): a probability
-    // GRADIENT, not a FRONT — a site 3 000 km from the Indus can found the
-    // moment the sim starts, with no waiting for the package to arrive. But
-    // the sim HAS a front: devField, the technique wave, at its measured
-    // 1 km/year. So the lever scales the WHOLE channel sum by the package's
-    // local arrival, devField/NEOLITHIC_AGRI (clamped 0..1): fully-taught
-    // ground founds at the unchanged rate (the ratio saturates — mature
-    // worlds identical), the wave's edge founds at the edge's fraction, and
-    // untaught land founds NOTHING — towns trail the green stain on the
-    // Technique lens, which is the wave-of-advance picture the pioneering
-    // tempo below already gestures at (it paces by the nearest DONOR's tempo;
-    // this paces by the field's actual arrival). Daughter colonies, sea
-    // landings and plantations are untouched — those are real settler parties
-    // that carry the package with them. No new constant: NEOLITHIC_AGRI is
-    // the package's own definition of "full farming". 0 = ungated
-    // (byte-identical, and the default).
+    // Prior attempt (deleted INVENT_FIELD) scaled only the independent floor by
+    // basin people and made dawn worse. Gating the independent floor alone was
+    // byte-identical: under multi-hearth defaults the floor never binds, and
+    // anachronisms ride the DIFFUSION term — exp(−td/·), a probability GRADIENT
+    // not a FRONT. The sim's front is devField (≈1 km/year). This lever scales
+    // the WHOLE channel sum by package arrival, devField/NEOLITHIC_AGRI
+    // (clamped 0..1): fully-taught ground at the unchanged rate, the wave edge
+    // at its fraction, untaught land nothing. Daughters/sea/plantations
+    // untouched (they carry the package). No new constant.
     const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
     // ── T.CROWD_FOUND: towns appear where the PEOPLE are ────────────────────
     // Owner, 2026-08: "do cities appear where populations are dense?" Measured:
@@ -2789,7 +2716,13 @@ export function maybeCrystallize(world) {
         : townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
       crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
     }
-    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // T.TILE_MONEY — unserved farm-gate coin pulls a market where surplus piles
+    // outside existing catchments (docs/money-field-2026-08-28.md Phase D).
+    let tileCoinMul = 1;
+    if (T.TILE_MONEY > 0) {
+      tileCoinMul += unservedTileCoinPull(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+    }
+    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * tileCoinMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance

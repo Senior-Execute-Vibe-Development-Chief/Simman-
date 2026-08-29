@@ -68,21 +68,7 @@ export const SIZE_REF = 1000;
  * adopt freely — the first stamp gates everything after.
  */
 export function fiscAdoptable(world, c, x, y, people) {
-  const F = T.FISC_ADOPT || 0;
-  if (!(F > 0) || !c) return true;
-  const cap = c.capital, C = c._capacity;
-  if (!cap || !cap.pos || !(C > 0)) return true;
-  let P = 0;
-  const mem = c.members || [];
-  for (let i = 0; i < mem.length; i++) { const m = mem[i]; if (m && m.mode === "settled") P += m.people || 0; }
-  if (!(P > 0)) return true;
-  let dx = Math.abs(cap.pos.x - x); if (dx > world.tw / 2) dx = world.tw - dx;
-  const dy = cap.pos.y - y;
-  const d = Math.sqrt(dx * dx + dy * dy);
-  const holdRange = Math.max(1, c.holdReach || c.range || 0);
-  const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (people || 0) / SIZE_REF));
-  const load = (d / holdRange) * sizeMul;
-  return (people || 0) * (C / P) >= F * load;
+  return true;
 }
 
 export function getPolity(world, id) {
@@ -333,33 +319,22 @@ export function updateTribute(world, interval) {
     const cap = perTick * storeTicks;
     p._tribCap = cap;   // the exchange pass reads surplus/deficit against this
     let inflow = perTick * dt * interval;
-    // T.TRIBUTE_UP — THE PYRAMID PAYS IN KIND (the bala). The suzerainty
-    // bond moved COIN only (conquest.js TRIBUTE_FRAC of a mature
-    // dependency's treasury) — and early-world statelet treasuries hold ~15
-    // coins, so hegemony was fiscally EMPTY in exactly the era that needs it
-    // to compound: the storm's tribute path (lap 9) built bond pyramids
-    // whose center received nothing, and the loot→works→capacity engine
-    // (APPARATUS) starved. History's early tribute was IN KIND and it was
-    // the point: Ur III's bala rotation, the Achaemenid grain levies — a
-    // share of the provincial TAKE went to the center, and THAT fed the
-    // capital, its granary, its market sale, its works. So a dependency
-    // remits this share of its field-tribute inflow to its overlord at
-    // accrual — before any local sale (the bala outranks the local market)
-    // — one level up per pass (a vassal-of-a-vassal's remittance reaches
-    // the top in two passes, as slowly as real pyramids moved grain).
-    // 0 = no remittance (byte-identical).
-    if (T.TRIBUTE_UP > 0) {
-      const hid = world._overlordOf ? world._overlordOf.get(id) : undefined;
-      if (hid != null && hid >= 0) {
-        const hp = getPolity(world, hid);
-        if (hp && hp.endedStep < 0) {
-          const up = inflow * T.TRIBUTE_UP;
-          hp.tribute = (hp.tribute || 0) + up;
-          inflow -= up;
+    // T.TILE_MONEY — field tithe coin/in-kind split runs on tiles (tileMoney.js).
+    if (!(T.TILE_MONEY > 0)) {
+      // T.TRIBUTE_UP — THE PYRAMID PAYS IN KIND (the bala).
+      if (T.TRIBUTE_UP > 0) {
+        const hid = world._overlordOf ? world._overlordOf.get(id) : undefined;
+        if (hid != null && hid >= 0) {
+          const hp = getPolity(world, hid);
+          if (hp && hp.endedStep < 0) {
+            const up = inflow * T.TRIBUTE_UP;
+            hp.tribute = (hp.tribute || 0) + up;
+            inflow -= up;
+          }
         }
       }
+      p.tribute = (p.tribute || 0) + inflow;
     }
-    p.tribute = (p.tribute || 0) + inflow;
     if (crafts) {
       const mFlow = (takeM.get(id) || 0) * bridge * CRAFT_FLOW * extract;
       const lFlow = (takeL.get(id) || 0) * bridge * CRAFT_FLOW * extract;

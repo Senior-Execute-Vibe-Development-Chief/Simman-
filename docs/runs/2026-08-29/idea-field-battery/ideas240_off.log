@@ -1,0 +1,142 @@
+[harness] tree 75a3d421
+[SIM_TUNE] {"IDEA_FIELD":0}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — matured 1151y into prehistory (wave age 4849y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — matured 900y into prehistory (wave age 5100y)
+[peopleSim] hearth Pomponsom at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — matured 929y into prehistory (wave age 5071y)
+[peopleSim] hearth Fevvon at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — matured 3173y into prehistory (wave age 2827y)
+[peopleSim] hearth Nawaxexi at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — matured 5373y into prehistory (wave age 627y)
+[peopleSim] hearth Sasfesu at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — matured 3251y into prehistory (wave age 2749y)
+[peopleSim] hearth Wityim at (136,72) (24.0E -18.0N) score 1.13 pkg=sorghum(suit 0.56) — matured 3544y into prehistory (wave age 2456y)
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.18) — ARMED: ~18458y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.12) — ARMED: ~7000y of peopled-basin time from maturity
+probe_ideas — W=480 (tw=240) seed=8817 steps=6000, horizon=10 tiles, 9616 land tiles in 118 components
+
+═══ step 0 — 7 settlements, 0 realms
+  (no devField yet)
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=1010 pushes=5815 (0.0MB backing)
+
+═══ step 200 — 5 settlements, 5 realms
+  P field pop 0.55M (field units)   census Σs.people 165 sim-units
+  A devField over 9616 land tiles:
+      exactly 0.000 : 7887 (82.0%)   nonzero: 1729 (18.0%)
+      >= 0.45 (farming): 44 (0.5%)
+      p50 0.000  p90 0.174  max 0.500
+  B land components >= 50 tiles (5 of 118):
+      comp  12   3823 tiles  settlements   5  devField mean 0.086  farming 1.1%   lat -35..77
+      comp 116   2855 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -89..-65
+      comp   0   1592 tiles  settlements   0  devField mean 0.003  farming 0.1%   lat 17..84
+      comp  67    676 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -56..12
+      comp  98    297 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -38..-12
+      landmasses with NO settlement: 117 comps, 5793 tiles (60.2% of land)
+  C the two layers:
+      settlement agriculture  p10 0.498  p50 0.499  max 0.499
+      devField max 0.500
+      ORPHANED technique — land with devField > 0 and NO settlement within 10 tiles: 668 (38.6% of nonzero land)
+      land whose devField EXCEEDS every settlement in horizon by >0.05: 0 (0.0% of market-covered land)
+  E diffusion contact (mergeReach, road+sea): p10 0  p50 0  p90 0  max 0
+      settlements with ZERO partners (learn from nobody): 5 (100.0%)
+  F knowledge tracks across settlements (p10 / p50 / p90):
+      agriculture   0.498 / 0.499 / 0.499   spread 0.001
+      construction  0.179 / 0.179 / 0.180   spread 0.001
+      organization  0.104 / 0.124 / 0.135   spread 0.031
+      metallurgy    0.000 / 0.000 / 0.000   spread 0.000
+      navigation    0.001 / 0.001 / 0.001   spread 0.001
+      mobility      0.000 / 0.000 / 0.002   spread 0.002
+
+═══ step 1000 — 5 settlements, 5 realms
+  P field pop 0.70M (field units)   census Σs.people 362 sim-units
+  A devField over 9616 land tiles:
+      exactly 0.000 : 7865 (81.8%)   nonzero: 1751 (18.2%)
+      >= 0.45 (farming): 183 (1.9%)
+      p50 0.000  p90 0.174  max 0.502
+  B land components >= 50 tiles (5 of 118):
+      comp  12   3823 tiles  settlements   5  devField mean 0.092  farming 4.7%   lat -35..77
+      comp 116   2855 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -89..-65
+      comp   0   1592 tiles  settlements   0  devField mean 0.003  farming 0.1%   lat 17..84
+      comp  67    676 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -56..12
+      comp  98    297 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -38..-12
+      landmasses with NO settlement: 117 comps, 5793 tiles (60.2% of land)
+  C the two layers:
+      settlement agriculture  p10 0.494  p50 0.497  max 0.504
+      devField max 0.502
+      ORPHANED technique — land with devField > 0 and NO settlement within 10 tiles: 690 (39.4% of nonzero land)
+      land whose devField EXCEEDS every settlement in horizon by >0.05: 0 (0.0% of market-covered land)
+  D since last checkpoint: settlements that FORGOT agriculture: 3/5 (max drop 0.004)
+      devField tiles that FELL: 0   (a max-ratchet — the land cannot forget)
+  E diffusion contact (mergeReach, road+sea): p10 0  p50 0  p90 1  max 1
+      settlements with ZERO partners (learn from nobody): 3 (60.0%)
+  F knowledge tracks across settlements (p10 / p50 / p90):
+      agriculture   0.494 / 0.497 / 0.504   spread 0.009
+      construction  0.176 / 0.179 / 0.186   spread 0.009
+      organization  0.100 / 0.130 / 0.164   spread 0.064
+      metallurgy    0.000 / 0.004 / 0.012   spread 0.012
+      navigation    0.006 / 0.009 / 0.013   spread 0.007
+      mobility      0.000 / 0.012 / 0.014   spread 0.014
+
+═══ step 2000 — 3 settlements, 3 realms
+  P field pop 0.93M (field units)   census Σs.people 471 sim-units
+  A devField over 9616 land tiles:
+      exactly 0.000 : 7841 (81.5%)   nonzero: 1775 (18.5%)
+      >= 0.45 (farming): 285 (3.0%)
+      p50 0.000  p90 0.180  max 0.506
+  B land components >= 50 tiles (5 of 118):
+      comp  12   3823 tiles  settlements   3  devField mean 0.100  farming 7.4%   lat -35..77
+      comp 116   2855 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -89..-65
+      comp   0   1592 tiles  settlements   0  devField mean 0.004  farming 0.1%   lat 17..84
+      comp  67    676 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -56..12
+      comp  98    297 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -38..-12
+      landmasses with NO settlement: 117 comps, 5793 tiles (60.2% of land)
+  C the two layers:
+      settlement agriculture  p10 0.498  p50 0.500  max 0.512
+      devField max 0.506
+      ORPHANED technique — land with devField > 0 and NO settlement within 10 tiles: 1073 (60.5% of nonzero land)
+      land whose devField EXCEEDS every settlement in horizon by >0.05: 0 (0.0% of market-covered land)
+  D since last checkpoint: settlements that FORGOT agriculture: 0/3 (max drop 0.000)
+      devField tiles that FELL: 0   (a max-ratchet — the land cannot forget)
+  E diffusion contact (mergeReach, road+sea): p10 0  p50 0  p90 0  max 0
+      settlements with ZERO partners (learn from nobody): 3 (100.0%)
+  F knowledge tracks across settlements (p10 / p50 / p90):
+      agriculture   0.498 / 0.500 / 0.512   spread 0.014
+      construction  0.183 / 0.184 / 0.196   spread 0.013
+      organization  0.114 / 0.140 / 0.206   spread 0.092
+      metallurgy    0.000 / 0.015 / 0.027   spread 0.027
+      navigation    0.015 / 0.020 / 0.028   spread 0.013
+      mobility      0.000 / 0.027 / 0.035   spread 0.035
+
+═══ step 6000 — 3 settlements, 3 realms
+  P field pop 2.17M (field units)   census Σs.people 1211 sim-units
+  A devField over 9616 land tiles:
+      exactly 0.000 : 7720 (80.3%)   nonzero: 1896 (19.7%)
+      >= 0.45 (farming): 381 (4.0%)
+      p50 0.000  p90 0.302  max 0.534
+  B land components >= 50 tiles (5 of 118):
+      comp  12   3823 tiles  settlements   3  devField mean 0.139  farming 9.9%   lat -35..77
+      comp 116   2855 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -89..-65
+      comp   0   1592 tiles  settlements   0  devField mean 0.004  farming 0.1%   lat 17..84
+      comp  67    676 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -56..12
+      comp  98    297 tiles  settlements   0  devField mean 0.000  farming 0.0%   lat -38..-12
+      landmasses with NO settlement: 117 comps, 5793 tiles (60.2% of land)
+  C the two layers:
+      settlement agriculture  p10 0.507  p50 0.511  max 0.538
+      devField max 0.534
+      ORPHANED technique — land with devField > 0 and NO settlement within 10 tiles: 1182 (62.3% of nonzero land)
+      land whose devField EXCEEDS every settlement in horizon by >0.05: 0 (0.0% of market-covered land)
+  D since last checkpoint: settlements that FORGOT agriculture: 0/3 (max drop 0.000)
+      devField tiles that FELL: 0   (a max-ratchet — the land cannot forget)
+  E diffusion contact (mergeReach, road+sea): p10 0  p50 0  p90 0  max 0
+      settlements with ZERO partners (learn from nobody): 3 (100.0%)
+  F knowledge tracks across settlements (p10 / p50 / p90):
+      agriculture   0.507 / 0.511 / 0.538   spread 0.031
+      construction  0.204 / 0.208 / 0.235   spread 0.030
+      organization  0.116 / 0.183 / 0.369   spread 0.253
+      metallurgy    0.000 / 0.056 / 0.081   spread 0.081
+      navigation    0.055 / 0.061 / 0.085   spread 0.030
+      mobility      0.000 / 0.090 / 0.113   spread 0.113
+
+  G one max-wave pass over 9616 land tiles: 0.213 ms  →  10 idea fields at every tick = 2.1 ms/tick; at a 1-in-8 cadence = 0.27 ms/tick

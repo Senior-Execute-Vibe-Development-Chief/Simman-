@@ -22,6 +22,8 @@
 // is set (tests / debugging). Warnings are throttled so a persistent violation
 // doesn't flood the console, and a running tally lives on world.debug.invariantHits.
 
+import { T } from "./tuning.js";
+
 // Throttle: at most one warning per (key) every WARN_EVERY steps.
 const WARN_EVERY = 256;
 const _warned = new Map();
@@ -87,6 +89,10 @@ export function checkPeopleSimInvariants(world) {
   }
   // Coin stranded in ruin hoards is out of PURSES but not out of the WORLD.
   if (world._ruinHoards) for (const v of world._ruinHoards.values()) coin += Math.max(0, v);
+  // T.TILE_MONEY — coin on farm tiles (not in settlement purses).
+  if (T.TILE_MONEY > 0 && world._tileWealth) {
+    for (let i = 0; i < world._tileWealth.length; i++) coin += Math.max(0, world._tileWealth[i] || 0);
+  }
   // (No owner-array liveness check here on purpose: territory ownership is
   // PERSISTENT, so tiles legitimately reference a dead settlement until the
   // next computeTerritory pass releases them — that transient is by design.)

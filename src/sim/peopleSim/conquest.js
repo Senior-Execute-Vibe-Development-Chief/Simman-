@@ -24,6 +24,7 @@ import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.R
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, updateTribute, SIZE_REF } from "./entities.js";
+import { updateTileFiscalSinks } from "./tileMoney.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -775,7 +776,7 @@ export function rebuildCountries(world) {
   // nobody gains — extraordinary reach is always extraordinary FOR ITS TIME,
   // never a clock. No coin moves: this models what a fisc can SUSTAIN, not a
   // new money sink (the closed-supply conservation invariant is untouched).
-  if (T.STATE_WORKS > 0 || T.APPARATUS > 0) {
+  if (T.APPARATUS > 0) {
     const sus = [];
     const susOf = new Map();
     for (const c of countries.values()) {
@@ -825,15 +826,7 @@ export function rebuildCountries(world) {
         : WORKS_DECAY;
       const next = have + (target - have) * rate;
       g._works = Number.isFinite(next) ? Math.max(0, Math.min(T.WORKS_CEIL, next)) : 0;
-      // The stock extends the writ, and the grip is re-derived from it: a state
-      // that out-collects its era and spends the difference on roads, relays and
-      // waystations governs further per unit of statecraft — and loses that reach
-      // when the network is no longer maintained. 0 stock ⇒ x1, byte-identical to
-      // the tech-only radius. (Runs after the capital/range pass because the build
-      // rate is gated on the CAPITAL's construction — before it, every capital is
-      // still null and the rate would silently be zero. Hierarchy and provinces
-      // read neither range nor holdReach, so nothing upstream sees the change.)
-      if (g._works > 0) { c.range *= 1 + T.STATE_WORKS * g._works; c.holdReach = c.range * resScale; }
+      // APPARATUS stock extends capacity; reach stays tech-only.
     }
   }
   world.countries = countries;
@@ -2321,6 +2314,7 @@ export function updatePolities(world) {
   // every polity (realm or nation of the land) skims the field people under
   // its borders in kind; realm overflow monetises at the capital's market.
   updateTribute(world, T.POLITY_INTERVAL | 0);
+  if (T.TILE_MONEY > 0) updateTileFiscalSinks(world, T.POLITY_INTERVAL | 0);
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
@@ -3522,7 +3516,7 @@ export function updatePolities(world) {
       // cash — and that over-extraction feeds the over-tax grievance into revolt
       // (the "raise taxes for the war → the provinces rise up" loop). 1× at the base
       // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
-      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
+      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0 && !(T.TILE_MONEY > 0)) {
         const taxMul = (gov._taxRate ?? T.TAX_BASE) / T.TAX_BASE;
         // Serfdom skims a HEAVIER share of the harvest — bound peasants kept at subsistence,
         // their surplus extracted as labour-rent up to the lord/state (the serf breadbasket).

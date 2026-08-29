@@ -31,6 +31,7 @@
 
 import { realOutputOf } from "./settlement.js";
 import { TECHS } from "./tech.js";
+import { T } from "./tuning.js";
 
 // The organization level at which stamped coin exists — read from the tech
 // tree's own Currency gate so the two can never drift apart. This is the
@@ -87,6 +88,24 @@ export function updateInflation(world) {
     M.set(root, (M.get(root) || 0) + Math.max(0, s.wealth || 0));
     const out = Math.max(1, realOutputOf(s, world));
     T.set(root, (T.get(root) || 0) + out);
+  }
+  // T.TILE_MONEY — rural coin on worked tiles counts toward the seller's network.
+  if (T.TILE_MONEY > 0 && world._tileWealth) {
+    const owner = world._territoryOwner;
+    const byId = world._byId;
+    const tw = world._tileWealth;
+    if (owner && byId) {
+      for (let ti = 0; ti < world.N; ti++) {
+        const w = tw[ti];
+        if (!(w > 0)) continue;
+        const oid = owner[ti];
+        if (oid < 0) continue;
+        const s = byId.get(oid);
+        if (!s || s.mode !== "settled") continue;
+        const root = comps.has(s.id) ? comps.get(s.id) : s.id;
+        M.set(root, (M.get(root) || 0) + w);
+      }
+    }
   }
 
   // Calibrate REF once, when the world's monetary economy has actually

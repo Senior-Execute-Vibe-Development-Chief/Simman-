@@ -283,7 +283,7 @@ function leadAgri(world) {
 // 46 -> 4 at the resgate arm), which is why the full lever stays blocked while
 // the presence half ships. One mechanism, one distance field, two claims.
 export function packagePresent(world, ti, pkg) {
-  if (!T.CROP_BIOGEO && !T.CROP_HOMELAND) return true;
+  if (!T.CROP_BIOGEO) return true;
   const pd = world._pkgDist || ensureDistFields(world);
   const f = pd.fields[pkg.id]; if (!f) return true;
   const d = f[ti];
@@ -319,5 +319,5 @@ export function packageAdaptMul(world, ti, pkg) {
 // per-tile query in a hot loop doesn't re-scan. Call at the top of any pass that
 // will query packagePresent many times; safe to skip (falls back to a live scan).
 export function refreshBioReach(world) {
-  if (T.CROP_BIOGEO || T.CROP_HOMELAND) world._bioReachDev = leadAgri(world);
+  if (T.CROP_BIOGEO) world._bioReachDev = leadAgri(world);
 }

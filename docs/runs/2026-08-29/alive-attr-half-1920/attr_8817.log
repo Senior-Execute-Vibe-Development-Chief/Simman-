@@ -1,0 +1,58 @@
+[harness] tree 871414dc
+[alive-attr] parent W=1920 steps=24000 seed=8817 arms=5
+MACHINE	arm	harness_current	tw	960	start_setts	9
+MACHINE	harness_current	4000	0	0	0	0	0
+MACHINE	harness_current	8000	0	0	0	0	0
+MACHINE	harness_current	12000	0	0	0	0	0
+MACHINE	harness_current	16000	0	0	0	0	0
+MACHINE	harness_current	20000	0	0	0	0	0
+MACHINE	harness_current	24000	0	0	0	0	0
+[alive-attr] harness_current done 312s final setts=0 realms=0
+
+MACHINE	arm	harness_pre_v58	tw	960	start_setts	9
+MACHINE	harness_pre_v58	4000	0	0	0	0	0
+MACHINE	harness_pre_v58	8000	0	0	0	0	0
+MACHINE	harness_pre_v58	12000	0	0	0	0	0
+MACHINE	harness_pre_v58	16000	0	0	0	0	0
+MACHINE	harness_pre_v58	20000	0	0	0	0	0
+MACHINE	harness_pre_v58	24000	0	0	0	0	0
+[alive-attr] harness_pre_v58 done 312s final setts=0 realms=0
+
+MACHINE	arm	harness_pre_v57	tw	960	start_setts	9
+MACHINE	harness_pre_v57	4000	0	0	0	0	0
+MACHINE	harness_pre_v57	8000	0	0	0	0	0
+MACHINE	harness_pre_v57	12000	0	0	0	0	0
+MACHINE	harness_pre_v57	16000	0	0	0	0	0
+MACHINE	harness_pre_v57	20000	0	0	0	0	0
+MACHINE	harness_pre_v57	24000	0	0	0	0	0
+[alive-attr] harness_pre_v57 done 322s final setts=0 realms=0
+
+MACHINE	arm	harness_city_store_off	tw	960	start_setts	9
+MACHINE	harness_city_store_off	4000	0	0	0	0	0
+MACHINE	harness_city_store_off	8000	0	0	0	0	0
+MACHINE	harness_city_store_off	12000	0	0	0	0	0
+MACHINE	harness_city_store_off	16000	0	0	0	0	0
+MACHINE	harness_city_store_off	20000	0	0	0	0	0
+MACHINE	harness_city_store_off	24000	0	0	0	0	0
+[alive-attr] harness_city_store_off done 311s final setts=0 realms=0
+
+MACHINE	arm	harness_mint_bars_off	tw	960	start_setts	9
+MACHINE	harness_mint_bars_off	4000	0	0	0	0	0
+MACHINE	harness_mint_bars_off	8000	0	0	0	0	0
+MACHINE	harness_mint_bars_off	12000	0	0	0	0	0
+MACHINE	harness_mint_bars_off	16000	0	0	0	0	0
+MACHINE	harness_mint_bars_off	20000	0	0	0	0	0
+MACHINE	harness_mint_bars_off	24000	0	0	0	0	0
+[alive-attr] harness_mint_bars_off done 315s final setts=0 realms=0
+
+
+═══ SUMMARY @ final ═══
+arm                            setts  cities  realms     pop   urban     sec
+harness_current                    0       0       0       0       0     312
+harness_pre_v58                    0       0       0       0       0     312
+harness_pre_v57                    0       0       0       0       0     322
+harness_city_store_off             0       0       0       0       0     311
+harness_mint_bars_off              0       0       0       0       0     315
+
+[alive-attr] grid W=1920 tw=960 (app Half = W=1920 tw=960).
+Prior mistaken panel was W=960 tw=480. Overnight stylized_960 was also tw=480.

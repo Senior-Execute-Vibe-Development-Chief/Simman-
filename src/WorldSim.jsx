@@ -199,7 +199,7 @@ const LENSES=[
   {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
   {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["tilecoin","Coin field"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
   ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 // Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
@@ -209,6 +209,10 @@ function subLockReason(sub,psw,stats){
   if(!psw)return null;
   if(sub==="money"&&!((stats&&stats.totalWealth)>0))
     return "No coin has been struck yet — the world still barters.";
+  if(sub==="tilecoin"){
+    if(!(SIM_T.TILE_MONEY>0)) return "Per-tile coin is off — enable TILE_MONEY in levers.";
+    if(!(psw&&psw._tileCoinMax>0)) return "No farm-gate coin on the land yet — grain must trade for coin to pile on tiles.";
+  }
   if(sub==="goodsflow"&&!((stats&&stats.totalWealth)>0))
     return "No trade yet — goods move once towns meet in trade.";
   if(sub==="prices"&&!(psw.settlements&&psw.settlements.some(s=>s&&s._gPrice)))
@@ -1376,11 +1380,11 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 // communities each network connects.
 for(let ti=0;ti<N;ti++){const pi4=ti<<2;
 d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
-}else if(vm==="money"||vm==="goodsflow"){
-// Money/goods-flow overlay — dark slate backdrop so gold sources and the
-// flowing-coin particles glow. Land tiles a touch lighter than sea so
-// coastlines stay legible. Roads + sources + flow drawn in the
-// peopleSim overlay pass below.
+}else if(vm==="money"||vm==="goodsflow"||vm==="tilecoin"){
+// Money/goods-flow/coin-field overlay — dark slate backdrop so gold sources,
+// flowing-coin particles, and per-tile farm-gate coin glow. Land tiles a touch
+// lighter than sea so coastlines stay legible. Roads + sources + flow drawn in
+// the peopleSim overlay pass below.
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),sx=Math.min(W-1,tx*RES),si=sy*W+sx;
 const land=w.elevation[si]>sl;const pi4=ti<<2;
@@ -1633,6 +1637,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmLoyalty = viewRef.current === "loyalty";
   const vmPopulation = viewRef.current === "population";
   const vmTechnique = viewRef.current === "technique";
+  const vmTileCoin = viewRef.current === "tilecoin";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1856,7 +1861,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmTechnique?16384:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
+    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmTechnique?16384:0)|(vmTileCoin?32768:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -2174,6 +2179,30 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           stctx.fillRect(x,y,1,1);
         }
       }
+      // ── Coin field: farm-gate coin sitting on worked tiles (_tileWealth).
+      // Gold on the dark slate base — bright means more coin piled at the gate;
+      // empty hinterland stays dark. Absolute log ruler (0.01..10k coin/tile)
+      // so the von Thünen gradient reads the same in every era. ──
+      if(vmTileCoin&&psw._tileCoinDens){
+        const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._tileCoinDens.length);
+        const dens=psw._tileCoinDens;let lastFs=null;
+        const fsCache=new Array(251);
+        const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
+          const t=v/250;
+          let r,g,b,a=1;
+          if(t<0.25){a=0.18+t/0.25*0.42;r=88;g=72;b=48;}                                           // trace coin — warm shadow
+          else if(t<0.50){const s2=(t-0.25)/0.25;r=(120+s2*60)|0;g=(90+s2*50)|0;b=(40+s2*10)|0;}  // farm belt — ochre
+          else if(t<0.75){const s2=(t-0.50)/0.25;r=(180+s2*55)|0;g=(140+s2*50)|0;b=(50+s2*10)|0;} // market fringe — amber
+          else{const s2=(t-0.75)/0.25;r=(235+s2*20)|0;g=(205+s2*45)|0;b=(70+s2*120)|0;}            // hot farm gates — gold → white
+          fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
+        for(let ti=0;ti<N2;ti++){
+          const v=dens[ti];if(v<=0)continue;
+          const y=(ti/tw)|0,x=ti-y*tw;
+          const fs=colAt(v);
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(x,y,1,1);
+        }
+      }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
       if(vmAncestry&&ter&&ter.tAncestry){
@@ -2317,7 +2346,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(L.borders){octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.stroke(natPath);}
         emphasizeRealm(claimArr,tw,th);
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders||L.provinces)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin&&(L.tints||L.borders||L.provinces)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         // Two pens, bloc-aware (same convention as the Politics lens): a seam
         // between two members of the SAME suzerainty bloc is a faint province
@@ -2357,7 +2386,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
         emphasizeRealm(claimArr,tw,th);
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2452,7 +2481,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // Live-state only: suppressed while scrubbing the timeline (arrows
       // describe TODAY's wars, not the year under the scrubber).
       if(L.warFronts&&psw._warArrows&&psw._warArrows.length&&!psw._scrubClaim&&
-         (vmCountry||(!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique))){
+         (vmCountry||(!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin))){
         const wa=psw._warArrows,tw=psw.tw;
         octx.lineJoin="round";octx.lineCap="round";
         for(let i=0;i<wa.length;i+=4){
@@ -2731,7 +2760,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // screen-space on the feature canvas so type renders crisp at any map
     // scale. Skipped on the identity/thematic lenses, where political names
     // over a faith/culture/price fill would mislabel what the colours mean.
-    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmPrices){
+    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin&&!vmPrices){
       labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
       // Physical floor: on a small display the map-unit sizes drop below
       // legibility at world zoom; floor them at ~7 CSS px and let collision
@@ -2842,7 +2871,8 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.fieldDom){_drop(psw._fieldDom);_drop(psw._fieldSec);psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
   if(snap.loyal){_drop(psw._loyal);_drop(psw._loyalHome);psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
   if(snap.popDens){_drop(psw._popDens);psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
-  if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
+  if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (absolute 0..1 ruler ×250)
+  if(snap.tileCoinDens){_drop(psw._tileCoinDens);psw._tileCoinDens=snap.tileCoinDens;psw._tileCoinMax=snap.tileCoinMax||0;}   // coin field: farm-gate coin on tiles
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   psw._goodsFlows=snap.goodsFlows||null;           // animated cargo flows (goods-flow view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
@@ -3317,7 +3347,16 @@ const pickLens=(id)=>{
   const v=subMemRef.current[id]||L.subs[0][0];
   setViewMode(v);viewRef.current=v;
 };
-const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
+// lensId is REQUIRED when the click comes from a flyout: React state updates
+// from pickLens are async, so pickSub(v) alone still saw the PREVIOUS lens and
+// wrote e.g. "money" into politics' memory — after which picking Politics
+// restored Money and the dock felt stuck on Economy.
+const pickSub=(v,lensId)=>{
+  const id=lensId!=null?lensId:lens;
+  subMemRef.current[id]=v;
+  setLens(id);
+  setViewMode(v);viewRef.current=v;
+};
 
 // ── Codex navigation (plan §7.1): one stack over {tab, realm, settlement} so
 // every jump — tab click, chip click, leaderboard row, map click — is
@@ -4691,7 +4730,7 @@ return(
         {L.subs.map(([v,l])=>{
           const lock=subLockReason(v,psw,psStats);
           return(
-          <button key={v} onClick={()=>{if(lock)return;pickLens(L.id);pickSub(v);}}
+          <button key={v} onClick={()=>{if(lock)return;pickSub(v,L.id);}}
             className={"au-rail-tab"+(viewMode===v?" au-active":"")}
             style={{fontSize:12,opacity:lock?0.42:1,cursor:lock?"default":"pointer"}}
             title={lock||undefined}>{l}{lock?" ·🔒":""}</button>);
@@ -4876,6 +4915,9 @@ return(
     </select>):null}>
   {viewMode==="population"&&peopleRef.current&&peopleRef.current._popMax
     ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest region ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
+    :null}
+  {viewMode==="tilecoin"&&peopleRef.current&&peopleRef.current._tileCoinMax
+    ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>richest farm tile ≈ {peopleRef.current._tileCoinMax.toFixed(1)} coin</div>
     :null}
 </LegendCard>}
 

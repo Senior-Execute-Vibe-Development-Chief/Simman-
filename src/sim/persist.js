@@ -51,7 +51,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 51;  // v51: INVENT_JUMP — under DAWN_LIVE, genesis solves first domestication (domLagY/suit × peopled-basin fill + forager logistic) and opens with basin farming stamped, so play skips the empty forager wait; same invent law as the live crystallize pass (hearthInvent.js). ON (v<50 guard does not cover it — v<51 pins INVENT_JUMP OFF so a pre-jump world that opened empty keeps watching invent live if rebuilt; loaded saves already past invent are unaffected). v50: the grain shed made physical (HAUL_PHYS + GRAIN_FREIGHT + GRAIN_BID — the haul curve re-grounded in real kilometres off Diocletian's Price Edict and gated on an actual water ROUTE, the road paid in grain at the farm gate, and scarce grain allocated to the highest bidder instead of to the oldest city; the 2026-08-26 grain-shed lap, docs/grain-shed-2026-08-26.md). MEASURED: the East European runaway is manufactured by the grain economy, not by the land — its largest city collapses 369k/489k to 35k/52k across paired chaos draws while N China rises 15k/32k to 132k/272k and the urban core median lifts 8k to 15k/24k. ON (v<50 guard pins all three: an old world keeps the founding-order queue and the tile-constant haul range its history was written by); v49: the Neolithic clock + the Younger-Dryas calendar (CAGE_FILL — Carneiro's pressure leg with the flight knee: the caging org drive waits for the basin to actually FILL, so farming→writing stretches from 1,688y toward history's millennia (measured ladder in tuning.js/cageField.js) — and EPOCH_YD, the display+dynasty epoch re-anchored to t=0 = the end of the Younger Dryas, ~9700 BCE, the owner-ratified start of the civilizational clock; cosmetic both (CLAUDE.md: the calendar is read-only), the genesis lap 2026-08-26) ON (v<49 guard pins both — an old world keeps its own pace AND its own self-consistent calendar: dynasty rolls stamp absolute years under one epoch); v48: the annona (GRAIN_PROVISION — a coined city buys deficit + granary refill at the pace of its own mouths; standing imports break the self-sufficiency trap that pinned locally-fed cities at the founding minimum; the 2026-08-26 provisioning lap) ON (v<48 guard); v47: the open grain market (GRAIN_MARKET — a short city buys from its trade peers on the road+sea network, cross-border, at the seller's scarcity price, coin-gated, behind the market institution (coined money), with the seed-corn rule (granary refills before exports) and the export capacity add-back (selling cannot drag a catchment below what its land grows); the 2026-08-25 import/uptake wave, docs/harvest-years-2026-08-25.md addendum) ON (v<47 guard); v46: the harvest years + the per-basin lean-year law (HARVEST_YEARS + LEAN_YEAR — real annual production swings with famine derived from the tail, and founding bars at each basin's own deep-year margin from the validated yield-variance map; the 2026-08-25 harvest-years wave, docs/harvest-years-2026-08-25.md) ON (v<46 guard); v45: ONE food book + the surplus farm gate (ONE_BOOK + SHIP_SURPLUS — the market ledger bills the market-fed core, and a settlement offers what its ledger does not eat; the 2026-08-24 Egypt-autopsy terminus, granaries/prices/trade re-keyed) ON (v<45 guard); v44: forest mechanics read the biome (CANOPY_CLASS — the Koppen closed-canopy mask replaces the moisture ramp in the forest state bar, the basin channel and FOREST_LOCK) ON (v<44 guard); v43: canopy locks the crop until the axes come (FOREST_LOCK=0.8 — temperate forest capacity waits on metallurgy) ON (v<43 guard); v42: the seat is a court (SEAT_FIELD=1 — the basin's people decide state birth; the seat-size census bar retires) ON (v<42 guard); v41: the satrapy law (SEAT_ADMIN — a governed city province prices its distance at oversight, not projection; the absolute admin ledger persists beside _strain and the headroom gate finally evaluates) ON (v<41 guard); v40: a city's politics is the GROUND's (BORN_OF_LAND — a birth with no explicit flag takes the flag of the land it stands on; sovereignty is the RESIDUAL of unowned ground, not the default value of the field) ON (v<40 guard); v39: conquest learns to finish (WAR_FINISH — fed garrisons via the field the census eats by, walls manned by the urban core, relative seat-grade integration) ON (v<39 guard; PEER_SEATS same-day ships UNGUARDED by decision — the owner's live peer worlds must survive their own saves, and older saves gaining peer courts is the forward shift the regime intends); v38: the countryside learns (LAND_KNOW — pre-urban knowledge lives on per-basin land ledgers; cities and bordered tribal nations mint only past the Tallies & Seals bar, so prehistory is entity-free) ON (v<38 guard); v37: no records, no nation (STATE_RECORDS — de-novo statehood waits for the Writing bar; states, wars and borders arrive with the tablet, as Uruk's did) ON (v<37 guard); v36: the access band conserves overlap mass (BAND_SUM — max deleted 27% of fine-grid river mass and 10% of coast where dense geometry self-overlaps) ON (v<36 guard); v35: irrigable water over a real width (IRR_BAND — the works-dilution fix) ON (v<35 guard); v34: the granary reaches the field (FIELD_CRADLE — capacity-side irrigation + alluvium on the wild proxy) ON (v<34 guard); v33: the funded march (MARCH_FUNDED — logistics stretches the people-funded extent instead of granting a flat allowance) ON (v<33 guard); v32: Carneiro's bar (STATE_OPEN — open land refuses the state) added, SHIPS AT 0 after three inert laps — the excess lived in claim size, not formation (docs/atlas-gap-2026-08-14.md late-belt verdict; v<32 guard inert while def 0); v31: the partition (PROTECTORATE — gunboat subjugation of far coasts) ON (v<31 guard); v30: the fleet term (SEA_PRACTICE — seamanship is learned by sailing) ON (v<30 guard); v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 62;  // v62: INVENT_JUMP — under DAWN_LIVE, genesis solves first domestication (domLagY/suit × peopled-basin fill + forager logistic) and opens with basin farming stamped (hearthInvent.js). ON (v<62 pins INVENT_JUMP OFF). v61: LAND_SURPLUS applies countryside-eats-first to the fully-multiplied farm+pastoral harvest (was bare fert×yield in tally — zeroed farm credit, herd-only cities); fedM counts granary cover so STARVE_SHED does not melt stocked cores. v60: MARKET_PULL partition/tally split — MARKET_PULL_CACHE (skip flood when bid fingerprint stable) + MARKET_PULL_HYST (re-market only when challenger clearly better). v<60 pins CACHE OFF and HYST=1. v59: deleted INVENT_FIELD (measured reject — people-scaled independent invention floor only multiplied up; OFF path is the only path). v58: Tier-2 politics abolish stack ON — COURT_SPHERE + ENGULF_BAR=8 + ABSORB_PEER + CITY_STORE + TRUCE_TRADE_OWN (institutions from states, encirclement lowers submission bar at measured K=8, peer absorb at client court, mint needs storable surplus, trade-peace vs own commerce). v<58 guard pins the four OFF and ENGULF_BAR to 0. v57: mint/packing + city-hold stack default ON — MINT_RESIDUAL + MINT_REACH + SEED_EXCLUSIVE + CITY_HOLD + CATCH_GRACE=600 + ARID_SECURE (unmarketed basin / day-one reach mint bars, newborn seed exclusivity, provincial cities anchor districts, clipped catchments grace ~4 territory passes, water-fed arid land is secure). v<57 guard pins the five OFF and CATCH_GRACE to 0. v56: deleted retired/refuted default-0 levers (COMPEL, ERA_PROD_SCALE, TIER_SCALE_REF, FISH_RATE, SPAN_TECH, MARKET_CAP, MARKET_WEALTH, TOWN_MINT, FARM_RES, CROP_HOMELAND, STATE_WORKS, MARCH_LAW, CREST_HOLD, STATE_OPEN, REACH_STRAIN, CAP_GEO, RIVER_REACH, PASTORAL_IND, TRUCE_TOLL, FISC_ADOPT, ADOPT_BUDGET, FARM_MAX_TIER, CRADLE_EVE) — OFF behavior is now the only path; unknown tuning keys in old saves are ignored by applyTuning. v55: the 12k abolish stack default ON — CORE_LOCAL + AGGLOM_LOCAL + STAMP_RETIRE + VIABLE_UNITS + DISSOLVE_CORE=0.2 (self-fed cities concentrate on whole-economy surplus; founding stamp stops flooring size/capacity; viability floor reads as 8 people not 8,000; dissolve bar at 2k against mint at 10k). v<55 guard pins the four levers OFF and DISSOLVE_CORE to 1. v54: land surplus before bid (T.LAND_SURPLUS default ON — implied countryside retains a share on the tile; only surplus enters MARKET_PULL assignment; retires v53 territory compulsion T.COMPEL). v<54 guard pins LAND_SURPLUS OFF. v53: farm-gate compulsion (T.COMPEL default ON — overlord/landlord/liege claims outrank MARKET_PULL bid; requires MARKET_PULL). v<53 guard pins COMPEL OFF. v52: per-tile farm-gate coin (T.TILE_MONEY default ON — money field Phases A–D: _tileWealth, tile fiscal sinks, unserved-coin founding pull). v<52 guard pins TILE_MONEY OFF. v51: the tier ratchet retires — MARKET_PULL + PRICE_GROSS + HAUL_PAID + URBAN_LABOR default ON (the emergent food stack: bid-sized catchments with cross-border trade, scarcity-only grain price on the production-relative book, haul range from physics+payment not destination tier, farm output scales with rural share). Retires CORE_BY_TIER/HINTERLAND_BY_TIER/FOOD_RANGE_BY_TIER/GRAIN_PRICE_BY_TIER as capability drivers; tier stays a readout. v<51 guard pins all four OFF. v50: the grain shed made physical (HAUL_PHYS + GRAIN_FREIGHT + GRAIN_BID — the haul curve re-grounded in real kilometres off Diocletian's Price Edict and gated on an actual water ROUTE, the road paid in grain at the farm gate, and scarce grain allocated to the highest bidder instead of to the oldest city; the 2026-08-26 grain-shed lap, docs/grain-shed-2026-08-26.md). MEASURED: the East European runaway is manufactured by the grain economy, not by the land — its largest city collapses 369k/489k to 35k/52k across paired chaos draws while N China rises 15k/32k to 132k/272k and the urban core median lifts 8k to 15k/24k. ON (v<50 guard pins all three: an old world keeps the founding-order queue and the tile-constant haul range its history was written by); v49: the Neolithic clock + the Younger-Dryas calendar (CAGE_FILL — Carneiro's pressure leg with the flight knee: the caging org drive waits for the basin to actually FILL, so farming→writing stretches from 1,688y toward history's millennia (measured ladder in tuning.js/cageField.js) — and EPOCH_YD, the display+dynasty epoch re-anchored to t=0 = the end of the Younger Dryas, ~9700 BCE, the owner-ratified start of the civilizational clock; cosmetic both (CLAUDE.md: the calendar is read-only), the genesis lap 2026-08-26) ON (v<49 guard pins both — an old world keeps its own pace AND its own self-consistent calendar: dynasty rolls stamp absolute years under one epoch); v48: the annona (GRAIN_PROVISION — a coined city buys deficit + granary refill at the pace of its own mouths; standing imports break the self-sufficiency trap that pinned locally-fed cities at the founding minimum; the 2026-08-26 provisioning lap) ON (v<48 guard); v47: the open grain market (GRAIN_MARKET — a short city buys from its trade peers on the road+sea network, cross-border, at the seller's scarcity price, coin-gated, behind the market institution (coined money), with the seed-corn rule (granary refills before exports) and the export capacity add-back (selling cannot drag a catchment below what its land grows); the 2026-08-25 import/uptake wave, docs/harvest-years-2026-08-25.md addendum) ON (v<47 guard); v46: the harvest years + the per-basin lean-year law (HARVEST_YEARS + LEAN_YEAR — real annual production swings with famine derived from the tail, and founding bars at each basin's own deep-year margin from the validated yield-variance map; the 2026-08-25 harvest-years wave, docs/harvest-years-2026-08-25.md) ON (v<46 guard); v45: ONE food book + the surplus farm gate (ONE_BOOK + SHIP_SURPLUS — the market ledger bills the market-fed core, and a settlement offers what its ledger does not eat; the 2026-08-24 Egypt-autopsy terminus, granaries/prices/trade re-keyed) ON (v<45 guard); v44: forest mechanics read the biome (CANOPY_CLASS — the Koppen closed-canopy mask replaces the moisture ramp in the forest state bar, the basin channel and FOREST_LOCK) ON (v<44 guard); v43: canopy locks the crop until the axes come (FOREST_LOCK=0.8 — temperate forest capacity waits on metallurgy) ON (v<43 guard); v42: the seat is a court (SEAT_FIELD=1 — the basin's people decide state birth; the seat-size census bar retires) ON (v<42 guard); v41: the satrapy law (SEAT_ADMIN — a governed city province prices its distance at oversight, not projection; the absolute admin ledger persists beside _strain and the headroom gate finally evaluates) ON (v<41 guard); v40: a city's politics is the GROUND's (BORN_OF_LAND — a birth with no explicit flag takes the flag of the land it stands on; sovereignty is the RESIDUAL of unowned ground, not the default value of the field) ON (v<40 guard); v39: conquest learns to finish (WAR_FINISH — fed garrisons via the field the census eats by, walls manned by the urban core, relative seat-grade integration) ON (v<39 guard; PEER_SEATS same-day ships UNGUARDED by decision — the owner's live peer worlds must survive their own saves, and older saves gaining peer courts is the forward shift the regime intends); v38: the countryside learns (LAND_KNOW — pre-urban knowledge lives on per-basin land ledgers; cities and bordered tribal nations mint only past the Tallies & Seals bar, so prehistory is entity-free) ON (v<38 guard); v37: no records, no nation (STATE_RECORDS — de-novo statehood waits for the Writing bar; states, wars and borders arrive with the tablet, as Uruk's did) ON (v<37 guard); v36: the access band conserves overlap mass (BAND_SUM — max deleted 27% of fine-grid river mass and 10% of coast where dense geometry self-overlaps) ON (v<36 guard); v35: irrigable water over a real width (IRR_BAND — the works-dilution fix) ON (v<35 guard); v34: the granary reaches the field (FIELD_CRADLE — capacity-side irrigation + alluvium on the wild proxy) ON (v<34 guard); v33: the funded march (MARCH_FUNDED — logistics stretches the people-funded extent instead of granting a flat allowance) ON (v<33 guard); v32: Carneiro's bar (STATE_OPEN — open land refuses the state) added, SHIPS AT 0 after three inert laps — the excess lived in claim size, not formation (docs/atlas-gap-2026-08-14.md late-belt verdict; v<32 guard inert while def 0); v31: the partition (PROTECTORATE — gunboat subjugation of far coasts) ON (v<31 guard); v30: the fleet term (SEA_PRACTICE — seamanship is learned by sailing) ON (v<30 guard); v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -342,6 +342,7 @@ export function saveWorld(world, meta = {}) {
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
       soilFatigue: sparseFromTyped(world._soilFatigue, 0),
       fishTaken: sparseFromTyped(world._fishTaken, 0),   // "the sea remembers" (T.FISH_LABOR, settlement.js) — taken fraction of each coastal stock
+      tileWealth: sparseFromTyped(world._tileWealth, 0), // T.TILE_MONEY — coin on farm tiles (tileMoney.js)
     },
     reserves,
     tables,
@@ -642,13 +643,73 @@ export function loadWorld(data, opts = {}) {
     if (!("GRAIN_FREIGHT" in tn)) T.GRAIN_FREIGHT = 0;
     if (!("GRAIN_BID" in tn)) T.GRAIN_BID = 0;
   }
-  // v50 → v51: invent foresight at genesis (INVENT_JUMP). A pre-v51 world
-  // under DAWN_LIVE watched farming invent live; pin OFF so rebuilds of that
-  // regime keep the empty-dawn arc unless the save set the lever.
+  // v50 → v51: the tier ratchet retires. A pre-v51 world grew its catchments,
+  // grain prices and haul ranges from the tier tables; pin the emergent stack
+  // OFF so it keeps the geography its history was written by.
   if (data.v < 51) {
+    const tn = data.tuning || {};
+    if (!("MARKET_PULL" in tn)) T.MARKET_PULL = 0;
+    if (!("PRICE_GROSS" in tn)) T.PRICE_GROSS = 0;
+    if (!("HAUL_PAID" in tn)) T.HAUL_PAID = 0;
+    if (!("URBAN_LABOR" in tn)) T.URBAN_LABOR = 0;
+  }
+  // v51 → v52: farm-gate coin on tiles. A pre-v52 world credited seller.wealth
+  // on grain sales; pin TILE_MONEY OFF so its ledger stays settlement-only.
+  if (data.v < 52) {
+    const tn = data.tuning || {};
+    if (!("TILE_MONEY" in tn)) T.TILE_MONEY = 0;
+  }
+  // v52 → v53: land retention replaces territory compulsion.
+  if (data.v < 54) {
+    const tn = data.tuning || {};
+    if (!("LAND_SURPLUS" in tn)) T.LAND_SURPLUS = 0;
+  }
+  // v54 → v55: the 12k abolish stack. Pre-v55 worlds kept the founding stamp
+  // as a permanent size/capacity floor and dissolved at the city bar itself.
+  if (data.v < 55) {
+    const tn = data.tuning || {};
+    if (!("CORE_LOCAL" in tn)) T.CORE_LOCAL = 0;
+    if (!("AGGLOM_LOCAL" in tn)) T.AGGLOM_LOCAL = 0;
+    if (!("STAMP_RETIRE" in tn)) T.STAMP_RETIRE = 0;
+    if (!("VIABLE_UNITS" in tn)) T.VIABLE_UNITS = 0;
+    if (!("DISSOLVE_CORE" in tn)) T.DISSOLVE_CORE = 1;
+  }
+  // v56 → v57: mint/packing + city-hold. Pre-v57 worlds minted on gross disks
+  // and shed member catchments instantly on a border sweep.
+  if (data.v < 57) {
+    const tn = data.tuning || {};
+    if (!("MINT_RESIDUAL" in tn)) T.MINT_RESIDUAL = 0;
+    if (!("MINT_REACH" in tn)) T.MINT_REACH = 0;
+    if (!("SEED_EXCLUSIVE" in tn)) T.SEED_EXCLUSIVE = 0;
+    if (!("CITY_HOLD" in tn)) T.CITY_HOLD = 0;
+    if (!("CATCH_GRACE" in tn)) T.CATCH_GRACE = 0;
+    if (!("ARID_SECURE" in tn)) T.ARID_SECURE = 0;
+  }
+  // v57 → v58: Tier-2 politics. Pre-v58 worlds keep free annexation bars,
+  // nationless institutional radiation, percentile absorb, census-only mint,
+  // and median-referenced trade peace.
+  if (data.v < 58) {
+    const tn = data.tuning || {};
+    if (!("COURT_SPHERE" in tn)) T.COURT_SPHERE = 0;
+    if (!("ENGULF_BAR" in tn)) T.ENGULF_BAR = 0;
+    if (!("ABSORB_PEER" in tn)) T.ABSORB_PEER = 0;
+    if (!("CITY_STORE" in tn)) T.CITY_STORE = 0;
+    if (!("TRUCE_TRADE_OWN" in tn)) T.TRUCE_TRADE_OWN = 0;
+  }
+  // v59 → v60: MARKET_PULL flood cache + switch hysteresis. Pre-v60 worlds
+  // re-flooded every territory cadence with strict Dijkstra winners.
+  if (data.v < 60) {
+    const tn = data.tuning || {};
+    if (!("MARKET_PULL_CACHE" in tn)) T.MARKET_PULL_CACHE = 0;
+    if (!("MARKET_PULL_HYST" in tn)) T.MARKET_PULL_HYST = 1;
+  }
+  // v61 → v62: invent foresight at genesis (INVENT_JUMP). Pre-v62 worlds under
+  // DAWN_LIVE watched farming invent live; pin OFF so rebuilds keep that arc.
+  if (data.v < 62) {
     const tn = data.tuning || {};
     if (!("INVENT_JUMP" in tn)) T.INVENT_JUMP = 0;
   }
+
   // v35 → v36: the access band conserves overlap mass (BAND_SUM). A pre-v36
   // save keeps the max-over-sources band (its fine-grid world was calibrated
   // against the overlap-deleting field).
@@ -679,12 +740,6 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("MARCH_FUNDED" in tn)) T.MARCH_FUNDED = 0;
   }
-  // v31 → v32: Carneiro's bar (STATE_OPEN). A pre-v32 save keeps its
-  // cage-blind foundings.
-  if (data.v < 32) {
-    const tn = data.tuning || {};
-    if (!("STATE_OPEN" in tn)) T.STATE_OPEN = 0;
-  }
   // v30 → v31: the partition (PROTECTORATE). A pre-v31 save keeps its
   // unsubjugated far coasts.
   if (data.v < 31) {
@@ -696,18 +751,6 @@ export function loadWorld(data, opts = {}) {
   if (data.v < 30) {
     const tn = data.tuning || {};
     if (!("SEA_PRACTICE" in tn)) T.SEA_PRACTICE = 0;
-  }
-  // v28 → v29: peacetime borders relax onto holdable lines (MARCH_LAW).
-  // A pre-v29 save keeps its frozen first-meeting borders.
-  if (data.v < 29) {
-    const tn = data.tuning || {};
-    if (!("MARCH_LAW" in tn)) T.MARCH_LAW = 0;
-  }
-  // v27 → v28: contested defensible ground resists the claim (CREST_HOLD).
-  // A pre-v28 save keeps its first-arrival crossings.
-  if (data.v < 28) {
-    const tn = data.tuning || {};
-    if (!("CREST_HOLD" in tn)) T.CREST_HOLD = 0;
   }
   // v26 → v27: reach realized through transport (PORTER_BOUND). A pre-v27
   // save keeps its transport-blind radius.
@@ -739,13 +782,6 @@ export function loadWorld(data, opts = {}) {
   if (data.v < 23) {
     const tn = data.tuning || {};
     if (!("TILLAGE" in tn)) T.TILLAGE = 0;
-  }
-  // v21 → v22: reach as a maintained stock (STATE_WORKS — roads/relays bought
-  // by out-collecting the era, lost when the fisc fails). A pre-v22 save keeps
-  // its tech-only administrative radius.
-  if (data.v < 22) {
-    const tn = data.tuning || {};
-    if (!("STATE_WORKS" in tn)) T.STATE_WORKS = 0;
   }
   // v20 → v21: satrapization (SATRAPIZE — a mature suzerain integrates aged
   // vassals as provinces). A pre-v21 save keeps its tribute-network politics.
@@ -850,6 +886,8 @@ export function loadWorld(data, opts = {}) {
     if (soil) world._soilFatigue = soil;                // "the land remembers" (settlement.js)
     const fishT = typedFromSparse(data.maps.fishTaken, Float32Array, N, 0);
     if (fishT) world._fishTaken = fishT;                // "the sea remembers" (T.FISH_LABOR, settlement.js)
+    const tileW = typedFromSparse(data.maps.tileWealth, Float32Array, N, 0);
+    if (tileW) world._tileWealth = tileW;              // T.TILE_MONEY farm-gate coin (tileMoney.js)
     // The loyalty field (loyaltyField.js). Allegiance is the presence marker
     // (dense, always saved once the lever ran); the sparse memory arrays may
     // legitimately be all-default in a young world, so materialize them at
