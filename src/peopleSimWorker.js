@@ -842,6 +842,22 @@ function buildSnapshotUnsafe() {
     }
   }
 
+  // Coin-field view: farm-gate coin on worked tiles (_tileWealth). Absolute
+  // log ruler 0.01..10k coin/tile — same colour means the same pile in every era.
+  let tileCoinDens = null, tileCoinMax = 0;
+  if (viewMode === "tilecoin" && sendStatic && T.TILE_MONEY > 0 && world._tileWealth) {
+    const tw = world._tileWealth, N = world.N;
+    for (let ti = 0; ti < N; ti++) if (tw[ti] > tileCoinMax) tileCoinMax = tw[ti];
+    const LO = -2, SPAN = 4;   // log10(0.01) .. log10(10000)
+    tileCoinDens = pooledArr(Uint8Array, N);
+    tileCoinDens.fill(0);
+    for (let ti = 0; ti < N; ti++) {
+      const c = tw[ti];
+      if (c <= 0.01) continue;
+      tileCoinDens[ti] = Math.min(250, Math.round((Math.log10(c) - LO) / SPAN * 250));
+    }
+  }
+
   // Money view: the animated coin flows (change every tick → send each frame
   // while the view is open). Roads view: a clean per-tile component-root array
   // (changes slowly → gate with the static group).
@@ -1003,6 +1019,7 @@ function buildSnapshotUnsafe() {
   if (loyal) { transfer.push(loyal.buffer); if (loyalHome) transfer.push(loyalHome.buffer); }
   if (popDens) transfer.push(popDens.buffer);
   if (devDens) transfer.push(devDens.buffer);
+  if (tileCoinDens) transfer.push(tileCoinDens.buffer);
 
   // Global price-level summary for the HUD ticker — population-weighted
   // mean across all settlements, so it tracks "the average wheat price the
@@ -1037,6 +1054,7 @@ function buildSnapshotUnsafe() {
     // × bridge × rNormPop² at pack time); the legend then ×POP_SCALE via fmtPeople.
     popDens, popMax: popDens ? popMax : undefined,   // population lens: absolute-ruler people-on-land
     devDens,                          // technique lens: the idea field, absolute 0..1 ruler ×250
+    tileCoinDens, tileCoinMax: tileCoinDens ? tileCoinMax : undefined,   // coin field: farm-gate coin per tile
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last

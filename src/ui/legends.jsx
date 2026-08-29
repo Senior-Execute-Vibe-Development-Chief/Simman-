@@ -94,6 +94,16 @@ export const LEGENDS = {
     ],
     tip: "Dot density on each link is its share of THIS tick's trade, so the busiest routes pop regardless of the world's money supply. The world starts on barter — no coins to show until the first mine opens.",
   },
+  tilecoin: {
+    title: "Coin on the land",
+    rows: [
+      [ramp(["rgba(88,72,48,0.35)", "rgb(120,90,40)", "rgb(180,140,50)", "rgb(235,205,70)", "rgb(255,250,190)"], 11), "≈0.01 → ≈10,000 coin per farm tile"],
+      [ramp(["rgba(88,72,48,0.3)"]), "shadow — no coin yet"],
+      [ramp(["rgb(180,140,50)"]), "farm belt — grain sold for coin"],
+      [ramp(["rgb(255,250,190)"]), "hot farm gates — coin piling unserved"],
+    ],
+    tip: "Circulating coin sitting on the tile that sold the grain — not in the city's purse. Bright gold marks where farm-gate payments accumulate; the gradient toward markets is the von Thünen rent field. Unserved bright tiles pull spontaneous founding.",
+  },
   roads: {
     title: "Trade & roads",
     rows: [
