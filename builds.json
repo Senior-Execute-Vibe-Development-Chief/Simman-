@@ -2,20 +2,20 @@
   "live": null,
   "previews": [
     {
+      "branch": "claude/moisture-yield-validation-chain-o29gdc",
+      "sha": "7dcedc4a016c3b4d2204544cff378132e96ee03b",
+      "slug": "claude-moisture-yield-validation-chain-o29gdc",
+      "builtAt": "2026-08-29T11:49:22.517Z",
+      "channel": "preview",
+      "path": "/b/claude-moisture-yield-validation-chain-o29gdc/"
+    },
+    {
       "branch": "cursor/deploy-channel-picker-15e6",
       "sha": "1336b0b4e35d0eafc3663bcbb0974219d180a945",
       "slug": "cursor-deploy-channel-picker-15e6",
       "builtAt": "2026-08-29T11:47:07.783Z",
       "channel": "preview",
       "path": "/b/cursor-deploy-channel-picker-15e6/"
-    },
-    {
-      "branch": "claude/moisture-yield-validation-chain-o29gdc",
-      "sha": "476ab9591015f875b3258e47f916147027324e8b",
-      "slug": "claude-moisture-yield-validation-chain-o29gdc",
-      "builtAt": "2026-08-29T11:45:12.481Z",
-      "channel": "preview",
-      "path": "/b/claude-moisture-yield-validation-chain-o29gdc/"
     }
   ]
 }
