@@ -1,4 +1,5 @@
-// Invent foresight (T.INVENT_JUMP): open the map at first domestication.
+// Invent foresight (T.INVENT_JUMP): solve first domestication at genesis.
+// Mint-ready open (gather + hold mint) lives in dawnJump.js.
 //
 // Under DAWN_LIVE the same hearth law that used to accrue live
 // (needY = domLagY/suit, peopled-basin fill) is solved at genesis: forager
@@ -150,7 +151,7 @@ export function jumpToFirstInvent(world) {
   const ms = (performance.now() - t0).toFixed(0);
   if (invented) {
     const nSeed = world._hearthSeeds ? world._hearthSeeds.length : 0;
-    console.log(`[peopleSim] invent-jump: opened at step ${world.step} with farming (${nSeed} basin seeds) in ${ms}ms`);
+    console.log(`[peopleSim] invent-jump: farming at step ${world.step} (${nSeed} basin seeds) in ${ms}ms`);
   } else {
     console.warn(`[peopleSim] invent-jump: no hearth matured by step ${world.step} (${ms}ms) — live invent continues`);
   }

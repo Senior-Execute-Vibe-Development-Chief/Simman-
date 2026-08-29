@@ -1582,6 +1582,9 @@ function maybeSiteCities(world) {
       lkRec = ensureLedgerAt(world, st.ti);
       if (!lkRec || (lkRec.k.organization || 0) < URBAN_ORG) { tel(world, "siteCity", "tallyBar"); continue; }
     }
+    // T.INVENT_JUMP dawn foresight: gather to mint-ready but do not mint — play
+    // starts one cadence early so the first city rises on camera.
+    if (world._dawnHoldMint) { world._dawnMintReady = true; continue; }
     mintCityAt(world, k, st.x, st.y, st.ti, coreF, lkRec,
       { pf, bridge, coreBarF, barOf, spikes },
       () => { elig[k] = 0; if (world._siteBasin) world._siteBasin.delete(k); });
@@ -1912,6 +1915,7 @@ function maybePeerSeats(world, env) {
         || ((courtOrg && courtOrg.get(k) || 0) >= URBAN_ORG);
       if (!proven) { tel(world, "peerSeat", "tallyBar"); continue; }
     }
+    if (world._dawnHoldMint) { world._dawnMintReady = true; continue; }
     mintCityAt(world, k, pc.x, pc.y, pc.ti, coreNow, cellRec, env, () => {
       claims.count[k] = (claims.count[k] || 0) + 1;
       let a = claims.labels.get(k); if (!a) claims.labels.set(k, a = []);
@@ -2339,6 +2343,68 @@ function maybeLandNations(world) {
   }
 }
 
+// ── T.INVENT_STAGGER: armed hearths mature on PEOPLED-BASIN TIME ──────────
+// A candidate whose maturity ran past prehistory (state.js seatOrArmHearths)
+// ignites HERE, mid-game, when its remaining years are served — and a year
+// only counts in proportion to how full the basin actually is (effYears +=
+// dt × basinMass/basinCapacity): an empty basin never matures, a rich
+// forager basin serves time at full rate. Colonisation stands a candidate
+// down — if settlement reached the basin first, the package arrived before
+// it was invented (the Australia case), which is the mechanism-true outcome,
+// not a failure. Emergent throughout: the calendar never enters; dt is
+// derived from the technique wave's own physical calibration (devWaveIvl ↔
+// one tile-hop ↔ tileKm/DEV_WAVE_KMPY years), the same real-time unit the
+// pre-run epoch uses.
+function maybeInventStagger(world) {
+  if (!(T.INVENT_STAGGER && world._armedHearths && world._armedHearths.length && world.popField && world.capField)) return;
+  const rB = Math.max(1, Math.round(TOWN_BASIN_R * rNormFor(world)));
+  const lastAt = world._hearthArmAt ?? world.step;
+  const dtSteps = world.step - lastAt;
+  world._hearthArmAt = world.step;
+  if (!(dtSteps > 0)) return;
+  // steps × (years per wave-hop ÷ steps per wave-hop): derived from the
+  // wave's own calibration (one hop = EARTH_KM/tw km at DEV_WAVE_KMPY=1
+  // km/y over devWaveIvl steps), so the unit is consistent at any grid
+  // and granularity without a second time constant.
+  const dtYears = dtSteps * (40075 / world.tw) / devWaveIvl(world);
+  const keep = [];
+  for (const h of world._armedHearths) {
+    // Colonised basin → stand down (diffusion won the race to this valley).
+    let settledNear = false;
+    forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
+    if (settledNear) {
+      console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} stood down — the farming package arrived before it was invented`);
+      continue;
+    }
+    const basin = townBasinMass(world, h.tx, h.ty, rB);
+    let capMass = 0;
+    const cap = world.capField, tw = world.tw, th = world.th;
+    for (let dy = -rB; dy <= rB; dy++) {
+      const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
+      for (let dx = -rB; dx <= rB; dx++) {
+        if (dx * dx + dy * dy > rB * rB) continue;
+        capMass += cap[yy * tw + (((h.tx + dx) % tw) + tw) % tw];
+      }
+    }
+    h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
+    if (h.effY >= h.needY) {
+      igniteHearth(world, h, rB);
+    } else keep.push(h);
+  }
+  world._armedHearths = keep;
+  if (!keep.length) delete world._armedHearths;
+}
+
+/**
+ * T.INVENT_JUMP mint-ready foresight: land-know + site gather + invent stagger
+ * only — skips transport / colonies / spontaneous crystallize (no cities yet).
+ */
+export function maybeDawnGather(world) {
+  stepLandKnow(world);
+  maybeSiteCities(world);
+  if (world.step % CRYSTAL_INTERVAL === 0) maybeInventStagger(world);
+}
+
 export function maybeCrystallize(world) {
   maybeDissolveTowns(world);
   stepLandKnow(world);        // T.LAND_KNOW: the countryside learns (before the doors read the ledger)
@@ -2352,57 +2418,7 @@ export function maybeCrystallize(world) {
     world._transportStep = world.step;
   }
 
-  // ── T.INVENT_STAGGER: armed hearths mature on PEOPLED-BASIN TIME ──────────
-  // A candidate whose maturity ran past prehistory (state.js seatOrArmHearths)
-  // ignites HERE, mid-game, when its remaining years are served — and a year
-  // only counts in proportion to how full the basin actually is (effYears +=
-  // dt × basinMass/basinCapacity): an empty basin never matures, a rich
-  // forager basin serves time at full rate. Colonisation stands a candidate
-  // down — if settlement reached the basin first, the package arrived before
-  // it was invented (the Australia case), which is the mechanism-true outcome,
-  // not a failure. Emergent throughout: the calendar never enters; dt is
-  // derived from the technique wave's own physical calibration (devWaveIvl ↔
-  // one tile-hop ↔ tileKm/DEV_WAVE_KMPY years), the same real-time unit the
-  // pre-run epoch uses.
-  if (T.INVENT_STAGGER && world._armedHearths && world._armedHearths.length && world.popField && world.capField) {
-    const rB = Math.max(1, Math.round(TOWN_BASIN_R * rNormFor(world)));
-    const lastAt = world._hearthArmAt ?? world.step;
-    const dtSteps = world.step - lastAt;
-    world._hearthArmAt = world.step;
-    if (dtSteps > 0) {
-      // steps × (years per wave-hop ÷ steps per wave-hop): derived from the
-      // wave's own calibration (one hop = EARTH_KM/tw km at DEV_WAVE_KMPY=1
-      // km/y over devWaveIvl steps), so the unit is consistent at any grid
-      // and granularity without a second time constant.
-      const dtYears = dtSteps * (40075 / world.tw) / devWaveIvl(world);
-      const keep = [];
-      for (const h of world._armedHearths) {
-        // Colonised basin → stand down (diffusion won the race to this valley).
-        let settledNear = false;
-        forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
-        if (settledNear) {
-          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} stood down — the farming package arrived before it was invented`);
-          continue;
-        }
-        const basin = townBasinMass(world, h.tx, h.ty, rB);
-        let capMass = 0;
-        const cap = world.capField, tw = world.tw, th = world.th;
-        for (let dy = -rB; dy <= rB; dy++) {
-          const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
-          for (let dx = -rB; dx <= rB; dx++) {
-            if (dx * dx + dy * dy > rB * rB) continue;
-            capMass += cap[yy * tw + (((h.tx + dx) % tw) + tw) % tw];
-          }
-        }
-        h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
-        if (h.effY >= h.needY) {
-          igniteHearth(world, h, rB);
-        } else keep.push(h);
-      }
-      world._armedHearths = keep;
-      if (!keep.length) delete world._armedHearths;
-    }
-  }
+  maybeInventStagger(world);
 
   // Alive-settlement count — shared by the colony saturation damper and the
   // crystallisation saturation damper below (one scan instead of two).
