@@ -340,6 +340,25 @@ function handleMessage(m) {
     tickAccum = 0; lastTickWall = performance.now();  // reset the pacer so a speed/play change doesn't dump a burst
     if (playing && !wasPlaying) scheduleTick();      // (re)start stepping
     else if (!playing && world) buildSnapshot();     // refresh the paused frame
+  } else if (m.type === "visibility") {
+    // Main thread's document.visibilityState — browsers throttle setTimeout (and
+    // sometimes starve snapshot delivery) when the tab/window is hidden, which
+    // made the sim crawl or look frozen unless the window stayed focused.
+    const wasHidden = pageHidden;
+    pageHidden = !!m.hidden;
+    if (wasHidden === pageHidden) return;
+    // Only cancel a pending TIMER wake. A channel wake already in flight will
+    // pick up the new pageHidden flag on its next tick — posting another would
+    // double-enter the stepper.
+    const hadTimer = _tickTimer != null;
+    if (hadTimer) { clearTimeout(_tickTimer); _tickTimer = null; scheduled = false; }
+    if (!pageHidden && world) { buildSnapshot(); lastSnap = performance.now(); }
+    if (playing && (hadTimer || !scheduled)) {
+      // Immediate wake so elapsed wall time is credited now; any catch-up debt
+      // then channel-chains instead of waiting on a throttled timer.
+      scheduled = true;
+      _tickChan.port2.postMessage(0);
+    }
   } else if (m.type === "select") {
     selId = m.id;
     if (!playing && world) buildSnapshot();          // show the selection's detail now
@@ -476,19 +495,41 @@ function handleMessage(m) {
 // however many ticks the elapsed wall-time has earned (a fractional accumulator,
 // so e.g. 8 tps cleanly yields a step roughly every fourth snapshot); unbounded
 // mode busy-loops via the MessageChannel (timers clamp to ~4ms, which would cap it).
+//
+// BACKGROUND TABS. Browsers throttle main-thread timers hard when the page is
+// hidden (1Hz, then sometimes 1/min). Dedicated-worker timers are usually
+// exempt, but not reliably — and the old paced path used setTimeout + a 250ms
+// catch-up clamp that turned any oversleep into a crawl ("sim only runs when
+// the window is focused"). While hidden we (a) chain on MessageChannel whenever
+// there is step debt so catch-up isn't gated on the next timer, (b) credit up
+// to MAX_CATCHUP_MS of wall time per wake so a throttled timer still recovers,
+// (c) keep unspent debt when the slice budget cuts short, and (d) almost stop
+// shipping snapshots so the main thread isn't flooded while suspended.
 const UNBOUNDED_TPS = 100000;
+const MAX_CATCHUP_MS = 5000;     // after sleep / heavy throttle: catch up this much wall time per wake
+const SNAP_MS_HIDDEN = 1000;     // heartbeat snapshot while backgrounded (UI isn't watching)
+const STEP_BUDGET_HIDDEN_MS = 50; // burn more sim per slice when not painting
 let scheduled = false, tickAccum = 0, lastTickWall = performance.now();
+let pageHidden = false;          // main thread posts {type:'visibility', hidden}
+let _tickTimer = null;           // paced-mode setTimeout handle (cancellable on visibility flip)
 const _tickChan = new MessageChannel();
 _tickChan.port1.onmessage = () => tick();
 function scheduleTick() {
   if (scheduled || !playing) return;
   scheduled = true;
-  if (speed >= UNBOUNDED_TPS || fastEpochNow) _tickChan.port2.postMessage(0);   // unbounded / quiet-ages auto: re-enter immediately
-  else setTimeout(tick, SNAP_MS);                               // paced: wake roughly once per snapshot
+  // Unbounded / quiet-ages: re-enter immediately. Background with step debt:
+  // same — don't wait on a throttled timer to burn catch-up. Paced + visible
+  // (or background with nothing earned yet): wake on a timer.
+  if (speed >= UNBOUNDED_TPS || fastEpochNow || (pageHidden && tickAccum >= 1)) {
+    _tickChan.port2.postMessage(0);
+  } else {
+    _tickTimer = setTimeout(tick, SNAP_MS);
+  }
 }
 
 function tick() {
   scheduled = false;
+  _tickTimer = null;
   if (!world || !playing) return;
   // How many steps to run this slice. Unbounded → as many as the wall-clock budget
   // allows; paced → earned from elapsed real time × the target rate (so timer
@@ -507,14 +548,20 @@ function tick() {
   if (speed >= UNBOUNDED_TPS || fastEpochNow) {
     steps = Infinity;
   } else {
-    const dt = Math.min(250, now - lastTickWall);   // clamp long gaps (tab unfocused) so we don't dump a flood
+    // Visible: small clamp keeps a single slow frame from dumping a burst.
+    // Hidden: allow several seconds of catch-up so a throttled wake still
+    // recovers toward the target rate (slice budget + debt accounting below
+    // prevent a multi-second UI freeze — and the UI isn't drawing anyway).
+    const cap = pageHidden ? MAX_CATCHUP_MS : 250;
+    const dt = Math.min(cap, Math.max(0, now - lastTickWall));
     tickAccum += dt / 1000 * speed;
     steps = Math.floor(tickAccum);
-    tickAccum -= steps;
   }
   lastTickWall = now;
+  const budget = fastEpochNow ? 26 : (pageHidden ? STEP_BUDGET_HIDDEN_MS : STEP_BUDGET_MS);
   const start = performance.now();
-  for (let i = 0; i < steps; i++) {
+  let ran = 0;
+  for (; ran < steps; ran++) {
     try {
       stepPeopleSim(world, 1);
       journalTick();
@@ -530,8 +577,12 @@ function tick() {
       playing = false;
       break;
     }
-    if (performance.now() - start > (fastEpochNow ? 26 : STEP_BUDGET_MS)) break;   // quiet ages: bigger slice (map barely changes; messages still get in every ~26ms)
+    if (performance.now() - start > budget) break;
   }
+  // Keep unspent debt when the budget cuts the slice short — otherwise a slow
+  // step permanently loses the ticks the wall clock already earned (and while
+  // backgrounded that silent loss is what made the sim look "stuck").
+  if (steps !== Infinity) tickAccum -= ran;
   // The realm census (see logNationCensus): re-arm on a world swap (init/load),
   // log on register change (debounced) and on a slow heartbeat.
   if (lastNationWorld !== world) { lastNationWorld = world; lastNationN = -1; lastNationLogStep = -Infinity; }
@@ -548,7 +599,10 @@ function tick() {
     lastNationLogStep = world.step;
   }
   const t = performance.now();
-  if (t - lastSnap >= SNAP_MS) { buildSnapshot(); lastSnap = t; }
+  const snapEvery = pageHidden ? SNAP_MS_HIDDEN : SNAP_MS;
+  if (t - lastSnap >= snapEvery) { buildSnapshot(); lastSnap = t; }
+  // Still behind after a budgeted slice → channel-chain immediately (especially
+  // important while hidden, where the next setTimeout may be seconds away).
   scheduleTick();
 }
 
