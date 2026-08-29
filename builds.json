@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/mint-ready-genesis-pace-15e6",
+      "sha": "26a54ab891c9c6928a2bace42c936b0e4e1703c7",
+      "slug": "cursor-mint-ready-genesis-pace-15e6",
+      "builtAt": "2026-08-29T15:29:42.192Z",
+      "channel": "preview",
+      "saveVersion": 63,
+      "path": "/b/cursor-mint-ready-genesis-pace-15e6/"
+    },
+    {
       "branch": "claude/moisture-yield-validation-chain-o29gdc",
       "sha": "43224d5b89cb5ca8923f3cd6f134b6f3571d63f9",
       "slug": "claude-moisture-yield-validation-chain-o29gdc",
