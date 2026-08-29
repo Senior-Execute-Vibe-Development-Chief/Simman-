@@ -165,9 +165,7 @@ function capacitySpacingMul(fertTile, hostility) {
 }
 // The countryside a prospective site stands in: the population-field mass over
 // the market basin around it. This is the sim's own measure of "are there people
-// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN, and
-// T.INVENT_FIELD reads it for independent invention (see the floor note below).
-// Extracted verbatim from the urban-floor check so both ask one question.
+// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN.
 function townBasinMass(world, tx, ty, rB) {
   const pf = world.popField, tw = world.tw, th = world.th;
   let basin = 0;
@@ -2703,56 +2701,17 @@ export function maybeCrystallize(world) {
     // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
-    let independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    // INDEPENDENT INVENTION IS A PROPERTY OF A PEOPLE, NOT OF A TILE (T.INVENT_FIELD).
-    // As a flat per-tile floor it says that being five thousand km from the nearest
-    // farmer makes you no less likely to invent farming than being 130 tiles away —
-    // and because it is ADDED to the distance decay, beyond td ≈ 130 it dominates
-    // and CANCELS the decay entirely. Measured consequence (probe_wheretowns, 480/
-    // 8817): at step 200 the world holds settlements in NINE regions, the Central
-    // Asian steppe the most-settled of them; Siberia has a town at 67°N by step 264;
-    // Europe has ten towns before Mesopotamia has five. Every good valley on Earth
-    // invents urbanism at once, which is exactly what its own comment ("low so empty
-    // regions stay empty until colonised") was trying to prevent.
-    //
-    // The opportunity for invention is PEOPLE-TIME: farming and town-building are
-    // invented where many people have lived on workable land for a long time, which
-    // is why there were a handful of neolithic origins rather than one per valley.
-    // So the floor is scaled by the basin's own people, measured against the bar the
-    // sim ALREADY uses for "enough countryside to carry a town" — no new constant is
-    // introduced. A basin exactly at the bar keeps INDEPENDENT_RATE unchanged; ten
-    // times the people invents ten times as readily; empty land effectively never.
-    // The cradles invent first because that is where the people are, and secondary
-    // centres emerge as the field thickens — the shape of the real record, arrived at
-    // by mechanism rather than by tuning a rate until seven centres appear.
-    if (T.INVENT_FIELD > 0 && world.popField) {
-      independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
-    }
+    const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
     // T.INDEP_TECH — a town can only crystallize where the PACKAGE HAS ARRIVED.
-    // Three measured failures aimed this at the right variable and the right
-    // channel: INVENT_FIELD scaled the floor by basin PEOPLE → worse (every
-    // fireable site has people); INVENT_STAGGER's handout repair fixed what a
-    // newborn KNOWS → the dawn map did not move (the founding still happened);
-    // and gating the INDEPENDENT floor alone → byte-identical outcomes at 6k,
-    // which proved the floor NEVER BINDS under multi-hearth defaults — with
-    // seven hearths every fireable site sits within diffusion reach of some
-    // network, and the anachronisms (a steppe town at step 24, 61°N by step
-    // 144) ride the DIFFUSION term. That term is exp(−td/·): a probability
-    // GRADIENT, not a FRONT — a site 3 000 km from the Indus can found the
-    // moment the sim starts, with no waiting for the package to arrive. But
-    // the sim HAS a front: devField, the technique wave, at its measured
-    // 1 km/year. So the lever scales the WHOLE channel sum by the package's
-    // local arrival, devField/NEOLITHIC_AGRI (clamped 0..1): fully-taught
-    // ground founds at the unchanged rate (the ratio saturates — mature
-    // worlds identical), the wave's edge founds at the edge's fraction, and
-    // untaught land founds NOTHING — towns trail the green stain on the
-    // Technique lens, which is the wave-of-advance picture the pioneering
-    // tempo below already gestures at (it paces by the nearest DONOR's tempo;
-    // this paces by the field's actual arrival). Daughter colonies, sea
-    // landings and plantations are untouched — those are real settler parties
-    // that carry the package with them. No new constant: NEOLITHIC_AGRI is
-    // the package's own definition of "full farming". 0 = ungated
-    // (byte-identical, and the default).
+    // Prior attempt (deleted INVENT_FIELD) scaled only the independent floor by
+    // basin people and made dawn worse. Gating the independent floor alone was
+    // byte-identical: under multi-hearth defaults the floor never binds, and
+    // anachronisms ride the DIFFUSION term — exp(−td/·), a probability GRADIENT
+    // not a FRONT. The sim's front is devField (≈1 km/year). This lever scales
+    // the WHOLE channel sum by package arrival, devField/NEOLITHIC_AGRI
+    // (clamped 0..1): fully-taught ground at the unchanged rate, the wave edge
+    // at its fraction, untaught land nothing. Daughters/sea/plantations
+    // untouched (they carry the package). No new constant.
     const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
     // ── T.CROWD_FOUND: towns appear where the PEOPLE are ────────────────────
     // Owner, 2026-08: "do cities appear where populations are dense?" Measured:
