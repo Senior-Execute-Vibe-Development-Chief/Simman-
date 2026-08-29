@@ -645,6 +645,7 @@ export function makeVoice(seed = 0, opts = {}) {
   return {
     id: "voice", fam: "voice", mat: "voice", frame: null,
     voiceKind, label: VOICE_LABEL[voiceKind] || "the voice",
+    pitchBy: "stop",
     kind: "sustain", drive: "breath", cap: 24, poly: 1,
     low: VOICE_LOW[voiceKind] || 130,
     partials: ratios.map((r, i) => ({ r, a: amps[i], d: 0.22 })),
@@ -790,7 +791,7 @@ export const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, shell: 0.045, 
  * meend on a sarangi IS; where it is detached or leaps, it does not.
  */
 export function slidesTo(inst, fromHz, toHz, gapSecs) {
-  const how = (FAMILIES[inst.fam] || {}).pitchBy || "fixed";
+  const how = inst.pitchBy || (FAMILIES[inst.fam] || {}).pitchBy || "fixed";
   if (how === "fixed") return 0;
   if (!(fromHz > 0) || !(toHz > 0)) return 0;
   // 2. HOW LONG THE CONTACT LASTS is not one number, because what keeps a

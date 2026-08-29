@@ -286,7 +286,8 @@ function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
       // the one being left — the same rule `fireEvent` applies to every player
       // with one pair of hands, and what used to need a `THROAT` map of its own.
       playNote(A, V, line[i], when0 + e.b * spb, Math.max(0.12, dur), e.vel * gain * S.voice,
-        { role: "voice", channel: `${m.people.seed}:voice`, damped: false });
+        { role: "voice", channel: `${m.people.seed}:voice`, damped: false,
+          music: m, tonicHz: tonicOf(m) });
     });
   }
 }

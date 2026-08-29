@@ -301,6 +301,7 @@ function pick(entries, f) {
 export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, from = 0) {
   const b = sampledFor(A, inst);
   if (!b) return null;
+  const isVoice = inst.fam === "voice";
   const mat = MATERIALS[inst.mat] || MATERIALS.wood;
   const ctx = A.ctx;
   const tonic = opts?.tonicHz || A.tonicHz || 220;
@@ -324,6 +325,7 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   // a recording means sliding the whole body with it, which is exactly what a
   // real slide does: the resonances move too, because the string is being
   // shortened rather than a different string being sounded.
+  const legato = isVoice && from > 0;
   if (from > 0 && !b.unpitched) {
     const startRate = Math.max(0.06, Math.min(16, target * (from / freq)));
     const secs = Math.min(slideSecs(from, freq), Math.max(0.02, dur * 0.5));
@@ -338,8 +340,15 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   const secs = one.buf.duration;
   if (b.kind === "sustain" && dur > secs * 0.55) {
     src.loop = true;
-    src.loopStart = Math.min(secs * 0.45, secs - 0.35);
-    src.loopEnd = Math.max(src.loopStart + 0.2, secs * 0.92);
+    if (isVoice) {
+      // Loop only the open vowel — not the attack — or every note sounds like
+      // a fresh choir stab rather than one throat holding a line.
+      src.loopStart = Math.min(secs * 0.22, secs - 0.5);
+      src.loopEnd = Math.max(src.loopStart + 0.15, secs * 0.88);
+    } else {
+      src.loopStart = Math.min(secs * 0.45, secs - 0.35);
+      src.loopEnd = Math.max(src.loopStart + 0.2, secs * 0.92);
+    }
   }
 
   // MATERIAL, as a tilt rather than a resynthesis. The recording is one
@@ -362,11 +371,13 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   const gate = ctx.createGain();
   // no attack is added: the recording has its own, and that onset is most of
   // why this path exists at all. Three milliseconds only to stop the splice
-  // itself clicking.
+  // itself clicking — unless this is a legato re-entry on the same vowel, in
+  // which case skip the choir's attack entirely.
   const lvl = Math.max(0.0001,
     vel * radiatedLevel(inst) * (one.gain ?? 1) * (stroke ? stroke.vel ?? 1 : 1));
-  gate.gain.setValueAtTime(0.0001, when);
-  gate.gain.linearRampToValueAtTime(lvl, when + 0.003);
+  gate.gain.setValueAtTime(legato ? lvl * 0.9 : 0.0001, when);
+  if (legato) gate.gain.setValueAtTime(lvl, when + 0.012);
+  else gate.gain.linearRampToValueAtTime(lvl, when + 0.003);
 
   // A STOPPED BODY STOPS. `dampTime` already knows how fast a hand can take
   // this element's mass away, so a damped note releases at the body's own rate
@@ -378,14 +389,15 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   }
 
   src.connect(tilt); tilt.connect(lp); lp.connect(gate); gate.connect(dest);
-  src.start(when);
+  const offset = isVoice ? (legato ? Math.min(secs * 0.28, secs - 0.08) : 0) : 0;
+  src.start(when, offset);
   src.stop(when + Math.min(src.loop ? dur + rel * 6 + 0.3 : secs + 0.1, 16));
   return {
-    damp(at) {
+    damp(at, dOpts = {}) {
       const t = Math.max(at, when + 0.02);
       gate.gain.cancelScheduledValues(t);
-      gate.gain.setTargetAtTime(0.0001, t, Math.min(0.12, rel));
-      try { src.stop(t + 0.35); } catch { /* already stopped */ }
+      gate.gain.setTargetAtTime(0.0001, t, dOpts.soft ?? Math.min(0.12, rel));
+      try { src.stop(t + (dOpts.soft ? dOpts.soft * 4 : 0.35)); } catch { /* already stopped */ }
     },
   };
 }
