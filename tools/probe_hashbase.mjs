@@ -12,10 +12,10 @@
 // MUST be recaptured on the merged build; the two blocks below are each line's
 // pre-merge anchor, kept for provenance (reset either line via the SIM_TUNE in its
 // entry).
-// Current baseline (2500 steps): a3a66047/66b4cddc — v54 LAND_SURPLUS (subtraction
-// form: surplus = grossFood − local mouths, not a density fraction — Nile surplus
-// falls out from fertility). Prior pair a2dd7243/425dddd2 was the density-fraction
-// cut (wrong physics). SAVE_VERSION 54.
+// Current baseline (2500 steps): 93c1cd89/d3068404 — v55 12k abolish stack
+// (CORE_LOCAL+AGGLOM_LOCAL+STAMP_RETIRE+VIABLE_UNITS+DISSOLVE_CORE=0.2). Prior
+// pair a3a66047/66b4cddc was v54 LAND_SURPLUS (subtraction form). SAVE_VERSION 55.
+// Prior pair a2dd7243/425dddd2 was the density-fraction cut (wrong physics).
 // UNCHANGED through the v48 GRAIN_PROVISION flip (2026-08-26; same coinage-gate transparency) and the
 // v47 GRAIN_MARKET flip (2026-08-25): the open grain market is gated on the
 // market institution (techEff.market — coined money), which no 320-grid
