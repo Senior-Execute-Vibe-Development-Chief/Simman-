@@ -130,7 +130,10 @@ export async function loadSamples(A, resolve) {
   // sound of silk on hide without ever reaching the word "shamisen".
   const pool = {};
   for (const [f, b] of Object.entries(bank)) {
-    if (b.entries.length) (pool[f] ||= []).push({ ...b, mat: SAMPLE_BANK[f].mat || "wood" });
+    if (b.entries.length) (pool[f] ||= []).push({
+      ...b, mat: SAMPLE_BANK[f].mat || "wood",
+      voiceKind: f === "voice" ? "choir-male" : undefined,
+    });
   }
   for (const [label, b] of Object.entries(named)) {
     const spec = NAMED_BANK[label];
@@ -138,9 +141,11 @@ export async function loadSamples(A, resolve) {
     const p = (pool[spec.fam] ||= []);
     // one entry per RECORDING, not per name: several traditions point at the
     // same body and it should sit in the pool once
-    if (!p.some(x => x.src === b.src)) {
+    const key = spec.voiceKind || spec.src;
+    if (!p.some(x => x.src === b.src && (x.voiceKind || x.src) === key)) {
       p.push({ kind: (bank[spec.fam] || {}).kind || "pluck", unpitched: false,
-        src: b.src, mat: spec.mat || "wood", entries: b.entries });
+        src: b.src, mat: spec.mat || "wood", voiceKind: spec.voiceKind || undefined,
+        entries: b.entries });
     }
   }
   A.pool = pool;
@@ -204,11 +209,22 @@ function gapOf(c) {
   return (c._gap = gaps[Math.floor(gaps.length / 2)]);
 }
 
+/** Solo female shares the brighter choir recording — one sample, two roles. */
+const VOICE_ALIAS = { "solo-female": "choir-female" };
+
 export function sampledFor(A, inst) {
   const fam = A.samples && A.samples[inst.fam];
   const nm = inst.sampleName && A.named && A.named[inst.sampleName];
   if (nm && nm.entries.length) {
     return { kind: fam ? fam.kind : "pluck", unpitched: false, src: nm.src, entries: nm.entries };
+  }
+  if (inst.fam === "voice" && inst.voiceKind) {
+    const pool = A.pool && A.pool.voice;
+    if (pool && pool.length) {
+      const want = VOICE_ALIAS[inst.voiceKind] || inst.voiceKind;
+      const hit = pool.find(c => c.voiceKind === want);
+      if (hit) return hit;
+    }
   }
   const pool = A.pool && A.pool[inst.fam];
   if (pool && pool.length > 1) {

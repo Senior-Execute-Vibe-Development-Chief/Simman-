@@ -351,7 +351,7 @@ const RECORDED_MAT = {
   reed_organ: "reed",
   // a throat: no ore, no timber, no craft — the same body `MATERIALS.none`
   // stands for, since the hands and the folds are the two everybody has
-  "Choir Aahs": "none",
+  "Choir Aahs": "none", "Voice Oohs": "none", "Synth Choir": "none",
   Marimba: "wood", Glockenspiel: "iron", Vibraphone: "bronze",
   "Steel Pan": "iron", "French Horn": "bronze",
 };
@@ -381,7 +381,7 @@ const NAMED_FAM = {
   flute: "fluteOpen", pan_flute: "fluteOpen", shakuhachi: "fluteOpen",
   bagpipe: "reedPipe", reed_organ: "freeReed", pan_flute: "panpipe",
   taiko_drum: "drum",
-  choir_aahs: "voice",
+  choir_aahs: "voice", voice_oohs: "voice", synth_choir: "voice",
 };
 
 /**
@@ -424,6 +424,12 @@ const POOL_GM = [
   { gm: "vibraphone",   fam: "barSet", mat: "bronze", lo: "C3", hi: "C6", kind: "struck", src: "Vibraphone" },
   { gm: "steel_drums",  fam: "barSet", mat: "iron",   lo: "C3", hi: "C6", kind: "struck", src: "Steel Pan" },
   { gm: "french_horn",  fam: "horn",   mat: "bronze", lo: "C2", hi: "C5", kind: "sustain", src: "French Horn" },
+];
+/** Voice pool: solo vs choir and register, matched by `voiceKind` not material. */
+const VOICE_POOL_GM = [
+  { gm: "choir_aahs",  fam: "voice", voiceKind: "choir-male",   lo: "C2", hi: "C5", kind: "sustain", src: "Choir Aahs" },
+  { gm: "synth_choir", fam: "voice", voiceKind: "choir-female", lo: "C3", hi: "C6", kind: "sustain", src: "Synth Choir" },
+  { gm: "voice_oohs",  fam: "voice", voiceKind: "solo-male",    lo: "C2", hi: "C5", kind: "sustain", src: "Voice Oohs" },
 ];
 
 const NAMED_WAV = {
@@ -596,8 +602,36 @@ async function buildNamed() {
     }
     if (!entries.length) continue;
     bank[label] = { src: spec.src, kind: spec.kind, like: null,
-      fam: spec.fam, mat: spec.mat, entries };
+      fam: spec.fam, mat: spec.mat, voiceKind: spec.voiceKind || null, entries };
     console.log(`  ${label.padEnd(18)} ${String(entries.length).padStart(3)} samples  ${spec.src} (pool only)`);
+  }
+  for (const spec of VOICE_POOL_GM) {
+    const label = "pool:voice:" + spec.voiceKind;
+    const entries = [];
+    const lo = midiOf(spec.lo), hi = midiOf(spec.hi);
+    if (EMIT_ONLY) {
+      for (let mi = lo; mi <= hi; mi += 2) {
+        const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+        const file = `${spec.gm}_${Math.round(hz)}.mp3`;
+        if (existsSync(join(dir, file))) entries.push({ hz, file });
+      }
+    } else {
+      const map = gmNotes(spec.gm);
+      if (!map || !map.size) continue;
+      for (let mi = lo; mi <= hi; mi += 2) {
+        const b64 = map.get(nameOf(mi)) || map.get(SHARP[((mi % 12) + 12) % 12].replace("b", "#") + (Math.floor(mi / 12) - 1));
+        if (!b64) continue;
+        const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+        const file = `${spec.gm}_${Math.round(hz)}.mp3`;
+        const mp3 = Buffer.from(b64, "base64");
+        if (!existsSync(join(dir, file))) { writeFileSync(join(dir, file), mp3); bytes += mp3.length; files++; }
+        entries.push({ hz, file });
+      }
+    }
+    if (!entries.length) continue;
+    bank[label] = { src: spec.src, kind: spec.kind, like: null,
+      fam: spec.fam, mat: matOf(spec.src), voiceKind: spec.voiceKind, entries };
+    console.log(`  ${label.padEnd(18)} ${String(entries.length).padStart(3)} samples  ${spec.src} (voice pool)`);
   }
   for (const [label, spec] of Object.entries(NAMED)) {
     if (EMIT_ONLY) {
@@ -758,7 +792,9 @@ export const NAMED_BANK = {
 ${Object.entries(named.bank).map(([k, v]) =>
   `  ${JSON.stringify(k)}: { src: ${JSON.stringify(v.src || v.gm)}, ` +
   `kind: ${JSON.stringify(v.kind || "pluck")}, like: ${JSON.stringify(v.like)}, ` +
-  `fam: ${JSON.stringify(v.fam)}, mat: ${JSON.stringify(v.mat)}, samples: [\n` +
+  `fam: ${JSON.stringify(v.fam)}, mat: ${JSON.stringify(v.mat)}` +
+  (v.voiceKind ? `, voiceKind: ${JSON.stringify(v.voiceKind)}` : "") +
+  `, samples: [\n` +
   v.entries.map(e => `    { hz: ${e.hz}, file: ${JSON.stringify("named/" + e.file)} },`).join("\n") +
   `\n  ] },`).join("\n")}
 };
