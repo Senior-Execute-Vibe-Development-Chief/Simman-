@@ -3347,7 +3347,16 @@ const pickLens=(id)=>{
   const v=subMemRef.current[id]||L.subs[0][0];
   setViewMode(v);viewRef.current=v;
 };
-const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
+// lensId is REQUIRED when the click comes from a flyout: React state updates
+// from pickLens are async, so pickSub(v) alone still saw the PREVIOUS lens and
+// wrote e.g. "money" into politics' memory — after which picking Politics
+// restored Money and the dock felt stuck on Economy.
+const pickSub=(v,lensId)=>{
+  const id=lensId!=null?lensId:lens;
+  subMemRef.current[id]=v;
+  setLens(id);
+  setViewMode(v);viewRef.current=v;
+};
 
 // ── Codex navigation (plan §7.1): one stack over {tab, realm, settlement} so
 // every jump — tab click, chip click, leaderboard row, map click — is
@@ -4721,7 +4730,7 @@ return(
         {L.subs.map(([v,l])=>{
           const lock=subLockReason(v,psw,psStats);
           return(
-          <button key={v} onClick={()=>{if(lock)return;pickLens(L.id);pickSub(v);}}
+          <button key={v} onClick={()=>{if(lock)return;pickSub(v,L.id);}}
             className={"au-rail-tab"+(viewMode===v?" au-active":"")}
             style={{fontSize:12,opacity:lock?0.42:1,cursor:lock?"default":"pointer"}}
             title={lock||undefined}>{l}{lock?" ·🔒":""}</button>);
