@@ -316,7 +316,9 @@ music. Across 80 generated peoples:
   surface (heterophony / elaboration / sung doubling) sparse so long civ-sim
   loops stay non-fatiguing; festival and war still open the full bench. Peace
   also soft-tempers extreme microtonal offsets at *render* time (mode identity
-  stays), lengthens trunk tones, and accents additive group heads more clearly.
+  stays), lengthens trunk tones, accents additive group heads more clearly,
+  and reconciles low support against the lead so vertical beating intervals
+  are retargeted or released before the line moves.
 - **Melody** — structural degrees are the ones the roughness curve itself
   ranked most consonant. Phrases descend because subglottal pressure falls
   across a breath (the same declination the speech engine applies to f0), and
