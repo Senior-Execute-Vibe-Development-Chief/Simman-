@@ -2467,6 +2467,15 @@ export function jumpToCivReady(world, opts = {}) {
   }
 
   delete world._dawnHoldMint;
+  // Invent-jump gather is ~15-30k sync field steps with no GC window. Drop the
+  // popField worker pool (and any frontier heaps) so play's first transport /
+  // territory flood is not the canary that OOMs the worker
+  // ("Array buffer allocation failed" in MinHeap._grow @ ~first crystallize).
+  try {
+    if (world._pfPool) { world._pfPool.dispose(); world._pfPool = null; }
+  } catch { /* pool already dead */ }
+  delete world._transHeap;
+  delete world._terrHeap;
   const ms = (performance.now() - t0).toFixed(0);
   if (world._dawnMintReady) {
     world._openKind = "mint-ready";

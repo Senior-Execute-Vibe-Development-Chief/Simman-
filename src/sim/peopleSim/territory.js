@@ -231,8 +231,20 @@ export function hinterlandRadiusFor(s, world) {
 }
 
 class MinHeap {
-  constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
-  _grow() { const c = this.cap * 2; const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d); this.ti = t; this.d = d; this.cap = c; }
+  constructor(cap = 4096) {
+    this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap;
+    this._maxCap = Math.max(cap * 4, 1 << 20);
+  }
+  _grow() {
+    const c = this.cap * 2;
+    if (c > this._maxCap) throw new Error(`territory frontier heap exceeded cap ${this.cap}→${c}`);
+    try {
+      const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d);
+      this.ti = t; this.d = d; this.cap = c;
+    } catch (err) {
+      throw new Error(`territory frontier grow ${this.cap}→${c} failed: ${err && err.message}`);
+    }
+  }
   push(ti, d) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; const tt = this.ti[p], td = this.d[p]; this.ti[p] = this.ti[i]; this.d[p] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = p; } }
   popMin() { const ti = this.ti[0], d = this.d[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; const tt = this.ti[b], td = this.d[b]; this.ti[b] = this.ti[i]; this.d[b] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = b; } } return { ti, d }; }
 }
@@ -461,7 +473,17 @@ export function computeTerritory(world) {
   // OWNER — ownership is persistent, that's what stabilises the borders.
   cost.fill(Infinity);
   tcost.fill(Infinity);
-  const heap = world._terrHeap || (world._terrHeap = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
+  // Pre-size like transport.js — avoid grow cascades under invent-jump memory pressure.
+  const wantTerr = (() => {
+    const need = Math.max(4096, N);
+    return need <= 1 ? 1 : 1 << (32 - Math.clz32(need - 1));
+  })();
+  let heap = world._terrHeap;
+  if (!heap || heap.cap < wantTerr) {
+    heap = world._terrHeap = new MinHeap(wantTerr);
+    heap._maxCap = Math.max(wantTerr * 4, 1 << 20);
+  }
+  heap.n = 0;
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);

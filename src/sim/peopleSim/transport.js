@@ -37,6 +37,12 @@ import { T, TUNING_VERSION, rNormPop } from "./tuning.js";
 // catchments than those on plains.
 
 const HEAP_INIT_CAP = 1024;
+/** Cap frontier growth — a Dijkstra peak is O(N); past this is a runaway. */
+function _heapCapFor(N) {
+  const need = Math.max(HEAP_INIT_CAP, N || HEAP_INIT_CAP);
+  // next power of two ≥ need (clz32(need-1) form; need=1 → 1)
+  return need <= 1 ? 1 : 1 << (32 - Math.clz32(need - 1));
+}
 
 // Binary min-heap of {ti:int, d:float}. Stored as two parallel typed
 // arrays for cache-friendly access — avoids object churn at scale.
@@ -49,9 +55,17 @@ class _MinHeap {
   }
   _grow() {
     const ncap = this.cap * 2;
-    const nti = new Int32Array(ncap); nti.set(this.ti);
-    const nd  = new Float32Array(ncap); nd.set(this.d);
-    this.ti = nti; this.d = nd; this.cap = ncap;
+    // Refuse a runaway frontier (would OOM the worker — mint-ready Max canary).
+    if (ncap > (this._maxCap || (1 << 26))) {
+      throw new Error(`transport frontier heap exceeded cap ${this.cap}→${ncap}`);
+    }
+    try {
+      const nti = new Int32Array(ncap); nti.set(this.ti);
+      const nd  = new Float32Array(ncap); nd.set(this.d);
+      this.ti = nti; this.d = nd; this.cap = ncap;
+    } catch (err) {
+      throw new Error(`transport frontier grow ${this.cap}→${ncap} failed: ${err && err.message}`);
+    }
   }
   push(ti, d) {
     if (this.n >= this.cap) this._grow();
@@ -428,16 +442,17 @@ export function computeTransport(world) {
   let dist = world.transportDist;
   if (!dist || dist.length !== N) dist = new Float32Array(N);
   for (let i = 0; i < N; i++) dist[i] = Infinity;
-  // Persistent frontier heap (reuse-slot, like _terrHeap/_fpHeap): this exact
-  // `new _MinHeap()` grow path is where the owner's app died at ~26.6k steps
-  // (2026-08-20, "Array buffer allocation failed" in _grow — the LAST allocation
-  // standing when the tab's ceiling arrived; see docs/allocation-wall-2026-08-20.md).
-  // The heap itself measured SMALL (cap 65536 = 0.5MB at tw=960/28k), so keeping
-  // it alive both removes this rebuild's re-grow churn and retires the site that
-  // takes the fall under memory pressure. Contents are per-firing scratch (n=0
-  // below); only the backing lanes persist. Never serialized (persist whitelists).
+  // Persistent frontier heap: PRE-SIZE to ≥N so the first post-mint transport
+  // flood does not cascade 1024→2→…→131k grows under invent-jump memory
+  // pressure (browser: Array buffer allocation failed in _grow at the first
+  // crystallize after mint-ready — step ~35088). Contents are per-firing
+  // scratch (n=0 below); only the backing lanes persist.
+  const wantCap = _heapCapFor(N);
   let heap = world._transHeap;
-  if (!heap) heap = world._transHeap = new _MinHeap();
+  if (!heap || heap.cap < wantCap) {
+    heap = world._transHeap = new _MinHeap(wantCap);
+    heap._maxCap = Math.max(wantCap * 4, 1 << 20);
+  }
   heap.n = 0;
   // Seed: every alive settlement contributes a 0-distance source.
   for (const s of world.settlements) {
