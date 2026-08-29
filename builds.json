@@ -3,9 +3,9 @@
   "previews": [
     {
       "branch": "cursor/mint-ready-genesis-pace-15e6",
-      "sha": "79ebe38df1c3e6697b786e7156c5e760a245a401",
+      "sha": "36e15f9583776baf2847bd50312d59ae3c1b47bc",
       "slug": "cursor-mint-ready-genesis-pace-15e6",
-      "builtAt": "2026-08-29T17:01:49.091Z",
+      "builtAt": "2026-08-29T17:14:37.259Z",
       "channel": "preview",
       "saveVersion": 63,
       "path": "/b/cursor-mint-ready-genesis-pace-15e6/"
