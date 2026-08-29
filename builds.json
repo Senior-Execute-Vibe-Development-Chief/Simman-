@@ -2,20 +2,20 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/deploy-channel-picker-15e6",
+      "sha": "1336b0b4e35d0eafc3663bcbb0974219d180a945",
+      "slug": "cursor-deploy-channel-picker-15e6",
+      "builtAt": "2026-08-29T11:47:07.783Z",
+      "channel": "preview",
+      "path": "/b/cursor-deploy-channel-picker-15e6/"
+    },
+    {
       "branch": "claude/moisture-yield-validation-chain-o29gdc",
       "sha": "476ab9591015f875b3258e47f916147027324e8b",
       "slug": "claude-moisture-yield-validation-chain-o29gdc",
       "builtAt": "2026-08-29T11:45:12.481Z",
       "channel": "preview",
       "path": "/b/claude-moisture-yield-validation-chain-o29gdc/"
-    },
-    {
-      "branch": "cursor/deploy-channel-picker-15e6",
-      "sha": "734db0a040a2553a4b7de81a298abf8b50afab21",
-      "slug": "cursor-deploy-channel-picker-15e6",
-      "builtAt": "2026-08-29T11:39:45.486Z",
-      "channel": "preview",
-      "path": "/b/cursor-deploy-channel-picker-15e6/"
     }
   ]
 }
