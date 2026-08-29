@@ -43,6 +43,7 @@ import { reachBudget } from "./territory.js";   // T.MINT_REACH: the newborn's d
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
+import { igniteHearth, NEOLITHIC_AGRI } from "./hearthInvent.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
 const _geoStr = (world, x, y) => `(${(x / world.tw * 360 - 180).toFixed(1)}E ${(90 - y / world.th * 180).toFixed(1)}N)`;
 
@@ -1159,7 +1160,7 @@ const COVERAGE_FLOOR = 0.22;   // pre-agricultural (forager-margin) spread rate,
 // The neolithic package a fresh independent village invents on its own —
 // shared with inheritKnowledgeAt's baseline so the tempo and the inherited
 // knowledge describe the same starting point.
-const NEOLITHIC_AGRI = 0.45;
+// NEOLITHIC_AGRI — imported from hearthInvent.js (one farming-floor definition)
 // Wave-of-advance pioneering tempo (replaces the old COVERAGE_RAMP step
 // clock, a cardinal-rule-1 violation: it let the wilderness recede because
 // of WHEN it was, not what the world had become). The real cause of slow
@@ -2429,47 +2430,7 @@ export function maybeCrystallize(world) {
         }
         h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
         if (h.effY >= h.needY) {
-          if (T.CITY_AT_BIRTH) {
-            // The invention is the INVENTION — not a town. The basin is
-            // peopled and farming; the site pass concentrates it and the
-            // city is born when a real core exists. The hearth stands down —
-            // but the practice must RADIATE: with no settlement to carry the
-            // technique wave's source, the ground itself does
-            // (world._hearthSeeds → stampDevSources; persisted). Without
-            // this, a seedless dawn could never leave the forager age.
-            // T.BASIN_IGNITE (2026-08-11, docs §7): the invention belongs to
-            // the BASIN that served its clock. effY accrued as dtYears ×
-            // basin/capMass over THIS very disk — its people collectively
-            // domesticated — yet the practice used to seed ONE tile and the
-            // wave then crawled across the basin's own farmers (measured at
-            // tw=960: the N-China plain's site basins sat at devP 0.34 vs
-            // the 0.45 farming gate ~3,500 steps AFTER the pin invented,
-            // with the cores already gathered past the city bar — ~5k steps
-            // of pure intra-basin diffusion before any nation could exist;
-            // probe_chinamint). Every peopled tile of the clock's own disk
-            // seeds at the invention level; the wave still carries the
-            // technique OUTWARD (inter-regional speed untouched, the
-            // DIFF_CLIM axis physics untouched). Same disk, same level,
-            // no new constant.
-            const seeds = (world._hearthSeeds || (world._hearthSeeds = []));
-            if (T.BASIN_IGNITE && world.popField) {
-              const pfI = world.popField;
-              for (let dy = -rB; dy <= rB; dy++) {
-                const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
-                for (let dx = -rB; dx <= rB; dx++) {
-                  if (dx * dx + dy * dy > rB * rB) continue;
-                  const t2 = yy * tw + (((h.tx + dx) % tw) + tw) % tw;
-                  if (pfI[t2] > 0) seeds.push({ ti: t2, agri: NEOLITHIC_AGRI });
-                }
-              }
-            } else seeds.push({ ti: h.ti, agri: NEOLITHIC_AGRI });
-            logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
-          } else {
-            const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
-            logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
-          }
+          igniteHearth(world, h, rB);
         } else keep.push(h);
       }
       world._armedHearths = keep;
