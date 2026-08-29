@@ -28,26 +28,32 @@ import { ensembleSpectrum, deriveScale, deriveMode, finalsOf, LENGTH_POWER } fro
 import { applyTuningArchetype, ARCHETYPE_PHYS_FIT_MIN, ARCHETYPE_TUNING_ON, matchTuningArchetype } from "./musicArchetypes.js";
 import { prosodyOf } from "./languagePhonetics.js";
 
-/** How many mode degrees sit stranded between ET names (>=35¢ off). */
-function strandedInMode(spec, scale, people) {
+/** How many notes the mode actually uses — bounded by body capacity and literacy. */
+function modeSizeOf(people, scale, cap = 9) {
   const roomInFrame = Math.max(3, Math.floor(scale.frame.cents / 150));
-  const modeSize = Math.max(4, Math.min(7, roomInFrame,
-    Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4)));
+  return Math.max(4, Math.min(7, roomInFrame, cap,
+    Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4
+      + (hash32(people.seed, "mus", "msz") / 4294967296 - 0.5) * 1.6)));
+}
+
+/** How many mode degrees sit stranded between ET names (>=35¢ off). */
+function strandedInMode(spec, scale, people, cap = 9) {
+  const modeSize = modeSizeOf(people, scale, cap);
   const stepShare = 0.62 + (hash32(people.seed, "mus", "step") / 4294967296) * 0.26;
   const modeIdx = deriveMode(spec, scale.degrees, modeSize, scale.frame.ratio, stepShare);
   return modeIdx.filter(i => Math.abs(scale.degrees[i].cents - Math.round(scale.degrees[i].cents / 100) * 100) >= 35).length;
 }
 
 /** Raw deriveScale vs catalog archetype — keep whichever mode plays cleaner. */
-function pickTunedScale(rawScale, archMatch, spec, people) {
+function pickTunedScale(rawScale, archMatch, spec, people, cap = 9) {
   if (!ARCHETYPE_TUNING_ON || archMatch.physFit < ARCHETYPE_PHYS_FIT_MIN) return rawScale;
   const archScale = applyTuningArchetype(rawScale, archMatch);
-  const rawS = strandedInMode(spec, rawScale, people);
-  const archS = strandedInMode(spec, archScale, people);
+  const rawS = strandedInMode(spec, rawScale, people, cap);
+  const archS = strandedInMode(spec, archScale, people, cap);
   if (archS < rawS) return archScale;
-  if (archS > rawS) return rawScale;
-  // tied: only stamp a named family when the ensemble genuinely supports it
-  if (archMatch.physFit >= 0.88 && archMatch.score >= 0.72) return archScale;
+  // Tied or worse: keep what the ensemble found. Stamping a catalog name on a
+  // tie collapsed 57/120 peoples onto ~6 diatonic templates and they sounded
+  // like variations of the same tune.
   return rawScale;
 }
 
@@ -271,7 +277,8 @@ export function rhythmOf(people, insts) {
     // — the rate people tap, walk and rock at unprompted — clusters around
     // 100–120 beats a minute across populations, and music entrains to it;
     // that is the anchor, scaled by how fast this tongue is spoken.
-    tempo: Math.round(100 * pros.rate * (cls === "syllable" ? 1.06 : 1)),
+    tempo: Math.round((92 + hash32(people.seed, "rhy", "tmp") % 37)
+      * pros.rate * (cls === "syllable" ? 1.06 : cls === "stress" ? 0.98 : 1)),
     density: cls === "syllable" ? 0.8 : cls === "stress" ? 0.55 : 0.65,
   };
 }
@@ -290,13 +297,15 @@ export function textureOf(people, insts) {
   // a surplus question before it is a musical one
   const size = Math.max(1, Math.round(0.6 + people.soc.surplus * 3.6 + people.soc.urban * 2.6));
   const sustains = insts.some(i => i.kind === "sustain");
-  // Heterophony needs enough players that doubling the line is audible as
-  // several versions, not as mud — size >= 4 handed it to almost every
-  // settled people and stacked elab + het + voice on the same degrees.
-  const kind = size >= 7 && people.soc.literacy > 0.6 ? "polyphony"
-    : size >= 5 ? "heterophony"
-    : size >= 2 && sustains ? "drone"
-    : "monophony";
+  const harmonic = insts.filter(i => i.harmonic).length / Math.max(1, insts.length);
+  const roll = hash32(people.seed, "tex", "kind") / 4294967296;
+  // Pick among textures this ensemble can actually sustain — weighted by physics,
+  // broken by seed so neighbours don't all share one arrangement.
+  const opts = ["monophony"];
+  if (size >= 2 && sustains) opts.push("drone");
+  if (size >= 4 && harmonic >= 0.45) opts.push("heterophony");
+  if (size >= 7 && people.soc.literacy > 0.6) opts.push("polyphony");
+  const kind = opts[Math.floor(roll * opts.length) % opts.length];
   return {
     size, kind, sustains,
     // an austere creed strips ornament; a court with sustaining instruments
@@ -505,16 +514,14 @@ export function musicOf(people) {
   // A catalog scale only wins when its degrees sit in THIS ensemble's dips.
   // Forcing a maqām onto a panpipe that found something else is the main
   // source of "odd scales" on bare lines (measured: 44% stranded vs 8% raw).
-  const scale = pickTunedScale(rawScale, archMatch, spec, people);
+  const scale = pickTunedScale(rawScale, archMatch, spec, people, Math.min(cap, 9));
   // The mode: what they actually sing out of the scale they found. Its size
   // is bounded twice over — by how much scale material exists and how much
   // theory the tradition can carry (a written tradition sustains a larger
   // mode than an oral one), and by the FRAME itself, since a mode needs steps
   // wide enough to hear as separate degrees and a narrow frame simply has no
   // room for many of them.
-  const roomInFrame = Math.max(3, Math.floor(scale.frame.cents / 150));
-  const modeSize = Math.max(4, Math.min(7, roomInFrame,
-    Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4)));
+  const modeSize = modeSizeOf(people, scale, Math.min(cap, 9));
   // how stepwise this people's melody is — the same value `melody.step` below
   // takes, computed here because the MODE is chosen partly by how much its
   // steps matter, and that is what stepwise motion means

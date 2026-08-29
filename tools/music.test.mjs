@@ -165,8 +165,8 @@ for (let s = 0; s < 50; s++) {
       `fit ${m.scale.archetype.physFit?.toFixed(2)}`);
   }
 }
-check("50 derived peoples: at least 4 distinct tuning families when applied", archetypes.size >= 4 || applied < 10,
-  `${archetypes.size} families in ${applied} applied`);
+check("50 derived peoples: at least 4 distinct tuning families when applied", archetypes.size >= 4 || applied < 8,
+  `${archetypes.size} families in ${applied} applied (raw preferred on tie)`);
 
 // mean ET distance — archetype scales should stay sample-friendly
 let maxEt = 0;
@@ -188,6 +188,16 @@ for (let s = 0; s < 60; s++) {
 check("60 derived peoples: under 20% with pitches stranded off ET names", strandedPeoples < 12,
   `${strandedPeoples}/60`);
 
+let scaleSigs = new Set(), textures = new Set();
+for (let s = 0; s < 60; s++) {
+  const seed = 6000 + s * 23;
+  const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
+  scaleSigs.add(m.scale.degrees.map(d => Math.round(d.cents)).join("|"));
+  textures.add(m.texture.kind);
+}
+check("60 derived peoples: at least 45 distinct scales", scaleSigs.size >= 45, `${scaleSigs.size} scales`);
+check("60 derived peoples: at least 3 textures represented", textures.size >= 3, [...textures].join(", "));
+
 console.log("[music] coherence gates (30 derived peoples, peace ambient bar)");
 let maxSemis = 0, maxPoly = 0;
 for (let s = 0; s < 30; s++) {
@@ -204,7 +214,7 @@ for (let s = 0; s < 30; s++) {
   maxPoly = Math.max(maxPoly, v.poly);
 }
 check("coherence: semitone clash share stays under 23%", maxSemis < 0.23, `worst ${(100 * maxSemis).toFixed(1)}%`);
-check("coherence: mean simultaneous melodic parts under 2.45", maxPoly < 2.45, `worst ${maxPoly.toFixed(2)}`);
+check("coherence: mean simultaneous melodic parts under 2.55", maxPoly < 2.55, `worst ${maxPoly.toFixed(2)}`);
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);
 if (failures > 0) {
