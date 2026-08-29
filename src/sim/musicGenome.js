@@ -336,12 +336,22 @@ export function formOf(people) {
   const lit = people.soc.literacy;
   // oral traditions build from formula and repetition because that is what
   // memory affords; notation is what buys long, non-repeating structure
+  const repetition = Math.max(0.15, 1 - lit * 0.8);
+  const development = Math.max(0, (lit - 0.45) * 1.6);
+  // FORMATIVE PROCESS — not a culture name. What memory and notation afford
+  // decides whether the piece is always approaching its beginning (cyclic),
+  // climbs then returns (arch), or can leave its opening idea for a long stretch
+  // (progressive). The order of phrases falls out of this, not from a template.
+  const process = repetition > 0.65 && development < 0.35 ? "cyclic"
+    : development > 0.55 ? "progressive"
+      : "arch";
   return {
     literate: lit > 0.5,
     sections: lit > 0.72 ? 4 : lit > 0.5 ? 3 : 2,
-    repetition: Math.max(0.15, 1 - lit * 0.8),
-    development: Math.max(0, (lit - 0.45) * 1.6),
+    repetition,
+    development,
     phrasePerSection: lit > 0.5 ? 4 : 2,
+    process,
   };
 }
 

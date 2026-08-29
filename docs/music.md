@@ -304,7 +304,13 @@ music. Across 80 generated peoples:
 - **Texture** — ensemble size is a surplus question before it is a musical one.
   Monophony → drone → heterophony → polyphony, the last needing literacy.
 - **Form** — memory builds from formula and returns to it; notation buys long
-  structure that can leave its opening idea and not come back.
+  structure that can leave its opening idea and not come back. Literacy yields a
+  formative *process* (cyclic / arch / progressive): early return and shared
+  rhythm vocabulary when oral, establish→expand→return in the middle, longer
+  departures when written. A phrase *skeleton* (structural degrees on strong
+  beats) is prior to surface melody; cadences close with length + weight +
+  landing together. Lab **Bodies → form (plain tones)** hears only skeleton /
+  lead / bass / punctuation on simple oscillators.
 - **Melody** — structural degrees are the ones the roughness curve itself
   ranked most consonant. Phrases descend because subglottal pressure falls
   across a breath (the same declination the speech engine applies to f0), and

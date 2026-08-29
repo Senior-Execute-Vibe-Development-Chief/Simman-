@@ -17,7 +17,7 @@ import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE 
 import { MATERIALS, FAMILIES, rangeOf, makeVoice } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
-import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
+import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree, formOrderOf, phraseBank, phraseSkeleton } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung, silence } from "./sim/musicSynth.js";
 import { loadSamples, sampledFor } from "./sim/musicSamples.js";
 import { slidesTo } from "./sim/musicInstruments.js";
@@ -43,6 +43,10 @@ const S = {
   // are not the same virtue — so it is a switch, and the bench exists to make
   // the difference audible rather than arguable.
   sampled: true,
+  // FORM LISTEN: strip samples/models to plain oscillators and keep only the
+  // structural roles (skeleton, lead, bass, punctuation). Form is a pitch/time
+  // question; timbre was eating the debugging budget.
+  formListen: false,
   // How much voice is in the mix. The synthesis path is calibrated so a
   // singer and a player agree on what a velocity means (musicSynth), but how
   // much SINGING you want over an ensemble is a listener's call and not a
@@ -104,7 +108,8 @@ function audio() {
       if (el) el.textContent = n ? `${n} recorded samples loaded` : "no bank — synthesis only";
     }).catch(() => { /* synthesis is a working instrument */ });
   }
-  A.sampled = S.sampled;
+  A.sampled = S.sampled && !S.formListen;
+  A.formPlain = !!S.formListen;
   if (P) { A.music = P; A.tonicHz = tonicOf(P); }
   if (A.ctx.state === "suspended") A.ctx.resume();
   return A;
@@ -262,7 +267,7 @@ function voiceBody(m) {
   return v;
 }
 function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
-  if (!evs.length) return;
+  if (!evs.length || S.formListen) return;
   const A = Aud || audio();
   const V = voiceBody(m);
   const sorted = [...evs].sort((a, b) => a.b - b.b);
@@ -291,21 +296,24 @@ function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
     });
   }
 }
+const FORM_ROLES = new Set(["skeleton", "lead", "bass", "mark", "pulse"]);
+
 function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
+  if (S.formListen && !FORM_ROLES.has(ev.role)) return;
   const A = Aud || audio();
   const inst = m.insts[ev.inst] || m.insts[0];
-  if (!inst) return;
+  if (!inst && !S.formListen) return;
   const f = noteFreq(m, ev);
   // Each melodic part is a VOICE CHANNEL: a player's free hand stops the note
   // they are replacing and leaves everything else ringing. A marker stroke
   // belongs to no channel — its ring is the point.
-  playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
+  playNote(A, inst || { detune: 0 }, f, when, ev.dur * secPerBeat, ev.vel * gain, {
     music: m,
     tonicHz: tonicOf(m),
-    symp: inst.symp ? sympPitches(m) : null,
+    symp: inst && inst.symp ? sympPitches(m) : null,
     role: ev.role === "het" ? "het" : ev.role || "lead",
     stroke: ev.stroke,
-    damped: ev.damped != null ? ev.damped : !!inst.damped,
+    damped: ev.damped != null ? ev.damped : !!(inst && inst.damped),
     channel: ev.ring || ev.role === "pad" || ev.role === "pulse" ? null
       : `${m.people.seed}:${ev.role}:${ev.inst}${ev.voice != null ? ":" + ev.voice : ""}`,
   });
@@ -316,7 +324,7 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   // went out on the lead bus whatever it was decorating, was never damped, and
   // on a body that rings for nine seconds an eighty-millisecond grace note rang
   // for nine of them.
-  if (ev.ornDeg != null) {
+  if (ev.ornDeg != null && !S.formListen) {
     const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct);
     playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5, {
       music: m,
@@ -1149,10 +1157,12 @@ function textureHTML(m) {
       </div>
       <div>
         <h3>Form</h3>
-        <p class="lede">${F.literate ? "written" : "oral"} — ${F.sections} sections</p>
-        <p class="note tight">${F.literate
-          ? "Notation buys long structure: the piece can leave its opening idea and not come back the same."
-          : "Memory builds from formula: the piece states an idea and returns to it."}</p>
+        <p class="lede">${F.literate ? "written" : "oral"} · ${esc(F.process || "arch")} — ${F.sections} sections</p>
+        <p class="note tight">${F.process === "cyclic"
+          ? "Memory keeps a short vocabulary and returns early: the piece is always approaching its beginning."
+          : F.process === "progressive"
+            ? "Notation buys long departures: the piece can leave its opening idea and come back late, or not as the same statement."
+            : "The piece establishes, expands, then returns — climb and landing without a scripted section recipe."}</p>
         <div class="row"><span class="k">repetition</span>${bar01(F.repetition, "repetition")}</div>
         <div class="row"><span class="k">development</span>${bar01(F.development, "development")}</div>
       </div>
@@ -1177,11 +1187,17 @@ function textureHTML(m) {
 
 function pieceHTML(m) {
   const pc = S.piece;
+  const order = formOrderOf(m);
+  const bank = phraseBank(m, S.occ);
+  const labels = order.map(i => (bank[i] && bank[i].label) || "?");
+  const sk = phraseSkeleton(m, bank[0]);
   return `<div class="card">
     <h2>A piece <span class="count">— ${esc(OCCASIONS[S.occ].label)}</span></h2>
-    <p class="note">The ambient layer above never repeats and goes nowhere. This is the other renderer:
-      a whole piece with sections, built on one motif, developed as far as their literacy allows —
-      with a line sung over it.</p>
+    <p class="note">The ambient layer walks this same form forever. A piece is the section plan once through —
+      one motif, developed as far as their literacy allows, with a line sung over it.
+      Bodies → <b>form (plain tones)</b> hears only skeleton, lead, bass and punctuation.</p>
+    <p class="note tight">Phrase order (${esc(m.form.process || "arch")}): ${labels.map(esc).join(" → ")}
+      · skeleton ${sk.length} trunk tones on the statement</p>
     <div class="controls">
       <button id="playPiece">Play the piece</button>
       <button id="stopPiece" class="ghost">◼ Stop</button>
@@ -1269,10 +1285,11 @@ function transportHTML() {
     <label class="tl sl" title="How much singing sits over the players. The two synthesis paths are calibrated to agree on what a velocity means; how much voice you want above that is yours.">Voice
       <input type="range" id="voice" min="0" max="1" step="0.01" value="${S.voice}" />
       <span class="slv">${S.voice < 0.02 ? "silent" : S.voice < 0.25 ? "behind" : S.voice < 0.6 ? "in the band" : "out front"}</span></label>
-    <label class="tl" title="Recorded plays one real instrument per family from two CC0 sample libraries; modelled synthesises the body this people actually built, out of its own materials.">Bodies
+    <label class="tl" title="Recorded: one real instrument per family from CC0 libraries. Modelled: synthesised from this people's materials. Form: plain oscillators on skeleton / lead / bass / punctuation only — so form is audible without sample colour.">Bodies
       <select id="sampled">
-        <option value="1"${S.sampled ? " selected" : ""}>recorded</option>
-        <option value="0"${S.sampled ? "" : " selected"}>modelled</option>
+        <option value="1"${!S.formListen && S.sampled ? " selected" : ""}>recorded</option>
+        <option value="0"${!S.formListen && !S.sampled ? " selected" : ""}>modelled</option>
+        <option value="form"${S.formListen ? " selected" : ""}>form (plain tones)</option>
       </select></label>
     <label class="tl sl" title="A border settlement's ambience is an admixture: both traditions generated and sounded together, at the population proportions">Border
       <input type="range" id="blend" min="0" max="1" step="0.01" value="${S.blend}" />
@@ -1345,8 +1362,10 @@ function wire() {
     if (sp) sp.textContent = S.intimacy > 0.66 ? "in the city" : S.intimacy > 0.33 ? "nearby" : "far off";
   };
   $("sampled").onchange = (e) => {
-    S.sampled = e.target.value === "1";
-    if (A) A.sampled = S.sampled;
+    const v = e.target.value;
+    S.formListen = v === "form";
+    if (!S.formListen) S.sampled = v === "1";
+    if (A) { A.sampled = S.sampled && !S.formListen; A.formPlain = !!S.formListen; }
   };
   $("blend").oninput = (e) => {
     S.blend = +e.target.value;
