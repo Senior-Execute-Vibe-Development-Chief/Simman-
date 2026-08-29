@@ -27,6 +27,12 @@ import { MATERIALS, FAMILIES, makeInstrument, melodicCapacity, CARRIES } from ".
 import { ensembleSpectrum, deriveScale, deriveMode, finalsOf, LENGTH_POWER } from "./musicTuning.js";
 import { applyTuningArchetype, ARCHETYPE_PHYS_FIT_MIN, ARCHETYPE_TUNING_ON, matchTuningArchetype } from "./musicArchetypes.js";
 import { prosodyOf } from "./languagePhonetics.js";
+import {
+  classifyBiome,
+  B_ICE, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_RAIN,
+  B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY, B_SUBTROP,
+  B_COLD_DESERT, B_FLOODPLAIN, B_MEDITERRANEAN,
+} from "./biomeClass.js";
 
 /** How many notes the mode actually uses — bounded by body capacity and literacy. */
 function modeSizeOf(people, scale, cap = 9) {
@@ -125,6 +131,100 @@ export function foundPeople(seed, lang, pin = {}) {
     militancy: (roll("mil") - 0.5) * 2, exclusivity: (roll("exc") - 0.5) * 2, asceticism: (roll("asc") - 0.5) * 2,
   };
   return { seed: s, biome, biomeLabel: B.label, have, know, soc, creed, dev, lang, name: pin.name || null };
+}
+
+// ── place → people: the Music Lab map bridge ─────────────────────────────
+//
+// The Lab can boot a real worldgen map and click a tile. What falls out is
+// still `foundPeople` — same inputs, same chain — but the biome and minerals
+// come from the clicked place instead of a seed roll. Ocean returns null.
+
+const TILE_TO_MUSIC_BIOME = {
+  [B_ICE]: "tundra", [B_TUNDRA]: "tundra", [B_COLD_DESERT]: "tundra",
+  [B_TAIGA]: "taiga", [B_BOREAL]: "taiga",
+  [B_TEMP_FOREST]: "temperate", [B_TEMP_RAIN]: "temperate", [B_SUBTROP]: "temperate",
+  [B_GRASSLAND]: "steppe",
+  [B_MEDITERRANEAN]: "medit", [B_SHRUBLAND]: "medit",
+  [B_DESERT]: "desert",
+  [B_SAVANNA]: "savanna",
+  [B_TROP_RAIN]: "tropical", [B_TROP_DRY]: "tropical",
+  [B_FLOODPLAIN]: "delta",
+};
+
+/**
+ * Read a land tile from a generated world and return a `foundPeople` pin:
+ * biome key, endowment from deposits + local organics, and knowledge axes
+ * shaped by fertility / coast / ores. Returns null on ocean.
+ */
+export function pinFromWorldTile(w, ter, x, y) {
+  if (!w) return null;
+  const tw = ter?.tw ?? w.W;
+  const th = ter?.th ?? w.H;
+  if (!(tw > 0 && th > 0)) return null;
+  const xi = ((Math.floor(x) % tw) + tw) % tw;
+  const yi = Math.max(0, Math.min(th - 1, Math.floor(y)));
+  const i = yi * tw + xi;
+  const elev = (ter?.tElev || w.elevation)[i];
+  if (!(elev > 0)) return null;
+  const moist = (ter?.tMoist || w.moisture)[i];
+  const temp = (ter?.tTemp || w.temperature)[i];
+  const dry = (ter?.tDryFrac || w.dryFrac)?.[i] || 0;
+  const bid = classifyBiome(elev, moist, temp, dry, 0);
+  let biome = TILE_TO_MUSIC_BIOME[bid] || "temperate";
+  // High ground is highland music (ores, stone) even when the classifier
+  // names it cold desert / barren — that is what the endowment table means.
+  if (elev > 0.52 || ((ter?.tRelief?.[i] || 0) > 0.55 && elev > 0.35)) biome = "highland";
+  if ((ter?.tFlood?.[i] || 0) > 0.45) biome = "delta";
+  const B = BIOMES[biome];
+  if (!B) return null;
+
+  const have = {};
+  const dep = ter?.deposits || w.deposits;
+  if (dep) {
+    for (const id of ["timber", "stone", "copper", "tin", "iron", "precious"]) {
+      if (dep[id] && dep[id][i] > 0.12) have[id] = true;
+    }
+  }
+  // Abundant organics of this biome are simply there — the place grows them.
+  for (const [mat, p] of Object.entries(B.p)) if (p >= 0.75) have[mat] = true;
+  have.bronze = !!(have.copper && have.tin);
+  if (have.hide) have.gut = true;
+
+  const fert = ter?.tFert?.[i] ?? moist;
+  const coast = ter?.tCoast?.[i] || 0;
+  const metal = !!(have.copper || have.tin || have.iron || have.precious);
+  const know = {
+    agriculture: Math.max(0.12, Math.min(1, 0.18 + fert * 0.75)),
+    metallurgy: metal ? Math.min(1, 0.35 + (have.iron ? 0.25 : 0) + (have.bronze ? 0.2 : 0)) : 0.15,
+    construction: Math.max(0.15, Math.min(1, 0.25 + elev * 0.55)),
+    organization: Math.max(0.12, Math.min(1, 0.22 + fert * 0.45 + (coast > 0.4 ? 0.1 : 0))),
+    mobility: (biome === "steppe" || biome === "savanna") ? 0.72 : 0.38,
+    navigation: coast > 0.35 ? 0.7 : moist > 0.55 && biome === "delta" ? 0.55 : 0.22,
+  };
+  const soc = {
+    surplus: Math.min(1, know.agriculture * 0.75 + fert * 0.3),
+    urban: Math.min(1, know.organization * 0.7 + fert * 0.25),
+    strat: Math.min(1, know.organization * 0.55 + (metal ? 0.2 : 0)),
+    literacy: Math.max(0, Math.min(1, know.organization * 0.9 - 0.15)),
+  };
+
+  return {
+    biome,
+    have,
+    know,
+    soc,
+    name: null,
+    place: {
+      x: xi, y: yi, elev, moist, temp, biomeId: bid,
+      biomeLabel: B.label,
+      deposits: Object.keys(have).filter(k => ["timber", "stone", "copper", "tin", "iron", "precious"].includes(k) && have[k]),
+    },
+  };
+}
+
+/** Deterministic people-seed from a world seed and tile. */
+export function seedFromWorldTile(worldSeed, x, y) {
+  return hash32(worldSeed >>> 0, "musicPlace", x | 0, y | 0) >>> 0;
 }
 
 // What a maker wants out of a material depends on what the body does with

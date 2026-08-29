@@ -329,6 +329,12 @@ music. Across 80 generated peoples:
   see, a coronation), which is what would make an ambient layer quietly
   informative rather than merely atmospheric.
 
+The Music Lab can also **boot a lab-scale worldgen map** (`buildWorld` at
+W=320) and click a land tile: `pinFromWorldTile` turns that tile's biome,
+deposits and fertility into a `foundPeople` pin, then the usual chain runs.
+That is the same endowment mechanism as a rolled seed — the place supplies the
+inputs. The live React sim still does not drive music on its own.
+
 ## Synthesis
 
 Every voice is built from the **same partial list that decided the tuning**, so
