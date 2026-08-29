@@ -27,6 +27,7 @@ import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 import { TRADITIONS, applyTradition } from "./sim/musicTraditions.js";
 import { makeInstrument } from "./sim/musicInstruments.js";
 import { finalsOf } from "./sim/musicTuning.js";
+import { buildMidiFile, buildMidiCsv } from "./sim/musicMidi.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 const S = {
@@ -528,6 +529,77 @@ function drawPianoRoll(cv, m) {
   g.fillText(`${t0.toFixed(0)}–${t1.toFixed(0)} beats`, w - padR, h - 6);
 }
 
+// ── export the roll as Standard MIDI (SMF) ───────────────────────────────
+//
+// MIDI is the interchange format every DAW's piano roll imports. Derived
+// scales snap to nearest 12-TET in the .mid; the CSV keeps Hz and cents.
+// Hidden layers are omitted. See `musicMidi.js`.
+function rollVisibleNotes() {
+  return ROLL.notes.filter(n => !ROLL.hidden.has(n.role));
+}
+function rollExportOpts(m) {
+  return {
+    bpm: Math.round(60 / Math.max(1e-6, ROLL.spb)),
+    beatsPerBar: (m.rhythm && m.rhythm.beats) || 4,
+    name: (m.people && m.people.name) || "simman",
+    occ: S.occ,
+    roleLabels: ROLL_LABELS,
+  };
+}
+function downloadBytes(filename, bytes, mime) {
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function rollExportName(m, ext) {
+  const who = String((m.people && m.people.name) || "people").replace(/[^\w\-]+/g, "_").slice(0, 40);
+  return `${who}_${S.occ}_${m.people.seed}.${ext}`;
+}
+async function exportRollMidi(m) {
+  if (!ROLL.live) seedRollPreview(m);
+  const notes = rollVisibleNotes();
+  if (!notes.length) { flashRollExport("nothing to export — show at least one layer"); return; }
+  const bytes = buildMidiFile(notes, rollExportOpts(m));
+  downloadBytes(rollExportName(m, "mid"), bytes, "audio/midi");
+  flashRollExport(`downloaded ${rollExportName(m, "mid")}`);
+}
+async function copyRollMidi(m) {
+  if (!ROLL.live) seedRollPreview(m);
+  const notes = rollVisibleNotes();
+  if (!notes.length) { flashRollExport("nothing to copy — show at least one layer"); return; }
+  const opts = rollExportOpts(m);
+  const bytes = buildMidiFile(notes, opts);
+  const csv = buildMidiCsv(notes, opts);
+  try {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        "audio/midi": new Blob([bytes], { type: "audio/midi" }),
+        "text/plain": new Blob([csv], { type: "text/plain" }),
+      })]);
+      flashRollExport("copied MIDI + note table to clipboard");
+      return;
+    }
+  } catch { /* fall through */ }
+  try {
+    await navigator.clipboard.writeText(csv);
+    flashRollExport("copied note table (CSV); use Download MIDI for a .mid file");
+  } catch {
+    downloadBytes(rollExportName(m, "mid"), bytes, "audio/midi");
+    flashRollExport("clipboard blocked — downloaded .mid instead");
+  }
+}
+function flashRollExport(msg) {
+  const el = document.getElementById("rollexportmsg");
+  if (!el) return;
+  el.textContent = msg;
+  el.dataset.on = "1";
+  clearTimeout(flashRollExport._t);
+  flashRollExport._t = setTimeout(() => { el.textContent = ""; el.dataset.on = ""; }, 3200);
+}
+
 function rollHTML(m) {
   seedRollPreview(m);
   const present = new Set(ROLL.notes.map(n => n.role));
@@ -538,13 +610,22 @@ function rollHTML(m) {
     <h2>Piano roll <span class="count">— layers in time</span></h2>
     <p class="note">Pitch up the page, time across. Colour is the part: skeleton is the trunk,
       lead the surface, bass and punctuation the ground. Idle shows the current piece plan;
-      Ambience and Play the piece scroll a live playhead. Chips hide a layer on the roll only.</p>
+      Ambience and Play the piece scroll a live playhead. Chips hide a layer on the roll only —
+      and what is visible is what gets exported.</p>
     <canvas id="pianoroll"></canvas>
     <div class="rolllegs" id="rolllegs">${roles.map(r => {
       const on = !ROLL.hidden.has(r);
       return `<button type="button" class="rollchip${on ? " on" : ""}" data-roll="${esc(r)}"
         style="--rc:${ROLL_COLORS[r] || css("--accent")}">${esc(ROLL_LABELS[r] || r)}</button>`;
     }).join("")}</div>
+    <div class="rollexport">
+      <button type="button" id="rollmid" class="ghost">Download MIDI</button>
+      <button type="button" id="rollcopy" class="ghost">Copy MIDI / CSV</button>
+      <span class="note tight" id="rollexportmsg"></span>
+    </div>
+    <p class="note tight">Standard MIDI File (Type 1, one track per layer) is what every DAW piano roll
+      imports. Derived tunings snap to the nearest 12-TET key; the CSV copy keeps Hz and cents.
+      Hidden layers are omitted.</p>
   </div>`;
 }
 
@@ -1617,6 +1698,8 @@ function wire() {
       if (roll && P) drawPianoRoll(roll, P);
     };
   });
+  if ($("rollmid")) $("rollmid").onclick = () => { exportRollMidi(P); };
+  if ($("rollcopy")) $("rollcopy").onclick = () => { copyRollMidi(P); };
   document.querySelectorAll("button[data-inst]").forEach(b => {
     b.onclick = () => {
       const inst = P.insts[+b.dataset.inst];
@@ -1693,6 +1776,10 @@ canvas{width:100%;display:block}
 .rollchip.on{opacity:1;color:var(--ink);border-color:var(--rc,var(--accent));
   box-shadow:inset 3px 0 0 var(--rc,var(--accent))}
 .rollchip:hover{filter:brightness(1.05)}
+.rollexport{display:flex;flex-wrap:wrap;gap:.5rem .7rem;align-items:center;margin:.45rem 0 .1rem}
+.rollexport .ghost{background:transparent;color:var(--ink);border:1px solid var(--line);padding:.35rem .7rem}
+.rollexport .ghost:hover{border-color:var(--accent);color:var(--accent)}
+#rollexportmsg[data-on="1"]{color:var(--gloss)}
 .degrees{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0 .7rem}
 .deg{display:flex;flex-direction:column;align-items:flex-start;gap:.05rem;background:var(--chipbg);
   border:1px solid var(--line);border-radius:4px;padding:.3rem .55rem;cursor:pointer;color:var(--ink);font:inherit}

@@ -30,6 +30,7 @@ import { TRADITIONS, applyTradition } from "../src/sim/musicTraditions.js";
 import { foundLanguage } from "../src/sim/language.js";
 import { foundPeople, musicOf } from "../src/sim/musicGenome.js";
 import { ensembleFor, composePiece, ambientBar, OCCASIONS, finalFor, modeDegree, degreeHz, formOrderOf, phraseBank, phraseSkeleton } from "../src/sim/musicCompose.js";
+import { buildMidiFile, hzToMidi } from "../src/sim/musicMidi.js";
 import { ARCHETYPE_PHYS_FIT_MIN } from "../src/sim/musicArchetypes.js";
 import { makeInstrument } from "../src/sim/musicInstruments.js";
 import { finalsOf } from "../src/sim/musicTuning.js";
@@ -280,6 +281,29 @@ console.log("[music] form gates");
   check("form: high-repetition songs share statement rhythm with departure",
     shareN === 0 || sharedRhy / shareN >= 0.95, `${sharedRhy}/${shareN}`);
   check("form: ambient bars emit a skeleton trunk", skOk >= 75, `${skOk}/80`);
+}
+
+// ── MIDI export: SMF header and A440 → note 69 ──
+{
+  const mid = buildMidiFile([
+    { b: 0, dur: 1, hz: 440, role: "lead", vel: 0.5 },
+    { b: 0, dur: 0.25, hz: 0, role: "pulse", vel: 0.6 },
+  ], { bpm: 100, name: "gate" });
+  const head = String.fromCharCode(mid[0], mid[1], mid[2], mid[3]);
+  check("midi: SMF starts with MThd", head === "MThd");
+  check("midi: A440 is MIDI note 69", hzToMidi(440).note === 69 && hzToMidi(440).cents === 0);
+  const m = musicOf(foundPeople(1035, foundLanguage(W(), { seed: 1035 }), {}));
+  const piece = composePiece(m, "peace", null, 0.85);
+  const notes = (piece.events || []).map(e => {
+    let hz = 0;
+    try { hz = degreeHz(m, 220, e.deg, e.oct || 0); } catch { /* unpitched */ }
+    return { b: e.b, dur: e.dur, hz, role: e.role, vel: e.vel };
+  });
+  const big = buildMidiFile(notes, { bpm: piece.tempo, name: m.people.name, beatsPerBar: m.rhythm.beats });
+  check("midi: composed piece yields a multi-track SMF",
+    big.length > 100 && String.fromCharCode(big[0], big[1], big[2], big[3]) === "MThd"
+      && (big[10] * 256 + big[11]) >= 2,
+    `len ${big.length} tracks ${big[10] * 256 + big[11]}`);
 }
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);
