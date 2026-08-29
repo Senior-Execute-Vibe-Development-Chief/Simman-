@@ -15,7 +15,8 @@ const coi = {
 };
 
 export default defineConfig(({ mode }) => ({
-  base: "/Simman-/",
+  // Live: /Simman-/. Preview channels: /Simman-/b/<slug>/ (set by deploy.yml).
+  base: process.env.VITE_BASE || "/Simman-/",
   // The running tab's build identity (the stale-tab detector, 2026-08-19):
   // the deploy workflow exports GITHUB_SHA and also writes dist/version.json
   // with the same sha AFTER the build; the app polls that file and shows a

@@ -356,6 +356,7 @@ const[quietAges,setQuietAges]=useState(false);
 // the one baked into this tab (__BUILD_SHA__, vite define). Local dev has
 // neither — silent.
 const[staleBuild,setStaleBuild]=useState(false);
+const[buildInfo,setBuildInfo]=useState(null); // version.json {sha,branch,channel,…} when deployed
 // Boot diagnostic (one console line): the build this tab runs + the live
 // physics defaults. When "the update didn't take", F12 → this line IS the
 // ground truth — paste it, compare shas/values, done. Printed once per boot.
@@ -369,13 +370,17 @@ useEffect(()=>{
   let stop=false;
   const check=()=>fetch(import.meta.env.BASE_URL+"version.json",{cache:"no-store"})
     .then(r=>r.ok?r.json():null)
-    .then(v=>{if(!stop&&v&&v.sha&&v.sha!==sha)setStaleBuild(true);})
+    .then(v=>{
+      if(stop||!v)return;
+      setBuildInfo(v);
+      if(v.sha&&v.sha!==sha)setStaleBuild(true);
+    })
     .catch(()=>{});
-  const t0=setTimeout(check,30e3);
+  check();   // immediate — populate the channel chip; also catch a just-landed deploy
   const iv=setInterval(check,5*60e3);
   const onVis=()=>{if(document.visibilityState==="visible")check();};
   document.addEventListener("visibilitychange",onVis);
-  return()=>{stop=true;clearTimeout(t0);clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
+  return()=>{stop=true;clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
 },[]);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
@@ -4545,6 +4550,12 @@ return(
   {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
     title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
     style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
+  {/* Channel chip: which deployed branch this tab is running + link to the
+      builds picker (live vs preview channels under /b/…). */}
+  {buildInfo&&buildInfo.branch&&<a className="au-num" href="/Simman-/builds/"
+    title={`This tab is the ${buildInfo.channel==="live"?"LIVE":"preview"} build of ${buildInfo.branch} (${(buildInfo.sha||"").slice(0,8)}). Click to open the builds picker and switch channels.`}
+    style={{fontSize:11,color:buildInfo.channel==="live"?"var(--au-ch-gold)":"inherit",opacity:buildInfo.channel==="live"?1:0.75,cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}
+    >{buildInfo.channel==="live"?"● live":`◌ ${buildInfo.branch.replace(/^cursor\/|^claude\//,"")}`}</a>}
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
     title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
