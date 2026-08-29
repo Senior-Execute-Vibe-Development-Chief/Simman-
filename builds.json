@@ -2,6 +2,14 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/invent-foresight-jump-15e6",
+      "sha": "18e457fe332477349e11bec10c109b4a30803e16",
+      "slug": "cursor-invent-foresight-jump-15e6",
+      "builtAt": "2026-08-29T13:36:36.555Z",
+      "channel": "preview",
+      "path": "/b/cursor-invent-foresight-jump-15e6/"
+    },
+    {
       "branch": "cursor/market-pull-cross-border-15e6",
       "sha": "7e73ac0876177d90106017fba4052d7f746d1501",
       "slug": "cursor-market-pull-cross-border-15e6",
