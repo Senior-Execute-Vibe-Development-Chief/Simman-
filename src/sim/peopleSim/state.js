@@ -7,7 +7,7 @@ import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T, rNormPop } from "./tuning.js";
 import { devInitYears } from "./popField.js";
-import { jumpToFirstInvent } from "./hearthInvent.js";
+import { jumpToCivReady } from "./dawnJump.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { computeRelief } from "../worldgenUtils.js";
@@ -104,9 +104,9 @@ export function createWorld(w, opts = {}) {
   initDeposits(world, w, opts.deposits);
   resetInvariantState(world);   // fresh run starts with no warning-throttle memory
   seedCradleVillage(world);
-  // T.INVENT_JUMP × DAWN_LIVE: solve first domestication from the crop/hearth
-  // law + forager logistic, stamp basin farming, open there (no empty wait).
-  jumpToFirstInvent(world);
+  // T.INVENT_JUMP × DAWN_LIVE: solve invent, then gather to first mint-ready
+  // site (URBAN_DRIFT + land-know), hold the mint so play watches the city rise.
+  jumpToCivReady(world);
   return world;
 }
 
