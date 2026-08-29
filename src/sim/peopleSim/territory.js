@@ -21,6 +21,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
+import { applyFarmGateCompulsion } from "./compulsion.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -597,6 +598,8 @@ export function computeTerritory(world) {
       }
     }
   }
+
+  if (mktPull) applyFarmGateCompulsion(world, owner, tcost, byId);
 
   tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
 
