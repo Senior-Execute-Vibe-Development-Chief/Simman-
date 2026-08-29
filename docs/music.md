@@ -312,7 +312,9 @@ music. Across 80 generated peoples:
   landing together. Lab **Bodies → form (plain tones)** hears only skeleton /
   lead / bass / punctuation on simple oscillators. A **piano roll** card shows
   the same layers as pitch × time (preview of the piece plan; live playhead on
-  Ambience / Play).
+  Ambience / Play). Atmosphere occasions keep the irama climb and mid-range
+  surface (heterophony / elaboration) sparse so long civ-sim loops stay
+  non-fatiguing; festival and war still open the full bench.
 - **Melody** — structural degrees are the ones the roughness curve itself
   ranked most consonant. Phrases descend because subglottal pressure falls
   across a breath (the same declination the speech engine applies to f0), and

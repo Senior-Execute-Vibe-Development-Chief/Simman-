@@ -1314,9 +1314,17 @@ export function sectionsOf(music, occKey) {
       cycles: s === 0 ? 1 : (t > 0.55 && t < 0.9 ? 2 : 1 + (hash32(seed, "len", s) % 2)),
       // Javanese irama runs one to sixteen, in doublings, and the measured
       // surface tempo of a dhrupad concert multiplies by the same integers
-      // while the metric pulse barely moves. Three doublings is eight, which
-      // is inside that range and as far as this texture can carry.
-      dens: Math.pow(2, Math.round(3 * climb) - (t > 0.82 ? 1 : 0)),
+      // while the metric pulse barely moves. How FAR the climb goes follows
+      // the occasion's beat: a feast/war with perc≈1 and dense scoring reaches
+      // 1:8 (maxPow 3); held atmospheres — even pulse-forward peoples whose
+      // peace perc is high — top out at 1:4 so the civ-sim loop stays usable.
+      dens: (() => {
+        const activity = Math.min(1, 0.45 * O.density + 0.55 * O.perc);
+        const climbCap = (O.perc >= 0.9 && O.density >= 1.1) ? 3
+          : (O.perc < 0.22 ? 1 : 2);
+        const maxPow = Math.max(1, Math.min(climbCap, Math.round(3 * activity)));
+        return Math.pow(2, Math.min(maxPow, Math.round(3 * climb)) - (t > 0.82 ? 1 : 0));
+      })(),
       // The climb is real — the arch to a high point and the landing back home
       // is one of the few cross-cultural universals — but it does NOT have to
       // be made of octave jumps. A modal tradition moves its tonal CENTRE
@@ -1977,9 +1985,9 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     const skInst = ST.core && audible("core") ? ST.core.k
       : ST.lead ? ST.lead.k
         : (E.marks && E.marks[0] != null ? E.marks[0] : 0);
-    const skEffort = Math.max(0.32, Math.min(0.7,
-      0.46 / Math.pow(Math.max(1, sk.length) / 6, 0.34)));
-    const skVel = ST.core && audible("core") ? ST.core.vel : skEffort * 0.88;
+    const skEffort = Math.max(0.4, Math.min(0.72,
+      0.48 / Math.pow(Math.max(1, sk.length) / 6, 0.34)));
+    const skVel = ST.core && audible("core") ? ST.core.vel : skEffort * 0.92;
     for (const x of sk) {
       ev.push({
         b: slotBeat(G, x.s, R.swing),
@@ -2052,10 +2060,21 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // When an elaborator is already filling the gaps, only ONE doubler plays this
   // cycle — the rest take turns bar to bar so every body is still heard across
   // a piece without three melodic lines on one attack (measured: ~79% unison).
+  //
+  // AND ATMOSPHERE DOES NOT NEED THE FULL BENCH. Continuous mid-range
+  // doublings (lead + het + voice) are what made long peace loops fatiguing
+  // under a civ-sim UI. Surface activity — mostly occasion perc and section
+  // dens; ornament lean is a weaker cue (a leaning mode still wants space) —
+  // decides whether heterophony sits out, thins to one body, or plays as before.
+  const surface = Math.min(1, 0.5 * O.perc + 0.15 * Math.min(1, O.orn) + 0.35 * Math.min(1, S.sec.dens / 8));
   const hetBodies = (E.het || []);
-  const hetActive = ST.elab && hetBodies.length > 1
-    ? [hetBodies[bar % hetBodies.length]]
-    : hetBodies;
+  // Atmosphere tops out at dens 4 → surface ≲ 0.55 for calm perc; festival dens 8
+  // clears ~0.9. Gate so peace peak stays lead+skeleton+voice, not a mid-range stack.
+  const hetActive = surface < 0.55 ? []
+    : ST.elab && hetBodies.length > 1
+      ? [hetBodies[bar % hetBodies.length]]
+      : surface < 0.72 ? hetBodies.slice(0, 1)
+        : hetBodies;
   for (let hi = 0; hi < hetActive.length; hi++) {
     const k = hetActive[hi];
     if (!audible("het" + k)) continue;
@@ -2157,6 +2176,14 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     // and that is where the density comes from. How far it can actually go is
     // bounded by the body — a bronze key clears about two notes a second and a
     // wooden one ten — so the subdivision asks and the physics answers.
+    //
+    // AND THE OCCASION GATES HOW MUCH FILL YOU GET. Continuous elaboration under
+    // atmosphere is what made long peace loops busy under a UI; festival still
+    // asks for the full surface. Perc and dens dominate the gate (ornament lean
+    // alone must not keep a calm room busy); count and velocity thin together.
+    const elabSurf = Math.min(1, 0.5 * O.perc + 0.2 * Math.min(1, O.orn) + 0.3 * Math.min(1, S.sec.dens / 8));
+    // Peace dens≤4 clears ~0.55–0.57; require denser surface (festival dens 8) for fill.
+    if (elabSurf >= 0.6) {
     const sub = S.sec.dens >= 8 ? 4 : S.sec.dens >= 4 ? 2 : 1;
     const N = SLOTS * sub;
     // THE SUBDIVISION ASKS AND THE PHYSICS ANSWERS — which is what the note
@@ -2172,9 +2199,10 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     // player keeps their own pace; it is the CORE that stretches underneath them,
     // which is what multiplies the density RATIO while everyone goes on playing
     // at a human speed. The core already stretches, sixty lines above.
-    const n = Math.max(2, Math.min(
-      Math.round(ST.elab.n * sub * Math.min(1, 0.3 * S.sec.dens)),
-      ST.elab.n, N - 1));
+    const target = Math.round(ST.elab.n * sub * Math.min(1, 0.3 * S.sec.dens)
+      * (0.3 + 0.7 * elabSurf));
+    if (target >= 2) {
+    const n = Math.min(target, ST.elab.n, N - 1);
     const e = euclid(n, N);
     for (let s = 0; s < N; s++) {
       if (!e[s]) continue;
@@ -2198,14 +2226,15 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       for (let q = s + 1; q < N; q++) if (e[q]) { lastBefore = q / sub >= to; break; }
       const d = lastBefore && Math.abs(next - here) >= 2 ? here + Math.sign(next - here) : here;
       const near = on.some(o => Math.abs(o * sub - s) < sub);
-      // An elaborator FILLS THE GAPS — doubling the melody's attack at the same
-      // pitch is the main source of recorded-sample mud (measured: elab+lead
-      // was a tenth of all vertical pairs and most of what listeners heard as
-      // "too many instruments on one note").
-      if (near && d === here) continue;
+      // An elaborator FILLS THE GAPS — any stroke on a melody attack (unison
+      // or neighbour) stacks mid-range with lead/skeleton/voice and reads as
+      // mud under a long civ-sim loop. Leave the attacks to the line.
+      if (near) continue;
       ev.push({ b: slotBeat(G, s / sub, R.swing), dur: 0.34 / sub, inst: ST.elab.k,
         deg: modeDegree(music, d + fin + ist), oct: Math.round(O.reg) + S.sec.oct,
-        vel: ST.elab.vel, role: "elab", damped: true });
+        vel: ST.elab.vel * (0.45 + 0.55 * elabSurf), role: "elab", damped: true });
+    }
+    }
     }
   }
   // THE DRONE. Not a held note: a real drone is RE-ARTICULATED, on its own
@@ -2347,7 +2376,10 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       sung.push({ ...e, role: "voice", inst: -1, melisma: !own,
         // the voice sits above every doubler sounding this cycle
         oct: (e.oct || 0) + 1 + hetActive.length,
-        vel: e.vel * (own ? 1 : 0.86),
+        // Atmosphere: a full-level sung doubling of the lead is a second mid-
+        // range competitor under the UI. Surface activity ducks it so peace
+        // stays supportive; festival/war keep the singer out front.
+        vel: e.vel * (own ? 1 : 0.86) * (0.55 + 0.45 * Math.min(1, 0.5 + surface)),
         b: e.b + Math.min(vlag, e.dur * 0.25) });
     }
     // ── 4. AND A SUNG NOTE LASTS UNTIL THE NEXT ONE. A phrase is one breath
