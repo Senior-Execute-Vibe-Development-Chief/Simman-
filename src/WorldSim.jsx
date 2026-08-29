@@ -4593,13 +4593,6 @@ return(
   {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
     title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
     style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
-  {/* Build chip: ALWAYS visible — physics SAVE_VERSION + the sha baked into
-      this bundle (__BUILD_SHA__). Channel/branch from version.json when deployed.
-      This is the ground truth when "the update didn't take" (owner 2026-08-29). */}
-  <a className="au-num" href="/Simman-/builds/"
-    title={`This tab runs physics v${SAVE_VERSION}, bundle ${buildSha}${buildInfo&&buildInfo.branch?` · ${buildInfo.channel==="live"?"LIVE":"preview"} channel of ${buildInfo.branch}`:""}. Click to open the builds picker and switch channels. Mint-ready open needs v63+ on a moisture / mint-ready channel — invent-only foresight was v62.`}
-    style={{fontSize:11,color:buildInfo&&buildInfo.channel==="live"?"var(--au-ch-gold)":"inherit",opacity:1,cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}
-    >v{SAVE_VERSION} · {buildShort}{buildInfo&&buildInfo.channel==="live"?" · live":(buildInfo&&buildInfo.branch?` · ${buildInfo.branch.replace(/^cursor\/|^claude\//,"")}`:"")}</a>
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
     title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
@@ -4664,6 +4657,12 @@ return(
     })()}
   </>}
   <div style={{flex:1,minWidth:0}}/>
+  {/* Build identity — RIGHT of the chrome, always visible (was mid-bar and easy
+      to miss / clip). Bundle truth: SAVE_VERSION + __BUILD_SHA__. Click → builds picker. */}
+  <a className="au-num" href="/Simman-/builds/"
+    title={`This tab runs physics v${SAVE_VERSION}, bundle ${buildSha}${buildInfo&&buildInfo.branch?` · ${buildInfo.channel==="live"?"LIVE":"preview"} of ${buildInfo.branch}`:""}. Click for the builds picker. Mint-ready open needs v63+; invent-only foresight was v62.`}
+    style={{fontSize:11,fontWeight:700,color:"var(--au-ch-gold)",border:"1px solid rgba(216,177,58,0.45)",borderRadius:3,padding:"2px 8px",cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",flexShrink:0,fontVariantNumeric:"tabular-nums",letterSpacing:0.2}}
+    >build v{SAVE_VERSION} · {buildShort}</a>
   <TopBarBell feedRef={peopleRef} onOpenFeed={()=>{setPanelTab("world");setRealmSel(-1);if(narrowRef.current)setCodexOpen(true);}}/>
   {narrow&&<button onClick={()=>setCodexOpen(v=>!v)} className={"au-btn au-flat"+(codexOpen?" au-active":"")}
     style={{fontSize:13,padding:"3px 8px"}} title="The codex — realms, peoples, events">📖</button>}
@@ -4721,6 +4720,11 @@ return(
     className={"au-dock-btn"+(helpOpen?" au-active":"")} title="Keys & help — ?">
     <span className="au-dock-ico">✳</span><span className="au-dock-lbl">Help</span></button>
   <div style={{flex:1}}/>
+  <a href="/Simman-/builds/" title={`build v${SAVE_VERSION} · ${buildSha} — click for builds picker`}
+    style={{display:"block",textAlign:"center",textDecoration:"none",color:"var(--au-ch-gold)",fontSize:9,fontWeight:700,lineHeight:1.2,padding:"4px 2px",flexShrink:0}}>
+    <span className="au-num" style={{display:"block"}}>v{SAVE_VERSION}</span>
+    <span className="au-num" style={{display:"block",opacity:0.75,fontWeight:600}}>{buildShort}</span>
+  </a>
   <span className="au-cfade au-num" style={{fontSize:9,textAlign:"center"}} title="World seed">{seed}</span>
 
   {/* flyout: the active-hovered lens's sub-lenses */}

@@ -154,12 +154,14 @@ jobs:
 
       - name: Update builds catalog + picker
         run: |
+          SAVE_V=$(python3 -c "import re,pathlib; m=re.search(r'export const SAVE_VERSION\s*=\s*(\d+)', pathlib.Path('src/sim/persist.js').read_text()); print(m.group(1) if m else '')")
           node tools/pages-catalog.mjs \
             --site=./site \
             --branch="${{ steps.meta.outputs.branch }}" \
             --sha="${{ steps.meta.outputs.sha }}" \
             --slug="${{ steps.meta.outputs.slug }}" \
-            --channel="${{ steps.meta.outputs.channel }}"
+            --channel="${{ steps.meta.outputs.channel }}" \
+            --saveVersion="$SAVE_V"
 
       - name: Persist pages-site branch
         run: |
