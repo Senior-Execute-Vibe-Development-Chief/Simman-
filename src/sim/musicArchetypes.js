@@ -77,10 +77,16 @@ export const TUNING_ARCHETYPES = [
     provenance: "Hindustani Yaman; bench",
   },
   {
-    id: "maqamRast", family: "maqam-frame", label: "neutral-third maqām frame",
+    id: "hijazKar", family: "maqam-frame", label: "Ḥijāz tetrachord frame",
     frame: 1200, scale: [0, 112, 386, 498, 702, 814, 1088], finalIdx: 0,
     harmonic: true, minCap: 6, maxCap: 10, equalSpread: 0.38, sampleEt: 0.3, wild: false,
-    provenance: "maqām Rast; Arabic bench",
+    provenance: "augmented-second maqām frame; Arabic bench",
+  },
+  {
+    id: "maqamRast", family: "maqam-frame", label: "neutral-third maqām frame",
+    frame: 1200, scale: [0, 112, 386, 498, 702, 884, 1088], finalIdx: 0,
+    harmonic: true, minCap: 6, maxCap: 10, equalSpread: 0.38, sampleEt: 0.25, wild: false,
+    provenance: "maqām Rast neutral third/seventh class",
   },
   {
     id: "flamencoPhrygian", family: "maqam-frame", label: "Phrygian with raised third",
@@ -165,6 +171,18 @@ function ensembleHarmonic(insts, power, refJ) {
   };
 }
 
+/** Prominence lean: augmented second (~386¢) vs minor third (~316¢) in roughness minima. */
+function intervalLean(mins) {
+  let promAug = 0, promMin3 = 0;
+  for (const m of mins) {
+    const c = m.cents;
+    if (c >= 350 && c <= 430) promAug = Math.max(promAug, m.prom);
+    if (c >= 270 && c <= 340) promMin3 = Math.max(promMin3, m.prom);
+  }
+  const sum = promAug + promMin3 + 1e-9;
+  return { hijaz: promAug / sum, raga: promMin3 / sum, hasAug: promAug > 0.008, hasMin3: promMin3 > 0.008 };
+}
+
 /** How well roughness minima align with an archetype's degree template. */
 function physFit(mins, arch) {
   if (!mins.length) return 0.5;
@@ -227,6 +245,13 @@ export function scoreTuningArchetype(arch, ctx) {
     if (pull < 0.25) s += 0.03;
   }
   if ((arch.family === "diatonic" || arch.id === "twelveTet") && microtonalPlay && pull < 0.30) s -= 0.06;
+  // Ḥijāz vs rāg: the spectrum's third is either augmented (~386¢) or minor (~316¢).
+  const lean = intervalLean(ctx.mins);
+  const hijazFrame = arch.id === "hijazKar" || arch.id === "flamencoPhrygian";
+  if (hijazFrame && lean.hasAug) s += 0.12 * lean.hijaz;
+  if (hijazFrame && lean.hasMin3 && !lean.hasAug) s -= 0.1;
+  if (arch.id === "yaman" && lean.hasMin3) s += 0.1 * lean.raga;
+  if (arch.id === "yaman" && lean.hijaz > 0.58) s -= 0.12;
   // Whole-tone and chromatic grids need a literate keyboard tradition — not a
   // random panpipe ensemble (measured: wholeTone on seed 1037, 22¢ off dips).
   if ((arch.id === "wholeTone" || arch.id === "twelveTet") && pull < 0.45 && cap < 10) s -= 0.22;
@@ -236,15 +261,29 @@ export function scoreTuningArchetype(arch, ctx) {
 export function matchTuningArchetype(ctx) {
   const { seed = 0, spec } = ctx;
   const mins = minimaOf(dissonanceCurve(spec)).filter(m => m.ratio > 1.02 && m.ratio < 1.95);
+  const lean = intervalLean(mins);
   const scoredCtx = { ...ctx, mins };
   const viable = TUNING_ARCHETYPES.filter(a => scoreTuningArchetype(a, scoredCtx) >= 0);
   const ranked = viable
     .map(item => ({ item, score: scoreTuningArchetype(item, scoredCtx), physFit: physFit(mins, item) }))
     .sort((a, b) => b.score - a.score || String(a.item.id).localeCompare(String(b.item.id)));
   const best = ranked[0]?.score ?? -Infinity;
-  const pool = ranked.filter(r => r.score >= best - 0.04).slice(0, 4);
+
+  // When several microtonal frames fit equally, seed-pick among the viable class —
+  // not random from the whole catalog, but lineage variance among real options.
+  const microViable = ranked.filter(r =>
+    (r.item.family === "maqam-frame" || r.item.family === "raga-frame" || r.item.id === "miyakoBushi")
+    && r.score >= best - 0.06 && r.physFit >= ARCHETYPE_PHYS_FIT_MIN);
+  let pool = ranked.filter(r => r.score >= best - 0.04).slice(0, 5);
+  if (microViable.length >= 2) {
+    if (lean.hijaz > 0.55) pool = microViable.filter(r => r.item.family === "maqam-frame").slice(0, 4);
+    else if (lean.raga > 0.55) pool = microViable.filter(r => r.item.family === "raga-frame").slice(0, 4);
+    else pool = microViable.slice(0, 5);
+  }
+  if (!pool.length) pool = ranked.slice(0, 4);
+
   const pick = pool[hash32(seed >>> 0, "arch", "tuning") % pool.length] || ranked[0];
-  return { archetype: pick?.item ?? null, score: pick?.score ?? best, physFit: pick?.physFit ?? 0, ranked: ranked.slice(0, 6) };
+  return { archetype: pick?.item ?? null, score: pick?.score ?? best, physFit: pick?.physFit ?? 0, ranked: ranked.slice(0, 8) };
 }
 
 /** Replace free-crawled degrees with the winning archetype; keep physics curve. */
