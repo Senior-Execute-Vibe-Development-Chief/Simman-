@@ -2,6 +2,14 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/market-pull-cross-border-15e6",
+      "sha": "366cc825b7a920c1379364d6f2f562f948561e8b",
+      "slug": "cursor-market-pull-cross-border-15e6",
+      "builtAt": "2026-08-29T11:58:02.036Z",
+      "channel": "preview",
+      "path": "/b/cursor-market-pull-cross-border-15e6/"
+    },
+    {
       "branch": "claude/moisture-yield-validation-chain-o29gdc",
       "sha": "7dcedc4a016c3b4d2204544cff378132e96ee03b",
       "slug": "claude-moisture-yield-validation-chain-o29gdc",
