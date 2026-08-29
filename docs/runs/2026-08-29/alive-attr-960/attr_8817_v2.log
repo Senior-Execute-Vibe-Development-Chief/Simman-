@@ -1,0 +1,108 @@
+[harness] tree 871414dc
+[alive-attr] parent W=960 steps=24000 seed=8817 arms=10
+MACHINE	arm	harness_current	tw	480	start_setts	9
+MACHINE	harness_current	4000	2	0	2	453	3
+MACHINE	harness_current	8000	4	1	3	1753	20
+MACHINE	harness_current	12000	5	3	3	3090	46
+MACHINE	harness_current	16000	6	2	4	4810	189
+MACHINE	harness_current	20000	7	3	5	7013	87
+MACHINE	harness_current	24000	10	7	4	12537	159
+[alive-attr] harness_current done 132s final setts=10 realms=4
+
+MACHINE	arm	harness_pre_v58	tw	480	start_setts	9
+MACHINE	harness_pre_v58	4000	2	0	2	453	3
+MACHINE	harness_pre_v58	8000	4	1	3	1753	20
+MACHINE	harness_pre_v58	12000	5	2	4	3089	46
+MACHINE	harness_pre_v58	16000	9	4	3	5944	126
+MACHINE	harness_pre_v58	20000	12	8	6	10828	154
+MACHINE	harness_pre_v58	24000	15	13	7	14882	288
+[alive-attr] harness_pre_v58 done 135s final setts=15 realms=7
+
+MACHINE	arm	harness_pre_v57	tw	480	start_setts	9
+MACHINE	harness_pre_v57	4000	2	0	2	514	7
+MACHINE	harness_pre_v57	8000	4	2	3	1769	101
+MACHINE	harness_pre_v57	12000	5	1	4	3295	126
+MACHINE	harness_pre_v57	16000	12	2	8	6549	168
+MACHINE	harness_pre_v57	20000	20	9	10	9715	288
+MACHINE	harness_pre_v57	24000	36	24	17	14120	547
+[alive-attr] harness_pre_v57 done 140s final setts=36 realms=17
+
+MACHINE	arm	harness_pre_v55	tw	480	start_setts	9
+MACHINE	harness_pre_v55	4000	2	2	2	751	87
+MACHINE	harness_pre_v55	8000	4	4	3	1970	366
+MACHINE	harness_pre_v55	12000	6	4	4	3310	604
+MACHINE	harness_pre_v55	16000	5	5	4	4215	608
+MACHINE	harness_pre_v55	20000	13	12	9	6707	704
+MACHINE	harness_pre_v55	24000	24	22	16	11937	1130
+[alive-attr] harness_pre_v55 done 125s final setts=24 realms=16
+
+MACHINE	arm	harness_city_store_off	tw	480	start_setts	9
+MACHINE	harness_city_store_off	4000	2	0	2	453	3
+MACHINE	harness_city_store_off	8000	4	1	3	1753	20
+MACHINE	harness_city_store_off	12000	5	3	3	3090	46
+MACHINE	harness_city_store_off	16000	9	4	4	5661	129
+MACHINE	harness_city_store_off	20000	11	3	6	9003	156
+MACHINE	harness_city_store_off	24000	15	11	6	11043	287
+[alive-attr] harness_city_store_off done 130s final setts=15 realms=6
+
+MACHINE	arm	harness_mint_bars_off	tw	480	start_setts	9
+MACHINE	harness_mint_bars_off	4000	2	0	2	453	3
+MACHINE	harness_mint_bars_off	8000	3	1	2	1368	32
+MACHINE	harness_mint_bars_off	12000	4	3	3	2536	79
+MACHINE	harness_mint_bars_off	16000	10	4	6	4124	106
+MACHINE	harness_mint_bars_off	20000	15	6	9	8517	190
+MACHINE	harness_mint_bars_off	24000	23	9	10	12805	239
+[alive-attr] harness_mint_bars_off done 143s final setts=23 realms=10
+
+MACHINE	arm	harness_v55_only_off	tw	480	start_setts	9
+MACHINE	harness_v55_only_off	4000	2	2	2	545	89
+MACHINE	harness_v55_only_off	8000	4	3	2	1909	163
+MACHINE	harness_v55_only_off	12000	4	4	4	3487	370
+MACHINE	harness_v55_only_off	16000	6	6	5	5078	501
+MACHINE	harness_v55_only_off	20000	8	8	6	6965	576
+MACHINE	harness_v55_only_off	24000	10	10	6	10736	631
+[alive-attr] harness_v55_only_off done 112s final setts=10 realms=6
+
+MACHINE	arm	live_current	tw	480	start_setts	0
+MACHINE	live_current	4000	0	0	0	0	0
+MACHINE	live_current	8000	0	0	0	0	0
+MACHINE	live_current	12000	0	0	0	0	0
+MACHINE	live_current	16000	0	0	0	0	0
+MACHINE	live_current	20000	0	0	0	0	0
+MACHINE	live_current	24000	61	17	0	99954	583
+[alive-attr] live_current done 93s final setts=61 realms=0
+
+MACHINE	arm	live_pre_v57	tw	480	start_setts	0
+MACHINE	live_pre_v57	4000	0	0	0	0	0
+MACHINE	live_pre_v57	8000	0	0	0	0	0
+MACHINE	live_pre_v57	12000	0	0	0	0	0
+MACHINE	live_pre_v57	16000	0	0	0	0	0
+MACHINE	live_pre_v57	20000	0	0	0	0	0
+MACHINE	live_pre_v57	24000	76	13	0	120175	561
+[alive-attr] live_pre_v57 done 93s final setts=76 realms=0
+
+MACHINE	arm	live_pre_v55	tw	480	start_setts	0
+MACHINE	live_pre_v55	4000	0	0	0	0	0
+MACHINE	live_pre_v55	8000	0	0	0	0	0
+MACHINE	live_pre_v55	12000	0	0	0	0	0
+MACHINE	live_pre_v55	16000	0	0	0	0	0
+MACHINE	live_pre_v55	20000	0	0	0	0	0
+MACHINE	live_pre_v55	24000	89	73	1	110803	1594
+[alive-attr] live_pre_v55 done 96s final setts=89 realms=1
+
+
+═══ SUMMARY @ final ═══
+arm                            setts  cities  realms     pop   urban     sec
+harness_current                   10       7       4   12537     159     132
+harness_pre_v58                   15      13       7   14882     288     135
+harness_pre_v57                   36      24      17   14120     547     140
+harness_pre_v55                   24      22      16   11937    1130     125
+harness_city_store_off            15      11       6   11043     287     130
+harness_mint_bars_off             23       9      10   12805     239     143
+harness_v55_only_off              10      10       6   10736     631     112
+live_current                      61      17       0   99954     583      93
+live_pre_v57                      76      13       0  120175     561      93
+live_pre_v55                      89      73       1  110803    1594      96
+
+Overnight stylized_960_8817 @ d77d828d: alive 29 setts / 18 polities (pass).
+Current stylized_960_8817 @ HEAD: alive 10 setts / 5 polities (FAIL).
