@@ -360,6 +360,7 @@ const[quietAges,setQuietAges]=useState(false);
 // the one baked into this tab (__BUILD_SHA__, vite define). Local dev has
 // neither — silent.
 const[staleBuild,setStaleBuild]=useState(false);
+const[buildInfo,setBuildInfo]=useState(null); // version.json {sha,branch,channel,…} when deployed
 // Boot diagnostic (one console line): the build this tab runs + the live
 // physics defaults. When "the update didn't take", F12 → this line IS the
 // ground truth — paste it, compare shas/values, done. Printed once per boot.
@@ -373,13 +374,17 @@ useEffect(()=>{
   let stop=false;
   const check=()=>fetch(import.meta.env.BASE_URL+"version.json",{cache:"no-store"})
     .then(r=>r.ok?r.json():null)
-    .then(v=>{if(!stop&&v&&v.sha&&v.sha!==sha)setStaleBuild(true);})
+    .then(v=>{
+      if(stop||!v)return;
+      setBuildInfo(v);
+      if(v.sha&&v.sha!==sha)setStaleBuild(true);
+    })
     .catch(()=>{});
-  const t0=setTimeout(check,30e3);
+  check();   // immediate — populate the channel chip; also catch a just-landed deploy
   const iv=setInterval(check,5*60e3);
   const onVis=()=>{if(document.visibilityState==="visible")check();};
   document.addEventListener("visibilitychange",onVis);
-  return()=>{stop=true;clearTimeout(t0);clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
+  return()=>{stop=true;clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
 },[]);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
@@ -824,6 +829,7 @@ try{
   else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
+  sw.postMessage({type:'visibility',hidden:typeof document!=="undefined"&&document.hidden});
   sw.postMessage({type:'view',view:viewRef.current});
   sw.postMessage({type:'mapFilter',minKm2:minKm2Ref.current});
   // A fresh worker starts at default tuning — re-send the user's current levers.
@@ -2915,6 +2921,14 @@ useEffect(()=>{drawNowRef.current=()=>{if(terRef.current){try{draw(terRef.curren
 
 // Forward play/pause + speed to the sim worker.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed,autoEpoch});},[playing,speed,autoEpoch]);
+// Tell the worker when the tab/window is hidden so it can keep pacing without
+// setTimeout throttling (and skip painting snapshots nobody will see).
+useEffect(()=>{
+  const tell=()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'visibility',hidden:document.hidden});};
+  tell();
+  document.addEventListener('visibilitychange',tell);
+  return()=>document.removeEventListener('visibilitychange',tell);
+},[world]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Close the per-realm overlays when the selection changes, so they don't
@@ -2936,8 +2950,11 @@ useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;dep
 // spreads from the East-African cradle outward over ~10s (animLoop drives it).
 useEffect(()=>{if(viewMode==="ancestry"&&terRef.current&&terRef.current.tArrival)ancRevealRef.current={start:performance.now(),active:true};},[viewMode]);
 
-useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
-const loop=now=>{fid=requestAnimationFrame(loop);
+useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0,iv=null;
+// Drive one sim/draw slice. Used by rAF while the tab is visible, and by a
+// setInterval fallback while hidden (rAF suspends entirely in background tabs,
+// which froze the main-thread-fallback sim whenever the window lost focus).
+const slice=now=>{
 if(!terRef.current||!worldRef.current){last=now;return;}
 // PAUSED, main-thread-fallback mode: the world is still — the UI must not be
 // (owner report: every panel/overlay froze without ticks). Repaint + pulse
@@ -2954,14 +2971,18 @@ if(simWorkerRef.current){last=now;return;}
 // elapsed real time earned, via a fractional accumulator, so the pace matches
 // the chosen speed regardless of frame rate; the Max sentinel just runs a
 // budgeted batch each frame.
-const dt=Math.min(250,now-last);last=now;
+// Hidden tabs: allow several seconds of catch-up (rAF/interval may wake rarely);
+// the per-slice budget still caps work so returning to the tab doesn't freeze.
+const dt=Math.min(document.hidden?5000:250,now-last);last=now;
 const tps=speedRef.current;
 let sub;
 if(tps>=100000){sub=64;}else{acc+=dt/1000*tps;sub=Math.floor(acc);acc-=sub;}
 if(sub>0){
-// Time-budgeted sim: stop stepping if we've used >8ms this frame
+// Time-budgeted sim: stop stepping if we've used the slice budget
 const _simStart=performance.now();
-for(let s=0;s<sub;s++){
+const _budget=document.hidden?50:8;
+let ran=0;
+for(;ran<sub;ran++){
 // Legacy tribe sim DISABLED — peopleSim is the new entity-based model.
 // runTribeStep call removed at user request ("completely erase the tribe system").
 // The `ter` object is still kept around so UI panels that read tribeCenters
@@ -2969,18 +2990,35 @@ for(let s=0;s<sub;s++){
 try{if(peopleRef.current){stepPeopleSim(peopleRef.current,1);
 if(peopleRef.current.step-fbKeyRef.current>=CAPTURE_IVL){fbKeyRef.current=peopleRef.current.step;captureFrame(fbTimelineRef.current,peopleRef.current);}}}
 catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
-if(performance.now()-_simStart>8)break;
+if(performance.now()-_simStart>_budget)break;
 }
+// Keep unspent ticks when the budget cuts short (mirrors the worker).
+if(tps<100000)acc+=sub-ran;
 if(peopleRef.current)setLiveStep(peopleRef.current.step);   // 30Hz step display
 // peopleSim stats — drives the HUD instead of legacy tribe metrics.
 if(peopleRef.current&&peopleRef.current.step%5===0){
   setPsStats(peopleSimStats(peopleRef.current));
 }
 // Only redraw every 3rd sim frame to save 10-30ms/frame on CPU canvas rendering
-drawSkip++;
+// (skip draws entirely while hidden — nobody is watching).
+if(!document.hidden){drawSkip++;
 if(drawSkip>=3){drawSkip=0;
-try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}}};
-fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
+try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}}}
+};
+const loop=now=>{fid=requestAnimationFrame(loop);slice(now);};
+const arm=()=>{
+  if(document.hidden&&!simWorkerRef.current){
+    if(fid){cancelAnimationFrame(fid);fid=null;}
+    if(!iv)iv=setInterval(()=>slice(performance.now()),33);
+  }else{
+    if(iv){clearInterval(iv);iv=null;}
+    if(!fid){last=performance.now();fid=requestAnimationFrame(loop);}
+  }
+};
+arm();
+document.addEventListener('visibilitychange',arm);
+return()=>{cancelAnimationFrame(fid);if(iv)clearInterval(iv);document.removeEventListener('visibilitychange',arm);};
+},[draw]);
 
 // Animation loop for the views with per-frame motion (wind particle streaks,
 // money-flow coins) — one shared rAF instead of one per view; it no-ops on
@@ -4542,6 +4580,12 @@ return(
   {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
     title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
     style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
+  {/* Channel chip: which deployed branch this tab is running + link to the
+      builds picker (live vs preview channels under /b/…). */}
+  {buildInfo&&buildInfo.branch&&<a className="au-num" href="/Simman-/builds/"
+    title={`This tab is the ${buildInfo.channel==="live"?"LIVE":"preview"} build of ${buildInfo.branch} (${(buildInfo.sha||"").slice(0,8)}). Click to open the builds picker and switch channels.`}
+    style={{fontSize:11,color:buildInfo.channel==="live"?"var(--au-ch-gold)":"inherit",opacity:buildInfo.channel==="live"?1:0.75,cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}
+    >{buildInfo.channel==="live"?"● live":`◌ ${buildInfo.branch.replace(/^cursor\/|^claude\//,"")}`}</a>}
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
     title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
