@@ -688,6 +688,8 @@ function tallyTerritory(world, owner, cost, byId) {
     s._terrWorkTiles = 0;
     s._terrFarmedWt = 0;   // falloff-weighted count of tiles actually ENTERING the harvest sum
     s._terrWorksWt = 0;    // falloff-weighted LAND_WORKS over those same farmed tiles → _terrWorksMean (the ledger's built-land-capital read)
+    s._terrSurplusAcc = 0; // Σ surplusFrac × plantable weight
+    s._terrPlantWt = 0;    // Σ plantable weight (pre-surplus) → _terrMeanSurplus = acc/plant
     s._terrMinFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
     s._terrResAcc = {};
     if (T.RES_SCARCITY) s._terrResMax = {};   // best grade held per resource (see finalize)
@@ -732,7 +734,7 @@ function tallyTerritory(world, owner, cost, byId) {
     if (f >= s._terrMinFert) {
       const w = foodFalloff(cost[ti] / _rn);
       const gross = f * w * _invA;
-      const surplus = landSurplusFrac(world, ti, gross);
+      const surplus = landSurplusFrac(world, ti, gross, s);
       s._terrFertSum += gross * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
@@ -740,7 +742,10 @@ function tallyTerritory(world, owner, cost, byId) {
       // actively DESTROY food via a phantom workforce), and a distant field
       // costs proportionally less labour just as it yields less. Break-even
       // stays exactly f = FARM_FERT_FLOOR, per the food model's contract.
-      s._terrFarmedWt += w * _invA * surplus;
+      const pw = w * _invA;
+      s._terrPlantWt += pw;
+      s._terrFarmedWt += pw * surplus;
+      s._terrSurplusAcc += surplus * pw;
       if (wkF) s._terrWorksWt += wkF[ti] * w * _invA * surplus;
     }
     if (haveDep) {
@@ -807,7 +812,12 @@ function tallyTerritory(world, owner, cost, byId) {
   }
   // Finalize the built-land-capital read: worksField ∈ [0,1] per tile, so the
   // harvest-weighted mean is ∈ [0,1] — the farmed catchment's improvement level.
-  for (const s of byId.values()) s._terrWorksMean = s._terrFarmedWt > 1e-9 ? s._terrWorksWt / s._terrFarmedWt : 0;
+  for (const s of byId.values()) {
+    s._terrWorksMean = s._terrFarmedWt > 1e-9 ? s._terrWorksWt / s._terrFarmedWt : 0;
+    // Mean tradeable fraction over plantable weight. Pastoral multiplies by
+    // this so herds face the same countryside-eats-first gate as grain.
+    s._terrMeanSurplus = s._terrPlantWt > 1e-9 ? s._terrSurplusAcc / s._terrPlantWt : 1;
+  }
   world._borders = borders;
 }
 

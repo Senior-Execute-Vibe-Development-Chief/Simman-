@@ -3036,9 +3036,15 @@ function updateFood(world, s) {
   const agriK = (s.knowledge && s.knowledge.agriculture) || 0;
   const grazeTiles = s._terrWorkTiles ?? s._terrTiles ?? 0;
   const pastEra = 1;
-  const pastoral = T.LIVESTOCK_FOOD > 0
+  let pastoral = T.LIVESTOCK_FOOD > 0
     ? T.LIVESTOCK_FOOD * (s._livestock || 0) * grazeTiles * pastEra * armyLabor * (0.3 + 0.7 * agriK)
     : 0;
+  // T.LAND_SURPLUS: herds face the same countryside-eats-first gate as grain —
+  // mean tradeable fraction from the catchment tally. Without this, zeroed farm
+  // surplus left only gross pastoral and every city read as herd-fed.
+  if (T.MARKET_PULL > 0 && T.LAND_SURPLUS > 0 && s._terrMeanSurplus != null) {
+    pastoral *= Math.max(0, Math.min(1, s._terrMeanSurplus));
+  }
   s._pastoral = pastoral;
   const landFood = landFarm + pastoral;
   // The share of subsistence that comes OFF THE HERD — the emergent measure of
@@ -3118,18 +3124,10 @@ function updateFood(world, s) {
   // below compares the supply FLOW against THIS, not against the notional
   // whole-catchment drain. Stashed, not returned: the famine block runs later.
   s._coreNeed = Math.min(s.people, s._urbanPop || 0) * 0.0030 * urbanFactor + armyFood + slaveFood;
-  // Sustained FED-NESS (T.STARVE_SHED reads this in the field pass): a slow
-  // moving average of flow-vs-core-need — ~100-tick memory, a granary-decade.
-  // One bad harvest barely moves it; a chronically starving core sees its
-  // capacity floor melt at generational pace (the owner's stone-age
-  // "metropolis, actively STARVING, still growing 100k+": the CORE_HOLD
-  // floor held capacity with no food term at all, so the field logistic
-  // kept filling a core whose granary was empty — growth read capacity,
-  // famine read the granary, and they never met).
-  {
-    const fedNow = s._coreNeed > 0 ? Math.min(1, (s._foodSupply || 0) / s._coreNeed) : 1;
-    s._fedM = s._fedM === undefined ? 1 : 0.99 * s._fedM + 0.01 * fedNow;
-  }
+  // Sustained FED-NESS (s._fedM) is stamped AFTER supply + store draw below —
+  // a city eating from its granary is fed, and STARVE_SHED must not melt a
+  // stocked core on a flow-only read (measured 2026-08-29: food at hundreds
+  // of units with fedM ≈ 0.3 and capacity thrash).
 
   // T.SIEGE_STARVE — a BESIEGED seat eats its granary (the variance arc's
   // storm-gate fix, docs/variance-arc-2026-08-13.md): while an enemy front
@@ -3285,6 +3283,17 @@ function updateFood(world, s) {
   // STILL have negative food"): the store floors at 0 — an uncovered
   // shortfall's consequence is the famine channel and the STARVE_SHED melt,
   // never a grain debt carried on the books.
+  // Sustained FED-NESS (T.STARVE_SHED): flow PLUS what the store covers this
+  // tick. A stocked city is not starving — the pot's purpose is to bridge
+  // lean flow. ~100-tick EMA (a granary-decade).
+  {
+    const need = s._coreNeed || 0;
+    const store = s.food || 0;
+    const flow = s._foodSupply || 0;
+    const covered = need > 0 ? Math.min(need, flow + store) : need;
+    const fedNow = need > 0 ? Math.min(1, covered / need) : 1;
+    s._fedM = s._fedM === undefined ? 1 : 0.99 * s._fedM + 0.01 * fedNow;
+  }
   s.food = Math.max(0, (s.food || 0) + supply - demand);
   // T.TRIBUTE_OF_LAND — Joseph's granary: the CAPITAL draws the polity's
   // in-kind store down when its own granary runs below a few ticks of
