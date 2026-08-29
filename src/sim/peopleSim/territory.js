@@ -21,7 +21,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { applyFarmGateCompulsion } from "./compulsion.js";
+import { landSurplusFrac } from "./landSurplus.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -599,8 +599,6 @@ export function computeTerritory(world) {
     }
   }
 
-  if (mktPull) applyFarmGateCompulsion(world, owner, tcost, byId);
-
   tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
 
   reclaimRuins(world);   // stranded coin re-enters circulation where the land is worked again
@@ -669,15 +667,16 @@ function tallyTerritory(world, owner, cost, byId) {
     const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);   // climate scales the harvestable fertility
     if (f >= s._terrMinFert) {
       const w = foodFalloff(cost[ti] / _rn);
-      s._terrFertSum += f * w * _invA;
+      const surplus = landSurplusFrac(world, ti);
+      s._terrFertSum += f * w * _invA * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
       // tiles that contribute nothing (claiming worthless land used to
       // actively DESTROY food via a phantom workforce), and a distant field
       // costs proportionally less labour just as it yields less. Break-even
       // stays exactly f = FARM_FERT_FLOOR, per the food model's contract.
-      s._terrFarmedWt += w * _invA;
-      if (wkF) s._terrWorksWt += wkF[ti] * w * _invA;
+      s._terrFarmedWt += w * _invA * surplus;
+      if (wkF) s._terrWorksWt += wkF[ti] * w * _invA * surplus;
     }
     if (haveDep) {
       const acc = s._terrResAcc;
