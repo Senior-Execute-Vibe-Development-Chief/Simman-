@@ -23,7 +23,7 @@ import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (
 import { tel, telPass } from "./telemetry.js";
 import { FAMINE_SEVERITY } from "./shocks.js";   // T.LEAN_YEAR: the flat-margin fallback (the per-basin form reads the variance map)
 import { ensureYieldCv } from "./harvest.js";    // T.LEAN_YEAR per-basin: each basin's own bad-year statistic
-import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
+import { fieldShift, devWaveIvl, urbanCoreR, diskSum, stepPopField } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { hash32 } from "./rng.js";
 import { cageAt } from "./cageField.js";
@@ -44,7 +44,7 @@ import { unservedTileCoinPull } from "./tileMoney.js";
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
-import { igniteHearth, NEOLITHIC_AGRI } from "./hearthInvent.js";
+import { igniteHearth, jumpToFirstInvent, NEOLITHIC_AGRI } from "./hearthInvent.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
 const _geoStr = (world, x, y) => `(${(x / world.tw * 360 - 180).toFixed(1)}E ${(90 - y / world.th * 180).toFixed(1)}N)`;
 
@@ -2403,6 +2403,57 @@ export function maybeDawnGather(world) {
   stepLandKnow(world);
   maybeSiteCities(world);
   if (world.step % CRYSTAL_INTERVAL === 0) maybeInventStagger(world);
+}
+
+/**
+ * Open at first CITY-ready moment (mint-ready, not yet minted).
+ * Lives HERE (not dawnJump.js) so the gather call is same-module — a
+ * dawnJump→crystallize→state→dawnJump cycle left maybeDawnGather undefined
+ * in some bundles and silently opened at invent-only (~step 3k).
+ */
+export function jumpToCivReady(world) {
+  if (!(T.INVENT_JUMP > 0) || !T.DAWN_LIVE) return false;
+  const invented = jumpToFirstInvent(world);
+  if (!invented && !(world._hearthSeeds && world._hearthSeeds.length)) {
+    world._openKind = "dawn";
+    return false;
+  }
+
+  world._dawnHoldMint = true;
+  world._dawnMintReady = false;
+  world._dt = 1 / Math.max(1, T.SIM_GRANULARITY || 1);
+  const inventStep = world.step;
+  const maxStep = inventStep + 80_000;
+  const t0 = performance.now();
+  let lastLog = inventStep;
+
+  try {
+    while (world.step < maxStep && !world._dawnMintReady) {
+      world.step++;
+      stepPopField(world, 1);
+      maybeDawnGather(world);
+      if (world.step - lastLog >= 2000) {
+        lastLog = world.step;
+        console.log(`[peopleSim] invent-jump: gathering… step ${world.step} (+${world.step - inventStep} since invent)`);
+      }
+    }
+  } catch (err) {
+    delete world._dawnHoldMint;
+    world._openKind = "invent";
+    console.error("[peopleSim] invent-jump: mint-ready gather failed — opening at invent", err);
+    return false;
+  }
+
+  delete world._dawnHoldMint;
+  const ms = (performance.now() - t0).toFixed(0);
+  if (world._dawnMintReady) {
+    world._openKind = "mint-ready";
+    console.log(`[peopleSim] invent-jump: mint-ready at step ${world.step} (invent @ ${inventStep}, +${world.step - inventStep} steps) in ${ms}ms — first city will mint on play`);
+    return true;
+  }
+  world._openKind = "invent";
+  console.warn(`[peopleSim] invent-jump: no mint-ready site by step ${world.step} (${ms}ms) — opening with farming; live mint continues`);
+  return false;
 }
 
 export function maybeCrystallize(world) {

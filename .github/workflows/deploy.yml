@@ -94,11 +94,19 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os
+          import re, pathlib
+          # Bake SAVE_VERSION into version.json so the builds picker / chip can
+          # show physics version without parsing the bundle.
+          save_v = None
+          persist = pathlib.Path("src/sim/persist.js").read_text(encoding="utf-8")
+          m = re.search(r"export const SAVE_VERSION\s*=\s*(\d+)", persist)
+          if m: save_v = int(m.group(1))
           meta = {
             "sha": os.environ["GITHUB_SHA"],
             "branch": os.environ["BRANCH"],
             "slug": os.environ["SLUG"],
             "channel": os.environ["CHANNEL"],
+            "saveVersion": save_v,
             "builtAt": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
           }
           open("dist/version.json","w").write(json.dumps(meta)+"\n")

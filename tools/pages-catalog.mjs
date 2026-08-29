@@ -21,6 +21,7 @@ const branch = String(args.branch || "");
 const sha = String(args.sha || "");
 const slug = String(args.slug || "main");
 const channel = String(args.channel || "preview"); // live | preview
+const saveVersion = args.saveVersion != null && args.saveVersion !== "" ? Number(args.saveVersion) : null;
 const builtAt = new Date().toISOString();
 
 if (!branch || !sha) {
@@ -38,6 +39,7 @@ if (fs.existsSync(catalogPath)) {
 if (!Array.isArray(catalog.previews)) catalog.previews = [];
 
 const entry = { branch, sha, slug, builtAt, channel };
+if (Number.isFinite(saveVersion)) entry.saveVersion = saveVersion;
 
 if (channel === "live") {
   catalog.live = { ...entry, path: "/" };
@@ -171,9 +173,10 @@ function esc(s){
 }
 function row(p, tag){
   var href = hrefFor(p);
+  var ver = (p.saveVersion != null) ? ('v'+p.saveVersion+' · ') : '';
   return '<li><a class="row" href="'+href+'">'
     + '<div><div class="name">'+esc(p.branch||p.slug||"build")+'</div>'
-    + '<div class="meta">'+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div></div>'
+    + '<div class="meta">'+esc(ver)+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div></div>'
     + (tag ? '<span class="tag">'+esc(tag)+'</span>' : '')
     + '</a></li>';
 }

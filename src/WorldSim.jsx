@@ -366,8 +366,12 @@ const[buildInfo,setBuildInfo]=useState(null); // version.json {sha,branch,channe
 // ground truth — paste it, compare shas/values, done. Printed once per boot.
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
-  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} STATE_RECORDS=${SIM_T.STATE_RECORDS} LAND_KNOW=${SIM_T.LAND_KNOW} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
+  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} INVENT_JUMP=${SIM_T.INVENT_JUMP} STATE_RECORDS=${SIM_T.STATE_RECORDS} LAND_KNOW=${SIM_T.LAND_KNOW} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
 },[]);
+// Bundle identity for the header chip — always available (unlike version.json,
+// which only exists on deployed Pages builds). Local vite → "dev".
+const buildSha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
+const buildShort=buildSha==="dev"?"dev":buildSha.slice(0,8);
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
   if(sha==="dev")return;
@@ -4589,12 +4593,13 @@ return(
   {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
     title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
     style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
-  {/* Channel chip: which deployed branch this tab is running + link to the
-      builds picker (live vs preview channels under /b/…). */}
-  {buildInfo&&buildInfo.branch&&<a className="au-num" href="/Simman-/builds/"
-    title={`This tab is the ${buildInfo.channel==="live"?"LIVE":"preview"} build of ${buildInfo.branch} (${(buildInfo.sha||"").slice(0,8)}). Click to open the builds picker and switch channels.`}
-    style={{fontSize:11,color:buildInfo.channel==="live"?"var(--au-ch-gold)":"inherit",opacity:buildInfo.channel==="live"?1:0.75,cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}
-    >{buildInfo.channel==="live"?"● live":`◌ ${buildInfo.branch.replace(/^cursor\/|^claude\//,"")}`}</a>}
+  {/* Build chip: ALWAYS visible — physics SAVE_VERSION + the sha baked into
+      this bundle (__BUILD_SHA__). Channel/branch from version.json when deployed.
+      This is the ground truth when "the update didn't take" (owner 2026-08-29). */}
+  <a className="au-num" href="/Simman-/builds/"
+    title={`This tab runs physics v${SAVE_VERSION}, bundle ${buildSha}${buildInfo&&buildInfo.branch?` · ${buildInfo.channel==="live"?"LIVE":"preview"} channel of ${buildInfo.branch}`:""}. Click to open the builds picker and switch channels. Mint-ready open needs v63+ on a moisture / mint-ready channel — invent-only foresight was v62.`}
+    style={{fontSize:11,color:buildInfo&&buildInfo.channel==="live"?"var(--au-ch-gold)":"inherit",opacity:1,cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}
+    >v{SAVE_VERSION} · {buildShort}{buildInfo&&buildInfo.channel==="live"?" · live":(buildInfo&&buildInfo.branch?` · ${buildInfo.branch.replace(/^cursor\/|^claude\//,"")}`:"")}</a>
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
     title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
