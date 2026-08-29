@@ -163,15 +163,23 @@ export function occasionFor(music, occKey) {
     // …and something to lean WITH
     orn: 0.45 + 1.0 * lean,
     // gaps thin a texture out: they cannot be filled at speed without becoming
-    // runs, so the notes get fewer and longer instead
+    // runs, so the notes get fewer and longer instead. Atmosphere also raises
+    // the artic floor so short ½-beat chatter is not the default under a UI.
     density: 1.2 - 0.75 * gap - 0.2 * lean,
-    artic: 0.95 + 0.3 * gap + 0.1 * lean,
+    artic: 1.08 + 0.28 * gap + 0.12 * lean,
     // percussion belongs to a music with a beat to mark, not to one holding a
     // note against a drone
     perc: Math.max(0.1, 0.85 - 0.7 * lean - 0.3 * gap),
     // an open mode sits up in the light; a shaded one sits low
     reg: -0.25 + 0.8 * open,
     descent: 0.8 + 0.25 * lean,
+    // BACKGROUND TEMPER. Extreme microtonal offsets are the culture's own
+    // scale — keep them for identity — but under a civ-sim UI, ±15¢ on sample
+    // libraries reads as "almost in tune" / goofy beating. Soft-pull each
+    // degree toward the nearest 100¢ lattice by this fraction at render time
+    // only (mode cents for walk/skeleton stay pure). Leaning modes temper a
+    // touch more because their extremes are the ones that fatigue.
+    temper: 0.4 + 0.15 * lean,
   });
 }
 
@@ -193,8 +201,12 @@ export function gridOf(rhythm) {
     : beats % 3 === 0 && beats > 3 ? [3, beats - 3]
     : [beats];
   const slots = beats * div;
-  const w = new Array(slots).fill(0.22);
-  for (let b = 0; b < beats; b++) w[b * div] = 0.55;
+  // Additive metres need clearer head contrast: the cycle is already uneven,
+  // and without a louder group start the surface reads as tipsy rather than
+  // grounded. Duple/compound keep the milder hierarchy.
+  const additive = rhythm.meterKind === "additive";
+  const w = new Array(slots).fill(additive ? 0.16 : 0.22);
+  for (let b = 0; b < beats; b++) w[b * div] = additive ? 0.4 : 0.55;
   let acc = 0;
   for (const g of groups) { w[acc * div] = 1; acc += g; }
   return { div, beats, slots, groups, w };
@@ -1303,6 +1315,10 @@ export function sectionsOf(music, occKey) {
   const seed = hash32(music.people.seed, "form", occKey);
   const n = Math.max(3, Math.min(7, F.sections + 2));
   const stable = music.melody.structural;
+  const activity = Math.min(1, 0.45 * O.density + 0.55 * O.perc);
+  const climbCap = (O.perc >= 0.9 && O.density >= 1.1) ? 3
+    : (O.perc < 0.22 ? 1 : 2);
+  const maxPow = Math.max(1, Math.min(climbCap, Math.round(3 * activity)));
   const out = [];
   for (let s = 0; s < n; s++) {
     const t = n > 1 ? s / (n - 1) : 0;
@@ -1318,21 +1334,14 @@ export function sectionsOf(music, occKey) {
       // the occasion's beat: a feast/war with perc≈1 and dense scoring reaches
       // 1:8 (maxPow 3); held atmospheres — even pulse-forward peoples whose
       // peace perc is high — top out at 1:4 so the civ-sim loop stays usable.
-      dens: (() => {
-        const activity = Math.min(1, 0.45 * O.density + 0.55 * O.perc);
-        const climbCap = (O.perc >= 0.9 && O.density >= 1.1) ? 3
-          : (O.perc < 0.22 ? 1 : 2);
-        const maxPow = Math.max(1, Math.min(climbCap, Math.round(3 * activity)));
-        return Math.pow(2, Math.min(maxPow, Math.round(3 * climb)) - (t > 0.82 ? 1 : 0));
-      })(),
+      dens: Math.pow(2, Math.min(maxPow, Math.round(3 * climb)) - (t > 0.82 ? 1 : 0)),
       // The climb is real — the arch to a high point and the landing back home
       // is one of the few cross-cultural universals — but it does NOT have to
       // be made of octave jumps. A modal tradition moves its tonal CENTRE
       // instead, through the mode, and that is what `ist` below does. A whole
       // frame is reserved for the peak alone, where a real climax does change
-      // register; everywhere else an octave leap at a section seam is a leap
-      // to a note nothing approached.
-      oct: t > 0.55 && t < 0.86 ? 1 : 0,
+      // register; atmospheres skip the leap (comic high pops under a UI).
+      oct: climbCap >= 3 && t > 0.55 && t < 0.86 ? 1 : 0,
       ist: s === 0 || s === n - 1 ? 0
         : stable[(1 + hash32(seed, "ist", s) % Math.max(1, stable.length)) % stable.length] || 0,
       // how much of the ensemble is playing: thin at the edges, full at the peak
@@ -1747,12 +1756,22 @@ export function ensembleFor(music, occKey, intimacy = 1) {
     // `role`. The fact lives where it is acted on, in `fireVoiceLine`.
   };
 }
-export function degreeHz(music, tonicHz, deg, oct = 0) {
+export function degreeHz(music, tonicHz, deg, oct = 0, temper = 0) {
   const d = music.scale.degrees;
   const n = d.length;
   const i = ((deg % n) + n) % n;
   const wrap = Math.floor(deg / n);
-  return tonicHz * Math.pow(music.scale.frame.ratio, oct + wrap) * d[i].ratio;
+  let ratio = d[i].ratio;
+  // Soft background temper: pull sounding pitch toward the nearest 100¢
+  // lattice without rewriting the people's scale. temper=0.5 turns a −16¢
+  // offset into −8¢ — still coloured, less "almost right" on samples.
+  if (temper > 0 && ratio > 0) {
+    const cents = 1200 * Math.log2(ratio);
+    const near = Math.round(cents / 100) * 100;
+    const soft = near + (cents - near) * (1 - Math.min(1, temper));
+    ratio = Math.pow(2, soft / 1200);
+  }
+  return tonicHz * Math.pow(music.scale.frame.ratio, oct + wrap) * ratio;
 }
 
 /** Lay one phrase onto the grid as timed events. */
@@ -1779,9 +1798,15 @@ function layPhrase(music, ph, O, opts) {
     // stronger metric weight coincide — not only "last degree = final". Section
     // and piece ends lengthen further; middles stay shorter so they stay open.
     const close = last ? (opts.closeGrade || 1) : 0;
-    const len = last
+    // Atmosphere lengthens trunk tones (skeleton / strong heads) so the
+    // surface is not a stream of equal ½-beat chatter; weak fillers stay short.
+    const calm = Math.min(1, (O.temper || 0) * 1.2 + Math.max(0, 1 - Math.min(1, O.perc)) * 0.35);
+    const trunk = (skMi && skMi.has(i)) || strong;
+    let len = last
       ? span * O.artic * (close >= 2 ? 2.35 : close >= 1 ? 1.7 : 1.45)
       : span * O.artic;
+    if (trunk && calm > 0) len *= 1 + 0.55 * calm;
+    else if (!strong && calm > 0.35 && span <= 0.55) len *= 0.82;
     // DYNAMICS. A line with three decibels of range in it is a machine. Real
     // range comes from three sources at once: the metrical hierarchy, the
     // language's OWN stress (rhythm.accent, derived from prosody and until now
@@ -1985,17 +2010,31 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     const skInst = ST.core && audible("core") ? ST.core.k
       : ST.lead ? ST.lead.k
         : (E.marks && E.marks[0] != null ? E.marks[0] : 0);
-    const skEffort = Math.max(0.4, Math.min(0.72,
-      0.48 / Math.pow(Math.max(1, sk.length) / 6, 0.34)));
-    const skVel = ST.core && audible("core") ? ST.core.vel : skEffort * 0.92;
+    const skEffort = Math.max(0.42, Math.min(0.72,
+      0.5 / Math.pow(Math.max(1, sk.length) / 6, 0.34)));
+    const skVel = ST.core && audible("core") ? ST.core.vel : skEffort * 0.94;
+    // Group-head rank from the metre itself: cycle start loudest, then the
+    // head of the longest group (the aksak "long" in 2+2+3), then other heads.
+    const longest = Math.max(...(G.groups || [G.beats]));
     for (const x of sk) {
+      const beat = Math.floor(x.s / G.div) % G.beats;
+      let headBoost = 1;
+      let acc = 0;
+      for (let gi = 0; gi < (G.groups || []).length; gi++) {
+        if (beat === acc) {
+          headBoost = gi === 0 ? 1.2
+            : (G.groups[gi] === longest ? 1.12 : 1.06);
+          break;
+        }
+        acc += G.groups[gi];
+      }
       ev.push({
         b: slotBeat(G, x.s, R.swing),
-        dur: Math.min(1.15, x.beats * 0.85),
+        dur: Math.min(1.85, x.beats * (0.85 + 0.5 * Math.max(0, 1 - Math.min(1, O.perc)))),
         inst: skInst,
         deg: modeDegree(music, x.mi + fin + ist),
         oct: -1,
-        vel: skVel,
+        vel: skVel * headBoost,
         role: "skeleton",
         damped: true,
       });
@@ -2007,8 +2046,12 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // the opening bar leaves the later sections with nowhere to go, and measured,
   // it was most of why the density ramp stalled at two and a half times when
   // the traditions run four to sixteen.
-  const plain = S.sec.dens < 4
-    ? { ...ph, pat: { ...ph.pat, onsets: ph.pat.onsets.filter((o, i) => ph.pat.grid.w[o % ph.pat.grid.slots] >= (S.sec.dens < 2 ? 1 : 0.5) || i === 0) } }
+  // Calm atmospheres keep the lead on strong heads until the section dens
+  // actually opens — mid-weight fillers at dens 2–3 were the aimless chatter.
+  const plainGate = S.sec.dens < 2 || ((O.temper || 0) > 0.3 && S.sec.dens < 4) ? 1
+    : S.sec.dens < 4 ? 0.5 : 0;
+  const plain = plainGate > 0
+    ? { ...ph, pat: { ...ph.pat, onsets: ph.pat.onsets.filter((o, i) => ph.pat.grid.w[o % ph.pat.grid.slots] >= plainGate || i === 0) } }
     : ph;
   if (plain !== ph) {
     plain.degs = plain.pat.onsets.map(o => ph.degs[ph.pat.onsets.indexOf(o)] ?? 0);
@@ -2069,7 +2112,8 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   const surface = Math.min(1, 0.5 * O.perc + 0.15 * Math.min(1, O.orn) + 0.35 * Math.min(1, S.sec.dens / 8));
   const hetBodies = (E.het || []);
   // Atmosphere tops out at dens 4 → surface ≲ 0.55 for calm perc; festival dens 8
-  // clears ~0.9. Gate so peace peak stays lead+skeleton+voice, not a mid-range stack.
+  // clears ~0.9. Gate so peace peak stays lead+skeleton (+ optional bass), not
+  // a mid-range stack of het/voice/elab.
   const hetActive = surface < 0.55 ? []
     : ST.elab && hetBodies.length > 1
       ? [hetBodies[bar % hetBodies.length]]
@@ -2334,7 +2378,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // player's attack, on exactly the player's pitch, 100% of the time: a chorus
   // effect on the lead, not a second person in the room. So derive the
   // singer's part from the singer, using the mechanisms already here.
-  if (E.sing) {
+  if (E.sing && surface >= 0.72) {
     const pros = prosodyOf(music.people.lang);
     // ── 1. HOW MUCH OF THE LINE. A singer is bound by the SYLLABLE, and a
     // syllable is a jaw cycle with segments in it: an open CV nucleus is one

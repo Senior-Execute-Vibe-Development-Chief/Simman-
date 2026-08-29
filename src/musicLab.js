@@ -17,7 +17,7 @@ import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE 
 import { MATERIALS, FAMILIES, rangeOf, makeVoice } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
-import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree, formOrderOf, phraseBank, phraseSkeleton } from "./sim/musicCompose.js";
+import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree, formOrderOf, phraseBank, phraseSkeleton, occasionFor } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung, silence } from "./sim/musicSynth.js";
 import { loadSamples, sampledFor } from "./sim/musicSamples.js";
 import { slidesTo } from "./sim/musicInstruments.js";
@@ -158,8 +158,11 @@ function sympPitches(m) {
   SYMP.set(key, hz);
   return hz;
 }
+function bgTemper(m) {
+  return (occasionFor(m, S.occ) || {}).temper || 0;
+}
 function noteFreq(m, ev) {
-  let f = degreeHz(m, tonicOf(m), ev.deg, ev.oct);
+  let f = degreeHz(m, tonicOf(m), ev.deg, ev.oct, bgTemper(m));
   const frame = m.scale.frame.ratio;
   const inst = m.insts[ev.inst];
   let low = 0, top = 0;
@@ -222,7 +225,7 @@ function noteFreq(m, ev) {
  * sits the phrase most centrally in the voice. Two rules, no weights.
  */
 function phraseFreqs(m, g) {
-  const raw = g.map(e => degreeHz(m, tonicOf(m), e.deg, e.oct));
+  const raw = g.map(e => degreeHz(m, tonicOf(m), e.deg, e.oct, bgTemper(m)));
   const { low, top } = voiceRange(prosodyOf(m.people.lang));
   const frame = m.scale.frame.ratio;
   const mid = Math.sqrt(low * top);
@@ -328,7 +331,7 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   // on a body that rings for nine seconds an eighty-millisecond grace note rang
   // for nine of them.
   if (ev.ornDeg != null && !S.formListen) {
-    const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct);
+    const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct, bgTemper(m));
     playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5, {
       music: m,
       tonicHz: tonicOf(m),
