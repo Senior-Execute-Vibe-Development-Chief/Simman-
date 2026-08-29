@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/build-chip-visible-15e6",
+      "sha": "20b10d0cf772988c377738c844769cf46a81a6be",
+      "slug": "cursor-build-chip-visible-15e6",
+      "builtAt": "2026-08-29T15:04:43.491Z",
+      "channel": "preview",
+      "saveVersion": 63,
+      "path": "/b/cursor-build-chip-visible-15e6/"
+    },
+    {
       "branch": "claude/moisture-yield-validation-chain-o29gdc",
       "sha": "500298abd5c4a1b0a1fbab271de4d99609b4ed8b",
       "slug": "claude-moisture-yield-validation-chain-o29gdc",
