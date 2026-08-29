@@ -55,20 +55,20 @@ class _MinHeap {
   }
   _grow() {
     const ncap = this.cap * 2;
-    // Refuse a runaway frontier (would OOM the worker — mint-ready Max canary).
-    if (ncap > (this._maxCap || (1 << 26))) {
-      throw new Error(`transport frontier heap exceeded cap ${this.cap}→${ncap}`);
-    }
+    // Soft ceiling — skip further grows; callers treat a failed push as "frontier full".
+    if (ncap > (this._maxCap || (1 << 26))) return false;
     try {
       const nti = new Int32Array(ncap); nti.set(this.ti);
       const nd  = new Float32Array(ncap); nd.set(this.d);
       this.ti = nti; this.d = nd; this.cap = ncap;
+      return true;
     } catch (err) {
-      throw new Error(`transport frontier grow ${this.cap}→${ncap} failed: ${err && err.message}`);
+      console.error(`[transHeap] grow ${this.cap}→${ncap} failed:`, err && err.message);
+      return false;
     }
   }
   push(ti, d) {
-    if (this.n >= this.cap) this._grow();
+    if (this.n >= this.cap && !this._grow()) return false;
     let i = this.n++;
     this.ti[i] = ti; this.d[i] = d;
     // Bubble up.
@@ -80,6 +80,7 @@ class _MinHeap {
       this.ti[i] = tt; this.d[i] = td;
       i = p;
     }
+    return true;
   }
   popMin() {
     // Callers must guard on n > 0; an empty pop returns a sentinel object (not
@@ -276,8 +277,16 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads, noPortTax) {
   if (!ignoreRoads) {
     const rq = world.roadQuality;
     if (rq) {
+      // BOTH endpoints must be road tiles. The old `qF < 1 || qT < 1` let a
+      // single coastal road price the STEP INTO OPEN OCEAN at road cost
+      // (terrain/nav never consulted) — zero-tech invent-jump worlds then
+      // flooded the whole globe on the first computeTransport and blew the
+      // frontier heap (browser: cap 2M→4M at step ~35088 after mint-ready).
       const qF = rq[fromTi], qT = rq[toTi];
-      if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
+      if (qF < 1.0 && qT < 1.0) {
+        const q = Math.min(qF, qT);
+        if (q > 0 && isFinite(q)) return Math.max(1e-3, q);
+      }
     }
   }
 
@@ -356,7 +365,9 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads, noPortTax) {
   // valley cradles. The river's own mode cost still applies, so a far bank is still
   // harder than a near one.
   if (toMode !== fromMode && !noPortTax) base += params.port;
-  return base;
+  // Non-positive costs turn Dijkstra into an unbounded re-push (the mint-ready
+  // Max OOM). Terrain costs are ≥ ~0.12 by construction; clamp anyway.
+  return (base > 0 && isFinite(base)) ? base : Infinity;
 }
 
 // Zero-tech cost (for global transport distance map + crossing overlay).
@@ -493,12 +504,12 @@ export function computeTransport(world) {
       const ni = ns[k];
       if (ni < 0) continue;
       const c = baseEdgeCost(world, ti, ni);
-      if (c === Infinity) continue;
+      if (!(c > 0) || !isFinite(c)) continue;
       const nd = d + c * mul[k];
       if (nd < dist[ni]) {
         dist[ni] = nd;
-        heap.push(ni, nd);
-        pushes++;
+        if (!heap.push(ni, nd)) { /* frontier full — leave remaining tiles at Infinity */ }
+        else pushes++;
       }
     }
   }
