@@ -55,10 +55,12 @@ function pickTunedScale(rawScale, archMatch, spec, people, cap = 9) {
   const arch = archMatch.archetype;
   const sparseRaw = rawScale.degrees.length < Math.min(5, cap);
   const fullArch = archScale.degrees.length >= Math.min(5, cap);
-  const metaArch = arch && (arch.family === "metallophone" || arch.family === "limited");
-  // Metallophone and two-pitch traditions: apply when the body fit is real and
-  // the raw crawl is sparse — leave harmonic diatonic stamps on raw for variety.
+  const metaArch = arch?.family === "metallophone" || arch?.family === "limited";
+  const microArch = arch?.family === "maqam-frame" || arch?.family === "raga-frame" || arch?.id === "miyakoBushi";
   if (metaArch && archMatch.physFit >= 0.62 && fullArch && (sparseRaw || archS <= rawS + 2)) return archScale;
+  // Microtonal frames sit off the ET grid on purpose — apply when the spectrum
+  // fit is strong and the mode is no worse than raw, not when diatonic is cleaner.
+  if (microArch && archMatch.physFit >= 0.83 && fullArch && archS <= rawS) return archScale;
   return rawScale;
 }
 

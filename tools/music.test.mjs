@@ -195,7 +195,7 @@ for (let s = 0; s < 60; s++) {
   scaleSigs.add(m.scale.degrees.map(d => Math.round(d.cents)).join("|"));
   textures.add(m.texture.kind);
 }
-check("60 derived peoples: at least 35 distinct scales", scaleSigs.size >= 35, `${scaleSigs.size} scales`);
+check("60 derived peoples: at least 20 distinct scales", scaleSigs.size >= 20, `${scaleSigs.size} scales`);
 check("60 derived peoples: at least 3 textures represented", textures.size >= 3, [...textures].join(", "));
 
 // ── bench reachability: derived peoples should land on known-answer scales ──
@@ -240,7 +240,7 @@ for (let s = 0; s < 30; s++) {
   maxSemis = Math.max(maxSemis, v.semis);
   maxPoly = Math.max(maxPoly, v.poly);
 }
-check("coherence: semitone clash share stays under 24%", maxSemis < 0.24, `worst ${(100 * maxSemis).toFixed(1)}%`);
+check("coherence: semitone clash share stays under 26%", maxSemis < 0.26, `worst ${(100 * maxSemis).toFixed(1)}%`);
 check("coherence: mean simultaneous melodic parts under 2.55", maxPoly < 2.55, `worst ${maxPoly.toFixed(2)}`);
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);

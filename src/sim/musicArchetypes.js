@@ -213,6 +213,20 @@ export function scoreTuningArchetype(arch, ctx) {
     if (arch.id === "westAfricanEqui7") s += 0.1;
     if (arch.id === "pelog") s -= 0.05;
   }
+  // MAQĀM / RĀG frames need fretless or stopable necks and an oral tradition.
+  // Literate keyboard paths equalise toward diatonic grids; until then, bodies
+  // that can slide between semitones keep microtonal frames competitive.
+  const microtonalPlay = insts.some(i => {
+    const f = FAMILIES[i.fam] || {};
+    return (f.pitchBy === "stop" || i.fam === "luteNeck" || i.fam === "bowed" || i.fam === "reedPipe")
+      && i.cap >= 6;
+  });
+  const maqamClass = arch.family === "maqam-frame" || arch.family === "raga-frame" || arch.id === "miyakoBushi";
+  if (maqamClass && ens.harmonic && !ens.metallophoneRef && microtonalPlay) {
+    s += 0.06 * (1 - Math.min(1, pull / 0.65));
+    if (pull < 0.25) s += 0.03;
+  }
+  if ((arch.family === "diatonic" || arch.id === "twelveTet") && microtonalPlay && pull < 0.30) s -= 0.06;
   // Whole-tone and chromatic grids need a literate keyboard tradition — not a
   // random panpipe ensemble (measured: wholeTone on seed 1037, 22¢ off dips).
   if ((arch.id === "wholeTone" || arch.id === "twelveTet") && pull < 0.45 && cap < 10) s -= 0.22;
@@ -224,13 +238,13 @@ export function matchTuningArchetype(ctx) {
   const mins = minimaOf(dissonanceCurve(spec)).filter(m => m.ratio > 1.02 && m.ratio < 1.95);
   const scoredCtx = { ...ctx, mins };
   const viable = TUNING_ARCHETYPES.filter(a => scoreTuningArchetype(a, scoredCtx) >= 0);
-  const { picked, score, ranked } = pickAmong(
-    viable.length ? viable : TUNING_ARCHETYPES,
-    a => scoreTuningArchetype(a, scoredCtx),
-    { seed, tag: "tuning", epsilon: 0.04, topK: 4 },
-  );
-  const fit = picked ? physFit(mins, picked) : 0;
-  return { archetype: picked, score, physFit: fit, ranked: ranked.slice(0, 6) };
+  const ranked = viable
+    .map(item => ({ item, score: scoreTuningArchetype(item, scoredCtx), physFit: physFit(mins, item) }))
+    .sort((a, b) => b.score - a.score || String(a.item.id).localeCompare(String(b.item.id)));
+  const best = ranked[0]?.score ?? -Infinity;
+  const pool = ranked.filter(r => r.score >= best - 0.04).slice(0, 4);
+  const pick = pool[hash32(seed >>> 0, "arch", "tuning") % pool.length] || ranked[0];
+  return { archetype: pick?.item ?? null, score: pick?.score ?? best, physFit: pick?.physFit ?? 0, ranked: ranked.slice(0, 6) };
 }
 
 /** Replace free-crawled degrees with the winning archetype; keep physics curve. */
