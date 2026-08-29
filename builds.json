@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "claude/moisture-yield-validation-chain-o29gdc",
+      "sha": "43224d5b89cb5ca8923f3cd6f134b6f3571d63f9",
+      "slug": "claude-moisture-yield-validation-chain-o29gdc",
+      "builtAt": "2026-08-29T15:07:48.848Z",
+      "channel": "preview",
+      "saveVersion": 63,
+      "path": "/b/claude-moisture-yield-validation-chain-o29gdc/"
+    },
+    {
       "branch": "cursor/build-chip-visible-15e6",
       "sha": "20b10d0cf772988c377738c844769cf46a81a6be",
       "slug": "cursor-build-chip-visible-15e6",
@@ -9,14 +18,6 @@
       "channel": "preview",
       "saveVersion": 63,
       "path": "/b/cursor-build-chip-visible-15e6/"
-    },
-    {
-      "branch": "claude/moisture-yield-validation-chain-o29gdc",
-      "sha": "500298abd5c4a1b0a1fbab271de4d99609b4ed8b",
-      "slug": "claude-moisture-yield-validation-chain-o29gdc",
-      "builtAt": "2026-08-29T14:54:50.204Z",
-      "channel": "preview",
-      "path": "/b/claude-moisture-yield-validation-chain-o29gdc/"
     },
     {
       "branch": "cursor/build-chip-mintfix-15e6",
