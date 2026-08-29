@@ -1672,7 +1672,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     if (freightPaid > 0) bookI(seller, IN_GOODS, freightPaid);
     bookO(buyer, bookOut, paid);
   } else {
-    const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
+    const sellerFarm = (seller.tier | 0) <= (T.DISSOLVE_FARMS ? 3 : 0)
                      || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
     const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
     const foodFrac = (buyerShort || sellerFarm) ? (seller._exportFoodFrac || 0) : 0;

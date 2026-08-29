@@ -508,9 +508,7 @@ function fieldPolityTerritory(world) {
   // states begin at ~half span, valley-sized, and EARN the continent as
   // statecraft matures (org → 1 recovers the legacy ruler exactly, so the
   // mature world converges to the validated calibration). An explicit
-  // T.SPAN_TECH still overrides for sweeps; the pinned gate regime
-  // (LAND_KNOW=0, SPAN_TECH=0) is byte-identical.
-  const spanL = T.SPAN_TECH || (T.LAND_KNOW ? 0.85 : 0);
+  const spanL = T.LAND_KNOW ? 0.85 : 0;
   const spanTechMul = (cid) => {
     if (spanL <= 0) return 1;
     const kn = knOf.get(cid);
@@ -1065,52 +1063,7 @@ function fieldPolityTerritory(world) {
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
     const heap = world._fpHeap2 || (world._fpHeap2 = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
-    // T.CREST_HOLD contact-band map: the nearest existing claim within the
-    // contact horizon of each tile (-1 none, -2 mixed). Built once per pass
-    // from the PRE-growth claims — the band a contested frontier forms
-    // against. (Cause IV residual, measured 0.86x ridge enrichment: growth
-    // enters wild only, so the first-arriving realm crossed ranges at
-    // leisure; with the band, entering DEFENSIBLE wild ground that a rival
-    // already faces pays the REFUGE hold. The hold is symmetric on the
-    // crest itself, so what pins the border to it is the DIFFERENTIAL
-    // along the closing front — flat gaps fill first, defensible tiles
-    // last — and that sorting needs the front to spend several growth
-    // passes in-band: a 1-ref-tile horizon closed in one pass and moved
-    // ridge enrichment only 0.86x→1.03x at 33k. Horizon is a REAL
-    // distance: CB_REF reference tiles ×rNormPop (~330 km — the range at
-    // which pre-modern polities knew of and answered a rival's approach),
-    // per the FORT_R charter; a fixed tile radius shrinks in km on finer
-    // grids, the resolution bug this session hit twice.)
     let cbNear = null;
-    if (T.CREST_HOLD) {
-      const CB_REF = 2;
-      const rBand = Math.max(1, Math.round(CB_REF * rNormPop(world)));
-      cbNear = world._cbNear && world._cbNear.length === N ? world._cbNear : (world._cbNear = new Int32Array(N));
-      cbNear.fill(-1);
-      // multi-source Chebyshev BFS from every claimed tile, depth ≤ rBand:
-      // each tile is stamped once with the first owner to reach it; a second
-      // DIFFERENT owner arriving marks it mixed (-2). Ring-buffer queue.
-      let cbQ = world._cbQ; if (!cbQ || cbQ.length !== N) cbQ = world._cbQ = new Int32Array(N);
-      let cbD = world._cbD; if (!cbD || cbD.length !== N) cbD = world._cbD = new Uint8Array(N);
-      cbD.fill(0);
-      let qn = 0;
-      for (let ti2 = 0; ti2 < N; ti2++) { const o2 = co[ti2]; if (o2 >= 0) { cbNear[ti2] = o2; cbQ[qn++] = ti2; } }
-      for (let qh = 0; qh < qn; qh++) {
-        const ti2 = cbQ[qh]; const d2 = cbD[ti2]; if (d2 >= rBand) continue;
-        const own = cbNear[ti2];
-        const y2 = (ti2 / tw) | 0, x2 = ti2 - y2 * tw;
-        const xm2 = x2 === 0 ? tw - 1 : x2 - 1, xp2 = x2 === tw - 1 ? 0 : x2 + 1;
-        for (let k2 = 0; k2 < 8; k2++) {
-          const yy = k2 < 3 ? y2 - 1 : k2 < 5 ? y2 : y2 + 1;
-          if (yy < 0 || yy >= th) continue;
-          const xx = (k2 === 0 || k2 === 3 || k2 === 5) ? xm2 : (k2 === 2 || k2 === 4 || k2 === 7) ? xp2 : x2;
-          const j = yy * tw + xx;
-          const cur = cbNear[j];
-          if (cur === -1) { cbNear[j] = own; cbD[j] = d2 + 1; if (qn < N) cbQ[qn++] = j; }
-          else if (cur !== own && cur !== -2 && co[j] < 0) cbNear[j] = -2;
-        }
-      }
-    }
     for (let ti = 0; ti < N; ti++) {
       const c = co[ti]; if (c < 0 || !grow.has(c)) continue;
       const y = (ti / tw) | 0, x = ti - y * tw;
@@ -1253,120 +1206,6 @@ function fieldPolityTerritory(world) {
         rel[ti] = cid; co[ti] = -1;
         shedRel.set(cid, (shedRel.get(cid) || 0) + loadOfD(d));
       }
-    }
-  }
-
-  // 6c. MARCH LAW (T.MARCH_LAW) — peacetime border relaxation. Nothing else in
-  //     the codebase ever moves a border in peace: growth enters wild only, so
-  //     once the wild between two realms is gone their line FREEZES wherever
-  //     the waves happened to meet, forever — where real borders were settled
-  //     onto rivers and crests by centuries of sub-war adjustment (marches,
-  //     raids, local lords switching allegiance, treaty rationalization).
-  //     The law: a border tile slowly passes to whichever neighbour can
-  //     administer it more cheaply — the challenger's cost is its own admin
-  //     distance at the border plus the edge in, times the COUNTRYSIDE WAR's
-  //     terrain hold (river ford + alpine + REFUGE ridge, defender-engineering
-  //     eased, capped — the exact composition fronts already pay, so the two
-  //     border-movers obey ONE physics), plus a switching friction (an oath is
-  //     not broken for a marginal better offer). Plains borders drift to
-  //     admin-cost equilibria and stop; crests and great rivers are sticky
-  //     walls from BOTH sides, so borders ratchet onto defensible lines and
-  //     REST there — CREST_HOLD's laps 1-2 measured that claim-time holds
-  //     cannot produce this (mature borders are not drawn by the growth walk;
-  //     docs/atlas-gap-2026-08-14.md), which is why the law acts on the
-  //     standing border instead. Pace: the best flip per realm-pair per pass,
-  //     ×rn so real km/pass is grid-comparable (the march-stone quantum —
-  //     approach speed, not equilibrium, which is set by the cost field).
-  //     Settled administration only (nomad borders live in the raid system);
-  //     same-bloc pairs are internal (the suzerain stack has its own acts);
-  //     warring pairs are the fronts' business; home/worked land never flips
-  //     in peace (cities and their fields change hands by war and politics).
-  //     Fiscal loop: the winner's ledger is charged, the loser's refunded, in
-  //     the same admin-load units growth and shed spend — a realm at capacity
-  //     that gains a cheap march sheds its dearest one next pass (step 6),
-  //     which is precisely the efficiency exchange the relaxation exists to
-  //     find. All emergent state, no clocks.
-  if (T.MARCH_LAW && adminOn && dist) {
-    const MARCH_EDGE = 1.15;   // switching friction: a lord needs a clearly better protector, and 1.15² > 1 kills 2-cycles on a static cost field
-    const rmA = world.riverMag;
-    const frMap = world._fronts && world._fronts.byCountry;
-    const atWar = (a, b) => { if (!frMap) return false; const sa = frMap.get(a), sb = frMap.get(b); return !!(sa && sa.has(b) || sb && sb.has(a)); };
-    const ov = world._overlordOf;
-    const rootCache = new Map();
-    const rootOf = (c0) => {
-      let r = rootCache.get(c0); if (r !== undefined) return r;
-      r = c0; if (ov) for (let i = 0; i < 8; i++) { const nx = ov.get(r); if (nx === undefined || nx === r) break; r = nx; }
-      rootCache.set(c0, r); return r;
-    };
-    const nomad = (cid) => { const cc = world.countries && world.countries.get(cid); return !!(cc && cc._nomadic); };
-    const marchHoldAt = (ti, consDef) => {
-      let m = 1;
-      if (rmA && rmA[ti] >= 2) m *= 1 + RIVER_DEF_W * (1 - RIVER_DEF_ENG * consDef);
-      const e = elev[ti];
-      if (e > 0.5) { const alp = Math.min(1, (e - 0.5) / 0.3); m *= 1 + (ALPINE_DEF_BASE + ALPINE_DEF_SLOPE * alp) * (1 - ALPINE_DEF_ENG * consDef); }
-      if (T.REFUGE > 0) { const rh = ridgeHoldAt(world, ti, consDef); if (rh > 0) m *= 1 + T.REFUGE * rh; }
-      return m > TERRAIN_DEF_CAP ? TERRAIN_DEF_CAP : m;
-    };
-    let homeMk = world._fpHomeMk; if (!homeMk || homeMk.length !== N) homeMk = world._fpHomeMk = new Uint8Array(N);
-    homeMk.fill(0);
-    for (const arr of homeTiles.values()) for (const ti of arr) homeMk[ti] = 1;
-    const quantum = Math.max(1, Math.round(rNormPop(world)));
-    const flips = new Map();   // "lo:hi" pair → [{ti, from, to, d, refund, adv}] in ti order
-    for (let ti = 0; ti < N; ti++) {
-      const b = co[ti]; if (b < 0 || elev[ti] <= 0 || homeMk[ti] || worked[ti] || !alive.has(b) || nomad(b)) continue;
-      const db = dist[ti]; if (!Number.isFinite(db)) continue;
-      const ty2 = (ti / tw) | 0, tx2 = ti - ty2 * tw;
-      const xm2 = tx2 === 0 ? tw - 1 : tx2 - 1, xp2 = tx2 === tw - 1 ? 0 : tx2 + 1;
-      const ns2 = [
-        ty2 * tw + xm2, ty2 * tw + xp2, ty2 > 0 ? ti - tw : -1, ty2 < th - 1 ? ti + tw : -1,
-        ty2 > 0 ? (ty2 - 1) * tw + xm2 : -1, ty2 > 0 ? (ty2 - 1) * tw + xp2 : -1,
-        ty2 < th - 1 ? (ty2 + 1) * tw + xm2 : -1, ty2 < th - 1 ? (ty2 + 1) * tw + xp2 : -1,
-      ];
-      // FORM 2 (lap-3 first form refuted by measurement — ridge 0.86x→0.49x,
-      // river 2.01x→1.54x): comparing CUMULATIVE admin distances with the
-      // hold on ONE edge makes a ×6 wall a rounding error against tens-of-
-      // units seat asymmetries — the law degenerated to distance-Voronoi
-      // relaxation and BULLDOZED the terrain borders the wars had made. The
-      // war's comparison never fails this way because it is LOCAL: force at
-      // the tile, defender ×terrainDef, so the terrain multiple dominates.
-      // Same shape here: administrative GRIP at the tile (1/loadOfD — reach
-      // decays with admin distance), the incumbent's grip ×hold (defending a
-      // line multiplies effective reach at it) — the hold now scales the
-      // WHOLE comparison. A river needs a ~3.7× grip advantage to cross in
-      // peace; a plains march flips on load ratio alone past the friction.
-      let bestC = -1, bestLoad = Infinity;
-      for (let k = 0; k < 8; k++) {
-        const ni = ns2[k]; if (ni < 0) continue;
-        const a = co[ni]; if (a < 0 || a === b || elev[ni] <= 0 || !alive.has(a) || nomad(a)) continue;
-        const da = dist[ni]; if (!Number.isFinite(da)) continue;
-        if (rootOf(a) === rootOf(b)) { tel(world, "march", "sameBloc"); continue; }
-        if (atWar(a, b)) { tel(world, "march", "atWar"); continue; }
-        const kn = knOf.get(a);
-        const ec = edgeCostFor(ni, ti, kn, claimCap.get(a) || CLAIM_CAP_CEIL, hostOf.get(a) ?? CLAIM_HOSTILITY);
-        if (ec === Infinity) { tel(world, "march", "unpriceable"); continue; }
-        const la = loadOfD(da + ec * (k < 4 ? 1 : SQRT2));   // challenger's admin load on the tile
-        if (la < bestLoad) { bestLoad = la; bestC = a; }
-      }
-      if (bestC < 0) continue;
-      const knB = knOf.get(b);
-      const hold = marchHoldAt(ti, (knB && knB.construction) || 0);
-      const lb = loadOfD(db);
-      if (!(bestLoad * hold * MARCH_EDGE < lb)) { tel(world, "march", "noAdvantage"); continue; }
-      const key = Math.min(bestC, b) + ":" + Math.max(bestC, b);
-      let arr = flips.get(key); if (!arr) flips.set(key, arr = []);
-      arr.push({ ti, from: b, to: bestC, d: (bestLoad - 1) * ADMIN_HALF_EFF, refund: lb, adv: lb / (bestLoad * hold * MARCH_EDGE) });
-    }
-    for (const [, arr] of flips) {
-      arr.sort((p, q) => (q.adv - p.adv) || (p.ti - q.ti));   // strongest claim first, index tiebreak deterministic
-      const n2 = Math.min(quantum, arr.length);
-      for (let i2 = 0; i2 < n2; i2++) {
-        const f = arr[i2];
-        co[f.ti] = f.to; dist[f.ti] = f.d;
-        spentGrow.set(f.to, (spentGrow.get(f.to) || 0) + loadOfD(f.d));
-        shedRel.set(f.from, (shedRel.get(f.from) || 0) + f.refund);
-        telPass(world, "march");
-      }
-      for (let i2 = n2; i2 < arr.length; i2++) tel(world, "march", "quantumSpent");
     }
   }
 
@@ -1517,15 +1356,7 @@ export function computeCountryTerritory(world) {
     // by a high-aptitude stock projects administrative reach further for the same
     // tech — the institutional edge of the "winter peoples" made territorial.
     const aptMul = 1;   // (ORG_APT_CAP removed 2026-07 — see conquest.js note)
-    // Budget-gated expansion (T.REACH_STRAIN): reach contracts with the admin
-    // STRAIN the last polity pass measured (gov._strain = load/capacity, ≥1 =
-    // over budget) — a court that cannot govern what it holds stops projecting,
-    // so borders SATURATE at governable size instead of overshooting and
-    // collapsing. Within budget (strain ≤ 1): no effect. The elasticity is the
-    // lever; overload capped so a deep crisis contracts the frontier, never
-    // deletes the realm's core (the shed stays ring-by-ring, as ever).
-    const _strain = _pol && _pol._strain != null ? _pol._strain : 0;
-    const strainMul = 1 / (1 + (T.REACH_STRAIN || 0) * Math.min(3, Math.max(0, _strain - 1)));
+    const strainMul = 1;
     budget.set(c, b * emGated * sf * persMul * aptMul * strainMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
@@ -2286,27 +2117,10 @@ export function adoptAndFound(world) {
     const id = lo ? lo[ti] : -1;
     return id >= 0 && seats && seats.has(id) ? id : -1;
   };
-  // Budget-gated adoption (T.ADOPT_BUDGET): taking on a NEW subject is an act of
-  // administration, and a court already past its budget (strain = load/capacity
-  // from the last polity pass, on the persistent polity record) refuses it — the
-  // community stays independent until a state that CAN govern it reaches it, or
-  // it founds/joins a state of its own (primary-state fuel, exactly like the
-  // statecraft gate below). Conquest and realm↔realm border shifts are untouched:
-  // overreach by the sword stays possible — and stays punished.
-  const overBudget = (cid) => {
-    const gate = T.ADOPT_BUDGET || 0;
-    if (!gate || cid < 0) return false;
-    const pol = getPolity(world, cid);
-    return !!pol && pol._strain != null && pol._strain >= gate;
-  };
-  // FISC TEST (T.FISC_ADOPT, entities.js): the marginal-revenue adoption gate —
-  // a court adopts a stateless community only if the capacity its people bring
-  // (the realm's own capacity-per-governed-person × the community's people)
-  // covers the admin load of governing it. Per-subject, so productive near
-  // communities are always welcome (no global freeze, no fiscal death-spiral —
-  // the failure the bare strain gate above measured).
-  const fiscOk = (cid, s) =>
-    fiscAdoptable(world, world.countries && world.countries.get(cid), s.pos.x, s.pos.y, s.people || 0);
+  // Budget-gated adoption removed — stateless communities are always eligible
+  // when the statecraft gate passes. Conquest and realm↔realm border shifts are
+  // untouched: overreach by the sword stays possible — and stays punished.
+  const fiscOk = () => true;
   // Census↔field exchange rate for the restoration viability bar (T.SUCCESSOR_STATES,
   // restorableHomeland below) — the same global rate nucleateFrontierStates computes
   // for its own founding bar, evaluated lazily and at most once per pass, only when a
@@ -2359,7 +2173,7 @@ export function adoptAndFound(world) {
           // city is the court coming into being, so no administrative gate
           // beyond the records bar applies.
           const nat = region < 0 ? landAt(ti) : -1;
-          s.countryId = region >= 0 && !overBudget(region) && fiscOk(region, s) ? region
+          s.countryId = region >= 0 && fiscOk(region, s) ? region
             : nat >= 0 ? nat
             : s.id;
           s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
@@ -2480,7 +2294,6 @@ export function adoptAndFound(world) {
           // stated settlements) and losses to statelessness are untouched — those
           // are conquest/border dynamics, not primary adoption.
           if ((realmOrg.get(region) || 0) < T.ORG_STATE_MIN) continue;
-          if (overBudget(region)) continue;   // the court cannot govern more — the village stays free
           if (!fiscOk(region, s)) continue;   // …nor afford THIS one: its people don't fund their own administration — it stays free
           s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
         }
@@ -2634,26 +2447,6 @@ function restorableHomeland(world, s, f2c, bar) {
 // The state-capacity multiplier on the founding bar: how much MORE population
 // this ground needs before it can carry a state. Low carrying capacity, wet
 // tropics and iron-less temperate forest raise it; broken terrain lowers it.
-// T.STATE_OPEN — Carneiro's circumscription at the FOUNDING BAR itself (the
-// late-belt over-claiming wave, docs/atlas-gap-2026-08-14.md 2026-08-18). The
-// bar below prices fertility, disease, forest-iron and ruggedness — but was
-// CAGE-BLIND: a fertile OPEN plain founded at the same bar as the hemmed Nile,
-// so once any belt's popField densified, states swept it wall-to-wall (measured:
-// the Americas at 16M km2 claimed and Australia 2.6M across 7 states at the
-// caravels moment, where history held ≤3M and ZERO — while claims measured
-// DENSE, 71-84% of cradle-core density: not thin claims, too many foundings).
-// History's door: states crystallise where people CANNOT DISPERSE — on open
-// ground they flee taxation instead of submitting (the Mississippi stayed
-// chiefdoms at real density; Mesoamerica and the Andes, the two CAGED zones,
-// were exactly where American states rose). The multiplier reads the cage
-// field alone — cropCeil's storable-surplus leg is already priced via capNorm,
-// and doubling it would spuriously raise the CRADLES' bar (they are caged;
-// their term must stay ≈1 so the calibrated dawn does not move).
-function stateOpenMulAt(world, seatTi) {
-  if (!(T.STATE_OPEN > 0) || !T.STATE_CAGE) return 1;
-  return 1 + T.STATE_OPEN * (1 - cageAt(world, seatTi));
-}
-
 function stateCapacityMul(world, s, seatTi) {
   const fert = world.fert, moist = world.moist, temp = world.temp;
   const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
@@ -2667,7 +2460,6 @@ function stateCapacityMul(world, s, seatTi) {
   const forestLocked = forest * (1 - ironReady);
   return (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
        * (1 + T.STATE_FOREST * forestLocked)
-       * stateOpenMulAt(world, seatTi)
        / (1 + T.FRAGMENT * (s._rugged || 0));
 }
 
@@ -2831,11 +2623,6 @@ export function nucleateFrontierStates(world) {
     }
     if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
     else if (!isLeader) tel(world, "nucleate", "notBasinLeader");
-    // Attribute the BINDING bar: if the basin would clear the bar without the
-    // open-land (circumscription) term, the openness is what refused the state —
-    // name it, per the funnel convention, so probe runs can read the Carneiro
-    // door working (or not) instead of a generic bar rejection.
-    else if (T.STATE_OPEN > 0 && cp >= clusterPop * capMul / stateOpenMulAt(world, seatTi)) tel(world, "nucleate", "openLand(uncaged)");
     else tel(world, "nucleate", "basinPop<clusterBar");
   }
   if (!cand.length) return;

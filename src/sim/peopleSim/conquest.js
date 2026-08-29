@@ -776,7 +776,7 @@ export function rebuildCountries(world) {
   // nobody gains — extraordinary reach is always extraordinary FOR ITS TIME,
   // never a clock. No coin moves: this models what a fisc can SUSTAIN, not a
   // new money sink (the closed-supply conservation invariant is untouched).
-  if (T.STATE_WORKS > 0 || T.APPARATUS > 0) {
+  if (T.APPARATUS > 0) {
     const sus = [];
     const susOf = new Map();
     for (const c of countries.values()) {
@@ -826,15 +826,7 @@ export function rebuildCountries(world) {
         : WORKS_DECAY;
       const next = have + (target - have) * rate;
       g._works = Number.isFinite(next) ? Math.max(0, Math.min(T.WORKS_CEIL, next)) : 0;
-      // The stock extends the writ, and the grip is re-derived from it: a state
-      // that out-collects its era and spends the difference on roads, relays and
-      // waystations governs further per unit of statecraft — and loses that reach
-      // when the network is no longer maintained. 0 stock ⇒ x1, byte-identical to
-      // the tech-only radius. (Runs after the capital/range pass because the build
-      // rate is gated on the CAPITAL's construction — before it, every capital is
-      // still null and the rate would silently be zero. Hierarchy and provinces
-      // read neither range nor holdReach, so nothing upstream sees the change.)
-      if (g._works > 0) { c.range *= 1 + T.STATE_WORKS * g._works; c.holdReach = c.range * resScale; }
+      // APPARATUS stock extends capacity; reach stays tech-only.
     }
   }
   world.countries = countries;

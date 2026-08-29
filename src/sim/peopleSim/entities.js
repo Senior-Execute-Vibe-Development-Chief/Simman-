@@ -68,21 +68,7 @@ export const SIZE_REF = 1000;
  * adopt freely — the first stamp gates everything after.
  */
 export function fiscAdoptable(world, c, x, y, people) {
-  const F = T.FISC_ADOPT || 0;
-  if (!(F > 0) || !c) return true;
-  const cap = c.capital, C = c._capacity;
-  if (!cap || !cap.pos || !(C > 0)) return true;
-  let P = 0;
-  const mem = c.members || [];
-  for (let i = 0; i < mem.length; i++) { const m = mem[i]; if (m && m.mode === "settled") P += m.people || 0; }
-  if (!(P > 0)) return true;
-  let dx = Math.abs(cap.pos.x - x); if (dx > world.tw / 2) dx = world.tw - dx;
-  const dy = cap.pos.y - y;
-  const d = Math.sqrt(dx * dx + dy * dy);
-  const holdRange = Math.max(1, c.holdReach || c.range || 0);
-  const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (people || 0) / SIZE_REF));
-  const load = (d / holdRange) * sizeMul;
-  return (people || 0) * (C / P) >= F * load;
+  return true;
 }
 
 export function getPolity(world, id) {

@@ -1415,27 +1415,7 @@ function maybeSiteCities(world) {
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
   const basinBar1 = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell at 1× margin, field units
   const barOf = (k) => basinBar1 * leanAt(world, L.sites[k].ti); // T.LEAN_YEAR: × the SITE's own bad-year margin (per-basin)
-  // T.TOWN_MINT — the mint bar becomes the TOWN definition, not the CITY one.
-  // WHY 10,000 WAS THERE: it is the urban-history convention for comparative
-  // urbanisation statistics (de Vries's early-modern series; Chandler's lists use
-  // 20,000+). It is a STATISTICAL threshold, not a claim that smaller places were
-  // not cities. Historically "city" was a legal and institutional status, not a
-  // size: York and Norwich at ~10,000 were among the LARGEST in medieval England
-  // while most of its ~600 chartered boroughs held under 2,000, the Empire had
-  // thousands of chartered Staedte under 2,000, and most Greek poleis were a few
-  // thousand. Minting only at 10,000 therefore excludes the ordinary historical
-  // town entirely.
-  // ZERO NEW CONSTANTS: TIER_CORE[1] = 2 is this codebase's own town definition
-  // ("~2,000 urban people — the smallest agglomerations the literature calls
-  // towns", tuning.js CITY_CORE), sitting unused as a mint bar while the register
-  // minted only cities.
-  // THE HYSTERESIS IS THE POINT (section 29): the mint bar and the dissolve bar are
-  // both TIER_CORE[2] today, so a settlement mints and dissolves at the SAME size
-  // and the register churns at the line. Pair this with the EXISTING DISSOLVE_CORE
-  // multiplier below 1 — DISSOLVE_CORE=0.1 puts the dissolve bar at 1,000 against a
-  // 2,000 mint — and a settlement gets room to dip without dying, which is what
-  // DISSOLVE_CORE's own description reserved values below 1 for.
-  const coreBarF = TIER_CORE[T.TOWN_MINT ? 1 : 2] / bridge;     // the mint's core bar, field units
+  const coreBarF = TIER_CORE[2] / bridge;     // the mint's core bar, field units
   const coreR = urbanCoreR(world);
   // Eligibility is cached between cadence firings; the spike re-stamp runs
   // every tick from the cache so the field pass always holds the cores.
@@ -2137,13 +2117,7 @@ function maybeLandNations(world) {
       // pressure forms almost at once (the cradle belts saturate at the old
       // drive=1, near-byte-similar there), an open or unstorable one stays
       // tribal however long it is pressed — the Chichimeca, Australia.
-      if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
-        const cg = cageAt(world, st.ti);
-        const sp = cg > 0 ? basinStorablePeople(world, take, world.popField) : 0;
-        const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
-        const pr = cg * stor;
-        drive = drive >= 1 ? Math.min(1, pr * (1 + T.STATE_OPEN)) : pr;
-      } else if (drive < 1 && T.STATE_CAGE) {
+      if (drive < 1 && T.STATE_CAGE) {
         const cg = cageAt(world, st.ti);
         if (cg > 0) {
           const sp = basinStorablePeople(world, take, world.popField);
@@ -2236,14 +2210,7 @@ function maybeLandNations(world) {
           }
           if (drive2 >= 1) break;
         }
-        // T.STATE_OPEN lap 2: identical to the primary lane — contact
-        // multiplies the Carneiro drive, never overrides it (header above).
-        if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
-          const cg2 = cageAt(world, cand.ti);
-          const sp2 = cg2 > 0 ? basinStorablePeople(world, basin2.take, pf2) : 0;
-          const pr2 = cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0);
-          drive2 = drive2 >= 1 ? Math.min(1, pr2 * (1 + T.STATE_OPEN)) : pr2;
-        } else if (drive2 < 1 && T.STATE_CAGE) {
+        if (drive2 < 1 && T.STATE_CAGE) {
           const cg2 = cageAt(world, cand.ti);
           if (cg2 > 0) {
             const sp2 = basinStorablePeople(world, basin2.take, pf2);

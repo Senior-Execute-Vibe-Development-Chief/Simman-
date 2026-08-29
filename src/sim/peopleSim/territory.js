@@ -135,18 +135,6 @@ const SQRT2 = Math.SQRT2;
 // — that size gap is what reads as a hierarchy on the map, and small village
 // cores let settlements pack in densely without fighting over the same land.
 const CORE_BY_TIER = [1, 2, 3, 4];
-// T.FARM_RES — THE THIRD SITE OF THE PHASE-2 RESOLUTION BUG, missed when the other
-// two were repaired. The comment at the reach budget below (:195-201) diagnoses this
-// exact failure in its own words — "a fixed budget is a fixed TILE radius — a smaller
-// REAL catchment on a finer grid … the same settlement farmed ¼ the real land at 2×
-// resolution" — and scales that budget by rNormPop; countryTerritory.js does the same
-// for political reach via resScaleFor. These two GUARANTEED radii were left in raw
-// tiles, and being guaranteed FLOORS they override the corrected budget wherever they
-// bind. MEASURED (tools/probe_farmres.mjs, seed 8817, 3000 steps, same world at two
-// grids): core radius 2.0 and belt radius 4.0 at BOTH tw=240 and tw=480 — identical
-// tile counts — so the belt's real area runs 953,598 km² against 211,880 km², a
-// factor of 4.5 for the same city in the same world. Off ⇒ ×1, byte-identical.
-const _resR = (world) => (T.FARM_RES && world) ? rNormPop(world) : 1;
 // THE CORE BLOCK IS DELIBERATELY *NOT* SCALED, and the header three lines up says
 // why: it is "kept smaller than half the minimum settlement spacing … so two cores
 // can never overlap." That invariant COUPLES this constant to crystallize.js's
@@ -182,7 +170,7 @@ export function hinterlandRadiusFor(s, world) {
   if (T.MARKET_PULL > 0) return coreRadiusFor(s, world);
   const t = s.tier | 0;
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
-  return Math.max(coreRadiusFor(s, world), Math.round(base * T.HINTERLAND_MULT * _resR(world)));
+  return Math.max(coreRadiusFor(s, world), Math.round(base * T.HINTERLAND_MULT));
 }
 
 class MinHeap {
@@ -284,17 +272,7 @@ export function computeTerritory(world) {
     _rebuildMarketKn(byId);
     let sum = 0, n = 0;
     for (const s of byId.values()) {
-      // T.MARKET_WEALTH: whether ability-to-pay enters the RING at all.
-      // Off (default), the bid is scarcity alone — a PER-BUSHEL price, bounded
-      // 0.5-3. Wealth is a BANK BALANCE, and multiplying the two conflates a
-      // price with a purse: wealth spans orders of magnitude, so a rich city's
-      // ring swallows a poor neighbour's doorstep where carriage is ~0 and the
-      // local price is perfectly adequate. That is not crowding-out, it is Rome
-      // outbidding a village for the field behind the village. Ability to pay
-      // belongs on VOLUME (how much you can buy), not on REACH.
-      const a = T.MARKET_WEALTH
-        ? Math.max(1e-6, (s._scarcity || 1) * Math.max(1, s.wealth || 0))
-        : Math.max(1e-6, (s._scarcity || 1));
+      const a = Math.max(1e-6, (s._scarcity || 1));
       seedOf.set(s.id, a); sum += a; n++;
     }
     const abar = n > 0 ? sum / n : 1;
@@ -578,7 +556,7 @@ export function computeTerritory(world) {
       // whole value. Beyond it the harvest is not worth carrying and no market
       // wants the field. This is the bound the first build lacked.
       if (mktPull && nd >= 0) continue;
-      if ((!mktPull || T.MARKET_CAP > 0) && nd > bud) continue;    // owner can't reach further (in value-weighted effort). T.MARKET_CAP keeps the allowance as a BOUND while the bid decides the ORDER — the diagnostic split (docs section 44)
+      if (!mktPull && nd > bud) continue;    // owner can't reach further (in value-weighted effort)
       if (nd < cost[ni]) {
         cost[ni] = nd;
         tcost[ni] = tcHere + step;

@@ -344,8 +344,6 @@ function bornPolityAt(world, s, legacy) {
   // and when they are not, a refusal births the city STATELESS and leaves the
   // consequence to adoptAndFound — refusal semantics are that pass's business,
   // not this default's, so this lever moves exactly one thing.
-  const pol = getPolity(world, owner);
-  if (T.ADOPT_BUDGET > 0 && pol && pol._strain != null && pol._strain >= T.ADOPT_BUDGET) return -1;
   if (!fiscAdoptable(world, c, s.pos.x, s.pos.y, s.people || 0)) return -1;
   return owner;
 }
@@ -365,26 +363,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Start at the tier-0 storage cap (see storageCap in updateFood);
     // a larger value would just be clamped away on the first tick.
     food: 80,
-    knowledge: opts.knowledge || (opts.cradle && T.CRADLE_EVE ? {
-      // A CRADLE at the EVE OF STATES (T.CRADLE_EVE=1) — a ready proto-urban
-      // town injected at t=0 so the world matches the 3000-BC display label
-      // (late Uruk, Naqada III, Longshan: temple administration on the verge
-      // of kingship, copper millennia old). Measured cost (2026-07,
-      // probe_cradle_pulse + budget-gated-expansion.md addendum 2): this
-      // injected head start is the genesis territorial BALLOON — cradles peak
-      // ~age 1000 at 1.32-1.57x their settled extent, then visibly shrink,
-      // while natural states run 1.04-1.36x. With CRADLE_EVE=0 a cradle seeds
-      // as a natural village (the block below) and the first kingdoms EMERGE
-      // ~5k steps later — the balloon gone, the dawn earned, the display epoch
-      // (calendar.js DISP_START) shifted earlier to keep the label honest.
-      // Initial CONDITIONS of the world at t=0, not a gate on anything.
-      agriculture: 0.55,        // mature floodplain/irrigation farming
-      construction: 0.20,       // mudbrick towns, the first monumental works
-      organization: 0.28,       // temple accounts / proto-writing — kingship at the door
-      metallurgy:  0.16,        // chalcolithic copper (ore access still gates practice)
-      navigation:  0.05,        // river craft
-      mobility:    0.05,        // pack animals
-    } : {
+    knowledge: opts.knowledge || {
       // The NATURAL-VILLAGE seed: an internally consistent neolithic package.
       // agriculture 0.5 asserts ESTABLISHED cereal farming — and no farming
       // people ever lacked pottery (the granary craft), fire, mudbrick and
@@ -403,7 +382,7 @@ export function makeSettlement(world, x, y, opts = {}) {
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
-    }),
+    },
     // Crop packages this settlement has (ids into src/cropPackages.js). Empty
     // unless T.CROP_AXIS is on; seeded at creation (cradle domestication /
     // parent inheritance) and grown by crop diffusion in updateKnowledge. The
@@ -1420,7 +1399,7 @@ export function realOutputOf(s, world) {
 // otherwise only tier-0 Farming Regions (≤ FARM_MAX_TIER) do. ONE predicate so
 // the economy (computeExportValue) and its info-panel breakdown can't drift.
 export function farmsLand(s) {
-  return (s.tier | 0) <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));
+  return (s.tier | 0) <= (T.DISSOLVE_FARMS ? 3 : 0);
 }
 
 // Wealth reserve = "rainy day fund" the settlement holds back from
@@ -1645,7 +1624,7 @@ export function urbanise(world) {
     // Farm-labour anchor: a farming region keeps the farmers who work its land — only
     // the surplus above the (yield-dependent) rural floor can leave for the cities, so
     // the world stays ~85% rural until the agricultural revolution lets it urbanise.
-    if ((s.tier | 0) <= (T.DISSOLVE_FARMS ? 1 : (T.FARM_MAX_TIER | 0))) {   // DISSOLVE: only the small farming TOWNS keep farmers rural; cities shed freely
+    if ((s.tier | 0) <= (T.DISSOLVE_FARMS ? 1 : 0)) {   // DISSOLVE: only the small farming TOWNS keep farmers rural; cities shed freely
       const ruralFrac = ruralShare(s);
       movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
     }
@@ -2813,17 +2792,7 @@ function updateFood(world, s) {
   // costs no farmhands, and barren desert/mountain claims cost nothing
   // either (they used to bill a phantom workforce, so claiming worthless
   // land actively DESTROYED food).
-  // T.FARM_RES, second half — THE HARVEST IN REFERENCE-TILE UNITS. _terrFertSum is a
-  // raw sum over catchment TILES, so once the radii above cover the same REAL area at
-  // any grid, a finer grid contributes rn² times as many tiles for the same ground and
-  // the harvest inflates by rn². This is the exact pair settlement.js:3370-3 spells out
-  // for the population scan and applies to itself — "both the scan radius and the area
-  // unit must be resolution-invariant" — with the radius half fixed in territory.js and
-  // the area half here. MEASURED before the fix (probe_farmres, seed 8817): the same
-  // real ground yielded 0.873 per Mkm² at tw=240 and 3.107 at tw=480, a factor of 3.56.
-  // The FARM_FERT_FLOOR subtraction is per-tile and rides the same conversion, so the
-  // floor keeps meaning the same thing per unit of real land. Off ⇒ ×1, byte-identical.
-  const _fertA = T.FARM_RES ? 1 / (rNormPop(world) * rNormPop(world)) : 1;
+  const _fertA = 1;
   // T.URBAN_LABOR — A CITY-DWELLER IS NOT IN THE FIELDS. Owner, 2026-08-27: "when a
   // farmer goes to a city, they stop making food, so we always really need more
   // farmers than city people, by a pretty exact margin."
@@ -2900,46 +2869,37 @@ function updateFood(world, s) {
     // INDUSTRIAL_CAP=0.
     s._indGate = Math.min(1, Math.max(0, (devOrg - 0.78) / 0.18)) * Math.min(1, Math.max(0, (capMetal - 0.78) / 0.18));   // reached-industrial-development gate (0..1), reused by the urban transition
     s._indCap = 1 + T.INDUSTRIAL_CAP * s._indGate;
-    if (T.ERA_PROD_SCALE > 0) {
-      // LEGACY ARM (A/B): the retired fitted overlay, byte-identical at
-      // ERA_PROD_SCALE=260 (the pre-Tier-B default). Kept as a lever per the
-      // FOOD_K/FOREST_LOCK default-flip convention.
-      const agri = (s.knowledge && s.knowledge.agriculture) || 0;
-      const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
-      s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
-    } else {
-      // Built land capital: the works the basin's own people accumulated under
-      // pressure (popField LAND_WORKS — canals, terraces, drainage). Catchment
-      // mean over FARMED tiles, same falloff weighting as the harvest itself
-      // (territory.js _terrWorksMean). ONE constant (T.LAND_WORKS) prices it on
-      // ledger and field alike — and the ledger and the field finally agree on
-      // what the industrial break is worth (both ride works × indCap now; the
-      // overlay said 260× where the field said 26×·wk).
-      const worksMul = 1 + T.LAND_WORKS * (s._terrWorksMean || 0);
-      // ── T.MIXED_FARM — the manure-and-traction channel ────────────────────────────
-      // Retiring the fitted `260·agri^6` overlay (de97888) was right: that constant had
-      // no independent meaning, it existed to land the modern boom at a target scale, and
-      // its devGate keyed FOOD on political organisation — a state grows no wheat. But it
-      // was standing in for a REAL channel, and deleting the fake left the hole: the
-      // several-fold rise in PRE-INDUSTRIAL yields from technique. What replaced it prices
-      // built works (canals, terraces) and the industrial break, and nothing between.
-      //   The largest of those missing levers is MIXED FARMING. An animal's chief
-      // contribution to arable was never dairy or meat — it was nitrogen returned to the
-      // field as manure, and the draught power to pull a plough through heavier soil and
-      // work more land per family. Fields that carried animals out-yielded animal-less
-      // cultivation by roughly a factor of two, and the two-way dependence (fodder for the
-      // beasts, dung for the grain) is the mixed-farming system itself.
-      //   `s._livestock` — climate suitability × the regional husbandry ceiling — is
-      // already computed here, but only feeds SECONDARY products (LIVESTOCK: dairy/meat).
-      // It has never touched crop yield. Technique gates how much of it reaches the field:
-      // a people with beasts but no plough and no rotation gets the dung and not the
-      // traction. One pass stale (set below in the same function), 0 on the first tick.
-      // Byte-identical at 0.
-      const _agriK = (s.knowledge && s.knowledge.agriculture) || 0;
-      const mixedFarm = T.MIXED_FARM > 0 ? 1 + T.MIXED_FARM * (s._livestock || 0) * _agriK : 1;
-      if (process.env.SIM_DBG_MIXED && (world._mDbg = (world._mDbg || 0) + 1) <= 5) console.error(`  [mixed] live=${(s._livestock||0).toFixed(3)} agri=${_agriK.toFixed(3)} mixedFarm=${mixedFarm.toFixed(3)} works=${worksMul.toFixed(3)} indCap=${s._indCap.toFixed(3)}`);
-      s._eraProd = worksMul * mixedFarm * s._indCap;   // composite productivity index (housing/rural/cash/output consumers keep one number)
-    }
+    // Built land capital: the works the basin's own people accumulated under
+    // pressure (popField LAND_WORKS — canals, terraces, drainage). Catchment
+    // mean over FARMED tiles, same falloff weighting as the harvest itself
+    // (territory.js _terrWorksMean). ONE constant (T.LAND_WORKS) prices it on
+    // ledger and field alike — and the ledger and the field finally agree on
+    // what the industrial break is worth (both ride works × indCap now; the
+    // overlay said 260× where the field said 26×·wk).
+    const worksMul = 1 + T.LAND_WORKS * (s._terrWorksMean || 0);
+    // ── T.MIXED_FARM — the manure-and-traction channel ────────────────────────────
+    // Retiring the fitted `260·agri^6` overlay (de97888) was right: that constant had
+    // no independent meaning, it existed to land the modern boom at a target scale, and
+    // its devGate keyed FOOD on political organisation — a state grows no wheat. But it
+    // was standing in for a REAL channel, and deleting the fake left the hole: the
+    // several-fold rise in PRE-INDUSTRIAL yields from technique. What replaced it prices
+    // built works (canals, terraces) and the industrial break, and nothing between.
+    //   The largest of those missing levers is MIXED FARMING. An animal's chief
+    // contribution to arable was never dairy or meat — it was nitrogen returned to the
+    // field as manure, and the draught power to pull a plough through heavier soil and
+    // work more land per family. Fields that carried animals out-yielded animal-less
+    // cultivation by roughly a factor of two, and the two-way dependence (fodder for the
+    // beasts, dung for the grain) is the mixed-farming system itself.
+    //   `s._livestock` — climate suitability × the regional husbandry ceiling — is
+    // already computed here, but only feeds SECONDARY products (LIVESTOCK: dairy/meat).
+    // It has never touched crop yield. Technique gates how much of it reaches the field:
+    // a people with beasts but no plough and no rotation gets the dung and not the
+    // traction. One pass stale (set below in the same function), 0 on the first tick.
+    // Byte-identical at 0.
+    const _agriK = (s.knowledge && s.knowledge.agriculture) || 0;
+    const mixedFarm = T.MIXED_FARM > 0 ? 1 + T.MIXED_FARM * (s._livestock || 0) * _agriK : 1;
+    if (process.env.SIM_DBG_MIXED && (world._mDbg = (world._mDbg || 0) + 1) <= 5) console.error(`  [mixed] live=${(s._livestock||0).toFixed(3)} agri=${_agriK.toFixed(3)} mixedFarm=${mixedFarm.toFixed(3)} works=${worksMul.toFixed(3)} indCap=${s._indCap.toFixed(3)}`);
+    s._eraProd = worksMul * mixedFarm * s._indCap;   // composite productivity index (housing/rural/cash/output consumers keep one number)
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────
@@ -3075,14 +3035,7 @@ function updateFood(world, s) {
   // it's added AFTER the harvest cut as a stable floor.
   const agriK = (s.knowledge && s.knowledge.agriculture) || 0;
   const grazeTiles = s._terrWorkTiles ?? s._terrTiles ?? 0;
-  // Rangeland is untouched by canals, so pastoral must NOT ride worksMul: under
-  // the composite index (ERA_PROD_SCALE=0) the herd's own era term is INDUSTRIAL
-  // RANCHING only — fencing, drilled wells, veterinary medicine and feedlots
-  // lifted per-area livestock output (T.PASTORAL_IND, gated on the same emergent
-  // industrial gate as everything else); pre-industrial pastoral productivity
-  // keeps its existing (0.3 + 0.7·agriK) husbandry ramp. The legacy arm keeps
-  // the old composite read for byte-identity.
-  const pastEra = T.ERA_PROD_SCALE > 0 ? (s._eraProd || 1) : (1 + T.PASTORAL_IND * (s._indGate || 0));
+  const pastEra = 1;
   const pastoral = T.LIVESTOCK_FOOD > 0
     ? T.LIVESTOCK_FOOD * (s._livestock || 0) * grazeTiles * pastEra * armyLabor * (0.3 + 0.7 * agriK)
     : 0;
@@ -3306,53 +3259,8 @@ function updateFood(world, s) {
       s._fisherFrac *= 1 - T.FISHER_ADJ * (world._dt || 1);
     }
   } else {
-  // LEGACY ARM (A/B, T.FISH_LABOR=0): the Tier-A flat-cap formula, verbatim.
+  // FISH_LABOR=0: boats stand down; no legacy flat-cap fishery.
   if (s._fisherFrac) s._fisherFrac *= 1 - T.FISHER_ADJ;   // boats stand down if the lever flips off mid-run
-  if (T.FISH_RATE > 0 && sea > 0.02) {
-    climateOf(world, s);
-    const t = s._climTemp ?? 0.7;
-    // Marine productivity: the world's great fisheries are COLD-temperate/subpolar (cold, nutrient-
-    // churned water teems); warm tropical seas are clear and barren; permanent ice locks the surface.
-    // Shape: FULL strength across the whole cool ice-free band (a ~0–20°C PLATEAU, not an interior
-    // peak), cut by sea ice below freezing (T.COLD_FISH) and falling to ~0.3 in the warm tropics.
-    const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));         // sub-freezing → ice-locked, short season
-    const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));         // warm tropical sea → nutrient-poor
-    const seaRich = (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
-    // UNMET-NEED gate: fishing is EFFORT, and a community spends it only on the food need
-    // its land leaves unfilled — measured on the land food it actually KEEPS (netLand,
-    // last tick's hierarchy net, hoisted above), because the granary drains from what is
-    // KEPT, not from what is grown: ONE basis for this gate and the supply line below.
-    // The previous form gated on GROSS landFood, which diverges from consumption on both
-    // sides of the grain hierarchy: an EXPORTER whose liege levies/buys away up to
-    // SHIP_FRAC of its pool (no subsistence floor — a tier-1 town can keep ~½ its
-    // harvest) reads "fed" from grain that left on the cart, its boats idle exactly when
-    // the levy opens a real gap; an import-fed HUB reads "hungry" from its own thin
-    // fields while hinterland grain fills its granary, fishing a sea it doesn't need.
-    // (At the reference window — 480×240 seed 8817, 12k steps — the two bases almost
-    // never diverge >0.1 (one hub, briefly): pre-modern haul survival keeps the levy
-    // take small and population equilibrates onto retained supply, so settlements sit at
-    // the band edge rather than inside it. The retained basis is the one that stays
-    // self-consistent as org + haul tech mature and shipped shares grow.)
-    // `poor` = clamp01(1 − netLand/demand): fields whose KEPT harvest feeds the mouths
-    // draw ~no boats, a marginal coast that can't feed itself from land lives off the
-    // sea, an exporting coast fishes exactly the gap the levy opens. Both sides of the
-    // ratio are in the SAME per-tick food units and carry every era- and resolution-
-    // scaling, so the gate needs no reference constant and closes BY ITSELF as
-    // agriculture matures. Stable: fish is perishable — never in _storableSupply — so
-    // fishing more cannot raise the pool the hierarchy levies from (no gate→levy→gate
-    // loop); the only coupling is the scarcity price easing as fish feeds people, and
-    // fish stays capped by RATE × sea × seaRich × tech regardless. A fertile cradle
-    // keeps its grain (netLand ≈ landFood) and still draws ~no fish. (Deep history: the
-    // pre-Tier-A gate compared landFood-per-tile against a fitted FISH_LAND_REF=8.0 —
-    // ~100× off the scale of its input, so it sat at ~1 everywhere forever and fish
-    // became the world staple: the second-cardinal-rule tell.)
-    const poor = demand > 0 ? Math.max(0, Math.min(1, 1 - netLand / demand)) : 0;
-    // Fishery technology (tech.js fishFactor: 0.3 pre-tech baseline rising
-    // with navigation + fishing techs) — normalized to that baseline so a
-    // tech-less shore fishes exactly as calibrated and technique multiplies
-    // upward from there. (The channel existed but was read by nothing.)
-    fish = T.FISH_RATE * sea * seaRich * poor * ((techEff(s).fishFactor || 0.3) / 0.3);
-  }
   }
   s._fishYield = fish;
 
@@ -3848,7 +3756,7 @@ function updateTier(world, s) {
   let topU = world._topUrban;
   if (world._tierScaleStep !== world.step) {
     let tot = 0, top = 0;
-    const pops = T.TIER_SCALE_REF > 0 ? null : [];
+    const pops = [];
     for (const x of world.settlements) if (x.mode === "settled") {
       const rank = coreLadder ? (x._coreMeasured || 0) : (x.people || 0);
       tot += x.people || 0;
@@ -3858,21 +3766,13 @@ function updateTier(world, s) {
       // in those units (maybePlantTowns' relative capital bar, probes, panels)
       // — while the core ladder below prices its rungs on TIER_CORE
       // definitions and never reads these percentiles at all.
-      if (pops) pops.push(x.people || 0);
+      pops.push(x.people || 0);
       if ((x.tier | 0) >= 1 && rank > top) top = rank;   // largest URBAN centre, for the floating metro bar
     }
-    if (T.TIER_SCALE_REF > 0) {
-      // Legacy relative tiers: the town bar scales with world population ÷ REF;
-      // the city bar scales too under DISSOLVE_FARMS (else every big farming
-      // region mislabels as a "city").
-      const sc = world._tierScale = Math.max(0.4, Math.min(T.TIER_SCALE_MAX, tot / T.TIER_SCALE_REF));
-      world._townBar = TIER_THRESHOLD[1] * sc;
-      world._cityBar = TIER_THRESHOLD[2] * (T.DISSOLVE_FARMS ? sc : 1);
-    } else {
-      pops.sort((a, b) => a - b);
-      const n = pops.length;
-      const pAt = (q) => n ? pops[Math.min(n - 1, Math.floor(q * n))] : 0;
-      world._tierScale = 1;   // kept for probes/panels that read it
+    pops.sort((a, b) => a - b);
+    const n = pops.length;
+    const pAt = (q) => n ? pops[Math.min(n - 1, Math.floor(q * n))] : 0;
+    world._tierScale = 1;   // kept for probes/panels that read it
       // DEFLATION GUARD (T.MULTI_HEARTH, docs/design-c-hearth-field.md §1d): a
       // census is a PARTITION of the same field people among the labels that
       // exist, so raising the label supply lowers every label's share — measured
@@ -3917,7 +3817,6 @@ function updateTier(world, s) {
         world._townBar = T.MULTI_HEARTH ? pAt(0.50) : Math.max(TIER_TOWN_FLOOR, pAt(0.50));
         world._cityBar = T.MULTI_HEARTH ? pAt(0.85) : Math.max(TIER_CITY_FLOOR, pAt(0.85));
       }
-    }
     topU = world._topUrban = top;
     world._tierScaleStep = world.step;
   }

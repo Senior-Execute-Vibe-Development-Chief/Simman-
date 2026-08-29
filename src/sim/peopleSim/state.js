@@ -535,7 +535,7 @@ function seedEarthHearths(world, seatNow = true) {
       console.log(`[peopleSim] hearth pin ${site.name} picked at tile (${bx},${by}) ${_geoStr(world, bx, by)} — maturity deferred to the stagger law`);
       continue;
     }
-    const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
+    const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: 110, cradle: true });   // natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
     const name = born.name;
     const rm = riverMag ? riverMag[bestTi] : 0;
     console.log(`[peopleSim] ${name} (${site.name}) at tile (${bx},${by}) frac(${(bx / tw).toFixed(2)},${(by / th).toFixed(2)}) ` +
@@ -663,7 +663,7 @@ function seatOrArmHearths(world, picked) {
       ? (CROP_BY_ID[pkg.id].domLagY || INVENT_EPOCH_Y) / pkg.suit
       : INVENT_EPOCH_Y / sc;
     if (Ty <= devInitYears()) {
-      const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });
+      const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: 110, cradle: true });
       born._hearthAgeY = devInitYears() - Ty;   // years the technique wave has spread by map open (read by ensureDevField); this branch is unreachable under DAWN_LIVE (no hearth matures inside a zero-length prehistory)
       console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) ${_geoStr(world, p.tx, p.ty)} score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
     } else {
@@ -765,7 +765,7 @@ function seedCradleVillage(world) {
   }
   for (let i = nPinned; i < picked.length; i++) {   // pins were seated by seedEarthHearths already
     const p = picked[i];
-    const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor, see crystallize.js)
+    const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: 110, cradle: true });   // natural proto-town (110 — the urban floor, see crystallize.js)
     const name = born.name;
     const e = elev[p.ti].toFixed(2), t = temp[p.ti].toFixed(2);
     const m = moist[p.ti].toFixed(2), f = fert[p.ti].toFixed(2);
