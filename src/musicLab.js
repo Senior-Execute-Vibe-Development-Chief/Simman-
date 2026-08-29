@@ -258,7 +258,7 @@ return best;
 const VOICE_BODY = new Map();
 function voiceBody(m) {
   let v = VOICE_BODY.get(m.people.seed);
-  if (!v) VOICE_BODY.set(m.people.seed, v = makeVoice(m.people.seed));
+  if (!v) VOICE_BODY.set(m.people.seed, v = makeVoice(m.people.seed, { people: m.people, texture: m.texture }));
   return v;
 }
 function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
@@ -286,7 +286,8 @@ function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
       // the one being left — the same rule `fireEvent` applies to every player
       // with one pair of hands, and what used to need a `THROAT` map of its own.
       playNote(A, V, line[i], when0 + e.b * spb, Math.max(0.12, dur), e.vel * gain * S.voice,
-        { role: "voice", channel: `${m.people.seed}:voice`, damped: false });
+        { role: "voice", channel: `${m.people.seed}:voice`, damped: false,
+          music: m, tonicHz: tonicOf(m) });
     });
   }
 }
@@ -1094,6 +1095,10 @@ function textureHTML(m) {
     <p class="note tight">${esc(lead ? lead.label + " of " + MATERIALS[lead.mat].label : "the voice")} — ${
       m.melody.breathBound ? "a breath bounds the phrase" : "a string does not need to breathe, so phrases run longer"}${
       m.melody.toneBound ? "; the tongue has lexical tone, so a sung line cannot fight the word's own melody" : ""}.</p>
+    <h3>Who sings</h3>
+    <p class="lede">${esc(voiceBody(m).label)}</p>
+    <p class="note tight">Solo or choir from how many players surplus can spare; register from the
+      tongue's own pitch frame — not a style dial.</p>
     <h3>What they sing on</h3>
     <p class="sung">${esc(vocOf(m).rom)}</p>
     <p class="note tight">Not words — <b>vocables</b>, the nonsense every singing tradition carries its

@@ -25,6 +25,7 @@
 // f_n = n·f1·√(1+B·n²); B is a property of the wire, so a thick bronze
 // string is measurably more inharmonic than a thin gut one.
 import { hash32 } from "./peopleSim/rng.js";
+import { prosodyOf } from "./languagePhonetics.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -578,6 +579,52 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0, know =
 }
 
 /**
+ * WHICH VOICES THIS PEOPLE SINGS WITH — solo or choir, male- or female-leaning.
+ *
+ * Not a style dial and not a culture name. Choir vs solo falls out of how many
+ * players the surplus can spare (`texture.size`) and whether the texture is
+ * one line or many (`texture.kind`). Register lean falls out of the tongue's
+ * own pitch frame (`prosody.f0k`) — a people sings with the voice it speaks
+ * with. Among what is physically viable, seed breaks ties so neighbours differ.
+ */
+export function voiceKindOf(people, texture) {
+  const size = texture?.size ?? 1;
+  const kind = texture?.kind ?? "monophony";
+  const f0k = people.lang ? (prosodyOf(people.lang).f0k || 1) : 1;
+  const female = f0k > 1.02;
+  const male = f0k < 0.98;
+
+  const soloViable = size <= 3 || kind === "monophony";
+  const choirViable = size >= 4
+    || (size >= 3 && (kind === "heterophony" || kind === "polyphony"));
+
+  const opts = [];
+  if (soloViable) {
+    if (male || !female) opts.push("solo-male");
+    if (female || !male) opts.push("solo-female");
+  }
+  if (choirViable) {
+    if (male || !female) opts.push("choir-male");
+    if (female || !male) opts.push("choir-female");
+  }
+  if (!opts.length) opts.push(male ? "solo-male" : female ? "solo-female" : "choir-male");
+
+  const roll = hash32(people.seed, "voice", "kind") / 4294967296;
+  return opts[Math.floor(roll * opts.length) % opts.length];
+}
+
+const VOICE_LABEL = {
+  "solo-male": "solo voice (male register)",
+  "solo-female": "solo voice (female register)",
+  "choir-male": "male choir",
+  "choir-female": "female choir",
+};
+const VOICE_LOW = {
+  "solo-male": 130, "solo-female": 220,
+  "choir-male": 130, "choir-female": 175,
+};
+
+/**
  * THE VOICE. The one instrument every people has: it costs no ore, no timber
  * and no craft, which is why the overwhelming majority of the world's music is
  * sung and why a tradition can exist with no built instrument at all. A people
@@ -588,14 +635,19 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0, know =
  * the tuning model: a culture's ear is calibrated on the spectrum it hears
  * most, and the spectrum it hears most is a human throat.
  */
-export function makeVoice(seed = 0) {
+export function makeVoice(seed = 0, opts = {}) {
+  const { people, texture } = opts;
+  const voiceKind = people && texture ? voiceKindOf(people, texture) : "choir-male";
   const n = 20;
   const ratios = Array.from({ length: n }, (_, i) => i + 1);
   // a glottal pulse falls off at roughly twelve decibels per octave
   const amps = ratios.map(r => Math.pow(r, -1.35));
   return {
-    id: "voice", fam: "voice", mat: "voice", frame: null, label: "the voice",
-    kind: "sustain", drive: "breath", cap: 24, poly: 1, low: 130,
+    id: "voice", fam: "voice", mat: "voice", frame: null,
+    voiceKind, label: VOICE_LABEL[voiceKind] || "the voice",
+    pitchBy: "stop",
+    kind: "sustain", drive: "breath", cap: 24, poly: 1,
+    low: VOICE_LOW[voiceKind] || 130,
     partials: ratios.map((r, i) => ({ r, a: amps[i], d: 0.22 })),
     reg: 0, reso: false, mistune: 0, damped: false, detune: 0, craft: 1,
     harmonic: true, weight: 1, raw: 1,
@@ -739,7 +791,7 @@ export const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, shell: 0.045, 
  * meend on a sarangi IS; where it is detached or leaps, it does not.
  */
 export function slidesTo(inst, fromHz, toHz, gapSecs) {
-  const how = (FAMILIES[inst.fam] || {}).pitchBy || "fixed";
+  const how = inst.pitchBy || (FAMILIES[inst.fam] || {}).pitchBy || "fixed";
   if (how === "fixed") return 0;
   if (!(fromHz > 0) || !(toHz > 0)) return 0;
   // 2. HOW LONG THE CONTACT LASTS is not one number, because what keeps a

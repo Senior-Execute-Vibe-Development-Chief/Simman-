@@ -421,7 +421,9 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
       // the same bookkeeping the modelled path does at the bottom: stop the
       // note this player is replacing, and leave the hand where it ended up
       if (opts.channel) {
-        if (prev && prev.h && prev.h.damp) prev.h.damp(when);
+        if (prev && prev.h && prev.h.damp) {
+          prev.h.damp(when, from > 0 && role === "voice" ? { soft: 0.04 } : undefined);
+        }
         A.voices.set(opts.channel, { h: rec, hz: f, end: when + dur });
       }
       return rec;
