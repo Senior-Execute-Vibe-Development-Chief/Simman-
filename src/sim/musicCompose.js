@@ -177,9 +177,10 @@ export function occasionFor(music, occKey) {
     // scale — keep them for identity — but under a civ-sim UI, ±15¢ on sample
     // libraries reads as "almost in tune" / goofy beating. Soft-pull each
     // degree toward the nearest 100¢ lattice by this fraction at render time
-    // only (mode cents for walk/skeleton stay pure). Leaning modes temper a
-    // touch more because their extremes are the ones that fatigue.
-    temper: 0.4 + 0.15 * lean,
+    // only (mode cents for walk/skeleton stay pure). Stronger than a mild
+    // polish: ~0.55–0.75 turns −16¢ into roughly −4 to −7¢ — still coloured,
+    // much less sour on real samples.
+    temper: 0.55 + 0.2 * lean,
   });
 }
 
@@ -428,6 +429,16 @@ function walkLine(music, seedBase, nNotes, startDeg, descent, land = true) {
         }
         const nd = deg + d;
         if (nd > M.reach || nd < -Math.round(M.reach * 0.34)) v *= 0.04;
+        // Atmosphere: prefer arrivals on degrees that sit near a stable lattice
+        // point, and avoid leaping onto the most offset colour tones — those
+        // are the successive intervals that read as "goofy" on samples.
+        const calm = music._calmMel || 0;
+        if (calm > 0) {
+          const off = degreeOffsetCents(music, nd);
+          v *= Math.exp(-calm * off / 26);
+          if (Math.abs(d) >= 3 && off > 10) v *= 0.32;
+          if (off > 12) v *= 0.55;
+        }
         w.push(v); tot += v;
       }
       let r = roll(i, "n") * tot, pick = CAND[0];
@@ -970,6 +981,9 @@ export function phraseBank(music, occKey) {
   const seed = hash32(music.people.seed, "ph", occKey);
   const dens = Math.min(0.95, R.density * O.density);
   const desc = music.melody.descent * O.descent;
+  // Calm melodic bias for atmosphere: walkLine prefers stable lattice degrees
+  // and avoids leaping onto extreme-offset colour tones.
+  music._calmMel = O.temper || 0;
   const pat = makePattern(music, seed, dens, R.syncopation, bars);
   // SONG-LOCAL RHYTHM VOCABULARY. Real songs reuse a small set of rhythm
   // patterns within the piece; inventing a second onset map for the departure
@@ -1763,15 +1777,139 @@ export function degreeHz(music, tonicHz, deg, oct = 0, temper = 0) {
   const wrap = Math.floor(deg / n);
   let ratio = d[i].ratio;
   // Soft background temper: pull sounding pitch toward the nearest 100¢
-  // lattice without rewriting the people's scale. temper=0.5 turns a −16¢
-  // offset into −8¢ — still coloured, less "almost right" on samples.
+  // lattice without rewriting the people's scale. Extremes compress harder
+  // than mild offsets so a −16¢ degree lands near −6¢ while a −4¢ one barely
+  // moves — colour stays, sample-beating drops.
   if (temper > 0 && ratio > 0) {
     const cents = 1200 * Math.log2(ratio);
     const near = Math.round(cents / 100) * 100;
-    const soft = near + (cents - near) * (1 - Math.min(1, temper));
+    const off = cents - near;
+    const t = Math.min(1, temper);
+    const a = Math.abs(off);
+    const kept = a <= 8
+      ? a * (1 - 0.4 * t)
+      : 8 * (1 - 0.4 * t) + (a - 8) * (1 - t);
+    const soft = near + (off === 0 ? 0 : Math.sign(off) * kept);
     ratio = Math.pow(2, soft / 1200);
   }
   return tonicHz * Math.pow(music.scale.frame.ratio, oct + wrap) * ratio;
+}
+
+/** How far a mode degree sits from the nearest 100¢ lattice (pre-temper). */
+function degreeOffsetCents(music, mi) {
+  const L = music.mode.size;
+  const k = ((mi % L) + L) % L;
+  const c = music.mode.cents[k] ?? 0;
+  const near = Math.round(c / 100) * 100;
+  return Math.abs(c - near);
+}
+
+/**
+ * Folded interval size in cents (0..600): how far two Hz sit from unison/octave.
+ * The beating zones that read as "sour" under samples live in the low seconds
+ * and the unstable thirds — not in pure fifths/fourths/octaves.
+ */
+function foldedIntervalCents(hzA, hzB) {
+  if (!(hzA > 0 && hzB > 0)) return 0;
+  let r = hzA / hzB; if (r < 1) r = 1 / r;
+  let c = (1200 * Math.log2(r)) % 1200;
+  if (c < 0) c += 1200;
+  if (c > 600) c = 1200 - c;
+  return c;
+}
+function sourInterval(c) {
+  return (c >= 25 && c <= 175) || (c >= 230 && c <= 380);
+}
+
+/**
+ * Atmosphere vertical reconcile: when a low support layer (skeleton / bass /
+ * ost) sounds under the lead on a beating interval, retarget it to a degree
+ * that is smooth against *every* overlapping lead note (octave of the onset
+ * lead when possible, else the tradition's smoothest stable under-tone), or
+ * duck it. Matching the single sourest pair was wrong — it pulled the support
+ * onto the colour tone and left it beating against the main note.
+ * Festival/war leave temper at 0 and skip this pass.
+ */
+function reconcileSupport(music, ev, O) {
+  const temper = O.temper || 0;
+  if (temper < 0.25 || !music.spec) return;
+  const lead = ev.filter(e => e.role === "lead" && e.deg != null);
+  if (!lead.length) return;
+  const stable = [0, ...(music.melody.structural || []).filter(d => d)];
+
+  const overlaps = (s) => lead.filter(L =>
+    L.b < s.b + Math.min(s.dur, 2) && s.b < L.b + Math.min(L.dur, 1.5));
+
+  const maxSour = (deg, oct, overl) => {
+    let worst = 0, sourN = 0;
+    for (const L of overl) {
+      const c = foldedIntervalCents(
+        degreeHz(music, 220, L.deg, L.oct || 0, temper),
+        degreeHz(music, 220, deg, oct, temper));
+      if (sourInterval(c)) sourN++;
+      if (c > worst) worst = c;
+    }
+    return { worst, sourN };
+  };
+
+  for (const s of ev) {
+    if (!(s.role === "skeleton" || s.role === "bass" || s.role === "ost") || s.deg == null) continue;
+    const overl = overlaps(s);
+    if (!overl.length) continue;
+    const cur = maxSour(s.deg, s.oct ?? -1, overl);
+    if (cur.sourN === 0) continue;
+
+    // Onset lead first (what the ear hears as the "chord"), then each lead's
+    // pitch class as an octave below, then stable degrees.
+    const atOnset = overl.filter(L => L.b <= s.b + 0.12)
+      .sort((a, b) => (b.vel || 0) - (a.vel || 0) || a.b - b.b);
+    const cands = [];
+    const add = (deg, oct) => {
+      if (cands.some(c => c.deg === deg && c.oct === oct)) return;
+      cands.push({ deg, oct });
+    };
+    for (const L of atOnset.concat(overl)) {
+      add(L.deg, Math.min(s.oct ?? -1, (L.oct || 0) - 1));
+    }
+    for (const d of stable) add(modeDegree(music, d), s.oct ?? -1);
+
+    let best = null, bestSour = cur.sourN, bestWorst = cur.worst, bestDiss = Infinity;
+    for (const cand of cands) {
+      const sc = maxSour(cand.deg, cand.oct, overl);
+      if (sc.sourN > bestSour) continue;
+      let diss = 0;
+      for (const L of overl) {
+        let r = degreeHz(music, 220, L.deg, L.oct || 0, temper)
+          / degreeHz(music, 220, cand.deg, cand.oct, temper);
+        if (r < 1) r = 1 / r;
+        while (r > 2.05) r /= 2;
+        diss += dissonance(music.spec, r);
+      }
+      if (sc.sourN < bestSour
+        || (sc.sourN === bestSour && sc.worst < bestWorst - 4)
+        || (sc.sourN === bestSour && Math.abs(sc.worst - bestWorst) <= 4 && diss < bestDiss)) {
+        best = cand; bestSour = sc.sourN; bestWorst = sc.worst; bestDiss = diss;
+      }
+    }
+    if (best && bestSour === 0) {
+      s.deg = best.deg;
+      s.oct = best.oct;
+    } else if (atOnset[0]) {
+      // Hold the onset chord (octave of the attack lead) and release before
+      // the line moves to a neighbour — sustained support under a moving
+      // mid-range lead was the beating source.
+      const tgt = atOnset[0];
+      s.deg = tgt.deg;
+      s.oct = Math.min(s.oct ?? -1, (tgt.oct || 0) - 1);
+      const move = overl.filter(L => L.deg !== tgt.deg && L.b > s.b + 0.05)
+        .sort((a, b) => a.b - b.b)[0];
+      if (move) s.dur = Math.min(s.dur, Math.max(0.18, move.b - s.b));
+      s.vel *= 0.85;
+    } else {
+      s.vel *= 0.35;
+      if (s.role === "ost") s.dur *= 0.7;
+    }
+  }
 }
 
 /** Lay one phrase onto the grid as timed events. */
@@ -1835,6 +1973,15 @@ function layPhrase(music, ph, O, opts) {
       vel: vel * 1.5 * metre * stress * arc * (0.65 + 0.35 * intimacy) * (last ? 1.12 : 1),
       last, strong: strong || last,
     };
+    // Unstable colour tones: don't land loud and short — lengthen and duck so
+    // the ear has time to accept them (or they pass as ornament).
+    if (calm > 0.3) {
+      const off = degreeOffsetCents(music, mi + fin + ist);
+      if (off > 10) {
+        e.vel *= 0.7;
+        e.dur *= 1.28;
+      }
+    }
     // An ornament is a quick neighbour just ahead of the note — a MODE step,
     // so it decorates the line instead of smearing a microtone across it, and
     // sparse, because one on every long note is clutter rather than style.
@@ -2445,6 +2592,9 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // arc from a switch into a ramp, and it is the only reason a small ensemble
   // can have a quiet section at all without losing half its music.
   if (hush < 1) for (const e of ev) e.vel *= hush;
+  // Atmosphere: fix sour vertical pairs between lead and low support before
+  // the bar leaves the composer (festival/war skip — temper is 0).
+  reconcileSupport(music, ev, O);
   return { events: ev, beats, tempo, grid: G, phrase: order[bar % order.length],
     section: S.sec.label, dens: S.sec.dens, seats, roster: roster.length, hush };
 }
