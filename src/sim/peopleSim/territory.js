@@ -96,6 +96,56 @@ function _rebuildMarketKn(byId) {
   }
 }
 
+// Coarse fingerprint of the inputs that reshape the MARKET_PULL partition.
+// Quantised so granary-EMA dust does not thrash a full continent flood; a real
+// relative-standing shift, birth/death, haul-tech step, or road topology bump
+// still dirties. Used only to choose flood vs tally-only — never to invent a buyer.
+function _marketFloodSig(byId, seedOf, haulTiles, roadVersion) {
+  let h = (Math.round(haulTiles * 4) | 0) ^ ((roadVersion | 0) * 10007);
+  h = (h * 1000003) ^ (byId.size * 131);
+  for (const s of byId.values()) {
+    // Relative seed already carries A_i/Abar; ~0.25-tile bins.
+    const q = Math.round((seedOf.get(s.id) || 0) * 4);
+    h = (h * 1000003) ^ (s.id * 131 + (q | 0));
+  }
+  const kn = _MARKET_KN;
+  h = (h * 1000003) ^ Math.round((kn.construction || 0) * 200);
+  h = (h * 1000003) ^ Math.round((kn.mobility || 0) * 200);
+  h = (h * 1000003) ^ Math.round((kn.navigation || 0) * 200);
+  return h | 0;
+}
+
+function _ensureTerrScratch(world, N) {
+  let cost2 = world._terrCost2;
+  if (!cost2 || cost2.length !== N) cost2 = world._terrCost2 = new Float32Array(N);
+  let tcost2 = world._terrTrueCost2;
+  if (!tcost2 || tcost2.length !== N) tcost2 = world._terrTrueCost2 = new Float32Array(N);
+  let clm2 = world._terrClaimant2;
+  if (!clm2 || clm2.length !== N) clm2 = world._terrClaimant2 = new Int32Array(N);
+  return { cost2, tcost2, clm2 };
+}
+
+// After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
+// better on the SAME pass's effort metric (second-best slot). Marketing habit —
+// standing farm-gate relationships do not flip on float dust.
+function _applyMarketHysteresis(owner, cost, tcost, clm, prevOwner, cost2, tcost2, clm2, byId, N, hyst) {
+  if (!(hyst > 1)) return;
+  for (let ti = 0; ti < N; ti++) {
+    const po = prevOwner[ti];
+    const no = owner[ti];
+    if (po < 0 || no === po || !byId.has(po)) continue;
+    if (clm2[ti] !== po) continue;   // incumbent was not even second — clear loss
+    const pc = cost2[ti], nc = cost[ti];
+    // Claimed MARKET_PULL costs are strictly negative (ring edge is nd >= 0).
+    // Challenger must be HYST× better: nc < pc * hyst (e.g. −12 beats −10 at 1.15).
+    if (nc < pc * hyst) continue;
+    owner[ti] = po;
+    cost[ti] = pc;
+    tcost[ti] = tcost2[ti];
+    clm[ti] = po;
+  }
+}
+
 export function reachBudget(s) {
   // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
   // they keep only their guaranteed core block, so the whole rural catchment
@@ -223,10 +273,9 @@ export function computeTerritory(world) {
   // persist field, since it's derived from fert/flood/river which are reconstructed on load).
   const val = world._tileValue && world._tileValue.length === N ? world._tileValue : initTileValue(world);
   const riverMag = world.riverMag;   // the navigable spine — reach rides it cheaply (RIVER_REACH)
-  // Reset COST every pass (roads / budgets shift the food falloff) but keep
-  // OWNER — ownership is persistent, that's what stabilises the borders.
-  cost.fill(Infinity);
-  tcost.fill(Infinity);
+  // COST reset is deferred until we know a flood will run. Under MARKET_PULL_CACHE a
+  // clean bid fingerprint reuses the previous partition's cost fields for tally —
+  // wiping them here would mark every tile unreachable and starve the ledger.
 
   const byId = new Map();
   const budget = new Map();
@@ -268,6 +317,7 @@ export function computeTerritory(world) {
   // tile) — the same edict-derived figure foodHierarchy already hauls grain on.
   const mktPull = T.MARKET_PULL > 0;
   const seedOf = new Map();
+  let haulTiles = 0;
   if (mktPull) {
     _rebuildMarketKn(byId);
     let sum = 0, n = 0;
@@ -298,7 +348,7 @@ export function computeTerritory(world) {
     const _mk = _MARKET_KN;
     const _cons = _mk.construction || 0, _mob = _mk.mobility || 0;
     const _techRange = 1 + (_cons * 0.6 + _mob * 0.4 + Math.max(0, _cons - 0.85) * 5) * T.FOOD_HAUL_TECH;
-    const haulTiles = (2 * 340 / (40075 / tw)) * _techRange;   // HAUL_LAND_KM, e-folding -> finite range, x the age's carriage
+    haulTiles = (2 * 340 / (40075 / tw)) * _techRange;   // HAUL_LAND_KM, e-folding -> finite range, x the age's carriage
     // THE DECAY LAW (work-plan item 4). Freight rises STEADILY with distance, so
     // the farm-gate net is A_i - freight*d and hits EXACTLY ZERO at a finite
     // range — von Thuenen's rings END. The first build used an exponential haul
@@ -314,6 +364,17 @@ export function computeTerritory(world) {
     // average market reaches exactly HAUL_LAND_KM, the edict's own 340 km.
     for (const [id, a] of seedOf) seedOf.set(id, -haulTiles * (a / abar));
   }
+
+  // Partition vs tally (MARKET_PULL_CACHE): when bids/carriage/roads/roster are
+  // unchanged, skip the Dijkstra and only retally under the stored partition.
+  // Force a flood every 8 cached territory cadences so slow road-quality drift
+  // (which may not bump _roadVersion) cannot leave haul costs stale forever.
+  const mktSig = mktPull
+    ? _marketFloodSig(byId, seedOf, haulTiles, world._roadVersion || 0)
+    : 0;
+  const mktCache = mktPull && T.MARKET_PULL_CACHE > 0;
+  const mktAge = world._mktFloodAge || 0;
+  const mktFlood = !mktPull || !mktCache || world._mktFloodSig !== mktSig || !world._mktFloodReady || mktAge >= 8;
 
   // ── CATCHMENT_CLIP (T.CATCHMENT_CLIP): the economic catchment is REACTIVE to the
   // political map — a settlement may only work tiles its OWN country already holds
@@ -386,10 +447,22 @@ export function computeTerritory(world) {
   // neighbour if necessary. Where two cores overlap (close settlements) the
   // FIRST to claim a tile this pass keeps it — and since we iterate in the
   // stable settlement order, the same one always wins, so no flicker.
+  // Under MARKET_PULL_CACHE a clean fingerprint skips this whole flood and
+  // keeps the stored partition for the tally below.
+  if (mktFlood) {
+  // Reset COST every flood (roads / budgets / bids shift the falloff) but keep
+  // OWNER — ownership is persistent, that's what stabilises the borders.
+  cost.fill(Infinity);
+  tcost.fill(Infinity);
   const heap = world._terrHeap || (world._terrHeap = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
+  const prevOwner = mktPull && T.MARKET_PULL_HYST > 1 ? owner.slice() : null;
+  const { cost2, tcost2, clm2 } = mktPull && T.MARKET_PULL_HYST > 1
+    ? _ensureTerrScratch(world, N)
+    : { cost2: null, tcost2: null, clm2: null };
+  if (cost2) { cost2.fill(Infinity); tcost2.fill(Infinity); clm2.fill(-1); }
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
     // T.MARKET_PULL: no guaranteed block. Carriage to the tile you stand on is
@@ -558,6 +631,9 @@ export function computeTerritory(world) {
       if (mktPull && nd >= 0) continue;
       if (!mktPull && nd > bud) continue;    // owner can't reach further (in value-weighted effort)
       if (nd < cost[ni]) {
+        if (cost2 && clm[ni] >= 0 && clm[ni] !== oid) {
+          cost2[ni] = cost[ni]; tcost2[ni] = tcost[ni]; clm2[ni] = clm[ni];
+        }
         cost[ni] = nd;
         tcost[ni] = tcHere + step;
         clm[ni] = oid;   // the claimant rides the frontier, on land AND water
@@ -573,8 +649,18 @@ export function computeTerritory(world) {
         // who is farming for whom, not who rules the tile politically.
         if ((mktPull || lk < 0) && elev[ni] > 0 && (mktPull || inCountry(oid, ni))) owner[ni] = oid;
         heap.push(ni, nd);
+      } else if (cost2 && clm[ni] !== oid && nd < cost2[ni]) {
+        cost2[ni] = nd; tcost2[ni] = tcHere + step; clm2[ni] = oid;
       }
     }
+  }
+
+  if (prevOwner) _applyMarketHysteresis(owner, cost, tcost, clm, prevOwner, cost2, tcost2, clm2, byId, N, T.MARKET_PULL_HYST);
+  if (mktPull) { world._mktFloodSig = mktSig; world._mktFloodReady = true; world._mktFloodAge = 0; }
+  } else if (mktPull) {
+    // Tally-only: partition reused. Debug counter for probes / HUD.
+    world._mktFloodSkipped = (world._mktFloodSkipped || 0) + 1;
+    world._mktFloodAge = mktAge + 1;
   }
 
   tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
