@@ -315,7 +315,17 @@ function handleMessage(m) {
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};
-      world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
+      world = initPeopleSim(m.w, {
+        seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes,
+        deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh,
+        ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival,
+        onGenesisProgress: (info) => {
+          // Mint-ready gather blocks this worker for a long wall-clock at the
+          // app grid — without these, the page looks paused (play does nothing
+          // until a sudden jump to ~20-30k).
+          try { self.postMessage({ type: "genesisProgress", ...info }); } catch { /* ignore */ }
+        },
+      });
       worldSeed = m.seed; runJournal.length = 0; _journalNext = 0; _funnelNext = 0; _jDeaths = 0; _jEvSeen = -1;
       telEnable(world);   // the journal's funnel windows — the probes' own channels, live in the app
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
@@ -537,12 +547,12 @@ function tick() {
   // spiking step from blocking the snapshot cadence — and that spike stays off the
   // main (render) thread, which is the whole point of the worker.
   const now = performance.now();
-  // Quiet ages = nothing on the map yet: no realm AND no settled settlement.
-  // Under T.LAND_KNOW prehistory is entity-free until the tallies bar, so the
-  // fast-forward carries the whole empty span and stands down the moment the
-  // FIRST CITY lands (the first visible beat), a little before the first state.
-  quietAgesNow = !!world && (!world.countries || world.countries.size === 0)
-    && !(world.settlements && world.settlements.some((s) => s.mode === "settled"));
+  // Quiet ages = nothing on the POLITICAL map yet (no realm). Under
+  // CITY_AT_BIRTH the first cities mint before the first nation — keep Max
+  // through that birth so the dial doesn't cliff from unbounded → 1× the
+  // instant the first city lands (app-grid ticks are heavy under the farm-tile
+  // stack; that cliff read as "dead frozen"). Stand down when a realm forms.
+  quietAgesNow = !!world && (!world.countries || world.countries.size === 0);
   fastEpochNow = autoEpoch && quietAgesNow;
   let steps;
   if (speed >= UNBOUNDED_TPS || fastEpochNow) {
