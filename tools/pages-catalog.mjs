@@ -54,7 +54,7 @@ fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2) + "\n");
 
 const buildsDir = path.join(site, "builds");
 fs.mkdirSync(buildsDir, { recursive: true });
-fs.writeFileSync(path.join(buildsDir, "index.html"), pickerHtml());
+fs.writeFileSync(path.join(buildsDir, "index.html"), pickerHtml(catalog));
 
 // If nothing has claimed the live root yet, leave a stub so /Simman-/ itself
 // is useful (sends you to the picker) instead of a blank 404.
@@ -73,9 +73,13 @@ function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 }
 
-function pickerHtml() {
-  // Self-contained picker. Fetches ../builds.json at runtime so a stale
-  // cached HTML still lists whatever the latest deploy wrote.
+function pickerHtml(cat) {
+  // Bake the catalog into the page (fetch is a refresh path). Avoid regex
+  // literals in this template — a `/^\//` inside a JS template literal
+  // collapses to `/^//`, which is a syntax error and left the picker stuck
+  // on "Loading…".
+  const baked = JSON.stringify(cat == null ? { live: null, previews: [] } : cat)
+    .replace(/</g, "\\u003c"); // don't break out of <script>
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -142,44 +146,54 @@ function pickerHtml() {
   <footer>Catalog: <code id="when">—</code></footer>
 </main>
 <script>
-const BASE = new URL("..", location.href); // /Simman-/
+const BAKED = ${baked};
+const ROOT = (function () {
+  // Prefer the site root (/Simman-/), not /Simman-/builds/.
+  var p = location.pathname || "/";
+  if (p.slice(-1) !== "/") p += "/";
+  var marker = "/builds/";
+  var i = p.indexOf(marker);
+  if (i !== -1) p = p.slice(0, i + 1);
+  return new URL(p, location.origin);
+})();
 function shortSha(s){ return (s||"").slice(0,8) || "—"; }
 function when(iso){
   if(!iso) return "—";
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
 }
 function hrefFor(p) {
-  if (!p.path || p.path === "/") return new URL("./", BASE).href;
-  return new URL(String(p.path).replace(/^\//, ""), BASE).href;
+  var path = (p && p.path) ? String(p.path) : "/";
+  if (path.charAt(0) === "/") path = path.slice(1);
+  return new URL(path || "./", ROOT).href;
+}
+function esc(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 }
 function row(p, tag){
-  const href = hrefFor(p);
+  var href = hrefFor(p);
   return '<li><a class="row" href="'+href+'">'
     + '<div><div class="name">'+esc(p.branch||p.slug||"build")+'</div>'
     + '<div class="meta">'+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div></div>'
     + (tag ? '<span class="tag">'+esc(tag)+'</span>' : '')
     + '</a></li>';
 }
-function esc(s){
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+function render(cat) {
+  var live = document.getElementById("live");
+  var prev = document.getElementById("previews");
+  if (cat.live) live.innerHTML = "<ul>"+row(cat.live, "live")+"</ul>";
+  else live.innerHTML = '<p class="empty">No live build yet — push to <code>main</code>.</p>';
+  var list = Array.isArray(cat.previews) ? cat.previews : [];
+  if (!list.length) prev.innerHTML = '<p class="empty">No preview channels yet. Pushes to <code>claude/**</code> or <code>cursor/**</code> appear here.</p>';
+  else prev.innerHTML = "<ul>"+list.map(function(p){ return row(p, "preview"); }).join("")+"</ul>";
+  var latest = [cat.live].concat(list).filter(Boolean).map(function(x){ return x.builtAt; }).sort().pop();
+  document.getElementById("when").textContent = when(latest);
 }
-fetch(new URL("builds.json", BASE), { cache: "no-store" })
-  .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
-  .then(cat => {
-    const live = document.getElementById("live");
-    const prev = document.getElementById("previews");
-    if (cat.live) live.innerHTML = "<ul>"+row(cat.live, "live")+"</ul>";
-    else live.innerHTML = '<p class="empty">No live build yet — push to <code>main</code>.</p>';
-    const list = Array.isArray(cat.previews) ? cat.previews : [];
-    if (!list.length) prev.innerHTML = '<p class="empty">No preview channels yet. Pushes to <code>claude/**</code> or <code>cursor/**</code> appear here.</p>';
-    else prev.innerHTML = "<ul>"+list.map(p => row(p, "preview")).join("")+"</ul>";
-    const latest = [cat.live, ...list].filter(Boolean).map(x => x.builtAt).sort().pop();
-    document.getElementById("when").textContent = when(latest);
-  })
-  .catch(err => {
-    document.getElementById("live").innerHTML = '<p class="empty">Could not load builds.json ('+esc(err.message)+').</p>';
-    document.getElementById("previews").innerHTML = "";
-  });
+render(BAKED);
+// Refresh from the live catalog when possible (keeps an open tab current).
+fetch(new URL("builds.json", ROOT), { cache: "no-store" })
+  .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error(r.status)); })
+  .then(render)
+  .catch(function(){ /* baked list already shown */ });
 </script>
 </body>
 </html>
