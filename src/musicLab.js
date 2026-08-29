@@ -393,6 +393,7 @@ function feedRoll(m, events, beat0 = 0) {
       dur: Math.max(0.08, ev.dur || 0.25),
       hz, role: ev.role || "lead",
       vel: ev.vel || 0.3,
+      stroke: ev.stroke || null,
     });
   }
   // Ambient can run forever — keep a trailing window so the canvas stays light.
@@ -568,15 +569,35 @@ async function exportRollMidi(m) {
   downloadBytes(rollExportName(m, "mid"), bytes, "audio/midi");
   flashRollExport(`downloaded ${rollExportName(m, "mid")}`);
 }
-/** Primary copy: self-describing JSON+legend for pasting into an AI. */
+/** Primary copy: full piece as self-describing JSON for pasting into an AI.
+ *  Rebuilds from composePiece so form-listen filtering and hidden chips do not
+ *  strip voice/het/elab from the document the model sees. */
 async function copyRollForAi(m) {
-  if (!ROLL.live) seedRollPreview(m);
-  const notes = rollVisibleNotes();
-  if (!notes.length) { flashRollExport("nothing to copy — show at least one layer"); return; }
+  let notes;
+  try {
+    const piece = composePiece(m, S.occ, null, S.intimacy);
+    ROLL.spb = 60 / piece.tempo;
+    notes = [];
+    for (const ev of piece.events || []) {
+      let hz = 0;
+      try {
+        if (ev.role === "pulse" && (ev.deg == null || ev.deg === 0) && !ev.oct) hz = 0;
+        else hz = noteFreq(m, ev) || 0;
+      } catch { hz = 0; }
+      notes.push({
+        b: ev.b || 0, dur: Math.max(0.08, ev.dur || 0.25),
+        hz, role: ev.role || "lead", vel: ev.vel || 0.3, stroke: ev.stroke || null,
+      });
+    }
+  } catch {
+    if (!ROLL.live) seedRollPreview(m);
+    notes = rollVisibleNotes();
+  }
+  if (!notes.length) { flashRollExport("nothing to copy"); return; }
   const { text } = buildRollForAi(notes, rollExportOpts(m));
   try {
     await navigator.clipboard.writeText(text);
-    flashRollExport(`copied AI roll (${notes.length} notes) — paste into a chat`);
+    flashRollExport(`copied AI roll (${notes.length} notes, full piece) — paste into a chat`);
   } catch {
     downloadBytes(rollExportName(m, "json.txt"), new TextEncoder().encode(text), "text/plain");
     flashRollExport("clipboard blocked — downloaded .json.txt instead");

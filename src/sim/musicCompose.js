@@ -80,7 +80,7 @@ export const OCCASIONS = {
   // ATMOSPHERE is the one occasion with no event in it, so nothing outside the
   // music decides how it goes — the MODE does. Every number in this row is
   // replaced by `affectOf` below; what is written here is only the fallback.
-  peace:    { label: "atmosphere", bright: 0,  tempo: 1.0,  density: 1.05, reg: 0.2,  perc: 0.6,  orn: 0.8,  drone: 0.5,  descent: 0.85, artic: 1.0,   lead: null },
+  peace:    { label: "atmosphere", bright: 0,  tempo: 1.0,  density: 1.0,  reg: 0.2,  perc: 0.34, orn: 0.8,  drone: 0.5,  descent: 0.85, artic: 1.0,   lead: null },
   rite:     { label: "rite",      bright: -1, tempo: 0.74, density: 0.8,  reg: 0,    perc: 0.3,  orn: 1.2,  drone: 1,    descent: 1.05, artic: 1.05, lead: "sustain" },
   war:      { label: "war",       bright: 0,  tempo: 1.3,  density: 1.15, reg: -0.6, perc: 1,    orn: 0.3,  drone: 0.5,  descent: 0.85, artic: 0.8,  lead: "loud" },
   mourning: { label: "mourning",  bright: -1, tempo: 0.64, density: 0.62,  reg: -0.4, perc: 0.16, orn: 1,    drone: 0.9,  descent: 1.35, artic: 1.1,    lead: "sustain" },
@@ -1964,13 +1964,22 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // elaboration hangs on. Always emitted as `skeleton` so a form-listen path
   // can hear the map without the samples; when a core body is on stage it
   // also plays those tones (slow, damped), which is what irama stretches.
+  //
+  // AND IT MUST BE AUDIBLE. When a core body is claimed, strata already prices
+  // sparse strokes loud (effort per cycle). When there is no core — the lead
+  // body carrying the trunk on the side — a flat 0.2×0.55 left the map at
+  // velocity ~0.11, quieter than ghost strokes, so the "map under the surface"
+  // was not a map. Sparse strong-beat tones get the same effort rule; they
+  // only duck slightly under the lead so they do not double it.
   const sk = phraseSkeleton(music, ph);
   const skMap = new Map(sk.map(x => [x.i, x.mi]));
   if (sk.length) {
     const skInst = ST.core && audible("core") ? ST.core.k
       : ST.lead ? ST.lead.k
         : (E.marks && E.marks[0] != null ? E.marks[0] : 0);
-    const skVel = ST.core ? ST.core.vel : 0.2;
+    const skEffort = Math.max(0.32, Math.min(0.7,
+      0.46 / Math.pow(Math.max(1, sk.length) / 6, 0.34)));
+    const skVel = ST.core && audible("core") ? ST.core.vel : skEffort * 0.88;
     for (const x of sk) {
       ev.push({
         b: slotBeat(G, x.s, R.swing),
@@ -1978,7 +1987,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         inst: skInst,
         deg: modeDegree(music, x.mi + fin + ist),
         oct: -1,
-        vel: skVel * (ST.core && audible("core") ? 1 : 0.55),
+        vel: skVel,
         role: "skeleton",
         damped: true,
       });
@@ -2253,13 +2262,23 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     // part 1 — measured, four fifths of its percussion. A solo player covers
     // more of the pattern than any one member of a section does, which is
     // exactly what cycling the parts over the bodies gives.
-    const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.55 * O.perc * S.sec.thin)));
+    // HOW MANY PARTS follows the occasion's perc dial and how thin the section
+    // is — not the full irama density ramp. Section dens multiplies the
+    // elaborating surface; giving the same ramp to the drum kit turned
+    // atmosphere into a busy percussion track (measured: 179 pulse hits vs 59
+    // lead notes on a peace piece). Irama still thickens drums a little via
+    // sqrt, so climaxes get busier without inheriting 1:2:4:8.
+    const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.45 * O.perc * S.sec.thin)));
     const play = section;
-    drumEnsemble(music, G, SLOTS, seed, hands, R.density * S.sec.dens * 0.5).forEach((part, pi) => {
+    const drumDens = R.density * Math.sqrt(Math.max(1, S.sec.dens)) * (0.22 + 0.55 * O.perc);
+    // Loudness also follows perc: war/festival still hit hard; atmosphere
+    // supports. The old flat ×2.2 made even a soft occasion's kit front the mix.
+    const drumGain = (0.85 + 1.15 * O.perc);
+    drumEnsemble(music, G, SLOTS, seed, hands, drumDens).forEach((part, pi) => {
       const body = play[pi % play.length];
       for (const h of part.hits) {
         ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.35, inst: body.k, deg: 0,
-          oct: -1, vel: h.vel * O.perc * (ST.pulse ? ST.pulse.vel : 0.5) * 2.2,
+          oct: -1, vel: h.vel * O.perc * (ST.pulse ? ST.pulse.vel : 0.5) * drumGain,
           role: "pulse", stroke: h.stroke, voice: pi });
       }
     });

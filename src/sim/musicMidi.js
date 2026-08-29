@@ -11,7 +11,8 @@ export const ROLL_MIDI_CH = {
   lead: 0, voice: 1, skeleton: 2, core: 2, bass: 3, elab: 4, het: 5,
   ost: 6, pad: 7, mark: 9, pulse: 9,
 };
-export const ROLL_DRUM_NOTE = { mark: 49, pulse: 38 }; // crash / snare
+export const ROLL_DRUM_NOTE = { mark: 49, pulse: 38 }; // crash / snare fallback
+export const STROKE_DRUM_NOTE = { bass: 36, open: 38, slap: 40, ghost: 42 };
 
 export function hzToMidi(hz) {
   if (!(hz > 30)) return null;
@@ -88,7 +89,7 @@ export function buildMidiFile(notes, opts = {}) {
       const dur = Math.max(1, Math.round(n.dur * MIDI_TPQ));
       const vel = Math.max(1, Math.min(127, Math.round((n.vel || 0.4) * 100)));
       let note;
-      if (ch === 9) note = ROLL_DRUM_NOTE[role] || 42;
+      if (ch === 9) note = STROKE_DRUM_NOTE[n.stroke] || ROLL_DRUM_NOTE[role] || 42;
       else {
         const p = hzToMidi(n.hz);
         if (!p) continue;
@@ -127,7 +128,7 @@ export function buildMidiCsv(notes, opts = {}) {
     for (const n of byRole.get(role)) {
       const ch = ROLL_MIDI_CH[role] != null ? ROLL_MIDI_CH[role] : 0;
       let midi = "", cents = "";
-      if (ch === 9) { midi = String(ROLL_DRUM_NOTE[role] || 42); cents = "0"; }
+      if (ch === 9) { midi = String(STROKE_DRUM_NOTE[n.stroke] || ROLL_DRUM_NOTE[role] || 42); cents = "0"; }
       else {
         const p = hzToMidi(n.hz);
         if (!p) continue;
@@ -191,7 +192,7 @@ export function buildRollForAi(notes, opts = {}) {
       const ch = ROLL_MIDI_CH[role] != null ? ROLL_MIDI_CH[role] : 0;
       const pitched = ch !== 9 && n.hz > 30;
       const p = pitched ? hzToMidi(n.hz) : null;
-      const drum = ch === 9 ? (ROLL_DRUM_NOTE[role] || 42) : null;
+      const drum = ch === 9 ? (STROKE_DRUM_NOTE[n.stroke] || ROLL_DRUM_NOTE[role] || 42) : null;
       outNotes.push({
         start_beat: +Number(n.b).toFixed(4),
         duration_beats: +Number(n.dur).toFixed(4),
@@ -200,6 +201,7 @@ export function buildRollForAi(notes, opts = {}) {
         midi: p ? p.note : drum,
         cents_from_et: p ? p.cents : null,
         et_name: p ? midiName(p.note) : (drum != null ? `drum:${drum}` : null),
+        stroke: n.stroke || null,
         velocity: +Number(n.vel || 0.4).toFixed(3),
         unpitched: !pitched,
       });
