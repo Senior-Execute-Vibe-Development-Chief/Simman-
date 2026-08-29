@@ -3,9 +3,9 @@
   "previews": [
     {
       "branch": "cursor/deploy-channel-picker-15e6",
-      "sha": "1056d1a5e67d03ed348dadab021389a7a9def6dd",
+      "sha": "734db0a040a2553a4b7de81a298abf8b50afab21",
       "slug": "cursor-deploy-channel-picker-15e6",
-      "builtAt": "2026-08-29T11:34:10.076Z",
+      "builtAt": "2026-08-29T11:39:45.486Z",
       "channel": "preview",
       "path": "/b/cursor-deploy-channel-picker-15e6/"
     }
