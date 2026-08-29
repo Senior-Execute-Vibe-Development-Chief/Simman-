@@ -1,0 +1,13 @@
+{
+  "live": null,
+  "previews": [
+    {
+      "branch": "cursor/deploy-channel-picker-15e6",
+      "sha": "1056d1a5e67d03ed348dadab021389a7a9def6dd",
+      "slug": "cursor-deploy-channel-picker-15e6",
+      "builtAt": "2026-08-29T11:34:10.076Z",
+      "channel": "preview",
+      "path": "/b/cursor-deploy-channel-picker-15e6/"
+    }
+  ]
+}
