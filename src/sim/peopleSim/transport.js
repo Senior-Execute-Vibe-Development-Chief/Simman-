@@ -277,15 +277,21 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads, noPortTax) {
   if (!ignoreRoads) {
     const rq = world.roadQuality;
     if (rq) {
-      // BOTH endpoints must be road tiles. The old `qF < 1 || qT < 1` let a
-      // single coastal road price the STEP INTO OPEN OCEAN at road cost
+      // BOTH endpoints must be road tiles ON LAND. The old `qF < 1 || qT < 1`
+      // let a single coastal road price the STEP INTO OPEN OCEAN at road cost
       // (terrain/nav never consulted) — zero-tech invent-jump worlds then
       // flooded the whole globe on the first computeTransport and blew the
       // frontier heap (browser: cap 2M→4M at step ~35088 after mint-ready).
-      const qF = rq[fromTi], qT = rq[toTi];
-      if (qF < 1.0 && qT < 1.0) {
-        const q = Math.min(qF, qT);
-        if (q > 0 && isFinite(q)) return Math.max(1e-3, q);
+      // Land-only closes any residual water-adjacent mispaint; ocean always
+      // pays the nav gate below.
+      const elev = world.elev;
+      if (elev && (elev[fromTi] <= 0 || elev[toTi] <= 0)) { /* fall through */ }
+      else {
+        const qF = rq[fromTi], qT = rq[toTi];
+        if (qF < 1.0 && qT < 1.0) {
+          const q = Math.min(qF, qT);
+          if (q > 0 && isFinite(q)) return Math.max(1e-3, q);
+        }
       }
     }
   }
@@ -462,7 +468,9 @@ export function computeTransport(world) {
   let heap = world._transHeap;
   if (!heap || heap.cap < wantCap) {
     heap = world._transHeap = new _MinHeap(wantCap);
-    heap._maxCap = Math.max(wantCap * 4, 1 << 20);
+    // Tight soft ceiling: a correct Dijkstra peaks at O(N). Past ~2N is a
+    // runaway (mint-ready ocean flood) — stop growing and abort the pass.
+    heap._maxCap = Math.max(wantCap * 2, N * 2);
   }
   heap.n = 0;
   // Seed: every alive settlement contributes a 0-distance source.
@@ -481,8 +489,14 @@ export function computeTransport(world) {
   // open ground.
   const SQRT2 = Math.SQRT2;
   let peakN = 0, pushes = 0;   // frontier high-water attribution (allocation-wall watch)
+  const pushBudget = Math.max(N * 8, 1 << 20);  // sane upper bound; abort past this
+  let aborted = false;
   while (heap.n > 0) {
     if (heap.n > peakN) peakN = heap.n;
+    if (pushes > pushBudget || peakN > heap._maxCap) {
+      aborted = true;
+      break;
+    }
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;       // stale
     const ty = (ti / tw) | 0;
@@ -508,10 +522,14 @@ export function computeTransport(world) {
       const nd = d + c * mul[k];
       if (nd < dist[ni]) {
         dist[ni] = nd;
-        if (!heap.push(ni, nd)) { /* frontier full — leave remaining tiles at Infinity */ }
+        if (!heap.push(ni, nd)) { aborted = true; break; }
         else pushes++;
       }
     }
+    if (aborted) break;
+  }
+  if (aborted) {
+    console.error(`[transHeap] ABORT step=${world.step} peakN=${peakN} pushes=${pushes} cap=${heap.cap} — runaway frontier (incomplete transportDist)`);
   }
   // Frontier watch (the 26.6k allocation-wall diagnosis, 2026-08-20): the heap
   // measured SMALL at both grids (tw=480 cap 4096 / tw=960 cap 65536 by ~28k),
