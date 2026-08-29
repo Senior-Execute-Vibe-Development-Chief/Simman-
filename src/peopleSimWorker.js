@@ -189,9 +189,10 @@ let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 // Max / quiet-ages: the UI cannot usefully paint 30Hz of history while the
 // worker burns unbounded steps — and that stream was the allocation-wall
-// killer (docs/allocation-wall-2026-08-20.md). Drop to ~4Hz under fastEpoch
-// so buffer-return + GC keep up through the mint-ready → first-cities burst.
-const SNAP_MS_FAST = 250;
+// killer (docs/allocation-wall-2026-08-20.md). Drop to ~2Hz under fastEpoch
+// so buffer-return + GC keep up through the mint-ready → first-cities burst
+// (browser repro still OOMed at 4Hz + partial MessageChannel wakes).
+const SNAP_MS_FAST = 500;
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
 
 // ── The snapshot buffer pool (the 26.6k allocation wall, 2026-08-20) ─────────
@@ -529,23 +530,19 @@ let pageHidden = false;          // main thread posts {type:'visibility', hidden
 let _tickTimer = null;           // paced-mode setTimeout handle (cancellable on visibility flip)
 const _tickChan = new MessageChannel();
 _tickChan.port1.onmessage = () => tick();
-let _fastWakeN = 0;   // MessageChannel-only wake never idles the worker — GC starves
 function scheduleTick() {
   if (scheduled || !playing) return;
   scheduled = true;
-  // Unbounded / quiet-ages: re-enter immediately. Background with step debt:
-  // same — don't wait on a throttled timer to burn catch-up. Paced + visible
-  // (or background with nothing earned yet): wake on a timer.
-  if (speed >= UNBOUNDED_TPS || fastEpochNow || (pageHidden && tickAccum >= 1)) {
-    // Every 8th unbounded wake, yield via setTimeout(0) so the main thread can
-    // return snapshot buffers and the worker's young-gen can collect — without
-    // this, mint-ready Max play OOMs in MinHeap._grow within ~500 steps of the
-    // first cities (browser repro: "Array buffer allocation failed" @ ~35k).
-    if ((fastEpochNow || speed >= UNBOUNDED_TPS) && ((++_fastWakeN) & 7) === 0) {
-      _tickTimer = setTimeout(tick, 0);
-    } else {
-      _tickChan.port2.postMessage(0);
-    }
+  // Unbounded / quiet-ages: MUST idle between slices. A MessageChannel-only
+  // wake never returns to the event loop long enough for GC + bufret, and
+  // mint-ready Max play then dies in MinHeap._grow with
+  // "Array buffer allocation failed" (~500 steps after first cities —
+  // docs/allocation-wall-2026-08-20.md; browser repro 2026-08-29).
+  // setTimeout(1) keeps the unbounded burn but lets the heap breathe.
+  if (speed >= UNBOUNDED_TPS || fastEpochNow) {
+    _tickTimer = setTimeout(tick, 1);
+  } else if (pageHidden && tickAccum >= 1) {
+    _tickChan.port2.postMessage(0);
   } else {
     _tickTimer = setTimeout(tick, SNAP_MS);
   }
@@ -832,7 +829,11 @@ function buildSnapshotUnsafe() {
     for (let i = 0; i < owner.length; i++) { const o = owner[i]; if (o >= 0 && !settled.has(o)) owner[i] = -1; }
   }
   const roadQuality = sendStatic && world.roadQuality ? pooledCopy(world.roadQuality) : null;
-  const roadFlow = world.roadFlow ? pooledCopy(world.roadFlow) : null;
+  // Under Max/fastEpoch, roadFlow is animation-only — ship with the static
+  // cadence so we are not allocating a fresh Float32Array(N) every snap while
+  // the tick loop never idles (allocation-wall / mint-ready OOM).
+  const wantFlow = !fastEpochNow && speed < UNBOUNDED_TPS;
+  const roadFlow = world.roadFlow && (wantFlow || sendStatic) ? pooledCopy(world.roadFlow) : null;
 
   // Per-tile identity field (identityField.js): for the active Peoples / Faiths /
   // Languages lens, ship the dominant id (+ a significant secondary, ≥20%, for
