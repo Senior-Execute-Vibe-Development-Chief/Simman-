@@ -147,3 +147,100 @@ export function buildMidiCsv(notes, opts = {}) {
   }
   return lines.join("\n") + "\n";
 }
+
+const PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+function midiName(note) {
+  if (note == null || note < 0) return null;
+  return PITCH_NAMES[((note % 12) + 12) % 12] + (Math.floor(note / 12) - 1);
+}
+
+const ROLE_GLOSS = {
+  skeleton: "structural trunk tones on strong beats — the map under the surface",
+  core: "slow skeletal melody (same job as skeleton when a core body is playing)",
+  lead: "main melodic surface",
+  voice: "sung line (often a heterophonic doubling of the lead)",
+  bass: "low moving support on stable degrees",
+  ost: "repeating ostinato / timeline figure",
+  pad: "held drone or pad",
+  elab: "dense elaboration / figuration around the lead",
+  het: "heterophonic doubling of the lead on another body",
+  mark: "colotomic punctuation (gong/bell cycle markers) — often unpitched in export",
+  pulse: "percussion / timekeeper — often unpitched in export",
+};
+
+/**
+ * Self-describing roll document for pasting into an AI chat or tool.
+ * Returns { json, text } — text is JSON with a prose header so a model gets
+ * both the schema legend and the data in one clipboard payload.
+ */
+export function buildRollForAi(notes, opts = {}) {
+  const list = (notes || []).filter(Boolean);
+  const bpm = opts.bpm || 120;
+  const beatsPerBar = opts.beatsPerBar || 4;
+  const labels = opts.roleLabels || {};
+  const byRole = new Map();
+  for (const n of list) {
+    const role = n.role || "lead";
+    if (!byRole.has(role)) byRole.set(role, []);
+    byRole.get(role).push(n);
+  }
+  const layers = [];
+  for (const role of [...byRole.keys()].sort()) {
+    const outNotes = [];
+    for (const n of byRole.get(role).slice().sort((a, b) => a.b - b.b || a.dur - b.dur)) {
+      const ch = ROLL_MIDI_CH[role] != null ? ROLL_MIDI_CH[role] : 0;
+      const pitched = ch !== 9 && n.hz > 30;
+      const p = pitched ? hzToMidi(n.hz) : null;
+      const drum = ch === 9 ? (ROLL_DRUM_NOTE[role] || 42) : null;
+      outNotes.push({
+        start_beat: +Number(n.b).toFixed(4),
+        duration_beats: +Number(n.dur).toFixed(4),
+        end_beat: +Number(n.b + n.dur).toFixed(4),
+        hz: pitched ? +Number(n.hz).toFixed(2) : null,
+        midi: p ? p.note : drum,
+        cents_from_et: p ? p.cents : null,
+        et_name: p ? midiName(p.note) : (drum != null ? `drum:${drum}` : null),
+        velocity: +Number(n.vel || 0.4).toFixed(3),
+        unpitched: !pitched,
+      });
+    }
+    layers.push({
+      id: role,
+      name: labels[role] || role,
+      gloss: ROLE_GLOSS[role] || "ensemble part",
+      note_count: outNotes.length,
+      notes: outNotes,
+    });
+  }
+  const totalBeats = list.reduce((a, n) => Math.max(a, n.b + n.dur), 0);
+  const doc = {
+    format: "simman-piano-roll/v1",
+    how_to_read: {
+      purpose: "A multi-layer piano roll from Simman Music Lab. Each layer is one musical part; notes that overlap in time sound together.",
+      time: "start_beat and duration_beats are in BEATS. One beat = one quarter note at tempo_bpm. Bar length is beats_per_bar.",
+      pitch: "hz is the exact derived-tuning frequency. midi + et_name are the nearest 12-TET key (for DAWs). cents_from_et is how far hz sits from that ET key (negative = flat).",
+      velocity: "0..1 how hard the note is played (not MIDI 0..127).",
+      layers: "Hide/show in the Lab before copy — only visible layers are included. Typical form-critical set: skeleton, lead, bass, mark, pulse.",
+      unpitched: "Percussion/punctuation may have hz null and unpitched true; midi then is a GM drum note number.",
+    },
+    people: opts.name || null,
+    seed: opts.seed != null ? opts.seed : null,
+    occasion: opts.occ || null,
+    form_process: opts.formProcess || null,
+    tempo_bpm: bpm,
+    beats_per_bar: beatsPerBar,
+    total_beats: +totalBeats.toFixed(4),
+    duration_seconds: +((totalBeats * 60) / bpm).toFixed(3),
+    layer_count: layers.length,
+    note_count: list.length,
+    layers,
+  };
+  const header = [
+    "SIMMAN_PIANO_ROLL v1 — paste this whole block into an AI or tool.",
+    "Everything after the blank line is JSON. Read how_to_read first, then layers[].notes.",
+    `People: ${doc.people || "?"} · occasion: ${doc.occasion || "?"} · ${doc.tempo_bpm} BPM · ${doc.total_beats} beats · ${doc.layer_count} layers / ${doc.note_count} notes.`,
+    "",
+  ].join("\n");
+  return { json: doc, text: header + JSON.stringify(doc, null, 2) + "\n" };
+}
+

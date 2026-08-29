@@ -30,7 +30,7 @@ import { TRADITIONS, applyTradition } from "../src/sim/musicTraditions.js";
 import { foundLanguage } from "../src/sim/language.js";
 import { foundPeople, musicOf } from "../src/sim/musicGenome.js";
 import { ensembleFor, composePiece, ambientBar, OCCASIONS, finalFor, modeDegree, degreeHz, formOrderOf, phraseBank, phraseSkeleton } from "../src/sim/musicCompose.js";
-import { buildMidiFile, hzToMidi } from "../src/sim/musicMidi.js";
+import { buildMidiFile, hzToMidi, buildRollForAi } from "../src/sim/musicMidi.js";
 import { ARCHETYPE_PHYS_FIT_MIN } from "../src/sim/musicArchetypes.js";
 import { makeInstrument } from "../src/sim/musicInstruments.js";
 import { finalsOf } from "../src/sim/musicTuning.js";
@@ -304,6 +304,13 @@ console.log("[music] form gates");
     big.length > 100 && String.fromCharCode(big[0], big[1], big[2], big[3]) === "MThd"
       && (big[10] * 256 + big[11]) >= 2,
     `len ${big.length} tracks ${big[10] * 256 + big[11]}`);
+  const ai = buildRollForAi(notes, { bpm: piece.tempo, name: m.people.name, occ: "peace", formProcess: m.form.process });
+  check("midi: AI roll is self-describing JSON with how_to_read",
+    ai.json.format === "simman-piano-roll/v1"
+      && ai.json.how_to_read && ai.json.layers.length >= 1
+      && ai.text.includes("SIMMAN_PIANO_ROLL v1")
+      && ai.text.includes('"format": "simman-piano-roll/v1"'),
+    `layers ${ai.json.layers.length}`);
 }
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);

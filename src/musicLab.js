@@ -27,7 +27,7 @@ import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 import { TRADITIONS, applyTradition } from "./sim/musicTraditions.js";
 import { makeInstrument } from "./sim/musicInstruments.js";
 import { finalsOf } from "./sim/musicTuning.js";
-import { buildMidiFile, buildMidiCsv } from "./sim/musicMidi.js";
+import { buildMidiFile, buildMidiCsv, buildRollForAi } from "./sim/musicMidi.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 const S = {
@@ -542,7 +542,9 @@ function rollExportOpts(m) {
     bpm: Math.round(60 / Math.max(1e-6, ROLL.spb)),
     beatsPerBar: (m.rhythm && m.rhythm.beats) || 4,
     name: (m.people && m.people.name) || "simman",
+    seed: m.people && m.people.seed,
     occ: S.occ,
+    formProcess: m.form && m.form.process,
     roleLabels: ROLL_LABELS,
   };
 }
@@ -566,29 +568,31 @@ async function exportRollMidi(m) {
   downloadBytes(rollExportName(m, "mid"), bytes, "audio/midi");
   flashRollExport(`downloaded ${rollExportName(m, "mid")}`);
 }
-async function copyRollMidi(m) {
+/** Primary copy: self-describing JSON+legend for pasting into an AI. */
+async function copyRollForAi(m) {
   if (!ROLL.live) seedRollPreview(m);
   const notes = rollVisibleNotes();
   if (!notes.length) { flashRollExport("nothing to copy — show at least one layer"); return; }
-  const opts = rollExportOpts(m);
-  const bytes = buildMidiFile(notes, opts);
-  const csv = buildMidiCsv(notes, opts);
+  const { text } = buildRollForAi(notes, rollExportOpts(m));
   try {
-    if (typeof ClipboardItem !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
-      await navigator.clipboard.write([new ClipboardItem({
-        "audio/midi": new Blob([bytes], { type: "audio/midi" }),
-        "text/plain": new Blob([csv], { type: "text/plain" }),
-      })]);
-      flashRollExport("copied MIDI + note table to clipboard");
-      return;
-    }
-  } catch { /* fall through */ }
+    await navigator.clipboard.writeText(text);
+    flashRollExport(`copied AI roll (${notes.length} notes) — paste into a chat`);
+  } catch {
+    downloadBytes(rollExportName(m, "json.txt"), new TextEncoder().encode(text), "text/plain");
+    flashRollExport("clipboard blocked — downloaded .json.txt instead");
+  }
+}
+async function copyRollCsv(m) {
+  if (!ROLL.live) seedRollPreview(m);
+  const notes = rollVisibleNotes();
+  if (!notes.length) { flashRollExport("nothing to copy — show at least one layer"); return; }
+  const csv = buildMidiCsv(notes, rollExportOpts(m));
   try {
     await navigator.clipboard.writeText(csv);
-    flashRollExport("copied note table (CSV); use Download MIDI for a .mid file");
+    flashRollExport("copied CSV note table");
   } catch {
-    downloadBytes(rollExportName(m, "mid"), bytes, "audio/midi");
-    flashRollExport("clipboard blocked — downloaded .mid instead");
+    downloadBytes(rollExportName(m, "csv"), new TextEncoder().encode(csv), "text/csv");
+    flashRollExport("clipboard blocked — downloaded .csv instead");
   }
 }
 function flashRollExport(msg) {
@@ -597,7 +601,7 @@ function flashRollExport(msg) {
   el.textContent = msg;
   el.dataset.on = "1";
   clearTimeout(flashRollExport._t);
-  flashRollExport._t = setTimeout(() => { el.textContent = ""; el.dataset.on = ""; }, 3200);
+  flashRollExport._t = setTimeout(() => { el.textContent = ""; el.dataset.on = ""; }, 4200);
 }
 
 function rollHTML(m) {
@@ -619,13 +623,14 @@ function rollHTML(m) {
         style="--rc:${ROLL_COLORS[r] || css("--accent")}">${esc(ROLL_LABELS[r] || r)}</button>`;
     }).join("")}</div>
     <div class="rollexport">
+      <button type="button" id="rollcopyai">Copy for AI</button>
       <button type="button" id="rollmid" class="ghost">Download MIDI</button>
-      <button type="button" id="rollcopy" class="ghost">Copy MIDI / CSV</button>
+      <button type="button" id="rollcopycsv" class="ghost">Copy CSV</button>
       <span class="note tight" id="rollexportmsg"></span>
     </div>
-    <p class="note tight">Standard MIDI File (Type 1, one track per layer) is what every DAW piano roll
-      imports. Derived tunings snap to the nearest 12-TET key; the CSV copy keeps Hz and cents.
-      Hidden layers are omitted.</p>
+    <p class="note tight"><b>Copy for AI</b> puts a self-describing JSON document on the clipboard
+      (legend + layers + notes with beats, Hz, nearest ET name). Paste it into a chat.
+      <b>Download MIDI</b> is for DAWs (12-TET snap). Hidden layers are omitted.</p>
   </div>`;
 }
 
@@ -1699,7 +1704,8 @@ function wire() {
     };
   });
   if ($("rollmid")) $("rollmid").onclick = () => { exportRollMidi(P); };
-  if ($("rollcopy")) $("rollcopy").onclick = () => { copyRollMidi(P); };
+  if ($("rollcopyai")) $("rollcopyai").onclick = () => { copyRollForAi(P); };
+  if ($("rollcopycsv")) $("rollcopycsv").onclick = () => { copyRollCsv(P); };
   document.querySelectorAll("button[data-inst]").forEach(b => {
     b.onclick = () => {
       const inst = P.insts[+b.dataset.inst];
