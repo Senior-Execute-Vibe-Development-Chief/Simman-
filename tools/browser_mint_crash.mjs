@@ -83,15 +83,18 @@ try {
   if (errors.length) throw new Error("error before play");
   if (openStep == null) throw new Error("timed out waiting for mint-ready");
 
-  // Max (or Play) — crash was under Max after first cities / crystallize ~35040
-  await page.evaluate(() => {
+  // Max only sets speed — must also click ▶ to play. Crash was under Max after
+  // first cities / crystallize ~35040.
+  const clicked = await page.evaluate(() => {
     const byText = (re) => [...document.querySelectorAll("button")].find((b) => re.test((b.textContent || "").trim()));
-    const max = byText(/^Max$/i) || [...document.querySelectorAll("button")].find((b) => /Max/i.test(b.textContent || ""));
+    const max = byText(/^Max$/);
     const play = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("▶"));
     if (max) max.click();
-    else if (play) play.click();
+    if (play) play.click();
+    return { max: !!max, play: !!play, playLabel: play ? (play.textContent || "").trim() : null };
   });
-  console.log("pressed Max/Play");
+  console.log("pressed", clicked);
+  if (!clicked.play) throw new Error("Play (▶) button not found");
 
   const t1 = Date.now();
   let lastCities = 0;

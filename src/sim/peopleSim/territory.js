@@ -237,15 +237,29 @@ class MinHeap {
   }
   _grow() {
     const c = this.cap * 2;
-    if (c > this._maxCap) throw new Error(`territory frontier heap exceeded cap ${this.cap}→${c}`);
+    // Soft ceiling — same posture as transport.js (mint-ready Max canary).
+    if (c > this._maxCap) return false;
     try {
       const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d);
       this.ti = t; this.d = d; this.cap = c;
+      return true;
     } catch (err) {
-      throw new Error(`territory frontier grow ${this.cap}→${c} failed: ${err && err.message}`);
+      console.error(`[terrHeap] grow ${this.cap}→${c} failed:`, err && err.message);
+      return false;
     }
   }
-  push(ti, d) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; const tt = this.ti[p], td = this.d[p]; this.ti[p] = this.ti[i]; this.d[p] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = p; } }
+  push(ti, d) {
+    if (this.n >= this.cap && !this._grow()) return false;
+    let i = this.n++; this.ti[i] = ti; this.d[i] = d;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.d[p] <= this.d[i]) break;
+      const tt = this.ti[p], td = this.d[p];
+      this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
+      this.ti[i] = tt; this.d[i] = td; i = p;
+    }
+    return true;
+  }
   popMin() { const ti = this.ti[0], d = this.d[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; const tt = this.ti[b], td = this.d[b]; this.ti[b] = this.ti[i]; this.d[b] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = b; } } return { ti, d }; }
 }
 
