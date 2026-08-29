@@ -64,7 +64,7 @@
   <footer>Catalog: <code id="when">—</code></footer>
 </main>
 <script>
-const BAKED = {"live":null,"previews":[{"branch":"claude/moisture-yield-validation-chain-o29gdc","sha":"a13c15e49cf2e68bc076d93a2e98239926344f7a","slug":"claude-moisture-yield-validation-chain-o29gdc","builtAt":"2026-08-29T14:33:46.670Z","channel":"preview","path":"/b/claude-moisture-yield-validation-chain-o29gdc/"},{"branch":"cursor/mint-ready-jump-15e6","sha":"86bf6f8f197db97205a18f1d9587d573d9fcb9b7","slug":"cursor-mint-ready-jump-15e6","builtAt":"2026-08-29T14:11:59.053Z","channel":"preview","path":"/b/cursor-mint-ready-jump-15e6/"},{"branch":"cursor/market-pull-cross-border-15e6","sha":"a92e8d918400824a229968ddd30f7e2da416dcee","slug":"cursor-market-pull-cross-border-15e6","builtAt":"2026-08-29T13:49:50.801Z","channel":"preview","path":"/b/cursor-market-pull-cross-border-15e6/"},{"branch":"cursor/invent-foresight-jump-15e6","sha":"18e457fe332477349e11bec10c109b4a30803e16","slug":"cursor-invent-foresight-jump-15e6","builtAt":"2026-08-29T13:36:36.555Z","channel":"preview","path":"/b/cursor-invent-foresight-jump-15e6/"},{"branch":"cursor/deploy-channel-picker-15e6","sha":"1336b0b4e35d0eafc3663bcbb0974219d180a945","slug":"cursor-deploy-channel-picker-15e6","builtAt":"2026-08-29T11:47:07.783Z","channel":"preview","path":"/b/cursor-deploy-channel-picker-15e6/"}]};
+const BAKED = {"live":null,"previews":[{"branch":"cursor/build-chip-mintfix-15e6","sha":"376d234a692b8789dd82782cab7df7448b64b184","slug":"cursor-build-chip-mintfix-15e6","builtAt":"2026-08-29T14:50:04.373Z","channel":"preview","path":"/b/cursor-build-chip-mintfix-15e6/"},{"branch":"claude/moisture-yield-validation-chain-o29gdc","sha":"a13c15e49cf2e68bc076d93a2e98239926344f7a","slug":"claude-moisture-yield-validation-chain-o29gdc","builtAt":"2026-08-29T14:33:46.670Z","channel":"preview","path":"/b/claude-moisture-yield-validation-chain-o29gdc/"},{"branch":"cursor/mint-ready-jump-15e6","sha":"86bf6f8f197db97205a18f1d9587d573d9fcb9b7","slug":"cursor-mint-ready-jump-15e6","builtAt":"2026-08-29T14:11:59.053Z","channel":"preview","path":"/b/cursor-mint-ready-jump-15e6/"},{"branch":"cursor/market-pull-cross-border-15e6","sha":"a92e8d918400824a229968ddd30f7e2da416dcee","slug":"cursor-market-pull-cross-border-15e6","builtAt":"2026-08-29T13:49:50.801Z","channel":"preview","path":"/b/cursor-market-pull-cross-border-15e6/"},{"branch":"cursor/invent-foresight-jump-15e6","sha":"18e457fe332477349e11bec10c109b4a30803e16","slug":"cursor-invent-foresight-jump-15e6","builtAt":"2026-08-29T13:36:36.555Z","channel":"preview","path":"/b/cursor-invent-foresight-jump-15e6/"},{"branch":"cursor/deploy-channel-picker-15e6","sha":"1336b0b4e35d0eafc3663bcbb0974219d180a945","slug":"cursor-deploy-channel-picker-15e6","builtAt":"2026-08-29T11:47:07.783Z","channel":"preview","path":"/b/cursor-deploy-channel-picker-15e6/"}]};
 const ROOT = (function () {
   // Prefer the site root (/Simman-/), not /Simman-/builds/.
   var p = location.pathname || "/";
@@ -89,9 +89,10 @@ function esc(s){
 }
 function row(p, tag){
   var href = hrefFor(p);
+  var ver = (p.saveVersion != null) ? ('v'+p.saveVersion+' · ') : '';
   return '<li><a class="row" href="'+href+'">'
     + '<div><div class="name">'+esc(p.branch||p.slug||"build")+'</div>'
-    + '<div class="meta">'+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div></div>'
+    + '<div class="meta">'+esc(ver)+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div></div>'
     + (tag ? '<span class="tag">'+esc(tag)+'</span>' : '')
     + '</a></li>';
 }
