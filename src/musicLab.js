@@ -21,7 +21,7 @@ import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI,
 import { makeAudio, setDistance, playNote, sungLine, playSung, silence } from "./sim/musicSynth.js";
 import { loadSamples, sampledFor } from "./sim/musicSamples.js";
 import { slidesTo } from "./sim/musicInstruments.js";
-import { SAMPLE_BANK, SAMPLE_CREDIT } from "./sim/musicSampleManifest.js";
+import { SAMPLE_BANK, SAMPLE_CREDIT, NAMED_BANK } from "./sim/musicSampleManifest.js";
 import { voiceRange } from "./sim/vocalTract.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 import { TRADITIONS, applyTradition } from "./sim/musicTraditions.js";
@@ -860,25 +860,91 @@ function peopleHTML(m) {
   </div>`;
 }
 
+/** Which recording the Lab would play for this body (recorded path), by the
+ *  same material + density + register score `sampledFor` uses. */
+function recordingOf(inst) {
+  if (inst.sampleName && NAMED_BANK[inst.sampleName]) return NAMED_BANK[inst.sampleName].src;
+  const pool = [];
+  const fam = SAMPLE_BANK[inst.fam];
+  if (fam && !fam.unpitched) pool.push({ src: fam.src, mat: fam.mat || "wood", samples: fam.samples });
+  for (const spec of Object.values(NAMED_BANK || {})) {
+    if (spec.fam !== inst.fam || !spec.samples?.length) continue;
+    if (!pool.some(p => p.src === spec.src)) pool.push({ src: spec.src, mat: spec.mat || "wood", samples: spec.samples });
+  }
+  if (!pool.length) return null;
+  if (pool.length === 1) return pool[0].src;
+  const gap = (samples) => {
+    const hz = samples.map(s => s.hz).filter(x => x > 0).sort((a, b) => a - b);
+    if (hz.length < 2) return 1200;
+    const g = [];
+    for (let i = 1; i < hz.length; i++) g.push(1200 * Math.log2(hz[i] / hz[i - 1]));
+    g.sort((a, b) => a - b);
+    return g[Math.floor(g.length / 2)];
+  };
+  const matD = (a, b) => {
+    const X = MATERIALS[a], Y = MATERIALS[b];
+    if (!X || !Y) return 9;
+    const db = X.bright - Y.bright, dd = Math.log((X.decay + 0.2) / (Y.decay + 0.2)) / 3;
+    return Math.sqrt(db * db + dd * dd);
+  };
+  const rangeMiss = (c) => {
+    const famDef = FAMILIES[inst.fam] || {};
+    const low = famDef.low || 100;
+    const top = low * Math.pow(2, famDef.span != null ? famDef.span : Math.max(0.7, (inst.cap || 7) / 7));
+    const hz = c.samples.map(s => s.hz).filter(x => x > 0).sort((a, b) => a - b);
+    if (hz.length < 2) return 1;
+    const coverLo = Math.max(low, hz[0]), coverHi = Math.min(top, hz[hz.length - 1]);
+    const bodySpan = Math.log2(top / low) || 1;
+    const cover = coverHi > coverLo ? Math.log2(coverHi / coverLo) / bodySpan : 0;
+    return 1 - Math.max(0, Math.min(1, cover));
+  };
+  let best = pool[0], bestD = Infinity;
+  for (const c of pool) {
+    const d = matD(inst.mat, c.mat) + gap(c.samples) / 1200 + rangeMiss(c) * 1.4;
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return best.src;
+}
+
 function instrumentsHTML(m) {
+  const E = ensembleFor(m, S.occ, S.intimacy);
+  const sounding = new Set();
+  // One ambient bar is what the player is hearing — roles in the ensemble that
+  // do not fire this bar still belong to the tradition, they just are not on.
+  const bar = ambientBar(m, { occ: S.occ, intimacy: S.intimacy, bar: 0, seed: m.people.seed });
+  for (const ev of bar.events) if (ev.inst >= 0) sounding.add(ev.inst);
+  const roster = [];
+  for (const v of Object.values(E)) {
+    if (typeof v === "number" && v >= 0) roster.push(v);
+    else if (Array.isArray(v)) for (const k of v) if (typeof k === "number" && k >= 0) roster.push(k);
+  }
+  const inEnsemble = new Set(roster);
   return `<div class="card">
-    <h2>What they can build <span class="count">— ${m.insts.length} bodies</span></h2>
+    <h2>What they can build <span class="count">— ${m.insts.length} instruments</span></h2>
+    <p class="note">A tradition keeps a handful of bodies, not every family the land would allow —
+      makers and players are specialists surplus has to feed. Click one to hear it.</p>
     ${m.tuneRef != null && m.insts[m.tuneRef] ? `<p class="note tight">Everyone tunes to the
-      <strong>${esc(m.insts[m.tuneRef].label || FAMILIES[m.insts[m.tuneRef].fam].label)}</strong> —
-      the most central body here that cannot be retuned while it is being played, so its
-      consonances become the tradition's and everybody else bends to it.</p>` : ""}
-    <p class="note">Each body is made of what the land gives, gated by the crafts they have. The bars
-      show the modes it actually radiates, against integer-multiple ticks: sit on the ticks and the
-      body is <em>harmonic</em>; miss them and it is not — and that single fact is what decides the
-      scale below. Click one to hear it.</p>
-    <div class="instgrid">${m.insts.map((i, k) => `
-      <button class="inst" data-inst="${k}" title="play">
-        <div class="ihead"><span class="iname">${esc(i.label)}</span>
-          <span class="itag ${i.harmonic ? "harm" : "inharm"}">${i.harmonic ? "harmonic" : "inharmonic"}</span></div>
-        <div class="imat">${esc(MATERIALS[i.mat].label)}${i.frame ? " on " + esc(MATERIALS[i.frame].label) : ""}</div>
-        <canvas class="spec" data-spec="${k}"></canvas>
-        <div class="ifoot"><span>${i.cap} pitches</span><span>${esc(i.kind)}</span><span>weight ${pct(i.weight)}</span></div>
-      </button>`).join("")}</div>
+      <strong>${esc(m.insts[m.tuneRef].label)}</strong> — the most central body that cannot be
+      retuned mid-performance.</p>` : ""}
+    <ul class="instlist">${m.insts.map((i, k) => {
+      const mat = MATERIALS[i.mat]?.label || i.mat;
+      const frame = i.frame ? MATERIALS[i.frame]?.label : null;
+      const rec = S.sampled ? recordingOf(i) : null;
+      const on = sounding.has(k);
+      const seat = inEnsemble.has(k);
+      return `<li>
+        <button class="instrow" data-inst="${k}" title="play">
+          <span class="iname">${esc(i.label)}</span>
+          <span class="imat">${esc(mat)}${frame ? " on " + esc(frame) : ""}</span>
+          ${rec ? `<span class="iheard">heard as ${esc(rec)}</span>` : ""}
+          <span class="istatus">${on ? "playing now" : seat ? "in the ensemble" : "in the tradition"}</span>
+        </button>
+      </li>`;
+    }).join("")}</ul>
+    <p class="note tight">${sounding.size
+      ? `This bar sounds <strong>${[...sounding].map(k => esc(m.insts[k].label)).join(" · ")}</strong>${
+          m.insts.length > sounding.size ? " — the rest sit out until a later bar or a denser occasion." : "."}`
+      : "Nothing pitched is sounding in this bar."}</p>
   </div>`;
 }
 
@@ -1249,7 +1315,6 @@ function redraw() {
   if (cv) drawCurve(cv, P);
   const rc = document.getElementById("rhy");
   if (rc) drawRhythm(rc, P);
-  document.querySelectorAll("canvas[data-spec]").forEach(c => drawSpectrum(c, P.insts[+c.dataset.spec]));
 }
 
 function wire() {
@@ -1399,17 +1464,19 @@ canvas{width:100%;display:block}
 .pn.ptween b{color:var(--gloss)}
 .factrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.8rem;margin:.3rem 0 .2rem}
 .factrow b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums;line-height:1.2}
-.instgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(13.5rem,1fr));gap:.6rem}
-.inst{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:5px;
-  padding:.5rem .6rem;cursor:pointer;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:.15rem}
-.inst:hover{border-color:var(--accent)}
-.ihead{display:flex;justify-content:space-between;align-items:baseline;gap:.4rem}
+.instlist{list-style:none;margin:.4rem 0 .2rem;padding:0;display:flex;flex-direction:column;gap:.35rem}
+.instrow{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:5px;
+  padding:.45rem .7rem;cursor:pointer;color:var(--ink);font:inherit;display:grid;
+  grid-template-columns:minmax(8rem,1.1fr) minmax(6rem,.9fr) minmax(7rem,1fr) auto;gap:.35rem .8rem;align-items:baseline}
+.instrow:hover{border-color:var(--accent)}
 .iname{font-size:.95rem}
-.itag{font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;padding:.05rem .35rem;border-radius:999px}
-.itag.harm{background:var(--chipbg);color:var(--accent)}
-.itag.inharm{background:var(--chipbg);color:var(--gloss)}
-.imat{font-size:.76rem;color:var(--muted)}
-.ifoot{display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);gap:.3rem}
+.imat{font-size:.78rem;color:var(--muted)}
+.iheard{font-size:.76rem;color:var(--accent)}
+.istatus{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);justify-self:end}
+@media (max-width:720px){
+  .instrow{grid-template-columns:1fr 1fr;grid-template-rows:auto auto}
+  .istatus{justify-self:start}
+}
 .npvi{display:flex;flex-direction:column;gap:.25rem;margin-top:.3rem}
 .npvirow{display:grid;grid-template-columns:7rem 1fr 2.4rem;align-items:center;gap:.6rem}
 .npvirow b{font-variant-numeric:tabular-nums;text-align:right}
