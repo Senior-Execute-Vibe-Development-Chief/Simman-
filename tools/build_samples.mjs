@@ -352,6 +352,9 @@ const RECORDED_MAT = {
   // a throat: no ore, no timber, no craft — the same body `MATERIALS.none`
   // stands for, since the hands and the folds are the two everybody has
   "Choir Aahs": "none", "Voice Oohs": "none", "Synth Choir": "none",
+  "Reed Organ": "reed", "Harmonica GM": "bronze", Dulcimer: "iron",
+  "Grand Piano GM": "iron", "Pan Flute": "bamboo", "Flute GM": "iron",
+  "Oboe GM": "reed", "Violin GM": "gut",
   Marimba: "wood", Glockenspiel: "iron", Vibraphone: "bronze",
   "Steel Pan": "iron", "French Horn": "bronze",
 };
@@ -424,6 +427,15 @@ const POOL_GM = [
   { gm: "vibraphone",   fam: "barSet", mat: "bronze", lo: "C3", hi: "C6", kind: "struck", src: "Vibraphone" },
   { gm: "steel_drums",  fam: "barSet", mat: "iron",   lo: "C3", hi: "C6", kind: "struck", src: "Steel Pan" },
   { gm: "french_horn",  fam: "horn",   mat: "bronze", lo: "C2", hi: "C5", kind: "sustain", src: "French Horn" },
+  // denser fill for families whose CC0 / GM family bank is still too sparse
+  { gm: "reed_organ",            fam: "freeReed",     mat: "reed",  lo: "C3", hi: "C6", kind: "sustain", src: "Reed Organ" },
+  { gm: "harmonica",             fam: "freeReed",     mat: "bronze", lo: "C3", hi: "C6", kind: "sustain", src: "Harmonica GM" },
+  { gm: "dulcimer",              fam: "struckString", mat: "iron",  lo: "C3", hi: "C6", kind: "struck",  src: "Dulcimer" },
+  { gm: "acoustic_grand_piano",  fam: "struckString", mat: "iron",  lo: "C2", hi: "C6", kind: "struck",  src: "Grand Piano GM" },
+  { gm: "pan_flute",             fam: "panpipe",      mat: "bamboo", lo: "C3", hi: "C7", kind: "sustain", src: "Pan Flute" },
+  { gm: "flute",                 fam: "fluteOpen",    mat: "iron",  lo: "C4", hi: "C7", kind: "sustain", src: "Flute GM" },
+  { gm: "oboe",                  fam: "reedPipe",     mat: "reed",  lo: "C4", hi: "C6", kind: "sustain", src: "Oboe GM" },
+  { gm: "violin",                fam: "bowed",        mat: "gut",   lo: "G3", hi: "C7", kind: "sustain", src: "Violin GM" },
 ];
 /** Voice pool: solo vs choir and register, matched by `voiceKind` not material. */
 const VOICE_POOL_GM = [
@@ -511,7 +523,12 @@ function gmNotes(gm) {
 async function fromGM(spec, fam) {
   const map = gmNotes(spec.gm);
   const out = [];
-  const lo = midiOf(spec.lo), hi = midiOf(spec.hi), step = (spec.every || 1) * 2;
+  // `every` is the SEMITONE stride for GM banks (default 2 → max ~100¢ drag).
+  // It used to be `(every || 1) * 2`, so panpipe's every:2 became a 400¢ grid —
+  // half a tone of stretch on every other note, which is the cartoon formant
+  // shift listeners hear as "oddly shifted". WAV banks use `every` as "keep
+  // every Nth file" on a different path; do not conflate them.
+  const lo = midiOf(spec.lo), hi = midiOf(spec.hi), step = spec.every || 2;
   for (let mi = lo; mi <= hi; mi += step) {
     const b64 = map.get(nameOf(mi)) || map.get(SHARP[((mi % 12) + 12) % 12].replace("b", "#") + (Math.floor(mi / 12) - 1));
     if (!b64) continue;

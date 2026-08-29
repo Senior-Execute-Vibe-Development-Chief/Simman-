@@ -24,7 +24,7 @@
 // them.
 
 import { SAMPLE_BANK, NAMED_BANK } from "./musicSampleManifest.js";
-import { MATERIALS, dampTime, radiatedLevel, slideSecs } from "./musicInstruments.js";
+import { MATERIALS, FAMILIES, dampTime, radiatedLevel, slideSecs } from "./musicInstruments.js";
 import { quantizeToScaleHz } from "./musicArchetypes.js";
 
 /**
@@ -209,6 +209,26 @@ function gapOf(c) {
   return (c._gap = gaps[Math.floor(gaps.length / 2)]);
 }
 
+/**
+ * How much of this body's compass the recording actually covers — without an
+ * octave fold. A glockenspiel and a steel pan can both be iron with the same
+ * sample density; only the pan covers a bar set's low end. Scoring material
+ * alone left iron bars on the glockenspiel, and 57% of their notes were then
+ * folded up an octave — which is what "oddly shifted" sounds like.
+ */
+function rangeMiss(inst, c) {
+  const fam = FAMILIES[inst.fam] || {};
+  const low = fam.low || 100;
+  const top = low * Math.pow(2, fam.span != null ? fam.span : Math.max(0.7, (inst.cap || 7) / 7));
+  const hz = c.entries.map(e => e.hz).filter(x => x > 0).sort((a, b) => a - b);
+  if (hz.length < 2) return 1;
+  const blo = hz[0], bhi = hz[hz.length - 1];
+  const coverLo = Math.max(low, blo), coverHi = Math.min(top, bhi);
+  const bodySpan = Math.log2(top / low) || 1;
+  const cover = coverHi > coverLo ? Math.log2(coverHi / coverLo) / bodySpan : 0;
+  return 1 - Math.max(0, Math.min(1, cover));
+}
+
 /** Solo female shares the brighter choir recording — one sample, two roles. */
 const VOICE_ALIAS = { "solo-female": "choir-female" };
 
@@ -228,7 +248,7 @@ export function sampledFor(A, inst) {
   }
   const pool = A.pool && A.pool[inst.fam];
   if (pool && pool.length > 1) {
-    // THE RIGHT MATERIAL, AND ENOUGH OF IT.
+    // THE RIGHT MATERIAL, ENOUGH OF IT, AND IN THE RIGHT REGISTER.
     //
     // Material alone decided this, and on a tie the first entry won — which is
     // always the family recording, because that is the one pushed first. So a
@@ -240,14 +260,12 @@ export function sampledFor(A, inst) {
     // gets described as a mosquito.
     //
     // A recording is only itself near the pitches it was made at, so how DENSE
-    // it is decides how often it can be itself. Score both: the distance in
-    // material, plus the bank's own median gap expressed in octaves, so a
-    // sparser recording has to be a better material match to win. A body still
-    // never reaches a recording by name — only by what it is made of and by
-    // what that recording can actually cover.
+    // it is decides how often it can be itself. And a recording that only
+    // covers the top of the body's compass forces octave folds for everything
+    // below — scored here as `rangeMiss`. Material + density + register.
     let best = pool[0], bestD = Infinity;
     for (const c of pool) {
-      const d = matDist(inst.mat, c.mat) + gapOf(c) / 1200;
+      const d = matDist(inst.mat, c.mat) + gapOf(c) / 1200 + rangeMiss(inst, c) * 1.4;
       if (d < bestD) { bestD = d; best = c; }
     }
     return best;
@@ -326,7 +344,13 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   // real slide does: the resonances move too, because the string is being
   // shortened rather than a different string being sounded.
   const legato = isVoice && from > 0;
-  if (from > 0 && !b.unpitched) {
+  // SAMPLE-RATE SLIDES ARE TAPE SPEED, not a finger on a string. Dragging
+  // playbackRate moves every formant with the pitch, which is why a recorded
+  // flute "sliding" into the next note sounds oddly shifted rather than bent.
+  // The voice path still slides (one throat holding a line); every other body
+  // jumps — a real slide on a sampled instrument would need formant-locked
+  // pitch shifting this engine does not have.
+  if (legato && !b.unpitched) {
     const startRate = Math.max(0.06, Math.min(16, target * (from / freq)));
     const secs = Math.min(slideSecs(from, freq), Math.max(0.02, dur * 0.5));
     src.playbackRate.setValueAtTime(startRate, when);
