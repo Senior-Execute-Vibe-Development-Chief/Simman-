@@ -80,4 +80,35 @@ export const REFERENCE_PEOPLES = {
       creed: { militancy: 0.4, exclusivity: 0, asceticism: -0.1 },
     },
   },
+  gamelanCourt: {
+    label: "Bronze gamelan court",
+    people: {
+      biome: "tropical", dev: 0.82,
+      have: { copper: true, tin: true, bronze: true, bamboo: true, timber: true, hide: true, clay: true, reed: true, silk: true, iron: false, stone: false },
+      know: { metallurgy: 0.95, construction: 0.82, organization: 0.88, agriculture: 0.75, mobility: 0.35, navigation: 0.5 },
+      soc: { surplus: 0.92, urban: 0.78, strat: 0.88, literacy: 0.55 },
+      creed: { militancy: -0.3, exclusivity: 0.2, asceticism: -0.5 },
+    },
+    langPin: { tone: 1, morph: "iso", sylC: 1 },
+  },
+  maqamCaravan: {
+    label: "Desert caravan court",
+    people: {
+      biome: "medit", dev: 0.72,
+      have: { timber: true, hide: true, gut: true, clay: true, stone: true, copper: true, reed: true, horn: true, iron: true, tin: false, bronze: false },
+      know: { metallurgy: 0.55, construction: 0.65, organization: 0.72, agriculture: 0.55, mobility: 0.75, navigation: 0.55 },
+      soc: { surplus: 0.62, urban: 0.55, strat: 0.65, literacy: 0.35 },
+      creed: { militancy: 0.2, exclusivity: 0.4, asceticism: 0.1 },
+    },
+  },
+  steelBand: {
+    label: "Industrial steel workshop",
+    people: {
+      biome: "delta", dev: 0.78,
+      have: { iron: true, timber: true, hide: true, gourd: true, clay: true, copper: false, tin: false, bronze: false, stone: false },
+      know: { metallurgy: 0.88, construction: 0.7, organization: 0.65, agriculture: 0.55, mobility: 0.55, navigation: 0.45 },
+      soc: { surplus: 0.68, urban: 0.62, strat: 0.55, literacy: 0.55 },
+      creed: { militancy: -0.1, exclusivity: -0.2, asceticism: -0.3 },
+    },
+  },
 };

@@ -201,6 +201,18 @@ export function scoreTuningArchetype(arch, ctx) {
   if (arch.wild && ens.metallophoneRef) s += 0.04;
   if (pull > 0.55 && arch.sampleEt > 0.7) s += 0.06 * pull;
   if (ens.fixedPitch && !arch.harmonic) s += 0.05;
+  // Bronze bar sets are tuned as uneven sets by ear; wooden balafon divisions
+  // converge on near-equal heptatonic steps — same mechanism, different material.
+  const refMat = (insts[refJ] || {}).mat;
+  if (ens.metallophoneRef && refMat === "bronze") {
+    if (arch.id === "pelog") s += cap >= 6 ? 0.18 : 0.1;
+    if (arch.id === "slendro" && cap >= 6) s -= 0.1;
+    if (arch.id === "westAfricanEqui7") s -= 0.1;
+  }
+  if (ens.metallophoneRef && refMat === "wood") {
+    if (arch.id === "westAfricanEqui7") s += 0.1;
+    if (arch.id === "pelog") s -= 0.05;
+  }
   // Whole-tone and chromatic grids need a literate keyboard tradition — not a
   // random panpipe ensemble (measured: wholeTone on seed 1037, 22¢ off dips).
   if ((arch.id === "wholeTone" || arch.id === "twelveTet") && pull < 0.45 && cap < 10) s -= 0.22;

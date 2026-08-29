@@ -30,6 +30,7 @@ import { prosodyOf } from "./languagePhonetics.js";
 
 /** How many notes the mode actually uses — bounded by body capacity and literacy. */
 function modeSizeOf(people, scale, cap = 9) {
+  if (cap <= 2) return Math.min(2, scale.degrees.length);
   const roomInFrame = Math.max(3, Math.floor(scale.frame.cents / 150));
   return Math.max(4, Math.min(7, roomInFrame, cap,
     Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4
@@ -51,9 +52,13 @@ function pickTunedScale(rawScale, archMatch, spec, people, cap = 9) {
   const rawS = strandedInMode(spec, rawScale, people, cap);
   const archS = strandedInMode(spec, archScale, people, cap);
   if (archS < rawS) return archScale;
-  // Tied or worse: keep what the ensemble found. Stamping a catalog name on a
-  // tie collapsed 57/120 peoples onto ~6 diatonic templates and they sounded
-  // like variations of the same tune.
+  const arch = archMatch.archetype;
+  const sparseRaw = rawScale.degrees.length < Math.min(5, cap);
+  const fullArch = archScale.degrees.length >= Math.min(5, cap);
+  const metaArch = arch && (arch.family === "metallophone" || arch.family === "limited");
+  // Metallophone and two-pitch traditions: apply when the body fit is real and
+  // the raw crawl is sparse — leave harmonic diatonic stamps on raw for variety.
+  if (metaArch && archMatch.physFit >= 0.62 && fullArch && (sparseRaw || archS <= rawS + 2)) return archScale;
   return rawScale;
 }
 
@@ -265,6 +270,17 @@ export function rhythmOf(people, insts) {
   const cls = pros.rhythm;
   const [beats, meterKind] = METERS[cls][Math.floor(roll("met") * 4) % 4];
   const hasTimekeeper = insts.some(i => i.fam === "drum" || i.fam === "frameDrum");
+  const metaRef = insts.some(i => {
+    const f = FAMILIES[i.fam] || {};
+    return (f.vib === "bar" || f.vib === "plate") && i.weight >= 0.7;
+  });
+  const hornCap2 = insts.some(i => i.fam === "horn" && i.cap <= 2);
+  let tempo = Math.round((92 + hash32(people.seed, "rhy", "tmp") % 37)
+    * pros.rate * (cls === "syllable" ? 1.06 : cls === "stress" ? 0.98 : 1));
+  // Colotomic cycles and court metallophone traditions sit below walking tempo;
+  // a two-pitch drone tradition keeps a steady pulse near the body.
+  if (metaRef && people.soc.surplus > 0.55) tempo = Math.round(tempo * (0.72 + roll("slow") * 0.18));
+  else if (hornCap2) tempo = Math.round(tempo * (0.88 + roll("slow") * 0.14));
   return {
     cls, beats, meterKind,
     // stress-timed speech → long-short pairs; syllable-timed → near-equal
@@ -277,8 +293,7 @@ export function rhythmOf(people, insts) {
     // — the rate people tap, walk and rock at unprompted — clusters around
     // 100–120 beats a minute across populations, and music entrains to it;
     // that is the anchor, scaled by how fast this tongue is spoken.
-    tempo: Math.round((92 + hash32(people.seed, "rhy", "tmp") % 37)
-      * pros.rate * (cls === "syllable" ? 1.06 : cls === "stress" ? 0.98 : 1)),
+    tempo,
     density: cls === "syllable" ? 0.8 : cls === "stress" ? 0.55 : 0.65,
   };
 }
@@ -466,6 +481,13 @@ export function musicOf(people) {
     const f = FAMILIES[i.fam] || {};
     if (f.pitchBy === "hole") return i.cap;
     if (f.pitchBy === "stop" && f.span) return i.cap / f.span;
+    // Fixed sets are built one resonator per degree within a frame; a seven-bar
+    // saron or balafon offers seven pitches per octave regardless of compass.
+    if (f.pitchBy === "fixed" && i.cap >= 3) {
+      if (f.vib === "bar" || f.vib === "plate" || f.vib === "tongue") return Math.min(i.cap, 9);
+      if (i.cap <= 2) return i.cap;
+      return Math.min(i.cap, 7);
+    }
     return 0;
   };
   const offered = melodic.length ? Math.max(0, ...melodic.map(perFrame)) : 0;
@@ -499,7 +521,10 @@ export function musicOf(people) {
   // needed it. Of the drivers here, literacy and a standardising administration
   // are that; the metal is not. (`fixedSets` was also still the two family
   // names `barSet` and `bell`, the same list `isFixed` above stopped using.)
-  const pull = Math.max(0, Math.min(0.85, people.soc.literacy * 0.5 + people.know.organization * 0.2 - 0.25));
+  const pull = Math.max(0, Math.min(0.85,
+    people.soc.literacy * 0.5 + people.know.organization * 0.2 - 0.25
+    + (insts.some(i => i.fam === "struckString" || (i.fam === "barSet" && i.mat === "iron" && i.cap >= 12)) ? 0.22 : 0)
+    + (people.soc.literacy > 0.72 && insts.some(i => i.cap >= 12) ? 0.12 : 0)));
   // AND THE BODY THE SCALE IS CUT FROM is the one everybody tunes to — the
   // same instrument chosen just above, for the same reason. Where its timbre
   // offers no consonance to find, what is left is its GEOMETRY: how its pitch
@@ -507,14 +532,19 @@ export function musicOf(people) {
   // for a bar. See `cutPitches`.
   const refFam = FAMILIES[(insts[refJ] || insts[0] || {}).fam] || {};
   const power = LENGTH_POWER[refFam.vib] ?? 1;
-  const rawScale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated, power });
+  const refInst = insts[refJ >= 0 ? refJ : 0];
+  const refSpec = refInst ? ensembleSpectrum([refInst], [1]) : [];
+  const degreeSpec = (power >= 2 && refSpec.length)
+    ? refSpec.concat(voiceHere.map(p2 => ({ f: p2.f, a: p2.a * 0.2 })))
+    : spec;
+  const rawScale = deriveScale(degreeSpec, { cap: Math.min(cap, 9), pull, frameSpec: radiated, power });
   const archMatch = matchTuningArchetype({
-    spec, radiated, cap: Math.min(cap, 9), pull, power, insts, seed: people.seed, refJ,
+    spec: degreeSpec, radiated, cap: Math.min(cap, 9), pull, power, insts, seed: people.seed, refJ,
   });
   // A catalog scale only wins when its degrees sit in THIS ensemble's dips.
   // Forcing a maqām onto a panpipe that found something else is the main
   // source of "odd scales" on bare lines (measured: 44% stranded vs 8% raw).
-  const scale = pickTunedScale(rawScale, archMatch, spec, people, Math.min(cap, 9));
+  const scale = pickTunedScale(rawScale, archMatch, degreeSpec, people, Math.min(cap, 9));
   // The mode: what they actually sing out of the scale they found. Its size
   // is bounded twice over — by how much scale material exists and how much
   // theory the tradition can carry (a written tradition sustains a larger
@@ -526,7 +556,7 @@ export function musicOf(people) {
   // takes, computed here because the MODE is chosen partly by how much its
   // steps matter, and that is what stepwise motion means
   const stepShare = 0.62 + (hash32(people.seed, "mus", "step") / 4294967296) * 0.26;
-  const modeIdx = deriveMode(spec, scale.degrees, modeSize, scale.frame.ratio, stepShare);
+  const modeIdx = deriveMode(degreeSpec, scale.degrees, modeSize, scale.frame.ratio, stepShare);
   const rhythm = rhythmOf(people, insts);
   const texture = textureOf(people, insts);
   const form = formOf(people);

@@ -289,6 +289,14 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
     return cv > EVEN_SPREAD;
   };
   const wants = () => ringGaps() > STEP_CEIL || uneven();
+  // A bar or plate maker keeps cutting until the frame holds a full set. Sparse
+  // minima on an inharmonic body can satisfy the gap rule at three degrees
+  // while a balafon or saron set still has six bars to place — measured,
+  // westAfricanEqui7 was rejected for a 0-209-701 crawl for that reason alone.
+  const metallTarget = () => power >= 2
+    ? Math.min(cap, Math.max(5, Math.round(frame.cents / 200)))
+    : 0;
+  const wantsSet = () => metallTarget() > 0 && degrees.length < metallTarget();
   // A SCALE IS FINISHED WHEN ITS GAPS ARE STEPS — not when it reaches a count.
   //
   // The paragraph above states the mechanism exactly: the maker goes on cutting
@@ -318,7 +326,7 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
   // conjunction into a disjunction is the same mistake wearing `cap` — measured,
   // it filled every scale to the body's limit and took invented degrees from
   // 27% to 39% and stranded pitches from 149 to 193.
-  if (degrees.length < cap && wants()) {
+  if (degrees.length < cap && (wants() || wantsSet())) {
     // Dividing the frame into equal parts is the ANSWER written down, not the
     // mechanism — and it was supplying nearly half of every pitch in the
     // system, so most scales were an equal division in disguise and sounded
@@ -330,7 +338,7 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
     // steps — but it arrives there rather than starting there, and where the
     // timbre has any structure at all it finds that instead.
     const lo = 1.02, hi = frame.ratio - 0.012;
-    while (degrees.length < cap && wants()) {
+    while (degrees.length < cap && (wants() || wantsSet())) {
       let best = null, bestCost = Infinity;
       // A MAKER CUTS WHERE THE HOLE IS.
       //
