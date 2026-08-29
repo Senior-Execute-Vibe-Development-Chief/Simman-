@@ -468,11 +468,19 @@ export function computeTransport(world) {
   let heap = world._transHeap;
   if (!heap || heap.cap < wantCap) {
     heap = world._transHeap = new _MinHeap(wantCap);
-    // Tight soft ceiling: a correct Dijkstra peaks at O(N). Past ~2N is a
-    // runaway (mint-ready ocean flood) — stop growing and abort the pass.
-    heap._maxCap = Math.max(wantCap * 2, N * 2);
+    // Soft ceiling well above O(N): ocean-flood runaways try to grow without
+    // bound; a correct land Dijkstra stays near N. Soft-fail (no throw).
+    heap._maxCap = Math.max(wantCap * 4, N * 4);
   }
   heap.n = 0;
+  // Finalize-on-pop stamp (non-negative edge weights ⇒ first pop is optimal).
+  // Stops the lazy-Dijkstra stale-entry storm that blew peakN past 2N after
+  // mint-ready even when ocean was correctly impassable (finWater=0).
+  let seen = world._transSeen;
+  if (!seen || seen.length !== N) seen = world._transSeen = new Uint8Array(N);
+  let stamp = (world._transSeenStamp | 0) + 1;
+  if (stamp > 250) { seen.fill(0); stamp = 1; }
+  world._transSeenStamp = stamp;
   // Seed: every alive settlement contributes a 0-distance source.
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -489,16 +497,12 @@ export function computeTransport(world) {
   // open ground.
   const SQRT2 = Math.SQRT2;
   let peakN = 0, pushes = 0;   // frontier high-water attribution (allocation-wall watch)
-  const pushBudget = Math.max(N * 8, 1 << 20);  // sane upper bound; abort past this
-  let aborted = false;
   while (heap.n > 0) {
     if (heap.n > peakN) peakN = heap.n;
-    if (pushes > pushBudget || peakN > heap._maxCap) {
-      aborted = true;
-      break;
-    }
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;       // stale
+    if (seen[ti] === stamp) continue; // already finalized
+    seen[ti] = stamp;
     const ty = (ti / tw) | 0;
     const tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
@@ -517,19 +521,16 @@ export function computeTransport(world) {
     for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
+      if (seen[ni] === stamp) continue;
       const c = baseEdgeCost(world, ti, ni);
       if (!(c > 0) || !isFinite(c)) continue;
       const nd = d + c * mul[k];
       if (nd < dist[ni]) {
-        dist[ni] = nd;
-        if (!heap.push(ni, nd)) { aborted = true; break; }
-        else pushes++;
+        // Only commit the distance if it is queued — otherwise a soft-fail
+        // push would orphan a "best" dist that nothing expands from.
+        if (heap.push(ni, nd)) { dist[ni] = nd; pushes++; }
       }
     }
-    if (aborted) break;
-  }
-  if (aborted) {
-    console.error(`[transHeap] ABORT step=${world.step} peakN=${peakN} pushes=${pushes} cap=${heap.cap} — runaway frontier (incomplete transportDist)`);
   }
   // Frontier watch (the 26.6k allocation-wall diagnosis, 2026-08-20): the heap
   // measured SMALL at both grids (tw=480 cap 4096 / tw=960 cap 65536 by ~28k),
