@@ -56,7 +56,7 @@ const ROLE_DB = {
   // beneath the oud. They sit just under the lead so the line stays followable
   // and no further, because the point of the texture is hearing several
   // versions of it at once.
-  lead: 0, voice: 1, elab: -7, core: -8, het: -4,
+  lead: 0, voice: 1, elab: -7, core: -8, skeleton: -9, het: -4,
   bass: -6, pad: -14, ost: -11,
   // percussion is the drive, not the background — a drum ensemble is what
   // makes this music powerful rather than moody, and it was mixed as an
@@ -67,7 +67,7 @@ const ROLE_DB = {
   // seconds, so what it costs in average level is far more than one note
   mark: -7,
 };
-const ROLE_PAN = { lead: 0, voice: 0, elab: 0.32, core: -0.22, het: 0.4, bass: 0,
+const ROLE_PAN = { lead: 0, voice: 0, elab: 0.32, core: -0.22, skeleton: -0.28, het: 0.4, bass: 0,
   pad: -0.15, ost: -0.35, pulse: 0.2, mark: -0.28 };
 const dB = (d) => Math.pow(10, d / 20);
 
@@ -396,14 +396,60 @@ function playPluck(A, inst, f, when, dur, vel, dest, opts) {
   };
 }
 
+/**
+ * FORM LISTEN: one oscillator per structural role. Timbre is not the question
+ * when debugging form — vocabulary, return, skeleton and closure are — so each
+ * role gets a fixed simple wave and a short envelope.
+ */
+function playPlain(A, freq, when, dur, vel, role, opts = {}) {
+  const ctx = A.ctx;
+  const bus = A.buses[role] || A.buses.lead || A.master;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  const wave = role === "mark" || role === "pulse" ? "square"
+    : role === "lead" || role === "voice" ? "triangle"
+      : role === "bass" ? "sine"
+        : "sine";
+  osc.type = wave;
+  osc.frequency.setValueAtTime(freq, when);
+  const peak = Math.max(0.015, Math.min(0.32, (vel || 0.3) * (role === "mark" ? 0.22 : 0.3)));
+  const hold = Math.max(0.05, dur || 0.2);
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(peak, when + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + hold);
+  osc.connect(g);
+  g.connect(bus);
+  osc.start(when);
+  osc.stop(when + hold + 0.06);
+  const handle = {
+    damp(at) {
+      const t = Math.max(at, when + 0.01);
+      try {
+        g.gain.cancelScheduledValues(t);
+        g.gain.setTargetAtTime(0.0001, t, 0.02);
+        osc.stop(t + 0.08);
+      } catch { /* already stopped */ }
+    },
+  };
+  if (opts.channel) {
+    const prev = A.voices.get(opts.channel);
+    if (prev && prev.h && prev.h.damp) prev.h.damp(when);
+    A.voices.set(opts.channel, { h: handle, hz: freq, end: when + hold });
+  }
+  return handle;
+}
+
 export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   const role = opts.role || "lead";
   // A stroke is a real change to how and where the body is struck, not a
   // preset: it moves where the hand lands, how long it stays in contact, and
   // how fast it takes the sound away again.
   const K = STROKE_DSP[opts.stroke] || null;
-  const f = freq * (K ? K.pitch : 1) * (1 + inst.detune + 0.004 * (Math.random() - 0.5));
+  const f = freq * (K ? K.pitch : 1) * (1 + (inst && inst.detune || 0) + 0.004 * (Math.random() - 0.5));
   if (!(f > 20 && f < 12000)) return null;
+  // FORM LISTEN: one oscillator per role so structure is audible without
+  // sample/model colour. The composition is unchanged; only the body is.
+  if (A.formPlain) return playPlain(A, f, when, dur, vel, role, opts);
   // WHERE THE HAND WAS. A voice channel is one player, so the note it played
   // last is where that player's finger still is — and whether the next note is
   // travelled to or jumped to falls out of that plus the body, with nothing to

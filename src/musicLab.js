@@ -17,7 +17,7 @@ import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE 
 import { MATERIALS, FAMILIES, rangeOf, makeVoice } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
-import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
+import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree, formOrderOf, phraseBank, phraseSkeleton } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung, silence } from "./sim/musicSynth.js";
 import { loadSamples, sampledFor } from "./sim/musicSamples.js";
 import { slidesTo } from "./sim/musicInstruments.js";
@@ -43,6 +43,10 @@ const S = {
   // are not the same virtue — so it is a switch, and the bench exists to make
   // the difference audible rather than arguable.
   sampled: true,
+  // FORM LISTEN: strip samples/models to plain oscillators and keep only the
+  // structural roles (skeleton, lead, bass, punctuation). Form is a pitch/time
+  // question; timbre was eating the debugging budget.
+  formListen: false,
   // How much voice is in the mix. The synthesis path is calibrated so a
   // singer and a player agree on what a velocity means (musicSynth), but how
   // much SINGING you want over an ensemble is a listener's call and not a
@@ -75,6 +79,8 @@ function regen() {
   P = buildWithTradition(S.seed, S.ref, S.trad);
   PB = build(S.seedB, S.refB);
   S.piece = null;
+  ROLL.previewKey = "";
+  if (!ROLL.live) ROLL.notes = [];
 }
 
 // ── audio plumbing ───────────────────────────────────────────────────────
@@ -104,7 +110,8 @@ function audio() {
       if (el) el.textContent = n ? `${n} recorded samples loaded` : "no bank — synthesis only";
     }).catch(() => { /* synthesis is a working instrument */ });
   }
-  A.sampled = S.sampled;
+  A.sampled = S.sampled && !S.formListen;
+  A.formPlain = !!S.formListen;
   if (P) { A.music = P; A.tonicHz = tonicOf(P); }
   if (A.ctx.state === "suspended") A.ctx.resume();
   return A;
@@ -262,7 +269,7 @@ function voiceBody(m) {
   return v;
 }
 function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
-  if (!evs.length) return;
+  if (!evs.length || S.formListen) return;
   const A = Aud || audio();
   const V = voiceBody(m);
   const sorted = [...evs].sort((a, b) => a.b - b.b);
@@ -291,21 +298,24 @@ function fireVoiceLine(m, evs, when0, spb, gain, _voc, Aud) {
     });
   }
 }
+const FORM_ROLES = new Set(["skeleton", "lead", "bass", "mark", "pulse"]);
+
 function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
+  if (S.formListen && !FORM_ROLES.has(ev.role)) return;
   const A = Aud || audio();
   const inst = m.insts[ev.inst] || m.insts[0];
-  if (!inst) return;
+  if (!inst && !S.formListen) return;
   const f = noteFreq(m, ev);
   // Each melodic part is a VOICE CHANNEL: a player's free hand stops the note
   // they are replacing and leaves everything else ringing. A marker stroke
   // belongs to no channel — its ring is the point.
-  playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
+  playNote(A, inst || { detune: 0 }, f, when, ev.dur * secPerBeat, ev.vel * gain, {
     music: m,
     tonicHz: tonicOf(m),
-    symp: inst.symp ? sympPitches(m) : null,
+    symp: inst && inst.symp ? sympPitches(m) : null,
     role: ev.role === "het" ? "het" : ev.role || "lead",
     stroke: ev.stroke,
-    damped: ev.damped != null ? ev.damped : !!inst.damped,
+    damped: ev.damped != null ? ev.damped : !!(inst && inst.damped),
     channel: ev.ring || ev.role === "pad" || ev.role === "pulse" ? null
       : `${m.people.seed}:${ev.role}:${ev.inst}${ev.voice != null ? ":" + ev.voice : ""}`,
   });
@@ -316,7 +326,7 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
   // went out on the lead bus whatever it was decorating, was never damped, and
   // on a body that rings for nine seconds an eighty-millisecond grace note rang
   // for nine of them.
-  if (ev.ornDeg != null) {
+  if (ev.ornDeg != null && !S.formListen) {
     const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct);
     playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5, {
       music: m,
@@ -341,20 +351,208 @@ function vocOf(m) {
   return v;
 }
 
+// ── piano roll: the composition as pitch × time, coloured by role ────────
+//
+// Form is hard to hear under samples. The roll makes the layers visible:
+// skeleton trunk, lead surface, bass, punctuation, elaboration. Idle = a
+// preview of the current piece plan; Ambience/Play feed live notes and a
+// playhead. Layer chips mute rows on the roll only (sound unchanged).
+const ROLL_COLORS = {
+  skeleton: "#8b6914", core: "#8b6914", lead: "#b4532a", voice: "#c45c26",
+  bass: "#2f5d50", ost: "#3d6b5a", pad: "#7a8f9c", elab: "#a67c52",
+  het: "#9a7b4f", mark: "#5c6b4a", pulse: "#6b7280",
+};
+const ROLL_LABELS = {
+  skeleton: "skeleton", core: "core", lead: "lead", voice: "voice",
+  bass: "bass", ost: "ostinato", pad: "drone", elab: "elaboration",
+  het: "heterophony", mark: "punctuation", pulse: "percussion",
+};
+const ROLL = {
+  notes: [], live: false, t0: 0, spb: 0.5, totalBeats: 0, viewBeats: 16,
+  hidden: new Set(), raf: 0, previewKey: "",
+};
+function rollReset(opts = {}) {
+  ROLL.notes = [];
+  ROLL.live = !!opts.live;
+  ROLL.t0 = opts.t0 != null ? opts.t0 : 0;
+  ROLL.spb = opts.spb != null ? opts.spb : ROLL.spb;
+  ROLL.totalBeats = opts.totalBeats != null ? opts.totalBeats : 0;
+  if (opts.viewBeats != null) ROLL.viewBeats = opts.viewBeats;
+}
+function feedRoll(m, events, beat0 = 0) {
+  for (const ev of events || []) {
+    if (S.formListen && !FORM_ROLES.has(ev.role)) continue;
+    let hz = 0;
+    try {
+      if (ev.role === "pulse" && (ev.deg == null || ev.deg === 0) && !ev.oct) hz = 0;
+      else hz = noteFreq(m, ev) || 0;
+    } catch { hz = 0; }
+    ROLL.notes.push({
+      b: beat0 + (ev.b || 0),
+      dur: Math.max(0.08, ev.dur || 0.25),
+      hz, role: ev.role || "lead",
+      vel: ev.vel || 0.3,
+    });
+  }
+  // Ambient can run forever — keep a trailing window so the canvas stays light.
+  if (ROLL.live && ROLL.notes.length > 2400) {
+    const cut = Math.max(0, ROLL.totalBeats - ROLL.viewBeats * 3);
+    ROLL.notes = ROLL.notes.filter(n => n.b + n.dur >= cut);
+  }
+}
+function seedRollPreview(m) {
+  if (ROLL.live) return;
+  const key = `${m.people.seed}|${S.occ}|${S.intimacy.toFixed(2)}|${S.formListen ? 1 : 0}|${m.form.process || ""}`;
+  if (ROLL.previewKey === key && ROLL.notes.length) return;
+  ROLL.previewKey = key;
+  let piece;
+  try { piece = composePiece(m, S.occ, null, S.intimacy); }
+  catch { rollReset({ live: false, totalBeats: 0 }); return; }
+  rollReset({
+    live: false, t0: 0,
+    spb: 60 / piece.tempo,
+    totalBeats: piece.totalBeats,
+    viewBeats: Math.min(24, Math.max(8, piece.totalBeats)),
+  });
+  feedRoll(m, piece.events, 0);
+}
+function rollPlayheadBeat() {
+  if (!ROLL.live || !A) return -1;
+  return Math.max(0, (A.ctx.currentTime - ROLL.t0) / Math.max(1e-6, ROLL.spb));
+}
+function startRollAnim() {
+  if (ROLL.raf) cancelAnimationFrame(ROLL.raf);
+  const tick = () => {
+    const cv = document.getElementById("pianoroll");
+    if (cv && P) drawPianoRoll(cv, P);
+    if (ROLL.live) ROLL.raf = requestAnimationFrame(tick);
+    else ROLL.raf = 0;
+  };
+  ROLL.raf = requestAnimationFrame(tick);
+}
+function drawPianoRoll(cv, m) {
+  if (!ROLL.live) seedRollPreview(m);
+  const { g, w, h } = fitCanvas(cv, 220);
+  g.clearRect(0, 0, w, h);
+  const padL = 44, padR = 8, padT = 10, padB = 22;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const head = rollPlayheadBeat();
+  let t0 = 0, t1 = Math.max(ROLL.viewBeats, ROLL.totalBeats || ROLL.viewBeats);
+  if (ROLL.live && head >= 0) {
+    const half = ROLL.viewBeats * 0.35;
+    t0 = Math.max(0, head - half);
+    t1 = t0 + ROLL.viewBeats;
+  } else if (!ROLL.live && ROLL.totalBeats > 0) {
+    t1 = ROLL.totalBeats;
+    t0 = 0;
+  }
+  const span = Math.max(0.01, t1 - t0);
+  const X = (b) => padL + ((b - t0) / span) * innerW;
+
+  const pitched = ROLL.notes.filter(n => n.hz > 30 && n.b < t1 && n.b + n.dur > t0
+    && !ROLL.hidden.has(n.role));
+  const unpitched = ROLL.notes.filter(n => !(n.hz > 30) && n.b < t1 && n.b + n.dur > t0
+    && !ROLL.hidden.has(n.role));
+  let lo = Infinity, hi = -Infinity;
+  for (const n of pitched) {
+    if (n.hz < lo) lo = n.hz;
+    if (n.hz > hi) hi = n.hz;
+  }
+  if (!(hi > lo)) { lo = 110; hi = 440; }
+  // pad a musical sixth so notes aren't flush with the edges
+  lo *= 0.89; hi *= 1.12;
+  const Y = (hz) => {
+    if (!(hz > 30)) return padT + innerH - 6;
+    const u = Math.log(hz / lo) / Math.log(hi / lo);
+    return padT + innerH - u * (innerH - 10);
+  };
+  const rowH = Math.max(3, Math.min(10, innerH / 28));
+
+  // beat grid
+  g.strokeStyle = css("--line");
+  g.lineWidth = 1;
+  const beatStep = span > 20 ? 2 : 1;
+  for (let b = Math.ceil(t0); b <= t1; b += beatStep) {
+    const x = X(b);
+    g.globalAlpha = b % (m.rhythm.beats || 4) === 0 ? 0.85 : 0.35;
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + innerH); g.stroke();
+  }
+  g.globalAlpha = 1;
+
+  // unpitched strip (percussion) along the floor
+  for (const n of unpitched) {
+    const x = X(n.b), wd = Math.max(2, X(n.b + n.dur) - x - 0.5);
+    g.globalAlpha = 0.35 + 0.45 * Math.min(1, n.vel);
+    g.fillStyle = ROLL_COLORS[n.role] || css("--muted");
+    g.fillRect(x, padT + innerH - 5, wd, 4);
+  }
+  g.globalAlpha = 1;
+
+  // pitched notes — draw quieter layers first so lead/skeleton sit on top
+  const z = (r) => ({ pulse: 0, pad: 1, ost: 2, bass: 3, elab: 4, het: 5, mark: 6,
+    skeleton: 7, core: 7, voice: 8, lead: 9 }[r] || 5);
+  const ordered = pitched.slice().sort((a, b) => z(a.role) - z(b.role));
+  for (const n of ordered) {
+    const x = X(n.b);
+    const wd = Math.max(2.5, X(n.b + n.dur) - x - 0.4);
+    const y = Y(n.hz) - rowH / 2;
+    const active = ROLL.live && head >= n.b && head < n.b + n.dur;
+    g.globalAlpha = active ? 1 : 0.55 + 0.4 * Math.min(1, n.vel);
+    g.fillStyle = ROLL_COLORS[n.role] || css("--accent");
+    g.fillRect(x, y, wd, rowH);
+    if (active) {
+      g.strokeStyle = css("--ink");
+      g.lineWidth = 1;
+      g.strokeRect(x, y, wd, rowH);
+    }
+  }
+  g.globalAlpha = 1;
+
+  // playhead
+  if (ROLL.live && head >= t0 && head <= t1) {
+    const x = X(head);
+    g.strokeStyle = css("--gloss");
+    g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + innerH); g.stroke();
+  }
+
+  // axis labels
+  g.fillStyle = css("--muted");
+  g.font = "10px ui-monospace, monospace";
+  g.textAlign = "right";
+  g.fillText(Math.round(hi) + " Hz", padL - 4, padT + 9);
+  g.fillText(Math.round(lo) + " Hz", padL - 4, padT + innerH);
+  g.textAlign = "left";
+  g.fillText(ROLL.live ? "live" : "preview", padL, h - 6);
+  g.textAlign = "right";
+  g.fillText(`${t0.toFixed(0)}–${t1.toFixed(0)} beats`, w - padR, h - 6);
+}
+
+function rollHTML(m) {
+  seedRollPreview(m);
+  const present = new Set(ROLL.notes.map(n => n.role));
+  // Always offer the form-critical layers even if this preview is thin.
+  for (const r of ["skeleton", "lead", "bass", "mark", "pulse"]) present.add(r);
+  const roles = [...present].sort((a, b) => (ROLL_LABELS[a] || a).localeCompare(ROLL_LABELS[b] || b));
+  return `<div class="card">
+    <h2>Piano roll <span class="count">— layers in time</span></h2>
+    <p class="note">Pitch up the page, time across. Colour is the part: skeleton is the trunk,
+      lead the surface, bass and punctuation the ground. Idle shows the current piece plan;
+      Ambience and Play the piece scroll a live playhead. Chips hide a layer on the roll only.</p>
+    <canvas id="pianoroll"></canvas>
+    <div class="rolllegs" id="rolllegs">${roles.map(r => {
+      const on = !ROLL.hidden.has(r);
+      return `<button type="button" class="rollchip${on ? " on" : ""}" data-roll="${esc(r)}"
+        style="--rc:${ROLL_COLORS[r] || css("--accent")}">${esc(ROLL_LABELS[r] || r)}</button>`;
+    }).join("")}</div>
+  </div>`;
+}
+
 // ── the ambient layer: a lookahead scheduler that never loops ─────────────
 // One clock PER TRADITION. The first cut advanced a single clock by the
 // longer of the two cycles, which inserted a ragged gap of silence after the
 // shorter one every time round — enough on its own to destroy the pulse.
 const SCHED = { lanes: [], timer: null };
-function startAmbient() {
-  const A = audio();
-  setDistance(A, S.intimacy, P.texture.courtly);
-  const t0 = A.ctx.currentTime + 0.12;
-  SCHED.lanes = [{ m: () => P, bar: 0, next: t0, w: () => 1 - S.blend },
-                 { m: () => PB, bar: 0, next: t0, w: () => S.blend }];
-  SCHED.timer = setInterval(pump, 110);
-  S.playing = true; pump();
-}
 function stopAmbient() {
   // CLEARING THE TIMER ONLY STOPS WHAT HAS NOT BEEN SCHEDULED YET. The
   // scheduler runs a couple of seconds ahead and the bodies ring for as long as
@@ -363,6 +561,21 @@ function stopAmbient() {
   if (SCHED.timer) clearInterval(SCHED.timer);
   SCHED.timer = null; S.playing = false;
   if (A) silence(A);
+  ROLL.live = false;
+}
+function startAmbient() {
+  const A = audio();
+  setDistance(A, S.intimacy, P.texture.courtly);
+  const t0 = A.ctx.currentTime + 0.12;
+  SCHED.lanes = [{ m: () => P, bar: 0, next: t0, w: () => 1 - S.blend, beatAt: 0 },
+                 { m: () => PB, bar: 0, next: t0, w: () => S.blend, beatAt: 0 }];
+  // LIVE ROLL: clear and follow the primary lane's clock. The blend partner
+  // still sounds, but the roll is the people you're listening as.
+  rollReset({ live: true, t0, spb: 60 / Math.max(40, P.rhythm.tempo * OCCASIONS[S.occ].tempo),
+    totalBeats: 0, windowBeats: 12 });
+  SCHED.timer = setInterval(pump, 110);
+  S.playing = true; pump();
+  startRollAnim();
 }
 function pump() {
   if (!A) return;
@@ -386,6 +599,13 @@ function pump() {
         for (const ev of plan.events) if (ev.role !== "voice") fireEvent(m, ev, lane.next + ev.b * spb, spb, w);
         const sung = plan.events.filter(e => e.role === "voice");
         if (sung.length) fireVoiceLine(m, sung, lane.next, spb, w, vocOf(m));
+      }
+      // Primary lane feeds the piano roll (beat clock, not wall clock).
+      if (lane === SCHED.lanes[0] && w >= 0.02) {
+        ROLL.spb = spb;
+        feedRoll(m, plan.events, lane.beatAt || 0);
+        lane.beatAt = (lane.beatAt || 0) + plan.beats;
+        ROLL.totalBeats = Math.max(ROLL.totalBeats, lane.beatAt);
       }
       lane.next += plan.beats * spb;      // exactly one cycle. No gap, ever.
       lane.bar++;
@@ -432,12 +652,20 @@ function playPiece() {
   S.piece = { ...piece, words: hymn.words };
   const spb = 60 / piece.tempo;
   const t0 = A.ctx.currentTime + 0.15;
+  rollReset({ live: true, t0, spb, totalBeats: piece.totalBeats,
+    viewBeats: Math.min(24, Math.max(10, piece.totalBeats)) });
+  ROLL.previewKey = "";
+  feedRoll(P, piece.events, 0);
+  startRollAnim();
   for (const ev of piece.events) {
     if (ev.role === "voice") continue;
     fireEvent(P, ev, t0 + ev.b * spb, spb, 1);
   }
   fireVoiceLine(P, piece.events.filter(e => e.role === "voice"), t0, spb, 1,
     { syls: hymn.syls, acc: hymn.acc, rotate: true });
+  // When the piece ends, freeze the roll on the full score.
+  const endAt = (piece.totalBeats * spb + 0.2) * 1000;
+  setTimeout(() => { if (ROLL.t0 === t0) ROLL.live = false; }, endAt);
   return piece;
 }
 
@@ -1149,10 +1377,12 @@ function textureHTML(m) {
       </div>
       <div>
         <h3>Form</h3>
-        <p class="lede">${F.literate ? "written" : "oral"} — ${F.sections} sections</p>
-        <p class="note tight">${F.literate
-          ? "Notation buys long structure: the piece can leave its opening idea and not come back the same."
-          : "Memory builds from formula: the piece states an idea and returns to it."}</p>
+        <p class="lede">${F.literate ? "written" : "oral"} · ${esc(F.process || "arch")} — ${F.sections} sections</p>
+        <p class="note tight">${F.process === "cyclic"
+          ? "Memory keeps a short vocabulary and returns early: the piece is always approaching its beginning."
+          : F.process === "progressive"
+            ? "Notation buys long departures: the piece can leave its opening idea and come back late, or not as the same statement."
+            : "The piece establishes, expands, then returns — climb and landing without a scripted section recipe."}</p>
         <div class="row"><span class="k">repetition</span>${bar01(F.repetition, "repetition")}</div>
         <div class="row"><span class="k">development</span>${bar01(F.development, "development")}</div>
       </div>
@@ -1177,11 +1407,17 @@ function textureHTML(m) {
 
 function pieceHTML(m) {
   const pc = S.piece;
+  const order = formOrderOf(m);
+  const bank = phraseBank(m, S.occ);
+  const labels = order.map(i => (bank[i] && bank[i].label) || "?");
+  const sk = phraseSkeleton(m, bank[0]);
   return `<div class="card">
     <h2>A piece <span class="count">— ${esc(OCCASIONS[S.occ].label)}</span></h2>
-    <p class="note">The ambient layer above never repeats and goes nowhere. This is the other renderer:
-      a whole piece with sections, built on one motif, developed as far as their literacy allows —
-      with a line sung over it.</p>
+    <p class="note">The ambient layer walks this same form forever. A piece is the section plan once through —
+      one motif, developed as far as their literacy allows, with a line sung over it.
+      Bodies → <b>form (plain tones)</b> hears only skeleton, lead, bass and punctuation.</p>
+    <p class="note tight">Phrase order (${esc(m.form.process || "arch")}): ${labels.map(esc).join(" → ")}
+      · skeleton ${sk.length} trunk tones on the statement</p>
     <div class="controls">
       <button id="playPiece">Play the piece</button>
       <button id="stopPiece" class="ghost">◼ Stop</button>
@@ -1269,10 +1505,11 @@ function transportHTML() {
     <label class="tl sl" title="How much singing sits over the players. The two synthesis paths are calibrated to agree on what a velocity means; how much voice you want above that is yours.">Voice
       <input type="range" id="voice" min="0" max="1" step="0.01" value="${S.voice}" />
       <span class="slv">${S.voice < 0.02 ? "silent" : S.voice < 0.25 ? "behind" : S.voice < 0.6 ? "in the band" : "out front"}</span></label>
-    <label class="tl" title="Recorded plays one real instrument per family from two CC0 sample libraries; modelled synthesises the body this people actually built, out of its own materials.">Bodies
+    <label class="tl" title="Recorded: one real instrument per family from CC0 libraries. Modelled: synthesised from this people's materials. Form: plain oscillators on skeleton / lead / bass / punctuation only — so form is audible without sample colour.">Bodies
       <select id="sampled">
-        <option value="1"${S.sampled ? " selected" : ""}>recorded</option>
-        <option value="0"${S.sampled ? "" : " selected"}>modelled</option>
+        <option value="1"${!S.formListen && S.sampled ? " selected" : ""}>recorded</option>
+        <option value="0"${!S.formListen && !S.sampled ? " selected" : ""}>modelled</option>
+        <option value="form"${S.formListen ? " selected" : ""}>form (plain tones)</option>
       </select></label>
     <label class="tl sl" title="A border settlement's ambience is an admixture: both traditions generated and sounded together, at the population proportions">Border
       <input type="range" id="blend" min="0" max="1" step="0.01" value="${S.blend}" />
@@ -1299,6 +1536,7 @@ function render() {
     ${rhythmHTML(m)}
     ${textureHTML(m)}
     ${pieceHTML(m)}
+    ${rollHTML(m)}
     ${listenHTML()}
     ${peopleHTML(m)}
     ${chainHTML(m)}
@@ -1315,6 +1553,9 @@ function redraw() {
   if (cv) drawCurve(cv, P);
   const rc = document.getElementById("rhy");
   if (rc) drawRhythm(rc, P);
+  const roll = document.getElementById("pianoroll");
+  if (roll) drawPianoRoll(roll, P);
+  if (ROLL.live) startRollAnim();
 }
 
 function wire() {
@@ -1345,8 +1586,12 @@ function wire() {
     if (sp) sp.textContent = S.intimacy > 0.66 ? "in the city" : S.intimacy > 0.33 ? "nearby" : "far off";
   };
   $("sampled").onchange = (e) => {
-    S.sampled = e.target.value === "1";
-    if (A) A.sampled = S.sampled;
+    const v = e.target.value;
+    S.formListen = v === "form";
+    if (!S.formListen) S.sampled = v === "1";
+    if (A) { A.sampled = S.sampled && !S.formListen; A.formPlain = !!S.formListen; }
+    ROLL.previewKey = "";
+    if (!ROLL.live) { seedRollPreview(P); render(); }
   };
   $("blend").oninput = (e) => {
     S.blend = +e.target.value;
@@ -1356,7 +1601,22 @@ function wire() {
       S.blend > 0.05 ? ` &nbsp;·&nbsp; blending with ${esc(PB.people.name)} <span class="np2">of the ${esc(PB.people.biomeLabel)}</span>` : ""}`;
   };
   $("playPiece").onclick = () => { playPiece(); render(); };
-  if ($("stopPiece")) $("stopPiece").onclick = () => { if (A) silence(A); };
+  if ($("stopPiece")) $("stopPiece").onclick = () => {
+    if (A) silence(A);
+    ROLL.live = false;
+    if (ROLL.raf) { cancelAnimationFrame(ROLL.raf); ROLL.raf = 0; }
+    const roll = document.getElementById("pianoroll");
+    if (roll && P) drawPianoRoll(roll, P);
+  };
+  document.querySelectorAll("[data-roll]").forEach(b => {
+    b.onclick = () => {
+      const r = b.dataset.roll;
+      if (ROLL.hidden.has(r)) ROLL.hidden.delete(r); else ROLL.hidden.add(r);
+      b.classList.toggle("on", !ROLL.hidden.has(r));
+      const roll = document.getElementById("pianoroll");
+      if (roll && P) drawPianoRoll(roll, P);
+    };
+  });
   document.querySelectorAll("button[data-inst]").forEach(b => {
     b.onclick = () => {
       const inst = P.insts[+b.dataset.inst];
@@ -1425,6 +1685,14 @@ h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut
 canvas{width:100%;display:block}
 #curve{margin:.2rem 0 .5rem}
 #rhy{margin:.3rem 0 .5rem}
+#pianoroll{margin:.3rem 0 .55rem;background:var(--chipbg);border-radius:4px;border:1px solid var(--line)}
+.rolllegs{display:flex;flex-wrap:wrap;gap:.35rem;margin:.15rem 0 .2rem}
+.rollchip{font:inherit;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--card);color:var(--muted);border:1px solid var(--line);border-radius:999px;
+  padding:.18rem .55rem;cursor:pointer;opacity:.45}
+.rollchip.on{opacity:1;color:var(--ink);border-color:var(--rc,var(--accent));
+  box-shadow:inset 3px 0 0 var(--rc,var(--accent))}
+.rollchip:hover{filter:brightness(1.05)}
 .degrees{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0 .7rem}
 .deg{display:flex;flex-direction:column;align-items:flex-start;gap:.05rem;background:var(--chipbg);
   border:1px solid var(--line);border-radius:4px;padding:.3rem .55rem;cursor:pointer;color:var(--ink);font:inherit}

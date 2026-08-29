@@ -564,7 +564,12 @@ function cellOpsFor(F) {
   const dev = F.development > 0.25 ? ["invert", "retrograde"] : [];
   // how far a tradition departs from its formula IS its development; how often
   // it comes back is its repetition. Both are already derived from literacy.
-  const wander = Math.round(F.development * 3);
+  //
+  // AND "FREE" COSTS VOCABULARY. A song's individuality is a SMALL set of
+  // pitch/rhythm cells restated (ISMIR 2022): free walks invent new cells and
+  // dissolve that. Oral / high-repetition traditions cannot afford them; only
+  // development buys a few.
+  const wander = Math.max(0, Math.round(F.development * 3 * (1 - F.repetition * 0.55)));
   return oral.concat(dev, new Array(wander).fill("free"));
 }
 
@@ -954,12 +959,25 @@ export function phraseBank(music, occKey) {
   const dens = Math.min(0.95, R.density * O.density);
   const desc = music.melody.descent * O.descent;
   const pat = makePattern(music, seed, dens, R.syncopation, bars);
-  const p2 = makePattern(music, seed + 90,
-    Math.min(0.95, dens * (1 + music.form.development * 0.3)), R.syncopation, bars);
+  // SONG-LOCAL RHYTHM VOCABULARY. Real songs reuse a small set of rhythm
+  // patterns within the piece; inventing a second onset map for the departure
+  // is how the line stops sounding like one song. Cyclic / high-repetition
+  // traditions keep the statement's rhythm and answer only in pitch; progressive
+  // ones may densify a little while keeping the same span and grid.
+  const shareRhythm = music.form.process === "cyclic" || music.form.repetition > 0.5;
+  const p2 = shareRhythm
+    ? {
+      ...pat,
+      onsets: pat.onsets.slice(),
+      notes: (pat.notes || []).map(n => ({ ...n })),
+    }
+    : makePattern(music, seed + 90,
+      Math.min(0.95, dens * (1 + music.form.development * 0.3)), R.syncopation, bars);
   const say = buildLine(music, seed + 1, pat, desc);
   const bank = [
     { pat, degs: say, fin, label: "statement" },
-    { pat: { ...pat }, degs: buildLine(music, seed + 2, pat, desc, say), fin, label: "answer" },
+    { pat: { ...pat, onsets: pat.onsets.slice(), notes: (pat.notes || []).map(n => ({ ...n })) },
+      degs: buildLine(music, seed + 2, pat, desc, say), fin, label: "answer" },
     { pat: p2, degs: buildLine(music, seed + 3, p2, desc * 0.8), fin, label: "departure" },
   ];
   music[key] = bank;
@@ -987,19 +1005,81 @@ export function formOrderOf(music) {
   const F = music.form;
   const seed = hash32(music.people.seed, "order");
   const n = Math.max(4, Math.min(16, Math.round(F.sections * F.phrasePerSection * (1 + F.development))));
-  const out = [0];
-  let last = 0;
-  for (let i = 1; i < n; i++) {
-    const r = hash32(seed, "o", i) / 4294967296;
-    // the last slot always comes home
-    if (i === n - 1) { out.push(0); continue; }
-    // a return is due whenever memory says so, and departure is bounded by how
-    // far this tradition develops
-    const home = r < F.repetition * 0.55 + 0.2;
-    if (home) { out.push(0); last = 0; }
-    else out.push(last === 0 ? (r < 0.5 + F.development * 0.4 ? 1 : 2) : (last = last === 1 ? 2 : 1));
-    last = out[i];
+  const process = F.process || "arch";
+  const out = [];
+  if (process === "cyclic") {
+    // Always approaching the beginning: short departures, EARLY and frequent
+    // returns. The statement is back by slot ~2 more often than not — that is
+    // how a limited song vocabulary becomes audible as form, not just as motif.
+    for (let i = 0; i < n; i++) {
+      if (i === 0 || i === n - 1) { out.push(0); continue; }
+      const r = hash32(seed, "o", i) / 4294967296;
+      if (i <= 2 && r < 0.72) out.push(0);
+      else if (r < F.repetition * 0.7 + 0.22) out.push(0);
+      else out.push(r < 0.78 + F.development * 0.15 ? 1 : 2);
+    }
+  } else if (process === "progressive") {
+    // Notation buys leaving the opening idea for a long stretch; returns are
+    // rarer, and the close may land on the answer rather than the statement.
+    let last = 0;
+    for (let i = 0; i < n; i++) {
+      if (i === 0) { out.push(0); continue; }
+      if (i === n - 1) {
+        out.push(F.development > 0.7 && (hash32(seed, "end") % 3) === 0 ? 1 : 0);
+        continue;
+      }
+      const r = hash32(seed, "o", i) / 4294967296;
+      if (r < F.repetition * 0.35 + 0.08) { out.push(0); last = 0; }
+      else {
+        const next = last === 0 ? (r < 0.42 ? 1 : 2)
+          : last === 1 ? (r < 0.55 ? 2 : 1) : (r < 0.4 ? 1 : 2);
+        out.push(next); last = next;
+      }
+    }
+  } else {
+    // Arch: establish → expand → return (the cross-cultural climb-and-forūd).
+    const climb = Math.max(1, Math.floor(n * 0.35));
+    const peak = Math.max(climb + 1, Math.floor(n * 0.72));
+    for (let i = 0; i < n; i++) {
+      if (i < climb) out.push(i === 0 || (hash32(seed, "a", i) % 5) !== 0 ? 0 : 1);
+      else if (i < peak) {
+        const r = hash32(seed, "a", i) / 4294967296;
+        out.push(r < 0.45 - F.development * 0.1 ? 1 : 2);
+      } else out.push(0);
+    }
+    out[n - 1] = 0;
   }
+  return out;
+}
+
+/**
+ * THE SKELETON: structural degrees on the phrase's strong beats.
+ *
+ * Surface melody ornaments this map; it is what a listener tracks when the
+ * figuration is dense. Snapping strong onsets to the mode's structural set is
+ * the mechanism — not a named cadential formula — so any mode gets a trunk
+ * that the line can hang on.
+ */
+export function phraseSkeleton(music, ph) {
+  const G = ph.pat.grid;
+  const S = music.mode.size;
+  const structural = [0, ...(music.melody.structural || []).filter(d => d)];
+  const notes = ph.pat.notes || ph.pat.onsets.map(s => ({ s, v: 1 }));
+  const out = [];
+  notes.forEach((nt, i) => {
+    const s = nt.s;
+    const strong = G.w[s % G.slots] >= 1 || i === 0 || i === notes.length - 1;
+    if (!strong) return;
+    const mi = ph.degs[i % ph.degs.length];
+    const base = Math.floor(mi / S) * S;
+    const k = ((mi % S) + S) % S;
+    let best = 0, bd = Infinity;
+    for (const d of structural) {
+      const dd = Math.min(Math.abs(d - k), S - Math.abs(d - k));
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    out.push({ s, i, mi: base + best, beats: Math.max(0.25, nt.v / G.div) });
+  });
   return out;
 }
 
@@ -1675,25 +1755,33 @@ function layPhrase(music, ph, O, opts) {
   const ev = [];
   const notes = pat.notes || pat.onsets.map(s => ({ s, v: 1 }));
   const n = notes.length;
+  // Strong beats follow the skeleton when one is given: the surface may
+  // ornament between them, but the trunk tones are what make the form audible
+  // under dense figuration.
+  const skMi = opts.skeleton || null;
   notes.forEach((nt, i) => {
     const s = nt.s;
     const b = slotBeat(G, s, R.swing);
     const span = Math.max(0.12, nt.v / G.div);
     const strong = G.w[s % G.slots] >= 1;
-    const mi = degs[i % degs.length];
+    let mi = degs[i % degs.length];
+    if (skMi && skMi.has(i) && (strong || i === 0 || i === n - 1)) mi = skMi.get(i);
     const last = i === n - 1;
-    // a phrase LANDS: its final note is held past the end of the cycle, and
-    // the next cycle's downbeat is suppressed so it survives instead of being
-    // stolen by the note that follows
-    const len = last ? span * 1.55 : span * O.artic;
+    // MULTI-CUE CLOSURE. A phrase lands when landing tone, longer duration, and
+    // stronger metric weight coincide — not only "last degree = final". Section
+    // and piece ends lengthen further; middles stay shorter so they stay open.
+    const close = last ? (opts.closeGrade || 1) : 0;
+    const len = last
+      ? span * O.artic * (close >= 2 ? 2.35 : close >= 1 ? 1.7 : 1.45)
+      : span * O.artic;
     // DYNAMICS. A line with three decibels of range in it is a machine. Real
     // range comes from three sources at once: the metrical hierarchy, the
     // language's OWN stress (rhythm.accent, derived from prosody and until now
     // computed and never read), and the arc of the phrase — which rises to a
     // peak and falls away, tilted downward by the same breath declination the
     // pitch already uses.
-    const metre = strong ? 1 : G.w[s % G.slots] >= 0.5 ? 0.62 : 0.4;
-    const stress = strong ? R.accent : 1 / Math.sqrt(R.accent);
+    const metre = strong || last ? 1 : G.w[s % G.slots] >= 0.5 ? 0.62 : 0.4;
+    const stress = strong || last ? R.accent : 1 / Math.sqrt(R.accent);
     const arc = (0.72 + 0.34 * Math.sin(Math.PI * (i + 0.5) / n)) * (1 - 0.12 * O.descent * (i / Math.max(1, n - 1)));
     const e = {
       // THE SECTION'S TONAL CENTRE BELONGS TO THE WHOLE SECTION. `ist` is the
@@ -1711,13 +1799,14 @@ function layPhrase(music, ph, O, opts) {
       b: at + b, dur: len, inst, mi, deg: modeDegree(music, mi + fin + ist), oct, role,
       // the melody is the thing being listened to, so it sits on top of the
       // texture the other layers make
-      vel: vel * 1.5 * metre * stress * arc * (0.65 + 0.35 * intimacy),
-      last, strong,
+      vel: vel * 1.5 * metre * stress * arc * (0.65 + 0.35 * intimacy) * (last ? 1.12 : 1),
+      last, strong: strong || last,
     };
     // An ornament is a quick neighbour just ahead of the note — a MODE step,
     // so it decorates the line instead of smearing a microtone across it, and
     // sparse, because one on every long note is clutter rather than style.
-    if (opts.orn && !strong && span >= 0.5 && hash32(music.people.seed, "orn", s) % 3 === 0) {
+    // Cadences stay bare: ornament on the landing undoes the closural cue.
+    if (opts.orn && !last && !strong && span >= 0.5 && hash32(music.people.seed, "orn", s) % 3 === 0) {
       e.ornDeg = modeDegree(music, mi + fin + ist + 1);
       e.ornLead = Math.min(0.22, span * 0.3);
     }
@@ -1871,21 +1960,28 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         role: "mark", ring: c.level === 0 });
     }
   }
-  // THE CORE: the slow skeletal melody the elaboration hangs on. Slow but
-  // STOPPED, never sustained — a metallophone key is hand-damped as the next
-  // one sounds, so a slow core is short events at long intervals, and
-  // rendering it as long ones is the single most audible way to make this
-  // music sound moody instead of driven.
-  if (ST.core && audible("core")) {
-    // AND THE CORE SLOWS. This is the part of irama that surprises: as the
-    // elaboration multiplies, the skeleton it hangs on STRETCHES rather than
-    // keeping pace, so the piece gets denser and more spacious at once. Both
-    // moving together would just be the same music played faster.
-    const step = Math.max(G.div, Math.round((SLOTS / ST.core.n) * Math.sqrt(S.sec.dens)));
-    for (let s = 0; s < SLOTS; s += step) {
-      const d = ph.degs[degAt(ph, s)] ?? 0;
-      ev.push({ b: slotBeat(G, s, R.swing), dur: Math.min(1.1, step / G.div * 0.6), inst: ST.core.k,
-        deg: modeDegree(music, d + fin + ist), oct: -1, vel: ST.core.vel, role: "core", damped: true });
+  // THE CORE / SKELETON: structural degrees on strong beats — the trunk the
+  // elaboration hangs on. Always emitted as `skeleton` so a form-listen path
+  // can hear the map without the samples; when a core body is on stage it
+  // also plays those tones (slow, damped), which is what irama stretches.
+  const sk = phraseSkeleton(music, ph);
+  const skMap = new Map(sk.map(x => [x.i, x.mi]));
+  if (sk.length) {
+    const skInst = ST.core && audible("core") ? ST.core.k
+      : ST.lead ? ST.lead.k
+        : (E.marks && E.marks[0] != null ? E.marks[0] : 0);
+    const skVel = ST.core ? ST.core.vel : 0.2;
+    for (const x of sk) {
+      ev.push({
+        b: slotBeat(G, x.s, R.swing),
+        dur: Math.min(1.15, x.beats * 0.85),
+        inst: skInst,
+        deg: modeDegree(music, x.mi + fin + ist),
+        oct: -1,
+        vel: skVel * (ST.core && audible("core") ? 1 : 0.55),
+        role: "skeleton",
+        damped: true,
+      });
     }
   }
   // THE LINE — stated plainly first, and filled in later. A statement is the
@@ -1901,10 +1997,23 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     plain.degs = plain.pat.onsets.map(o => ph.degs[ph.pat.onsets.indexOf(o)] ?? 0);
     plain.pat.notes = ph.pat.notes.filter(n => plain.pat.onsets.includes(n.s));
   }
+  // Skeleton indices are into the full phrase; remap onto the thinned plain
+  // line so strong beats that survive still carry the trunk tones.
+  const plainSk = new Map();
+  if (plain === ph) {
+    for (const [i, mi] of skMap) plainSk.set(i, mi);
+  } else {
+    plain.pat.onsets.forEach((o, j) => {
+      const src = ph.pat.onsets.indexOf(o);
+      if (src >= 0 && skMap.has(src)) plainSk.set(j, skMap.get(src));
+    });
+  }
   const lead = layPhrase(music, plain, O, {
     inst: ST.lead ? ST.lead.k : -1, intimacy, oct: Math.round(O.reg) + S.sec.oct,
     ist, orn: music.texture.ornament * S.sec.orn > 0.5,
     vel: 0.42 * (0.85 + 0.3 * Math.min(1, S.sec.dens / 3)),
+    skeleton: plainSk,
+    closeGrade: S.last ? S.sec.grade : 1,
   });
   // ── THE OTHER VOICES: everyone else who can carry the line is carrying it ──
   //
@@ -1986,12 +2095,10 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     }
     if (!kept && lead.length) ev.push({ ...lead[0], inst: k, role: "het", vel: lead[0].vel * 0.62 });
   }
-  // A phrase LANDS, in three grades: the end of a phrase, the end of a section,
-  // the end of the piece. Only the last note of the last cycle of a section
-  // gets the long one, and a section ending also gets real silence after it —
-  // a rest is the strongest boundary signal there is.
+  // A phrase LANDS via layPhrase's closeGrade. Section ends only add the
+  // silence after the cycle (below); stretching the last note again here used
+  // to stack on the cadence length and smear the boundary into the next bar.
   const last = lead[lead.length - 1];
-  if (last && S.last) last.dur *= S.sec.grade === 2 ? 2.6 : 1.8;
   // THE APPROACH. A section that changes register used to get there by
   // jumping: the line simply restarted a frame higher, on a note nothing had
   // led to. Measured, that happened about one and a half times a piece and it

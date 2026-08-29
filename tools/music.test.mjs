@@ -29,7 +29,7 @@
 import { TRADITIONS, applyTradition } from "../src/sim/musicTraditions.js";
 import { foundLanguage } from "../src/sim/language.js";
 import { foundPeople, musicOf } from "../src/sim/musicGenome.js";
-import { ensembleFor, composePiece, ambientBar, OCCASIONS, finalFor, modeDegree, degreeHz } from "../src/sim/musicCompose.js";
+import { ensembleFor, composePiece, ambientBar, OCCASIONS, finalFor, modeDegree, degreeHz, formOrderOf, phraseBank, phraseSkeleton } from "../src/sim/musicCompose.js";
 import { ARCHETYPE_PHYS_FIT_MIN } from "../src/sim/musicArchetypes.js";
 import { makeInstrument } from "../src/sim/musicInstruments.js";
 import { finalsOf } from "../src/sim/musicTuning.js";
@@ -120,7 +120,7 @@ for (let s = 0; s < 60; s++) {
 }
 
 // ── coherence: texture choices that were audible as mud in vertical probes ──
-const MELODIC = new Set(["lead", "het", "elab", "voice", "core", "bass", "ost", "pad"]);
+const MELODIC = new Set(["lead", "het", "elab", "voice", "core", "skeleton", "bass", "ost", "pad"]);
 function verticalOf(m) {
   const plan = ambientBar(m, { occ: "peace", bar: 0, intimacy: 0.85 });
   const ev = (plan.events || [])
@@ -242,6 +242,45 @@ for (let s = 0; s < 30; s++) {
 }
 check("coherence: semitone clash share stays under 26%", maxSemis < 0.26, `worst ${(100 * maxSemis).toFixed(1)}%`);
 check("coherence: mean simultaneous melodic parts under 2.55", maxPoly < 2.55, `worst ${maxPoly.toFixed(2)}`);
+
+// ── form: process, early return, shared rhythm vocabulary, skeleton trunk ──
+console.log("[music] form gates");
+{
+  const procs = new Set();
+  let cyclicEarly = 0, cyclicN = 0, sharedRhy = 0, shareN = 0, skOk = 0;
+  for (let s = 0; s < 80; s++) {
+    const seed = 3000 + s * 29;
+    const m = musicOf(foundPeople(seed, foundLanguage(W(), { seed }), {}));
+    const p = m.form.process;
+    procs.add(p);
+    check(`seed ${seed}: form.process is a known formative process`,
+      p === "cyclic" || p === "arch" || p === "progressive", p);
+    const order = formOrderOf(m);
+    if (p === "cyclic") {
+      cyclicN++;
+      const secondHome = order.findIndex((x, i) => i > 0 && x === 0);
+      if (secondHome > 0 && secondHome <= 3) cyclicEarly++;
+    }
+    if (m.form.repetition > 0.5 || p === "cyclic") {
+      shareN++;
+      const bank = phraseBank(m, "peace");
+      const a = bank[0].pat.onsets.join(",");
+      const b = bank[2].pat.onsets.join(",");
+      if (a === b) sharedRhy++;
+    }
+    const plan = ambientBar(m, { occ: "peace", bar: 0, intimacy: 0.85 });
+    const sk = (plan.events || []).filter(e => e.role === "skeleton");
+    const bank0 = phraseBank(m, "peace")[0];
+    if (sk.length >= 2 && phraseSkeleton(m, bank0).length >= 2) skOk++;
+  }
+  check("form: all three processes appear across 80 peoples", procs.size === 3,
+    [...procs].join(","));
+  check("form: cyclic orders return home by slot 3", cyclicN === 0 || cyclicEarly / cyclicN >= 0.85,
+    `${cyclicEarly}/${cyclicN}`);
+  check("form: high-repetition songs share statement rhythm with departure",
+    shareN === 0 || sharedRhy / shareN >= 0.95, `${sharedRhy}/${shareN}`);
+  check("form: ambient bars emit a skeleton trunk", skOk >= 75, `${skOk}/80`);
+}
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);
 if (failures > 0) {
