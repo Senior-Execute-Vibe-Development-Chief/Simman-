@@ -12,9 +12,14 @@
 // MUST be recaptured on the merged build; the two blocks below are each line's
 // pre-merge anchor, kept for provenance (reset either line via the SIM_TUNE in its
 // entry).
-// Current baseline (2500 steps): edcdcc34/f08c073f — v57 mint/packing + city-hold
-// stack (MINT_RESIDUAL+MINT_REACH+SEED_EXCLUSIVE+CITY_HOLD+CATCH_GRACE=600+ARID_SECURE).
-// Prior pair 93c1cd89/d3068404 was v55 12k abolish. SAVE_VERSION 57.
+// Current baseline (2500 steps): edcdcc34/f08c073f — UNCHANGED through the
+// v58 Tier-2 politics flip (COURT_SPHERE+ENGULF_BAR=8+ABSORB_PEER+CITY_STORE+
+// TRUCE_TRADE_OWN): at the harness 320-grid / 2500-step horizon, peer absorb /
+// engulf / court-sphere / storable-mint / own-trade peace either do not fire
+// or leave the stream bit-identical (same transparency class as v47/v48 grain
+// flips). Prior capture was v57 mint/packing + city-hold
+// (MINT_RESIDUAL+MINT_REACH+SEED_EXCLUSIVE+CITY_HOLD+CATCH_GRACE=600+ARID_SECURE).
+// Prior pair 93c1cd89/d3068404 was v55 12k abolish. SAVE_VERSION 58.
 // UNCHANGED through the v48 GRAIN_PROVISION flip (2026-08-26; same coinage-gate transparency) and the
 // v47 GRAIN_MARKET flip (2026-08-25): the open grain market is gated on the
 // market institution (techEff.market — coined money), which no 320-grid
