@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/people-style-642a",
+      "sha": "2c1d994267329ce54456c16dfd15ab66fdc0c69d",
+      "slug": "cursor-people-style-642a",
+      "builtAt": "2026-08-30T14:49:51.349Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-people-style-642a/"
+    },
+    {
       "branch": "cursor/settlement-trace-15e6",
       "sha": "4aacb1b9e95609d0c3fc15432ed8416cfe7ff95e",
       "slug": "cursor-settlement-trace-15e6",
