@@ -204,6 +204,24 @@ const SHIP_FRAC_BY_TIER = [0.8, 0.5, 0.2, 0.05];
 // coin into the countryside.
 const GRAIN_PRICE_BY_TIER = [2, 8, 14, 22];
 
+// Willingness to pay for another unit of grain: demand vs what the harvest
+// actually delivers this moment (flow + live hinterland). The retained book
+// alone treated a city with an empty ledger and a working belt as famine (3).
+// A glut still floors at 0.5; a real empty pot with mouths still reads 3.
+// Granary is NOT in this ratio: stores are a buffer, not a reason to stop
+// wanting the farms that fill them (GRAIN_PROVISION). Ability to pay is a
+// different axis. No demand is neutral, not starving.
+export function grainScarcityOf(s) {
+  const demand = s._foodDemand || 0;
+  if (!(demand > 0)) return 1;
+  let supply = s._foodSupply || 0;
+  if (T.PRICE_GROSS > 0 && T.GRAIN_MARKET > 0) supply += s._foodExportedPrev || 0;
+  // Empty retained book with a live hinterland is not a famine — the same
+  // landFood fallback updateFood uses for netLand when _foodNet is still 0.
+  if (supply <= 1e-9 && (s._landFood || 0) > 1e-9) supply = s._landFood;
+  return Math.min(3, Math.max(0.5, demand / Math.max(0.01, supply)));
+}
+
 export function aggregateFoodHierarchy(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -287,14 +305,14 @@ export function aggregateFoodHierarchy(world) {
     // production-relative, exports added back — so the two agree. Zero new
     // constants and no new term: it is the identical _foodExported the capacity
     // add-back already applies, gated on the same T.GRAIN_MARKET.
-    const _priceSupply = (s._foodSupply || 0)
-      + ((T.PRICE_GROSS && T.GRAIN_MARKET > 0) ? (s._foodExportedPrev || 0) : 0);
-    const scarcity = Math.min(3, Math.max(0.5,
-      (s._foodDemand || 1) / Math.max(0.01, _priceSupply)));   // no `|| 1` on supply: a food-empty settlement must read as MOST scarce, not neutral (Math.max(0.01,…) guards the divide)
-    // T.MARKET_PULL reads this: the BID is hunger, not the tier label. Kept
-    // beside _grainPrice rather than derived from it, because _grainPrice
-    // carries GRAIN_PRICE_BY_TIER and dividing it back out would reintroduce
-    // the ratchet through the back door. Transient, rebuilt every aggregation.
+    // T.MARKET_PULL reads this as WILLINGNESS TO PAY — hunger, not the tier
+    // label. Kept beside _grainPrice rather than derived from it, because
+    // _grainPrice carries GRAIN_PRICE_BY_TIER and dividing it back out would
+    // reintroduce the ratchet through the back door. Transient, rebuilt every
+    // aggregation. Ability to pay is a different axis (the city purse); the
+    // farm-gate seed is min(this, that) under T.MARKET_PAY. Granary is a
+    // buffer, not harvest: a stocked city still wants the farms that fill it.
+    const scarcity = grainScarcityOf(s);
     s._scarcity = scarcity;
     // T.PRICE_GROSS retires GRAIN_PRICE_BY_TIER: grain is dear where it is scarce,
     // not because the seller wears a metropolis label. The tier ladder was a
