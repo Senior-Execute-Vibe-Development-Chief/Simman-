@@ -7,7 +7,7 @@ import {
 import { materialsFromSignals, idsOf, tileMaterials } from "../src/sim/tileMaterials.js";
 import {
   rasterizeEarthPlates, plateBoundDist, lonLatToIndex, kindOfPair,
-  NAZ, SAM, IND, EUR, NAM, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT,
+  NAZ, SAM, IND, EUR, NAM, AFR, AP, ND, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT,
 } from "../src/sim/earthPlates.js";
 import { generateWorld } from "../src/sim/worldgen.js";
 import {
@@ -59,16 +59,26 @@ function ok(cond, msg) {
   const kansas = lonLatToIndex(-98, 39, W, H);
   const himalaya = lonLatToIndex(84, 28, W, H);
   const hawaii = lonLatToIndex(-155.3, 19.4, W, H);
+  const congo = lonLatToIndex(20, 0, W, H);
+  const nile = lonLatToIndex(31, 30, W, H);
+  const sahel = lonLatToIndex(0, 15, W, H);
   const bd = plateBoundDist(pixPlate, W, H, 30);
-  ok(bd[andes] < 12, `Andes near NAZ-SAM boundary (d=${bd[andes]})`);
+  ok(bd[andes] < 12, `Andes near a plate seam (d=${bd[andes]})`);
+  ok(boundKind[andes] === BK_SUBDUCTION, `Andes is subduction (kind=${boundKind[andes]})`);
   ok(bd[kansas] > 12, `Kansas interior far from plate edge (d=${bd[kansas]})`);
+  ok(bd[sahel] > 12, `West Sahel interior far from plate edge (d=${bd[sahel]})`);
+  ok(pixPlate[congo] === AFR && bd[congo] > 4, `Congo basin is African interior (d=${bd[congo]})`);
+  ok(pixPlate[nile] === AFR, "Nile is on the African plate");
   ok(bd[himalaya] < 10, `Himalaya near IND-EUR (d=${bd[himalaya]})`);
+  ok(boundKind[himalaya] === BK_COLLISION, `Himalaya is collision (kind=${boundKind[himalaya]})`);
   ok(kindOfPair(NAZ, SAM) === BK_SUBDUCTION, "Nazca-South America is subduction");
   ok(kindOfPair(IND, EUR) === BK_COLLISION, "India-Eurasia is collision");
   ok(hotspotDist[hawaii] < 4, `Hawaii hotspot Dist=${hotspotDist[hawaii]}`);
   ok(boundKind[hawaii] === BK_HOTSPOT || hotspotDist[hawaii] === 0, "Hawaii marked hotspot");
-  ok(pixPlate[andes] === SAM || pixPlate[andes] === NAZ, "Andes pixel is SAM or NAZ");
+  ok(pixPlate[andes] === SAM || pixPlate[andes] === NAZ || pixPlate[andes] === AP || pixPlate[andes] === ND,
+    "Andes pixel is SAM/NAZ or an Andean microplate");
   ok(pixPlate[kansas] === NAM, "Kansas is North America plate");
+  ok(pixPlate[congo] === AFR, "Congo is African plate");
 }
 
 {
@@ -96,8 +106,8 @@ function ok(cond, msg) {
 
 {
   const w = generateWorld(120, 60, 1, "earth", 0.78);
-  ok(!w.pixPlate, "Earth does not set pixPlate (crop/deposit boundDist stays off)");
-  ok(w.earthPixPlate && w.earthPixPlate.length === 120 * 60, "earthPixPlate raster present");
+  ok(w.pixPlate && w.pixPlate.length === 120 * 60, "Earth sets pixPlate from Bird geometry");
+  ok(w.earthPixPlate && w.earthPixPlate.length === 120 * 60, "earthPixPlate alias present");
   ok(!!w.boundKind && !!w.hotspotDist, "typed boundaries + hotspots present");
   ok(w.realClimateUsed === false, "solver Earth is not observed climate");
 }

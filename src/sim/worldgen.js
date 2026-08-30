@@ -869,9 +869,8 @@ tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
 if(preset==="earth"||preset==="earth_sim"){
 const ep=rasterizeEarthPlates(W,H);
-// Stored as earthPixPlate, NOT pixPlate: resourceGen/pipeline already BFS
-// pixPlate for copper/gems/young-soil, and wiring Earth's raster into that
-// path moved hearth growth on the smoke grid (770→621 people). Materials
-// read earthPixPlate; the economic nudge is a measured follow-up.
-tecEarthPlates=ep.pixPlate;tecBoundKind=ep.boundKind;tecHotspotDist=ep.hotspotDist;}
+// Bird/PB2002 geometry is sparse in plate interiors (Kansas, Congo), so
+// the existing boundDist BFS on pixPlate is honest enough to drive
+// copper/gems/young-soil. earthPixPlate stays as an alias for inspect UI.
+tecPlates=ep.pixPlate;tecEarthPlates=ep.pixPlate;tecBoundKind=ep.boundKind;tecHotspotDist=ep.hotspotDist;}
 return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,earthPixPlate:tecEarthPlates,boundKind:tecBoundKind,hotspotDist:tecHotspotDist,windX:tecWindX||null,windY:tecWindY||null,_seed:seed,realClimateUsed};}

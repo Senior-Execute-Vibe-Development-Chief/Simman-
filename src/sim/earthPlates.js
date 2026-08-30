@@ -1,14 +1,14 @@
 // ── Earth plate raster ─────────────────────────────────────────────────────
-// Compact Bird/PB2002-class model: plate interiors as Voronoi seeds (lon/lat),
-// typed pairs for the boundaries that matter geologically, plus a short
-// hotspot list. Rasterized onto the Earth heightmap so existing boundDist
-// BFS (resourceGen, pipeline volcanic soil, tileMaterials) has something to
-// start from. Does NOT rebuild elevation — plates classify geology, they
-// do not grow mountains.
+// Bird 2003 PB2002 polygons + typed boundary segments, upsampled onto the
+// Earth heightmap. Same class of preset-gated Earth fact as NCEP climate:
+// observed geometry, not a fitted "Andes = volcanoes" outcome. A subduction
+// segment produces a volcanic arc wherever those plates meet.
 //
-// This is the same class of preset-gated Earth fact as crop PACKAGE_ORIGINS:
-// observed plate geometry, not a fitted "Andes = volcanoes" outcome. A
-// subduction pair produces a volcanic arc wherever those plates meet.
+// Hotspots are not in PB2002 (they are not plate edges). Skipping them
+// deletes Hawaii / Yellowstone / Afar volcanism, so they stay as a short
+// geographic list stamped on top of the Bird raster.
+
+import { PW, PH, CODES, PLATE_RLE, KIND_RLE } from "./earthPlateRaster.js";
 
 export const BK_NONE = 0;
 export const BK_RIDGE = 1;
@@ -17,78 +17,41 @@ export const BK_SUBDUCTION = 3;
 export const BK_COLLISION = 4;
 export const BK_HOTSPOT = 5;
 
-export const PAC = 1, NAM = 2, EUR = 3, AFR = 4, SAM = 5, ANT = 6, AUS = 7,
-  IND = 8, NAZ = 9, COC = 10, CAR = 11, ARA = 12, PHI = 13, JDF = 14,
-  SCO = 15, SUN = 16, SOM = 17;
+export { PW, PH, CODES };
 
-// Interior seeds. Several per plate so Voronoi follows the real outline
-// well enough for boundary proximity (the quantity resourceGen already
-// consumes). Coordinates are geographic lon/lat.
-const SEEDS = [
-  // Pacific
-  [180, 0, PAC], [160, 12, PAC], [-155, 5, PAC], [170, -22, PAC],
-  [-130, -12, PAC], [150, 22, PAC], [-160, -25, PAC], [175, 30, PAC],
-  // North America
-  [-100, 45, NAM], [-110, 58, NAM], [-90, 40, NAM], [-150, 62, NAM],
-  [-80, 46, NAM], [-105, 32, NAM], [-120, 50, NAM], [-68, 48, NAM],
-  // Eurasia
-  [20, 52, EUR], [40, 55, EUR], [80, 56, EUR], [120, 60, EUR],
-  [10, 48, EUR], [60, 48, EUR], [100, 42, EUR], [135, 62, EUR],
-  [30, 42, EUR], [90, 50, EUR],
-  // Africa
-  [15, 8, AFR], [20, -10, AFR], [25, -22, AFR], [0, 16, AFR],
-  [12, -2, AFR], [18, 22, AFR],
-  // South America
-  [-60, -10, SAM], [-65, -25, SAM], [-55, -4, SAM], [-70, -40, SAM],
-  [-50, -15, SAM],
-  // Antarctica
-  [0, -80, ANT], [90, -80, ANT], [-90, -80, ANT], [180, -75, ANT],
-  [45, -75, ANT], [-135, -75, ANT],
-  // Australia
-  [135, -25, AUS], [145, -20, AUS], [125, -28, AUS], [150, -35, AUS],
-  [118, -24, AUS],
-  // India
-  [78, 18, IND], [80, 10, IND], [72, 22, IND],
-  // Nazca
-  [-95, -15, NAZ], [-100, -25, NAZ], [-88, -8, NAZ],
-  // Cocos
-  [-100, 12, COC], [-95, 8, COC],
-  // Caribbean
-  [-75, 15, CAR], [-68, 16, CAR],
-  // Arabia
-  [48, 22, ARA], [45, 17, ARA], [52, 20, ARA],
-  // Philippine Sea
-  [130, 15, PHI], [135, 12, PHI], [138, 20, PHI],
-  // Juan de Fuca
-  [-128, 46, JDF],
-  // Scotia
-  [-45, -57, SCO], [-30, -58, SCO],
-  // Sunda
-  [110, 2, SUN], [120, 6, SUN], [100, 4, SUN], [115, -4, SUN],
-  // Somalia (East African Rift counterpart)
-  [45, 4, SOM], [42, -6, SOM], [48, -2, SOM],
-];
+function codeId(code) {
+  const i = CODES.indexOf(code);
+  return i > 0 ? i : 0;
+}
 
-// Typed pairs. Unlisted adjacent pairs default to transform (weak volcanism).
+export const PAC = codeId("PA"), NAM = codeId("NA"), EUR = codeId("EU"),
+  AFR = codeId("AF"), SAM = codeId("SA"), ANT = codeId("AN"), AUS = codeId("AU"),
+  IND = codeId("IN"), NAZ = codeId("NZ"), COC = codeId("CO"), CAR = codeId("CA"),
+  ARA = codeId("AR"), PHI = codeId("PS"), JDF = codeId("JF"), SCO = codeId("SC"),
+  SUN = codeId("SU"), SOM = codeId("SO"), AP = codeId("AP"), ND = codeId("ND"),
+  OKH = codeId("OK");
+
+// Typed pairs for neighbour-fallback when a pixel sits on a plate seam the
+// 0.5° kind raster did not paint. Unlisted adjacent pairs default to transform.
 const PAIRS = [
-  // Ridges / rifts
   [NAM, EUR, BK_RIDGE], [NAM, AFR, BK_RIDGE], [SAM, AFR, BK_RIDGE],
   [AFR, ANT, BK_RIDGE], [SAM, ANT, BK_RIDGE], [AUS, ANT, BK_RIDGE],
   [PAC, NAZ, BK_RIDGE], [PAC, COC, BK_RIDGE], [PAC, ANT, BK_RIDGE],
   [AFR, SOM, BK_RIDGE], [AFR, ARA, BK_RIDGE], [NAM, JDF, BK_RIDGE],
-  // Subduction
   [PAC, NAM, BK_SUBDUCTION], [PAC, EUR, BK_SUBDUCTION], [PAC, PHI, BK_SUBDUCTION],
-  [NAZ, SAM, BK_SUBDUCTION], [COC, NAM, BK_SUBDUCTION], [PAC, AUS, BK_SUBDUCTION],
+  [NAZ, SAM, BK_SUBDUCTION], [NAZ, AP, BK_SUBDUCTION], [NAZ, ND, BK_SUBDUCTION],
+  [COC, NAM, BK_SUBDUCTION], [PAC, AUS, BK_SUBDUCTION],
   [AUS, SUN, BK_SUBDUCTION], [PHI, EUR, BK_SUBDUCTION], [PAC, SUN, BK_SUBDUCTION],
+  [PAC, OKH, BK_SUBDUCTION],
   [SCO, SAM, BK_SUBDUCTION], [SCO, ANT, BK_SUBDUCTION], [JDF, NAM, BK_SUBDUCTION],
   [CAR, NAM, BK_SUBDUCTION], [CAR, SAM, BK_SUBDUCTION],
-  // Collision
   [IND, EUR, BK_COLLISION], [AFR, EUR, BK_COLLISION], [ARA, EUR, BK_COLLISION],
   [AUS, EUR, BK_COLLISION], [IND, SUN, BK_COLLISION],
 ];
 
 const PAIR_MAP = new Map();
 for (const [a, b, k] of PAIRS) {
+  if (!a || !b) continue;
   const lo = a < b ? a : b, hi = a < b ? b : a;
   PAIR_MAP.set((lo << 8) | hi, k);
 }
@@ -99,9 +62,6 @@ export function kindOfPair(a, b) {
   return PAIR_MAP.get((lo << 8) | hi) || BK_TRANSFORM;
 }
 
-// Hotspots are not plate edges. Skipping them deletes Hawaii / Yellowstone /
-// Afar / Iceland volcanism. Positions are geographic lon/lat; radius is
-// degrees (the raster stamps a distance field in pixels).
 export const HOTSPOTS = [
   { lat: 19.4, lon: -155.3 },   // Hawaii
   { lat: 44.4, lon: -110.7 },   // Yellowstone
@@ -126,27 +86,34 @@ export function lonLatToIndex(lon, lat, W, H) {
   return y * W + x;
 }
 
-function angDist2(lon1, lat1, lon2, lat2) {
-  let dLon = lon1 - lon2;
-  if (dLon > 180) dLon -= 360;
-  if (dLon < -180) dLon += 360;
-  const mlat = (lat1 + lat2) * 0.5 * Math.PI / 180;
-  const dx = dLon * Math.cos(mlat);
-  const dy = lat1 - lat2;
-  return dx * dx + dy * dy;
+function decodeRLE(b64, n) {
+  const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (let i = 0; i + 1 < bin.length && o < n;) {
+    const v = bin[i++], c = bin[i++];
+    out.fill(v, o, o + c);
+    o += c;
+  }
+  return out;
 }
 
-function plateAtLonLat(lon, lat) {
-  let best = 0, bestD = Infinity;
-  for (let i = 0; i < SEEDS.length; i++) {
-    const [slon, slat, id] = SEEDS[i];
-    const d = angDist2(lon, lat, slon, slat);
-    if (d < bestD) { bestD = d; best = id; }
-  }
-  return best;
+let _srcPlate = null, _srcKind = null;
+function sourceRasters() {
+  if (_srcPlate) return;
+  const n = PW * PH;
+  _srcPlate = decodeRLE(PLATE_RLE, n);
+  _srcKind = decodeRLE(KIND_RLE, n);
+}
+
+function sampleSrc(arr, lon, lat) {
+  const x = ((Math.floor((lon + 180) / 360 * PW) % PW) + PW) % PW;
+  const y = Math.max(0, Math.min(PH - 1, Math.floor((90 - lat) / 180 * PH)));
+  return arr[y * PW + x];
 }
 
 export function rasterizeEarthPlates(W, H) {
+  sourceRasters();
   const N = W * H;
   const pixPlate = new Uint8Array(N);
   const boundKind = new Uint8Array(N);
@@ -157,13 +124,17 @@ export function rasterizeEarthPlates(W, H) {
     const lat = 90 - (y + 0.5) / H * 180;
     for (let x = 0; x < W; x++) {
       const lon = (x + 0.5) / W * 360 - 180;
-      pixPlate[y * W + x] = plateAtLonLat(lon, lat);
+      const i = y * W + x;
+      pixPlate[i] = sampleSrc(_srcPlate, lon, lat);
+      boundKind[i] = sampleSrc(_srcKind, lon, lat);
     }
   }
 
+  // Neighbour fallback: a seam the 0.5° kind brush missed still gets a type.
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
+      if (boundKind[i]) continue;
       const me = pixPlate[i];
       const nbs = [
         pixPlate[y * W + ((x + 1) % W)],
