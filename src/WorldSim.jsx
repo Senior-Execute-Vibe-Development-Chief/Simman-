@@ -4858,7 +4858,7 @@ return(
     {hoverInfo.fert>0.05&&<> · {(hoverInfo.fert*100|0)}% fertile</>}
   </div>
   {hoverInfo.resources&&hoverInfo.resources.length>0&&<div className="au-fade" style={{fontSize:10}}>
-    {hoverInfo.resources.join(" · ")}
+    {hoverInfo.resources.map(r=>typeof r==="string"?r:r.label).filter(Boolean).join(" · ")}
   </div>}
   {hoverInfo.materials&&<div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>
     {hoverInfo.materials}
