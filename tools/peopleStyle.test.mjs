@@ -130,6 +130,56 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
     "migrant takes up flat courtyard mudbrick country");
 }
 
+// Five bags that must not collapse. Comments are the human analogy;
+// the code only sees climate, wealth, fibre, and homeland.
+{
+  const fp = s => [
+    s.look.skin > 0.55 ? "dark" : s.look.skin > 0.32 ? "mid" : "fair",
+    s.dress.station, s.dress.fibre, s.dress.cut, s.dress.silhouette,
+    s.built.wall, s.built.roof, s.built.plan, s.built.eaves,
+  ].join("|");
+
+  const tropicPlain = styleOf({
+    temp: 0.86, moist: 0.62, wealth: 0.15, homeland: equator,
+    materials: { fibres: [{ id: "cotton" }], trees: [{ id: "palm" }] },
+  });
+  const aridFine = styleOf({
+    temp: 0.86, moist: 0.12, wealth: 0.65, homeland: sahara,
+    materials: { fibres: [{ id: "flax" }], earths: [{ id: "clay" }], dyes: [{ id: "tyrian" }] },
+  });
+  const woolFine = styleOf({
+    temp: 0.58, moist: 0.50, wealth: 0.70, homeland: scandi, elev: 0.24, relief: 0.45,
+    materials: { fibres: [{ id: "wool" }], stone: [{ id: "granite" }], trees: [{ id: "oak" }] },
+  });
+  const silkFine = styleOf({
+    temp: 0.76, moist: 0.55, wealth: 0.70, homeland: { temp: 0.76, moist: 0.55, lat: 32 },
+    materials: { fibres: [{ id: "silk" }, { id: "wool" }], trees: [{ id: "oak" }], dyes: [{ id: "indigo" }] },
+  });
+  const hidePlain = styleOf({
+    temp: 0.70, moist: 0.48, wealth: 0.18, homeland: { temp: 0.70, moist: 0.45, lat: 42 },
+    materials: { fauna: [{ id: "deer" }], trees: [{ id: "oak" }] },
+  });
+
+  ok(tropicPlain.dress.station === "plain" && tropicPlain.dress.cut === "drape",
+    `low-surplus heat is plain drape (${fp(tropicPlain)})`);
+  ok(aridFine.dress.cut === "drape" && aridFine.built.plan === "courtyard" && aridFine.dress.dye === "tyrian",
+    `hot-dry surplus is flowing courtyard (${fp(aridFine)})`);
+  ok(woolFine.dress.fibre === "wool" && woolFine.dress.cut === "tailored" && woolFine.dress.silhouette === "structured",
+    `cold surplus wool is structured tailored (${fp(woolFine)})`);
+  ok(silkFine.dress.fibre === "silk" && silkFine.dress.cut === "robe" && silkFine.dress.silhouette === "flowing",
+    `silk surplus is robe, not tailored wool (${fp(silkFine)})`);
+  ok(silkFine.built.plan === "courtyard" && silkFine.built.eaves === "deep",
+    `warm-wet surplus compound has eaves (${fp(silkFine)})`);
+  ok(hidePlain.dress.fibre === "leather" && hidePlain.dress.station === "plain",
+    `low-surplus hunt is leather (${fp(hidePlain)})`);
+  ok(woolFine.look.skin < silkFine.look.skin && silkFine.look.skin < tropicPlain.look.skin,
+    "skin cline: high-lat < mid-lat < equator");
+
+  const prints = [tropicPlain, aridFine, woolFine, silkFine, hidePlain].map(fp);
+  const uniq = new Set(prints);
+  ok(uniq.size === 5, `five climate/wealth bags stay distinct (${prints.join(" || ")})`);
+}
+
 if (fails) {
   console.error(`peopleStyle: ${fails} failed / ${checks} checks`);
   process.exit(1);

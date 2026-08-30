@@ -10,6 +10,10 @@
 //   built — local. Climate is the load (snow, rain, heat, flood); wall from
 //           timber / mudbrick / stone / reed on the tile.
 //
+// Station (plain vs fine) is surplus, not a culture name: a court and a
+// tribesman can share a climate and still read apart. Silk vs wool vs
+// leather decides robe vs tailored vs hide — still no place name.
+//
 // Classification, not a fitted culture. No time gates, no place names.
 // Pure + deterministic. No save fields, no UI wiring.
 
@@ -102,24 +106,42 @@ export function lookOf(c) {
   return null;
 }
 
+function wealthOf(c) {
+  return c.wealth != null ? c.wealth : 0.3;
+}
+
+function stationOf(c) {
+  return wealthOf(c) > 0.5 ? "fine" : "plain";
+}
+
 function bestFibre(c, coverage) {
   const fibreIds = ids(c.materials && c.materials.fibres);
   const faunaIds = ids(c.materials && c.materials.fauna);
+  const wealth = wealthOf(c);
   const cold = coverage > 0.55;
   const hot = coverage < 0.35;
-  const prefer = cold
-    ? ["fur", "cashmere", "wool", "alpaca", "hemp", "flax", "silk", "cotton"]
-    : hot
-      ? ["cotton", "linen", "flax", "silk", "hemp", "wool"]
-      : ["wool", "flax", "hemp", "silk", "cotton", "linen"];
   if (cold && (faunaIds.includes("seal") || hasId(c.materials && c.materials.furs, "seal")
     || hasId(c.materials && c.materials.furs, "sable"))) {
     if (!fibreIds.includes("fur")) fibreIds.push("fur");
   }
+  const hideFauna = ["deer", "bison", "elk", "antelope"].some(id => faunaIds.includes(id));
+  if (wealth < 0.4 && (hideFauna || (c.livestock || 0) > 0.35) && !fibreIds.includes("silk")) {
+    if (!fibreIds.includes("leather")) fibreIds.push("leather");
+  }
+  // Surplus silk is a court cloth even in the temperate band — otherwise
+  // silk-country and wool-country gentry collapse to the same cut.
+  const prefer = wealth > 0.5 && fibreIds.includes("silk")
+    ? ["silk", "cotton", "linen", "flax", "wool", "hemp"]
+    : cold
+      ? ["fur", "cashmere", "wool", "alpaca", "leather", "hemp", "flax", "silk", "cotton"]
+      : hot
+        ? ["cotton", "linen", "flax", "leather", "silk", "hemp", "wool"]
+        : ["leather", "wool", "flax", "hemp", "silk", "cotton", "linen"];
   for (const id of prefer) {
     if (id === "linen" && fibreIds.includes("flax")) return "linen";
     if (fibreIds.includes(id)) return id === "flax" ? (hot ? "linen" : "flax") : id;
   }
+  if (wealth < 0.4 && hideFauna) return "leather";
   if (cold && (c.livestock || 0) > 0.35) return "wool";
   if (hot) return "linen";
   return "wool";
@@ -128,12 +150,18 @@ function bestFibre(c, coverage) {
 function bestDye(c) {
   const dyeIds = ids(c.materials && c.materials.dyes);
   if (!dyeIds.length) return null;
-  const wealth = c.wealth != null ? c.wealth : 0.3;
+  const wealth = wealthOf(c);
   const costly = ["tyrian", "cochineal", "kermes", "indigo", "saffron"];
   if (wealth > 0.45) {
     for (const id of costly) if (dyeIds.includes(id)) return id;
   }
   return dyeIds[0];
+}
+
+function silhouetteOf(cut) {
+  if (cut === "drape" || cut === "robe") return "flowing";
+  if (cut === "trousers") return "split";
+  return "structured";
 }
 
 export function dressOf(c) {
@@ -143,18 +171,24 @@ export function dressOf(c) {
   const livestock = c.livestock != null ? c.livestock : 0;
   const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
   const open = c.open != null ? c.open : (c.relief != null ? c.relief < 0.22 : false);
+  const wealth = wealthOf(c);
+  const fibre = bestFibre(c, coverage);
+  const mounted = (temp < 0.70 || livestock > 0.45) && (horses > 0.08 || (livestock > 0.4 && open));
   let cut;
-  if (temp > 0.80 && coverage < 0.35) cut = "drape";
-  else if ((temp < 0.70 || livestock > 0.45) && (horses > 0.08 || (livestock > 0.4 && open))) cut = "trousers";
+  if (mounted) cut = "trousers";
+  else if (fibre === "silk" && wealth > 0.5) cut = "robe";
+  else if (temp > 0.78 && coverage < 0.40) cut = "drape";
   else if (temp < 0.68) cut = "tailored";
-  else if (temp > 0.78) cut = "drape";
+  else if (fibre === "leather") cut = "drape";
   else cut = "tailored";
   return {
     coverage,
     weight,
     cut,
-    fibre: bestFibre(c, coverage),
+    silhouette: silhouetteOf(cut),
+    fibre,
     dye: bestDye(c),
+    station: stationOf(c),
   };
 }
 
@@ -200,16 +234,20 @@ export function builtOf(c) {
   else if (rainLoad(moist)) { roof = "pitched"; pitch = clamp(0.40 + (moist - 0.50) * 0.5); }
   else if (aridHeat(temp, moist)) { roof = "flat"; pitch = clamp(0.08 + moist * 0.15); }
   else { roof = "pitched"; pitch = 0.38; }
+  const wealth = wealthOf(c);
   let plan;
   if (flood) plan = "raised";
   else if (aridHeat(temp, moist)) plan = "courtyard";
+  else if (wealth > 0.5 && temp > 0.72 && !snowLoad(temp, moist)) plan = "courtyard";
   else if (temp < 0.62) plan = "compact";
   else plan = "open";
   return {
     wall: bestWall(c),
     roof,
     pitch: clamp(pitch),
+    eaves: rainLoad(moist) ? "deep" : "none",
     plan,
+    station: stationOf(c),
   };
 }
 
@@ -225,7 +263,9 @@ export function styleOf(c) {
 export function formatStyleLine(s) {
   if (!s) return "";
   const bits = [];
-  if (s.built) bits.push(`${s.built.wall} ${s.built.roof} ${s.built.plan}`);
-  if (s.dress) bits.push(`${s.dress.weight} ${s.dress.fibre} ${s.dress.cut}`);
+  if (s.built) bits.push(`${s.built.station || ""} ${s.built.wall} ${s.built.roof} ${s.built.plan}`.trim());
+  if (s.dress) {
+    bits.push(`${s.dress.station} ${s.dress.weight} ${s.dress.fibre} ${s.dress.cut}`.trim());
+  }
   return bits.join(" · ");
 }
