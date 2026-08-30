@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/deploy-channel-picker-642a",
+      "sha": "7c9e0b1236c267082f0779cf75f8067a669e1d13",
+      "slug": "cursor-deploy-channel-picker-642a",
+      "builtAt": "2026-08-30T05:46:36.690Z",
+      "channel": "preview",
+      "saveVersion": 45,
+      "path": "/b/cursor-deploy-channel-picker-642a/"
+    },
+    {
       "branch": "cursor/ui-info-accuracy-15e6",
       "sha": "c68ff3c1c39088a46631206e79bc643ef5b4d403",
       "slug": "cursor-ui-info-accuracy-15e6",
