@@ -3720,7 +3720,8 @@ const renderInspect=()=>{
   // settlement's entire catchment). For an urban node, headline the CITY CORE
   // (_urbanPop) — the number a reader means by "the city" — and show the province
   // as context. Falls back to the province total if the core isn't serialized yet.
-  const hasCore=!isRegion && s._urbanPop!=null && s._urbanPop>0;
+  const hasCore=!isRegion && ((s._coreMeasured!=null && s._coreMeasured>0) || (s._urbanPop!=null && s._urbanPop>0));
+  const cityPop=s._coreMeasured!=null && s._coreMeasured>0 ? s._coreMeasured : s._urbanPop;
   const k=s.knowledge||{};
   const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
   const techList=TECHS.filter((t,i)=>tech.have[i]===1);
@@ -4064,7 +4065,7 @@ const renderInspect=()=>{
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
         <div>
           {hasCore?(<>
-            <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s._urbanPop)}</span>
+            <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(cityPop)}</span>
             <span className="au-fade" style={{fontSize:9,marginLeft:3}}>in the city</span>
             <span className="au-fade" style={{fontSize:10,marginLeft:6}}>· {fmtPeople(s.people)} province</span>
           </>):(<>

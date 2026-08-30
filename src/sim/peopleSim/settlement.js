@@ -3723,9 +3723,19 @@ function updatePopulation(world, s) {
   // so urbanisation rises over history. This is what makes a big farming province
   // read as mostly rural rather than mislabelling its whole population "urban".
   if (T.DISSOLVE_FARMS) {
-    const ruralFrac = ruralShare(s);
-    s._ruralPop = s.people * ruralFrac;
-    s._urbanPop = s.people - s._ruralPop;
+    // ONE_POP: the field already split urban/rural. A yield-ratio heuristic
+    // (90% rural) overwriting _urbanPop every tick is what made the inspect
+    // card bounce between the measured city and 10% of the catchment — and
+    // any same-tick reader (tier, dissolve, food on a stride gap) saw the
+    // wrong number. Keep the field measurement when we have one.
+    if (T.ONE_POP && s._coreMeasured != null) {
+      s._urbanPop = Math.min(s.people, s._coreMeasured);
+      s._ruralPop = Math.max(0, s.people - s._urbanPop);
+    } else {
+      const ruralFrac = ruralShare(s);
+      s._ruralPop = s.people * ruralFrac;
+      s._urbanPop = s.people - s._ruralPop;
+    }
   } else {
     s._ruralPop = 0; s._urbanPop = s.people;
   }

@@ -680,6 +680,7 @@ function packSelected(s) {
     // sum over the settlement's entire catchment). _urbanPop is the people in the
     // urban core itself — the number the card should headline as "the city".
     _urbanPop: s._urbanPop, _ruralPop: s._ruralPop,
+    _coreMeasured: s._coreMeasured,
     _techEnv: s._techEnv || null,   // T.TECH_USE — the tree shows known-vs-used per site
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
