@@ -304,8 +304,12 @@ Fauna-biased charges are defensible differently — peoples blazon beasts they
 **know** — but must stay a **soft prior** (like canting), or decoupling erodes.
 
 Note: `materialsOf(people)` already exists in `musicGenome.js` for the Music
-Lab's endowment chain — a **sim-wide** `materialsOf(world, tile)` would be the
+Lab's endowment chain — a **sim-wide** `tileMaterials(world, ti)` would be the
 same idea at map resolution, shared by dress, architecture, and coinage.
+
+**Minimal taxonomy:** see `docs/materials-vocabulary.md` (~29 type strings, zero
+new simulation — split timber/stone/dyes by biome, add six fauna buckets, reuse
+14 deposit ids and 6 crop ids).
 
 ---
 
