@@ -310,6 +310,8 @@ same idea at map resolution, shared by dress, architecture, and coinage.
 **Minimal taxonomy:** see `docs/materials-vocabulary.md` — **~100 specific named
 types** (oak, teak, marble, tyrian, lion, mulberry/silk, pepper, sable, …)
 derived from existing tile state + deterministic picks; zero new simulation.
+Earth-map accuracy (endemism, plate geology, ocean biomes, Mediterranean
+climate) is planned in `docs/earth-materials.md`.
 
 ---
 
@@ -352,4 +354,6 @@ sim-wide `materialsOf`.
 | `docs/language-comprehensive-spec.md` | Language capability bar |
 | `docs/heraldry-symbol-library.md` | Charge vocabulary tiers |
 | `docs/music.md` | Music Lab chain (separate thread) |
+| `docs/materials-vocabulary.md` | Named tile catalog (oak, lion, tyrian, …) |
+| `docs/earth-materials.md` | Earth placement: fauna, plates, ocean, Med climate |
 | `CLAUDE.md` | Cardinal rules — emergent state, build mechanism not outcome |

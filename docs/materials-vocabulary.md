@@ -5,6 +5,10 @@ Companion to `docs/aesthetics.md`. The sim already **places** deposits on tiles
  dug here?* — oak not "hardwood", lions not "savanna fauna", Tyrian purple not
 `dyes`.
 
+**Earth ideal state** (endemism, real plate geology, ocean biomes, Mediterranean
+climate, map-vs-craft rule): `docs/earth-materials.md`. This file is the named
+catalog; that file is the work to place it accurately on the Earth map.
+
 Still **classification only**: no new deposit arrays, no save-format change.
 Where several species fit one tile, a **seeded pick** chooses a primary (and
 optional secondary) so the same tile is stable across reloads:
@@ -307,6 +311,7 @@ Still **zero new simulation fields** — one pure function + deterministic picks
 ## Related
 
 - `docs/aesthetics.md` — why this layer exists
+- `docs/earth-materials.md` — Earth placement plan (fauna reach, plates, marine, Med)
 - `src/sim/resourceGen.js` — deposit placement comments (spices, dyes, furs)
 - `src/sim/emblemGenome.js` — `DYE_VATS`
 - `src/sim/musicGenome.js` — prior art for tile pinning
