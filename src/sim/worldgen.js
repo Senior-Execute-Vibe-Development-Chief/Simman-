@@ -96,7 +96,7 @@ const summerDry=new Float32Array(W*H);
 // path, and from a latitude/season fallback otherwise (the loop before the return).
 const tAmp=new Float32Array(W*H),warmRainFrac=new Float32Array(W*H);
 let realClimateUsed=false;
-let tecPlates=null,tecWindX=null,tecWindY=null,tecBoundKind=null,tecHotspotDist=null;
+let tecPlates=null,tecWindX=null,tecWindY=null,tecEarthPlates=null,tecBoundKind=null,tecHotspotDist=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
@@ -869,5 +869,9 @@ tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
 if(preset==="earth"||preset==="earth_sim"){
 const ep=rasterizeEarthPlates(W,H);
-tecPlates=ep.pixPlate;tecBoundKind=ep.boundKind;tecHotspotDist=ep.hotspotDist;}
-return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,boundKind:tecBoundKind,hotspotDist:tecHotspotDist,windX:tecWindX||null,windY:tecWindY||null,_seed:seed,realClimateUsed};}
+// Stored as earthPixPlate, NOT pixPlate: resourceGen/pipeline already BFS
+// pixPlate for copper/gems/young-soil, and wiring Earth's raster into that
+// path moved hearth growth on the smoke grid (770→621 people). Materials
+// read earthPixPlate; the economic nudge is a measured follow-up.
+tecEarthPlates=ep.pixPlate;tecBoundKind=ep.boundKind;tecHotspotDist=ep.hotspotDist;}
+return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,earthPixPlate:tecEarthPlates,boundKind:tecBoundKind,hotspotDist:tecHotspotDist,windX:tecWindX||null,windY:tecWindY||null,_seed:seed,realClimateUsed};}

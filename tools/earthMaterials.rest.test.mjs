@@ -9,6 +9,7 @@ import {
   rasterizeEarthPlates, plateBoundDist, lonLatToIndex, kindOfPair,
   NAZ, SAM, IND, EUR, NAM, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT,
 } from "../src/sim/earthPlates.js";
+import { generateWorld } from "../src/sim/worldgen.js";
 import {
   classifyMarine, marineGoods, M_REEF, M_POLAR, M_MANGROVE,
   M_ESTUARY, M_DEEP,
@@ -91,6 +92,14 @@ function ok(cond, msg) {
   ok(idsOf(edge.stone).includes("basalt") || idsOf(edge.geology).includes("obsidian"),
     "plate seam: basalt or obsidian");
   ok(!idsOf(far.geology).includes("obsidian"), "interior of a plate is not volcanic glass");
+}
+
+{
+  const w = generateWorld(120, 60, 1, "earth", 0.78);
+  ok(!w.pixPlate, "Earth does not set pixPlate (crop/deposit boundDist stays off)");
+  ok(w.earthPixPlate && w.earthPixPlate.length === 120 * 60, "earthPixPlate raster present");
+  ok(!!w.boundKind && !!w.hotspotDist, "typed boundaries + hotspots present");
+  ok(w.realClimateUsed === false, "solver Earth is not observed climate");
 }
 
 // ── Marine ────────────────────────────────────────────────────────────────

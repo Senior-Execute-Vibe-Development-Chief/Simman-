@@ -116,7 +116,7 @@ function ensureBoundDist(world) {
   const hs = new Uint8Array(N);
   hs.fill(255);
   const wg = genWorld(world);
-  const plates = world.pixPlate || (wg && wg.pixPlate);
+  const plates = world.pixPlate || world.earthPixPlate || (wg && (wg.pixPlate || wg.earthPixPlate));
   const boundKind = world.boundKind || (wg && wg.boundKind);
   const hotspotDist = world.hotspotDist || (wg && wg.hotspotDist);
   const { tw, th, elev } = world;
