@@ -1744,6 +1744,34 @@ function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac, R) 
   const pf = world.popField, tw = world.tw, th = world.th;
   const x0 = cx - URBAN_CONC_R, x1 = cx + URBAN_CONC_R;
   const y0 = Math.max(0, cy - URBAN_CONC_R), y1 = Math.min(th - 1, cy + URBAN_CONC_R);
+  // T.URBAN_PRINT: grow/shrink the core in place. Hinterland is not a reservoir.
+  if (T.URBAN_PRINT > 0) {
+    if (delta > 1e-6) {
+      if (!(R > 0)) pf[coreTi] += delta;
+      else depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, delta);
+    } else if (delta < -1e-6) {
+      if (!(R > 0)) pf[coreTi] = Math.max(0, pf[coreTi] + delta);
+      else {
+        const dy0 = Math.max(0, cy - R), dy1 = Math.min(th - 1, cy + R);
+        let diskPop = 0;
+        for (let y = dy0; y <= dy1; y++) for (let dx = -R; dx <= R; dx++) {
+          const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+          if (owner[ti] !== sid || pf[ti] <= 0) continue;
+          diskPop += pf[ti];
+        }
+        const push = Math.min(-delta, diskPop);
+        if (push > 0 && diskPop > 0) {
+          const frac = push / diskPop;
+          for (let y = dy0; y <= dy1; y++) for (let dx = -R; dx <= R; dx++) {
+            const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+            if (owner[ti] !== sid || pf[ti] <= 0) continue;
+            pf[ti] -= pf[ti] * frac;
+          }
+        }
+      }
+    }
+    return;
+  }
   if (!(R > 0)) {
     // ── single-tile core: EXACTLY the pre-footprint code (byte-identical) ──
     if (delta > 0) {

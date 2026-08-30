@@ -1551,7 +1551,7 @@ function maybeSiteCities(world) {
         const dy = ty2 - st.y;
         if (dx * dx + dy * dy <= coreR * coreR) continue;
         const mv = pf[t] * rate * scale;
-        pf[t] -= mv;
+        if (!(T.URBAN_PRINT > 0)) pf[t] -= mv;
         gain += mv;
       }
       pf[st.ti] += gain;
@@ -1625,7 +1625,9 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
   // first mint never lets the next derive re-calibrate the unit from its
   // own founding party, which measured as a 0.35 bridge, an 11,000-census
   // first city and a 600-step famine crash before the declaration existed.)
-  fieldShift(world, { pos: { x, y } }, -coreCensus);
+  // T.URBAN_PRINT: the founding take stays on the land (the census is a
+  // read of the field). Conservation debit would ring-drain the basin at birth.
+  if (!(T.URBAN_PRINT > 0)) fieldShift(world, { pos: { x, y } }, -coreCensus);
   const inherited = inheritKnowledgeAt(world, ti, world.transportDist ? world.transportDist[ti] : 0);
     // T.LAND_KNOW: the basin's own learning is the newborn's birthright — the
     // ledger floors every track (a nearby court can still lift it higher).
@@ -1897,7 +1899,7 @@ function maybePeerSeats(world, env) {
           const dy = ty2 - pc.y;
           if (dx * dx + dy * dy <= coreR * coreR) continue;
           const mv = pf[t] * rate * scale;
-          pf[t] -= mv;
+          if (!(T.URBAN_PRINT > 0)) pf[t] -= mv;
           gain += mv;
         }
         pf[pc.ti] += gain;
