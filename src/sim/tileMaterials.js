@@ -8,14 +8,14 @@
 // Cardinal rules: classification, not a fitted outcome; no time gates; no
 // `if (Nile)`. Earth pins belong in faunaBiogeography.js when that lands.
 
-import { classifyBiome, observedClimate, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
+import { classifyBiome, observedClimate, B_TUNDRA, B_ICE, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
   B_TROP_RAIN, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY,
   B_SUBTROP, B_COLD_DESERT, B_MEDITERRANEAN } from "./biomeClass.js";
 import { hash32 } from "./peopleSim/rng.js";
 import { CROP_PACKAGES, pkgClimateBell } from "./cropPackages.js";
 import { livestockClimate } from "./peopleSim/settlement.js";
 import { faunaPresent, floraPresent } from "./faunaBiogeography.js";
-import { marineGoods } from "./marineClass.js";
+import { marineGoods, ensureLandDeg } from "./marineClass.js";
 import { BK_RIDGE, BK_TRANSFORM, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT } from "./earthPlates.js";
 
 export const TAU = 0.12;
@@ -212,23 +212,30 @@ function signals(world, ti) {
   const boundDist = ensureBoundDist(world)[ti];
   const boundKind = world._matBoundKind ? world._matBoundKind[ti] : 0;
   const hotspotDist = world._matHotspot ? world._matHotspot[ti] : 255;
+  const landDegArr = ensureLandDeg(world);
+  const landDeg = landDegArr ? landDegArr[ti] : (elev > 0 ? 0 : 1e9);
   const dep = {};
   const deposits = world.deposits || {};
   for (const id of DEPOSIT_IDS) dep[id] = at(deposits[id], ti);
   return {
     world, ti, seed: (world.seed >>> 0) || 1,
     elev, temp, moist, dry, sumDry, biome, flood, riverMag, relief,
-    coastDist, boundDist, boundKind, hotspotDist, dep,
+    coastDist, landDeg, tw: world.tw, th: world.th,
+    boundDist, boundKind, hotspotDist, dep,
     livestock: livestockClimate(temp, moist),
   };
 }
 
 function rich(c, id) { return c.dep[id] || 0; }
 function timberOk(c) { return rich(c, "timber") >= TAU; }
-function stoneOk(c) { return rich(c, "stone") >= TAU; }
+/** Ice / hard frost: no quarry, precious metal, reed, or clay. */
+export function iceCap(c) {
+  return c.biome === B_ICE || c.temp < 0.45;
+}
+function stoneOk(c) { return !iceCap(c) && rich(c, "stone") >= TAU; }
 
 const COLD_FOREST = new Set([B_TAIGA, B_BOREAL]);
-const TEMP_WOOD = new Set([B_TEMP_FOREST, B_TEMP_RAIN, B_SUBTROP, B_MEDITERRANEAN]);
+const TEMP_WOOD = new Set([B_TEMP_FOREST, B_TEMP_RAIN, B_MEDITERRANEAN]);
 const TROP_WET = new Set([B_TROP_RAIN, B_SUBTROP]);
 const DRY_OPEN = new Set([B_SAVANNA, B_GRASSLAND, B_SHRUBLAND, B_DESERT, B_COLD_DESERT]);
 const ARID = new Set([B_DESERT, B_COLD_DESERT, B_SHRUBLAND]);
@@ -254,15 +261,15 @@ const TREE_RULES = [
   { id: "birch",      ok: c => (c.biome === B_BOREAL || c.biome === B_TUNDRA || (c.biome === B_TEMP_FOREST && c.temp < 0.70)) && timberOk(c) },
   { id: "oak",        ok: c => TEMP_WOOD.has(c.biome) && timberOk(c) },
   { id: "beech",      ok: c => (c.biome === B_TEMP_FOREST || c.biome === B_TEMP_RAIN) && c.moist > 0.45 && timberOk(c) },
-  { id: "teak",       ok: c => (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) && timberOk(c) },
+  { id: "teak",       ok: c => (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) && timberOk(c) && floraPresent(c.world, c.ti, "teak") },
   { id: "mahogany",   ok: c => c.biome === B_TROP_RAIN && c.moist > 0.65 && timberOk(c) },
   { id: "palm",       ok: c => (c.biome === B_TROP_DRY || c.biome === B_SAVANNA || (c.biome === B_DESERT && c.coastDist <= 3)) && c.moist > 0.25 },
-  { id: "olive",      ok: c => c.biome === B_MEDITERRANEAN || (c.biome === B_SHRUBLAND && c.temp > 0.70 && c.temp < 0.84) },
+  { id: "olive",      ok: c => c.biome === B_MEDITERRANEAN || (c.biome === B_SHRUBLAND && c.sumDry > 0.25 && c.temp > 0.70 && c.temp < 0.84 && c.moist < 0.50) },
   { id: "grapevine",  ok: c => c.biome === B_MEDITERRANEAN || (c.biome === B_SHRUBLAND && c.temp > 0.70 && c.temp < 0.82 && c.moist >= 0.18 && c.moist <= 0.50) },
   { id: "acacia",     ok: c => c.biome === B_SAVANNA || c.biome === B_SHRUBLAND || (c.biome === B_DESERT && c.moist > 0.12) },
   { id: "mulberry",   ok: c => (c.biome === B_SUBTROP || c.biome === B_TEMP_RAIN || c.flood) && floraPresent(c.world, c.ti, "mulberry") },
   { id: "bamboo",     ok: c => c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY || (c.biome === B_SUBTROP && c.moist > 0.50) },
-  { id: "reed",       ok: c => c.flood || c.riverMag >= 3 },
+  { id: "reed",       ok: c => !iceCap(c) && (c.flood || c.riverMag >= 3) },
   { id: "papyrus",    ok: c => (c.flood || c.riverMag >= 2) && c.temp > 0.78 && floraPresent(c.world, c.ti, "papyrus") },
   { id: "date-palm",  ok: c => (c.biome === B_DESERT || c.biome === B_COLD_DESERT) && (c.coastDist <= 4 || c.riverMag >= 1) },
   { id: "cedar",      ok: c => c.biome === B_MEDITERRANEAN || (c.elev > 0.18 && c.biome === B_SHRUBLAND) || (c.biome === B_TEMP_FOREST && c.moist < 0.40) },
@@ -318,7 +325,7 @@ const STONE_RULES = [
   { id: "porphyry",   ok: c => stoneOk(c) && c.boundDist < 10 && c.elev > 0.16 },
   { id: "alabaster",  ok: c => stoneOk(c) && ARID.has(c.biome) && c.elev < 0.18 },
   { id: "travertine", ok: c => stoneOk(c) && (c.flood || c.riverMag >= 2) && c.temp > 0.68 && c.elev < 0.16 },
-  { id: "chalk",      ok: c => stoneOk(c) && c.elev < 0.14 && c.moist > 0.38 && c.temp >= 0.58 && c.temp <= 0.74 && c.coastDist <= 10 },
+  { id: "chalk",      ok: c => stoneOk(c) && c.elev < 0.14 && c.temp >= 0.58 && c.temp <= 0.74 && c.coastDist <= 8 },
   { id: "soapstone",  ok: c => stoneOk(c) && c.elev > 0.22 && c.moist > 0.40 && c.relief > 0.30 },
   { id: "serpentine", ok: c => stoneOk(c) && c.boundDist < 12 && c.elev > 0.14 },
 ];
@@ -334,7 +341,7 @@ const DYE_RULES = [
   { id: "madder",     ok: c => rich(c, "dyes") >= TAU && (c.biome === B_GRASSLAND || c.biome === B_MEDITERRANEAN || (c.biome === B_SUBTROP && c.moist < 0.5)) && !(TROP_WET.has(c.biome) && c.moist > 0.5) },
   { id: "weld",       ok: c => rich(c, "dyes") >= TAU && c.temp >= 0.58 && c.temp <= 0.78 && c.moist >= 0.35 && c.moist <= 0.55 },
   { id: "ochre",      ok: c => DRY_OPEN.has(c.biome) },
-  { id: "cochineal",  ok: c => rich(c, "dyes") >= TAU && (c.biome === B_TROP_DRY || (c.biome === B_SUBTROP && c.moist < 0.45)) },
+  { id: "cochineal",  ok: c => rich(c, "dyes") >= TAU && (c.biome === B_TROP_DRY || (c.biome === B_SUBTROP && c.moist < 0.45)) && faunaPresent(c.world, c.ti, "cochineal") },
   { id: "kermes",     ok: c => rich(c, "dyes") >= TAU && MEDISH.has(c.biome) },
   { id: "saffron",    ok: c => (c.biome === B_MEDITERRANEAN || c.biome === B_SUBTROP || (c.biome === B_SHRUBLAND && c.temp > 0.70)) && c.elev > 0.06 && floraPresent(c.world, c.ti, "saffron") },
   { id: "woad",       ok: c => (c.biome === B_TEMP_FOREST || c.biome === B_GRASSLAND || c.biome === B_BOREAL) && c.temp >= 0.52 && c.temp <= 0.72 && floraPresent(c.world, c.ti, "woad") },
@@ -374,11 +381,15 @@ function fibresOf(c) {
   const out = [];
   const m = c.flood ? Math.max(c.moist, 0.5) : c.moist;
   if (Math.abs(c.temp - 0.45) < 0.12 && c.livestock > 0.35) out.push({ id: "wool", suit: c.livestock });
-  if (c.temp > 0.55 && m > 0.4) out.push({ id: "cotton", suit: Math.min(1, (c.temp - 0.55) * 2) });
+  if (c.temp > 0.70 && c.temp < 0.88 && m >= 0.32 && m <= 0.58 &&
+      (c.flood || c.biome === B_SUBTROP || c.biome === B_TROP_DRY || c.biome === B_SAVANNA)) {
+    out.push({ id: "cotton", suit: Math.min(1, (c.temp - 0.70) * 3) });
+  }
   if (c.temp >= 0.58 && c.temp <= 0.78 && m >= 0.35 && m <= 0.65) {
     out.push({ id: "flax", suit: 1 - Math.abs(c.temp - 0.68) });
   }
-  if (c.temp > 0.52 && m > 0.45) {
+  if (c.temp >= 0.58 && c.temp <= 0.74 && m >= 0.40 && m <= 0.62 &&
+      (c.biome === B_TEMP_FOREST || c.biome === B_GRASSLAND || c.biome === B_SUBTROP || c.biome === B_BOREAL || c.biome === B_MEDITERRANEAN)) {
     const suit = Math.min(1, 0.5 + (c.riverMag >= 1 ? 0.25 : 0));
     out.push({ id: "hemp", suit });
   }
@@ -421,7 +432,7 @@ const FOOD_PLANT_RULES = [
   { id: "tea-bush",    ok: c => c.elev > 0.08 && c.elev < 0.36 && c.moist > 0.45 && c.temp > 0.70 && c.temp < 0.84 && floraPresent(c.world, c.ti, "tea") },
   { id: "coffee-shrub", ok: c => c.elev > 0.12 && c.elev < 0.42 && c.moist > 0.35 && c.temp > 0.72 && c.temp < 0.86 && floraPresent(c.world, c.ti, "coffee") },
   { id: "cocoa-tree",  ok: c => (c.biome === B_TROP_RAIN || c.biome === B_SAVANNA) && c.moist > 0.55 && c.temp > 0.78 && floraPresent(c.world, c.ti, "cocoa") },
-  { id: "banana",      ok: c => c.temp > 0.80 && c.moist > 0.50 && floraPresent(c.world, c.ti, "banana") },
+  { id: "banana",      ok: c => c.temp > 0.78 && c.moist > 0.45 && c.elev < 0.14 && floraPresent(c.world, c.ti, "banana") },
   { id: "citrus",      ok: c => (c.biome === B_SUBTROP || c.biome === B_MEDITERRANEAN || c.biome === B_TROP_DRY) && c.temp > 0.72 && floraPresent(c.world, c.ti, "citrus") },
   { id: "sesame",      ok: c => (c.biome === B_SAVANNA || c.biome === B_TROP_DRY || c.biome === B_SUBTROP) && c.temp > 0.76 && floraPresent(c.world, c.ti, "sesame") },
   { id: "opium-poppy", ok: c => (c.biome === B_MEDITERRANEAN || c.biome === B_SUBTROP || c.biome === B_GRASSLAND) && c.elev > 0.04 && floraPresent(c.world, c.ti, "opium-poppy") },
@@ -449,7 +460,7 @@ const SPICE_RULES = [
 const INCENSE_RULES = [
   { id: "frankincense", ok: c => rich(c, "incense") >= TAU && (c.biome === B_DESERT || c.biome === B_SHRUBLAND) && floraPresent(c.world, c.ti, "frankincense") },
   { id: "myrrh",        ok: c => rich(c, "incense") >= TAU && (c.biome === B_DESERT || (c.biome === B_SHRUBLAND && c.moist < 0.28)) && floraPresent(c.world, c.ti, "myrrh") },
-  { id: "sandalwood",   ok: c => rich(c, "incense") >= TAU && (c.biome === B_TROP_DRY || c.biome === B_SUBTROP) },
+  { id: "sandalwood",   ok: c => (c.biome === B_TROP_DRY || c.biome === B_SAVANNA) && floraPresent(c.world, c.ti, "sandalwood") },
   { id: "olibanum",     ok: c => rich(c, "incense") >= TAU && (c.biome === B_COLD_DESERT || (c.biome === B_DESERT && c.elev > 0.18)) },
   { id: "benzoin",      ok: c => (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) && c.moist > 0.50 && floraPresent(c.world, c.ti, "benzoin") },
 ];
@@ -513,8 +524,8 @@ const FAUNA_RULES = [
   { id: "boar",      ok: c => c.biome === B_TEMP_FOREST || c.biome === B_MEDITERRANEAN || c.biome === B_SUBTROP },
   { id: "crocodile", ok: c => (c.temp > 0.78) && (c.riverMag >= 2 || c.flood) },
   { id: "hippo",     ok: c => (c.biome === B_SAVANNA || c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) && c.riverMag >= 3 && c.moist > 0.45 },
-  { id: "fish",      ok: c => c.coastDist <= 3 || c.riverMag >= 1 },
-  { id: "salmon",    ok: c => (c.coastDist <= 3 || c.riverMag >= 1) && c.temp >= 0.45 && c.temp <= 0.65 },
+  { id: "fish",      ok: c => c.riverMag >= 2 || c.coastDist <= 1 },
+  { id: "salmon",    ok: c => (c.coastDist <= 1 || c.riverMag >= 2) && c.temp >= 0.45 && c.temp <= 0.65 },
   { id: "rhino",     ok: c => (c.biome === B_SAVANNA || c.biome === B_TROP_DRY || c.biome === B_TROP_RAIN) && c.moist > 0.28 && faunaPresent(c.world, c.ti, "rhino") },
   { id: "zebra",     ok: c => c.biome === B_SAVANNA && c.moist >= 0.22 && c.moist <= 0.52 && faunaPresent(c.world, c.ti, "zebra") },
   { id: "ibex",      ok: c => c.elev > 0.12 && c.temp >= 0.52 && c.temp <= 0.76 && faunaPresent(c.world, c.ti, "ibex") },
@@ -522,7 +533,7 @@ const FAUNA_RULES = [
   { id: "bee",       ok: c => c.temp >= 0.58 && c.temp <= 0.82 && c.moist > 0.30 && !ARID.has(c.biome) },
   { id: "falcon",    ok: c => (ARID.has(c.biome) || c.biome === B_GRASSLAND || c.biome === B_MEDITERRANEAN) && c.elev > 0.06 },
   { id: "aurochs",   ok: c => (c.biome === B_GRASSLAND || c.biome === B_TEMP_FOREST) && c.temp >= 0.55 && c.temp <= 0.74 && faunaPresent(c.world, c.ti, "aurochs") },
-  { id: "ram",       ok: c => c.elev > 0.14 && (c.biome === B_GRASSLAND || c.biome === B_SHRUBLAND || c.biome === B_MEDITERRANEAN) && faunaPresent(c.world, c.ti, "ram") },
+  { id: "ram",       ok: c => c.elev > 0.12 && c.temp >= 0.52 && c.temp <= 0.76 && faunaPresent(c.world, c.ti, "ram") },
   { id: "peacock",   ok: c => (c.biome === B_TROP_DRY || c.biome === B_SAVANNA || c.biome === B_SUBTROP) && c.temp > 0.76 && faunaPresent(c.world, c.ti, "peacock") },
   { id: "serpent",   ok: c => c.temp > 0.72 && (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY || c.biome === B_SAVANNA || c.biome === B_DESERT) },
 ];
@@ -549,7 +560,7 @@ function faunaOf(c) {
 
 function gemsOf(c) {
   const out = [];
-  if (rich(c, "gems") >= TAU) {
+  if (!iceCap(c) && rich(c, "gems") >= TAU) {
     const elig = ["ruby", "sapphire", "emerald", "diamond"];
     if (c.coastDist <= 3) elig.push("pearl");
     const id = pickNamed(elig, c.seed, c.ti, "gem");
@@ -573,7 +584,7 @@ const SEMI_GEM_RULES = [
 ];
 
 function metalsOf(c) {
-  if (rich(c, "precious") < TAU) return [];
+  if (iceCap(c) || rich(c, "precious") < TAU) return [];
   const elig = [];
   if (c.riverMag >= 2 || c.elev > 0.15) elig.push("gold");
   if (c.elev > 0.18 && c.riverMag < 2) elig.push("silver");
@@ -622,12 +633,12 @@ const MINERAL_RULES = [
 ];
 
 const EARTH_RULES = [
-  { id: "clay",      ok: c => (c.flood || c.riverMag >= 2 || c.coastDist <= 3) && c.elev < 0.14 },
+  { id: "clay",      ok: c => !iceCap(c) && (c.flood || c.riverMag >= 3) && c.elev < 0.14 },
   { id: "kaolin",    ok: c => c.elev > 0.08 && c.moist > 0.42 && (c.biome === B_SUBTROP || c.biome === B_TEMP_RAIN || c.biome === B_TROP_RAIN) },
   { id: "gypsum",    ok: c => ARID.has(c.biome) && c.elev < 0.14 && c.moist < 0.28 },
   { id: "sand",      ok: c => (c.biome === B_DESERT || c.biome === B_COLD_DESERT || (c.coastDist <= 2 && c.moist < 0.35)) },
   { id: "peat",      ok: c => (c.biome === B_TUNDRA || c.biome === B_BOREAL || c.biome === B_TAIGA) && c.moist > 0.50 && c.elev < 0.12 },
-  { id: "lime",      ok: c => stoneOk(c) && (c.elev < 0.14 || c.coastDist <= 5 || c.flood) && c.moist > 0.35 },
+  { id: "lime",      ok: c => !iceCap(c) && stoneOk(c) && (c.elev < 0.14 || c.coastDist <= 5 || c.flood) && c.moist > 0.35 },
 ];
 
 function earthsOf(c) {
@@ -693,12 +704,13 @@ export function eligibleFromSignals(c) {
   for (const r of FAUNA_RULES) {
     if (r.ok(c) && faunaPresent(c.world, c.ti, r.id)) ids.push(r.id);
   }
-  if (rich(c, "gems") >= TAU) {
-    ids.push("ruby", "sapphire", "emerald", "diamond");
+  if (!iceCap(c) && rich(c, "gems") >= TAU) {
+    const hue = pickNamed(["ruby", "sapphire", "emerald", "diamond"], c.seed, c.ti, "gem");
+    if (hue) ids.push(hue);
     if (c.coastDist <= 3) ids.push("pearl");
   }
   pushRuleIds(ids, SEMI_GEM_RULES, c);
-  if (rich(c, "precious") >= TAU) {
+  if (!iceCap(c) && rich(c, "precious") >= TAU) {
     if (c.riverMag >= 2 || c.elev > 0.15) ids.push("gold");
     if (c.elev > 0.18 && c.riverMag < 2) ids.push("silver");
     if (!ids.includes("gold") && !ids.includes("silver")) ids.push("gold");

@@ -73,6 +73,8 @@ function earthToy() {
   ok(!floraPresent(w, africa, "nutmeg"), "no nutmeg in Africa");
   ok(floraPresent(w, amazon, "rubber"), "rubber in Amazon");
   ok(!floraPresent(w, africa, "rubber"), "no rubber in Africa");
+  ok(floraPresent(w, india, "teak"), "teak in India");
+  ok(!floraPresent(w, amazon, "teak"), "no teak in Amazon");
 }
 
 {

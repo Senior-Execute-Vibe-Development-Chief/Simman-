@@ -4,7 +4,7 @@
 
 import {
   B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_RAIN, B_SAVANNA,
-  B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY, B_SUBTROP, B_TUNDRA,
+  B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY, B_SUBTROP, B_TUNDRA, B_ICE,
 } from "../src/sim/biomeClass.js";
 import { materialsFromSignals, tileMaterials, idsOf, TAU, eligibleFromSignals } from "../src/sim/tileMaterials.js";
 
@@ -214,6 +214,52 @@ function noneOf(list, ids) { return ids.every(id => !has(list, id)); }
   }));
   ok(!has(m.spices, "pepper") && !has(m.spices, "cinnamon") && !has(m.spices, "ginger"),
     "spices below TAU do not name");
+}
+
+// ── ice cap: no quarry / precious / reed / clay ────────────────────────────
+{
+  const m = materialsFromSignals(ctx({
+    biome: B_ICE, temp: 0.38, moist: 0.20, elev: 0.40, relief: 0.6,
+    dep: { stone: 0.8, precious: 0.6, gems: 0.5 }, flood: true, riverMag: 4,
+  }));
+  ok(noneOf(m.stone, ["granite", "marble", "slate", "chalk"]), "ice: no quarry stone");
+  ok(m.metals.length === 0, "ice: no precious metal");
+  ok(m.gems.length === 0 || noneOf(m.gems, ["ruby", "sapphire", "emerald", "diamond"]),
+    "ice: no gem hues");
+  ok(!has(m.trees, "reed"), "ice: no reed");
+  ok(!has(m.earths, "clay"), "ice: no clay");
+}
+
+// ── oak is temperate, not subtropical ──────────────────────────────────────
+{
+  const e = eligibleFromSignals(ctx({
+    biome: B_SUBTROP, temp: 0.82, moist: 0.55, dep: { timber: 0.6 },
+  }));
+  ok(!e.includes("oak"), "subtrop timber is not oak");
+}
+
+// ── overlay gems: one hue, not all four ────────────────────────────────────
+{
+  const e = eligibleFromSignals(ctx({
+    biome: B_TEMP_FOREST, temp: 0.68, moist: 0.45, elev: 0.20,
+    dep: { gems: 0.5 },
+  }));
+  const hues = ["ruby", "sapphire", "emerald", "diamond"].filter(id => e.includes(id));
+  ok(hues.length === 1, `gems overlay picks one hue (got ${hues})`);
+}
+
+// ── fish / clay: rivers or true coast, not a 3-tile hinterland ─────────────
+{
+  const inland = eligibleFromSignals(ctx({
+    biome: B_TEMP_FOREST, temp: 0.70, moist: 0.45, coastDist: 3, riverMag: 0,
+  }));
+  ok(!inland.includes("fish"), "inland coastDist=3 is not a fishery");
+  ok(!inland.includes("clay"), "inland coastDist=3 is not clay");
+  const river = eligibleFromSignals(ctx({
+    biome: B_TEMP_FOREST, temp: 0.70, moist: 0.45, coastDist: 20, riverMag: 3, flood: true, elev: 0.05,
+  }));
+  ok(river.includes("fish") || river.includes("clay") || river.includes("reed"),
+    "large river still names wet goods");
 }
 
 if (fails) {
