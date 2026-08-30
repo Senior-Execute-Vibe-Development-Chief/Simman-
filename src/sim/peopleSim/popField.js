@@ -2292,6 +2292,18 @@ export function deriveOnePop(world) {
       const hold = Math.min(_coreF, s._coreHoldCapF) * fedY;
       if (hold > kCap) kCap = hold;
     }
+    // Conservation while shedding: agglomeration aims at harvest (uTarget)
+    // and the size read follows it, but the flux cap only moves ~20%/tick.
+    // Dropping the spike to this tick's flow kills the people still on the
+    // disk in the logistic instead of sending them home. Floor at the live
+    // core × fed-ness — a stocked city sheds; an empty pot still melts.
+    // This is not a store-backed SIZE floor (uTarget and coreEff stay on
+    // supply); it is only the capacity the field must not undercut.
+    if (agglom && _coreF > kCap) {
+      const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
+      const hold = _coreF * fedY;
+      if (hold > kCap) kCap = hold;
+    }
     // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess
     // mortality (settlement.js: disease load × urbanity × unhealed) is scaled by
     // how dense this core is versus the typical importing core, raised to γ —
