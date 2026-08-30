@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/aesthetics-doc-642a",
+      "sha": "09e71947193e9246e83d9e15dca31331515b4a35",
+      "slug": "cursor-aesthetics-doc-642a",
+      "builtAt": "2026-08-30T06:13:41.195Z",
+      "channel": "preview",
+      "saveVersion": 45,
+      "path": "/b/cursor-aesthetics-doc-642a/"
+    },
+    {
       "branch": "claude/language-flag-generators-m5gmhf",
       "sha": "41375db2071f6750def25dd54bcac45c537b6f58",
       "slug": "claude-language-flag-generators-m5gmhf",
