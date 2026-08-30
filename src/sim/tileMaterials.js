@@ -2,8 +2,8 @@
 //
 // Companion to docs/materials-vocabulary.md and docs/earth-materials.md.
 // Pure derivation from existing tile signals. No new deposit arrays, no save
-// fields. Endemism (tiger-in-Amazon) is a later hook: faunaPresent currently
-// returns true so climate eligibility is the whole gate.
+// fields. Range (endemism) is faunaBiogeography.js — climate eligibility here,
+// presence there. Cosmopolitan species stay climate-only.
 //
 // Cardinal rules: classification, not a fitted outcome; no time gates; no
 // `if (Nile)`. Earth pins belong in faunaBiogeography.js when that lands.
@@ -14,6 +14,7 @@ import { classifyBiome, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
 import { hash32 } from "./peopleSim/rng.js";
 import { CROP_PACKAGES, pkgClimateBell } from "./cropPackages.js";
 import { livestockClimate } from "./peopleSim/settlement.js";
+import { faunaPresent, floraPresent } from "./faunaBiogeography.js";
 
 export const TAU = 0.12;
 
@@ -38,10 +39,9 @@ const EMPTY = Object.freeze({
   salt: Object.freeze([]),
 });
 
-/** Endemism hook — always true until faunaBiogeography.js lands. */
-export function faunaPresent(_world, _ti, _id) {
-  return true;
-}
+// Endemism: faunaPresent / floraPresent (faunaBiogeography.js). Cosmopolitan
+// species and incomplete worlds stay climate-only.
+export { faunaPresent, floraPresent } from "./faunaBiogeography.js";
 
 export function pickNamed(list, seed, ti, tag) {
   if (!list.length) return null;
@@ -181,7 +181,7 @@ const TREE_RULES = [
   { id: "palm",       ok: c => (c.biome === B_TROP_DRY || c.biome === B_SAVANNA || (c.biome === B_DESERT && c.coastDist <= 3)) && c.moist > 0.25 },
   { id: "olive",      ok: c => c.biome === B_MEDITERRANEAN || (c.biome === B_SHRUBLAND && c.temp > 0.70 && c.temp < 0.84) },
   { id: "acacia",     ok: c => c.biome === B_SAVANNA || c.biome === B_SHRUBLAND || (c.biome === B_DESERT && c.moist > 0.12) },
-  { id: "mulberry",   ok: c => c.biome === B_SUBTROP || c.biome === B_TEMP_RAIN || c.flood },
+  { id: "mulberry",   ok: c => (c.biome === B_SUBTROP || c.biome === B_TEMP_RAIN || c.flood) && floraPresent(c.world, c.ti, "mulberry") },
   { id: "bamboo",     ok: c => c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY || (c.biome === B_SUBTROP && c.moist > 0.50) },
   { id: "reed",       ok: c => c.flood || c.riverMag >= 3 },
   { id: "date-palm",  ok: c => (c.biome === B_DESERT || c.biome === B_COLD_DESERT) && (c.coastDist <= 4 || c.riverMag >= 1) },
@@ -281,14 +281,14 @@ function cropsOf(c) {
 const SPICE_RULES = [
   { id: "pepper",     ok: c => rich(c, "spices") >= TAU && (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) },
   { id: "cinnamon",   ok: c => rich(c, "spices") >= TAU && ((c.biome === B_TROP_RAIN && c.moist > 0.6) || (c.biome === B_SUBTROP && c.moist > 0.55)) },
-  { id: "cloves",     ok: c => rich(c, "spices") >= TAU && c.biome === B_TROP_RAIN && c.moist > 0.55 },
-  { id: "nutmeg",     ok: c => rich(c, "spices") >= TAU && c.biome === B_TROP_RAIN && c.coastDist <= 6 },
+  { id: "cloves",     ok: c => rich(c, "spices") >= TAU && c.biome === B_TROP_RAIN && c.moist > 0.55 && floraPresent(c.world, c.ti, "cloves") },
+  { id: "nutmeg",     ok: c => rich(c, "spices") >= TAU && c.biome === B_TROP_RAIN && c.coastDist <= 6 && floraPresent(c.world, c.ti, "nutmeg") },
   { id: "ginger",     ok: c => rich(c, "spices") >= TAU && (c.biome === B_SUBTROP || c.biome === B_TROP_DRY) },
 ];
 
 const INCENSE_RULES = [
-  { id: "frankincense", ok: c => rich(c, "incense") >= TAU && (c.biome === B_DESERT || c.biome === B_SHRUBLAND) },
-  { id: "myrrh",        ok: c => rich(c, "incense") >= TAU && (c.biome === B_DESERT || (c.biome === B_SHRUBLAND && c.moist < 0.28)) },
+  { id: "frankincense", ok: c => rich(c, "incense") >= TAU && (c.biome === B_DESERT || c.biome === B_SHRUBLAND) && floraPresent(c.world, c.ti, "frankincense") },
+  { id: "myrrh",        ok: c => rich(c, "incense") >= TAU && (c.biome === B_DESERT || (c.biome === B_SHRUBLAND && c.moist < 0.28)) && floraPresent(c.world, c.ti, "myrrh") },
   { id: "sandalwood",   ok: c => rich(c, "incense") >= TAU && (c.biome === B_TROP_DRY || c.biome === B_SUBTROP) },
   { id: "olibanum",     ok: c => rich(c, "incense") >= TAU && (c.biome === B_COLD_DESERT || (c.biome === B_DESERT && c.elev > 0.18)) },
 ];
