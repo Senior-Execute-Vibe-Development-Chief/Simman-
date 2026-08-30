@@ -9,7 +9,11 @@ thousands of years of history emerge: settlements crystallize, trade routes
 form, states rise, wage war, overextend, and fall. Nothing is scripted; every
 empire on the map is the output of local rules.
 
-**Live build:** pushed to `main` deploys to GitHub Pages automatically.
+**Live build:** `main` deploys to GitHub Pages. Feature branches
+(`claude/**`, `cursor/**`) publish as **preview channels** beside it — open
+the [builds picker](https://senior-execute-vibe-development-chief.github.io/Simman-/builds/)
+to choose which one to run (sim at `/`, Music Lab at `musiclab.html` under each
+channel). Previews no longer overwrite live (or each other).
 
 ## Quickstart
 
@@ -210,7 +214,16 @@ Headless node scripts for measuring the sim live in `tools/`:
 
 ## Deploying
 
-`.github/workflows/deploy.yml` lints, smoke-tests, builds, and publishes
-`dist/` to GitHub Pages on every push to `main`. The Vite `base` is set to
-`/Simman-/`; change it if the repo name changes. Production builds strip
+`.github/workflows/deploy.yml` lints, smoke-tests, builds, and publishes to
+GitHub Pages on every push to `main`, `claude/**`, or `cursor/**`:
+
+| Branch | URL |
+|--------|-----|
+| `main` | live — `/Simman-/` (Music Lab: `/Simman-/musiclab.html`) |
+| `claude/**`, `cursor/**` | preview — `/Simman-/b/<slug>/` (Music Lab: `…/musiclab.html`) |
+
+Channels accumulate on an orphan `pages-site` branch so one deploy cannot
+clobber another. The catalog is `/Simman-/builds.json`; the picker is
+`/Simman-/builds/`. Vite `base` is `/Simman-/` for live and
+`/Simman-/b/<slug>/` for previews (`VITE_BASE`). Production builds strip
 sourcemaps (`vite build --mode development` keeps them inline).
