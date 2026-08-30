@@ -37,6 +37,29 @@ export function tileWealthOfSettlement(world, s) {
   return sum;
 }
 
+/**
+ * City purse + farm-gate coin on owned tiles, one O(N) pass.
+ * TILE_MONEY parks specie on the field; s.wealth is often ~0, so a bid that
+ * reads only the city ledger treats every market as penniless. Dawn (no coin
+ * in the world) returns the city purse alone — all zeros — and the caller
+ * treats that as payRel = 1 (hunger × size, no commercial stretch).
+ */
+export function circulatingWealthById(world, byId) {
+  const w = new Map();
+  for (const s of byId.values()) w.set(s.id, Math.max(0, s.wealth || 0));
+  if (!(T.TILE_MONEY > 0) || !world?._tileWealth || !world._territoryOwner) return w;
+  const tw = world._tileWealth;
+  const owner = world._territoryOwner;
+  const n = Math.min(tw.length, owner.length);
+  for (let ti = 0; ti < n; ti++) {
+    const oid = owner[ti];
+    if (!w.has(oid)) continue;
+    const c = tw[ti];
+    if (c) w.set(oid, w.get(oid) + c);
+  }
+  return w;
+}
+
 /** Total coin on all tiles (conservation / inflation). */
 export function sumTileWealth(world) {
   const tw = world._tileWealth;

@@ -21,7 +21,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { landSurplusFrac } from "./landSurplus.js";
+import { landSurplusFrac, FOOD_PER_PERSON } from "./landSurplus.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -130,6 +130,66 @@ function _ensureTerrOwnerCopy(world, key, N) {
   let a = world[key];
   if (!a || a.length !== N) a = world[key] = new Int32Array(N);
   return a;
+}
+
+// City purse + farm-gate coin on owned tiles. Inlined (not tileMoney.js) to
+// avoid territory → tileMoney → settlement → territory at module load.
+// TILE_MONEY parks specie on the field; s.wealth is often ~0.
+function purseById(world, byId) {
+  const w = new Map();
+  for (const s of byId.values()) w.set(s.id, Math.max(0, s.wealth || 0));
+  if (!(T.TILE_MONEY > 0) || !world?._tileWealth || !world._territoryOwner) return w;
+  const tw = world._tileWealth;
+  const owner = world._territoryOwner;
+  const n = Math.min(tw.length, owner.length);
+  for (let ti = 0; ti < n; ti++) {
+    const oid = owner[ti];
+    if (!w.has(oid)) continue;
+    const c = tw[ti];
+    if (c) w.set(oid, w.get(oid) + c);
+  }
+  return w;
+}
+
+// ── MARKET_PULL bid mass (hunger × size × ability to pay) ────────────
+// The catchment comment has always said BID = hunger × ability to pay.
+// Hunger (_scarcity) shipped; wealth never entered the seed, and size was
+// inert whenever a city covered its mouths (scarcity ≈ 1 for a capital and
+// a hamlet alike). Ability to pay is CIRCULATING coin — city purse plus
+// farm-gate tile money — not empty s.wealth under TILE_MONEY.
+//
+// Size is mouths, as radius not as a label: area to feed scales with
+// demand, so reach scales with sqrt(demand / mean). That is von Thünen /
+// Reilly, the same sqrt(market) the trade gravity already uses — not
+// GRAIN_PRICE_BY_TIER, which would grant 11× for wearing "metropolis".
+//
+// Pay is relative to the world mean, floored through (W + W̄)/(2W̄) so a
+// coinless city still walks its own harvest (0.5×) instead of bidding 0
+// and losing the doorstep it has not yet earned on. A coinless DAWN
+// (W̄ ≈ 0) is payRel = 1: hunger × size alone, temple economy first.
+// Abar then keeps an average market at the edict haul, zero new constants.
+export function marketPullAbilityMap(world, byId) {
+  const purseOf = purseById(world, byId);
+  let sumD = 0, sumW = 0, n = 0;
+  const demandOf = new Map();
+  for (const s of byId.values()) {
+    const d = s._foodDemand > 0 ? s._foodDemand
+      : Math.max(1e-6, (s.people || 0) * FOOD_PER_PERSON);
+    demandOf.set(s.id, d);
+    sumD += d;
+    sumW += purseOf.get(s.id) || 0;
+    n++;
+  }
+  const dBar = n > 0 ? sumD / n : 1;
+  const wBar = n > 0 ? sumW / n : 0;
+  const out = new Map();
+  for (const s of byId.values()) {
+    const hunger = s._scarcity > 0 ? s._scarcity : 1;
+    const sizeRel = Math.sqrt(demandOf.get(s.id) / Math.max(1e-12, dBar));
+    const payRel = wBar < 1e-12 ? 1 : ((purseOf.get(s.id) || 0) + wBar) / (2 * wBar);
+    out.set(s.id, Math.max(1e-6, hunger * sizeRel * payRel));
+  }
+  return out;
 }
 
 // After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
@@ -338,14 +398,16 @@ export function computeTerritory(world) {
   // the OUTCOME of a bid: delivered value falls with carriage, so in logs the
   // race is additive and this is the SAME Dijkstra with a different starting
   // potential. A market that bids more starts lower and reaches further.
-  //   BID = hunger x ability to pay. Hunger is _scarcity (demand/supply, the
-  // emergent signal) and NOT _grainPrice, which carries GRAIN_PRICE_BY_TIER and
-  // would let a metropolis outbid a town 11x on its label — promoting the
-  // ratchet from a side-grant to the thing that assigns land. Ability to pay is
-  // wealth, which is EARNED. The owner's crowding-out argument survives intact;
-  // only its source changes from granted to earned.
+  //   BID = hunger × size × ability to pay (marketPullAbilityMap). Hunger is
+  // _scarcity (demand/supply) and NOT _grainPrice / GRAIN_PRICE_BY_TIER, which
+  // would let a metropolis outbid a town 11× on its label. Size is sqrt of
+  // relative mouths — a fed capital still has a thicker grain market than a
+  // fed hamlet; hunger-only made them identical. Ability to pay is circulating
+  // coin (city + TILE_MONEY field), earned, floored so a coinless mint still
+  // walks its own harvest. The crowding-out argument survives: you only sell
+  // to a smaller, poorer city if it is GENUINELY a better deal.
   //   NORMALISED BY THE WORLD MEAN, which is what keeps this constant-free: the
-  // seed is -haulTiles*ln(A_i / Abar), so an average market seeds at exactly 0
+  // seed is -haulTiles*(A_i / Abar), so an average market seeds at exactly 0
   // and only RELATIVE standing moves anyone. haulTiles is HAUL_LAND_KM/(km per
   // tile) — the same edict-derived figure foodHierarchy already hauls grain on.
   const mktPull = T.MARKET_PULL > 0;
@@ -354,9 +416,8 @@ export function computeTerritory(world) {
   if (mktPull) {
     _rebuildMarketKn(byId);
     let sum = 0, n = 0;
-    for (const s of byId.values()) {
-      const a = Math.max(1e-6, (s._scarcity || 1));
-      seedOf.set(s.id, a); sum += a; n++;
+    for (const [id, a] of marketPullAbilityMap(world, byId)) {
+      seedOf.set(id, a); sum += a; n++;
     }
     const abar = n > 0 ? sum / n : 1;
     // HAUL_LAND_KM = 340 km is an E-FOLDING distance, not a zero point: under the
@@ -516,11 +577,15 @@ export function computeTerritory(world) {
   if (cost2) { cost2.fill(Infinity); tcost2.fill(Infinity); clm2.fill(-1); }
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    // T.MARKET_PULL: no guaranteed block. Carriage to the tile you stand on is
-    // zero, so no rival takes your doorstep without bidding enormously more —
-    // the home block is EMERGENT, and CORE_BY_TIER was the ratchet leg granting
-    // it by label. This loop is also pure Euclidean geometry (a square walk),
-    // one of the two straight-line phases that outranked the terrain-aware one.
+    // T.MARKET_PULL: no guaranteed BLOCK. Carriage to the tile you stand on is
+    // zero, so no rival takes the granary tile without bidding enormously more.
+    // A day's walk to market is sub-tile at every shipped grid (30 km vs
+    // ~42–167 km/tile), so the home TILE is the walking ring — restoring a
+    // Chebyshev hinterland would grant hundreds of km by label, which is the
+    // CORE_BY_TIER ratchet this lever retired. Coinless payRel floors at 0.5
+    // so a new mint still bids on that doorstep. This loop is also pure
+    // Euclidean geometry (a square walk), one of the two straight-line phases
+    // that outranked the terrain-aware one.
     const r = mktPull ? -1 : coreRadiusFor(s, world);
     for (let dy = -r; dy <= r; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
