@@ -78,6 +78,7 @@ function depositField(tx, ty, tw, th, salt, freq, threshold) {
 import { classifyBiome, observedClimate, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
   B_TROP_RAIN, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY,
   B_ALPINE, B_SUBTROP, B_COLD_DESERT } from "./biomeClass.js";
+import { seamTiles } from "./earthPlates.js";
 
 export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers, tDryFrac, tSummerDry) {
   const N = tw * th;
@@ -94,6 +95,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // Plate boundary proximity (tectonic/earth modes)
   const boundDist = new Uint8Array(N);
   boundDist.fill(255);
+  const oreR = seamTiles(tw, 4, 12, !!world.boundKind);
   if (world.pixPlate) {
     const W = world.width, H = world.height;
     const q = [];
@@ -113,7 +115,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
     }
     for (let qi = 0; qi < q.length; qi++) {
       const ci = q[qi], cd = boundDist[ci], cx = ci % tw, cy = (ci - cx) / tw;
-      if (cd >= 12) continue;
+      if (cd >= oreR) continue;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dy) continue;
         const nx = (cx + dx + tw) % tw, ny = cy + dy;
@@ -425,7 +427,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       let s = 0.4;
       if (tElev[ti] > 0.10) s += 0.15;
       if (tElev[ti] > 0.20) s += 0.10;
-      if (boundDist[ti] < 12) s += 0.15;
+      if (boundDist[ti] < oreR) s += 0.15;
       return Math.min(1, s);
     });
 
@@ -449,7 +451,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       if (tElev[ti] > 0.12) s += 0.15;
       // Alluvial gold: rivers carry gold downstream from mountain sources
       if (rivers && rivers.riverMag[ti] >= 2) s += 0.2;
-      if (boundDist[ti] < 12) s += 0.1;
+      if (boundDist[ti] < oreR) s += 0.1;
       return Math.min(1, s);
     });
 
@@ -460,7 +462,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       let s = 0.3;
       if (tElev[ti] > 0.15) s += 0.2;
       if (tTemp[ti] > 0.45) s += 0.25;
-      if (boundDist[ti] < 12) s += 0.15;
+      if (boundDist[ti] < oreR) s += 0.15;
       return Math.min(1, s);
     });
 

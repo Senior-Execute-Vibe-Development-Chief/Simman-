@@ -14,6 +14,7 @@ import { baseEdgeCost } from "./peopleSim/transport.js";
 import { computeRelief } from "./worldgenUtils.js";
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { T } from "./peopleSim/tuning.js";
+import { BK_RIDGE, BK_SUBDUCTION, BK_HOTSPOT, seamTiles } from "./earthPlates.js";
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
@@ -465,43 +466,56 @@ const moistFit=Math.exp(-((m-0.28)*(m-0.28))/(2*0.10*0.10));// peak at m=0.28
 const bonus=tempFit*moistFit*0.30;// up to +30%
 if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
 
-// 2d: Volcanic soil bonus — near plate boundaries in tectonic mode.
-// Andisols from volcanic ash are mineral-rich, excellent for agriculture.
-// bDist (plate-boundary distance) is also exposed to Pass 3's tCrop
-// so the tropical penalty can spare young volcanic / orogenic tropical
-// regions (Java, Mekong, Ganges) that escape Amazon-style lateritic
-// soil leaching.
+// 2d: Volcanic soil bonus — andisols from volcanic ash, mineral-rich.
+// tCrop also sees plate-boundary distance so the tropical laterite penalty
+// can spare young volcanic / orogenic regions (Java, Mekong, Ganges).
+// When boundKind is present (Earth PB2002), the andisol bump seeds only
+// from ridge/subduction/hotspot — collision and transform sutures are
+// orogeny, not ash. Tectonic worlds have pixPlate without kinds and keep
+// the legacy "any seam" seed.
 let bDist=null;
 if(w.pixPlate){const W=w.width,H=w.height;
-// Build a plate-boundary distance map at tile resolution
+const bk=w.boundKind;
+const typed=!!bk;
+const volcKind=k=>k===BK_RIDGE||k===BK_SUBDUCTION||k===BK_HOTSPOT;
+const cropR=seamTiles(tw, 6, 15, typed);
+const volcR=seamTiles(tw, 2.5, 7, typed);
+const youngR=seamTiles(tw, 4, 12, typed);
 const plateBound=new Uint8Array(tw*th);
+const volcBound=new Uint8Array(tw*th);
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
 const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
-const myP=w.pixPlate[py*W+px];let isBoundary=false;
+const myP=w.pixPlate[py*W+px];let isBoundary=false;let nbKind=0;
 for(const[dx,dy]of DIRS){const nx2=Math.min(W-1,Math.max(0,px+dx*RES)),ny2=Math.min(H-1,Math.max(0,py+dy*RES));
-if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;break;}}
-if(isBoundary)plateBound[ty*tw+tx]=1;}
-// Expand boundary influence: BFS to get distance from plate boundaries.
-// Radius 15 so tCrop can see "near-orogenic" regions far enough inland
-// to cover Ganges plain / Indochina interior; volcanic bonus still
-// gates itself at <7 so its behavior is unchanged.
+if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;if(bk)nbKind=Math.max(nbKind,bk[ny2*W+nx2]||0);}}
+if(isBoundary){plateBound[ty*tw+tx]=1;
+const myKind=bk?bk[py*W+px]:0;
+if(!bk||volcKind(myKind)||volcKind(nbKind))volcBound[ty*tw+tx]=1;}}
 bDist=new Uint8Array(tw*th);bDist.fill(255);
 const bdQ=[];
 for(let i=0;i<tw*th;i++)if(plateBound[i]&&tElev[i]>0){bDist[i]=0;bdQ.push(i);}
 for(let qi=0;qi<bdQ.length;qi++){const ci=bdQ[qi],cd=bDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
-if(cd>=15)continue;// max 15-tile influence radius
+if(cd>=cropR)continue;
 for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(bDist[ni]<=cd+1||tElev[ni]<=0)continue;
 bDist[ni]=cd+1;bdQ.push(ni);}}
-// Apply volcanic bonus: strongest at boundary, decays with distance
-for(let ti=0;ti<tw*th;ti++){if(bDist[ti]>=7||tElev[ti]<=0)continue;
-// Only apply where there's enough moisture for agriculture
+const vDist=new Uint8Array(tw*th);vDist.fill(255);
+const vdQ=[];
+for(let i=0;i<tw*th;i++)if(volcBound[i]&&tElev[i]>0){vDist[i]=0;vdQ.push(i);}
+for(let qi=0;qi<vdQ.length;qi++){const ci=vdQ[qi],cd=vDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
+if(cd>=volcR)continue;
+for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(vDist[ni]<=cd+1||tElev[ni]<=0)continue;
+vDist[ni]=cd+1;vdQ.push(ni);}}
+for(let ti=0;ti<tw*th;ti++){if(vDist[ti]>=volcR||tElev[ti]<=0)continue;
 if(tMoist[ti]<0.15)continue;
-const proximity=1-bDist[ti]/7;// 1.0 at boundary, 0 at distance 7
-// Mountains near boundaries get less bonus (already high elevation)
+const proximity=1-vDist[ti]/volcR;
 const elevPenalty=tElev[ti]>0.25?Math.max(0,1-(tElev[ti]-0.25)*4):1;
-const bonus=proximity*elevPenalty*0.40;// up to +40%
-tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
+const bonus=proximity*elevPenalty*0.40;
+tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
+if(typed&&youngR!==12){
+for(let i=0;i<tw*th;i++){if(bDist[i]>=255)continue;bDist[i]=Math.min(255,Math.round(bDist[i]*12/youngR));}}
+}
 
 // 2e: Coastal fertility bonus — fishing, salt, trade access.
 for(let ti=0;ti<tw*th;ti++){

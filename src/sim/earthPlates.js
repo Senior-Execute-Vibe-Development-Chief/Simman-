@@ -86,6 +86,14 @@ export function lonLatToIndex(lon, lat, W, H) {
   return y * W + x;
 }
 
+/** Tile count for a real-degree influence radius. Typed Earth rasters
+ *  (boundKind present) use degrees so a 4° foreland stays 4° at every
+ *  grid; tectonic worlds without kinds keep the legacy tile caps. */
+export function seamTiles(tw, degrees, legacy, typed) {
+  if (!typed) return legacy;
+  return Math.max(2, Math.round(degrees * tw / 360));
+}
+
 function decodeRLE(b64, n) {
   const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const out = new Uint8Array(n);
