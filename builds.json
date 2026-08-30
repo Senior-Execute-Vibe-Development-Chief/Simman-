@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/earth-tile-materials-642a",
+      "sha": "8330a7b1de7566e54bc3fb407f80af66c15c7912",
+      "slug": "cursor-earth-tile-materials-642a",
+      "builtAt": "2026-08-30T07:53:22.077Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-earth-tile-materials-642a/"
+    },
+    {
       "branch": "cursor/aesthetics-doc-642a",
       "sha": "430c99cfaaf185ed732f708b5cbd7b90852a8549",
       "slug": "cursor-aesthetics-doc-642a",
