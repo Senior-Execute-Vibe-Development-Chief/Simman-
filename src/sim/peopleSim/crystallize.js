@@ -1714,31 +1714,11 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
         }
       }
     }
-    // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
-    // before this city existed, its basin's people fed themselves through
-    // the field's own capacity — for thousands of steps. The tick after,
-    // the derive censuses them through THIS ledger, whose supply machinery
-    // (worked farmland, technique, granary) starts cold and ramps over many
-    // passes — and the shortfall STARVED the field people the land had been
-    // feeding (owner-observed: "a city with a large population that rapidly
-    // drops"; under ONE_POP starvation debits the field — the lens killing
-    // its substrate). Creating a lens must not change the physics of the
-    // people it observes: the city is born holding its basin's standing
-    // subsistence stores — the cell's people × their own per-tick demand ×
-    // the ledger's ramp horizon. An initial condition of the annexed
-    // countryside, not a subsidy; no clock, no gate.
-    // The countryside whose granaries ride in is the SUPPORT BASIN — the
-    // ground whose people this city gathered from (cached take) — not the
-    // whole Euclidean cell, whose disk-scale census over-provisioned birth
-    // stores in site-sparse country (the same phantom-domain class the
-    // tribute right-sizing measured; docs/state-birth-2026-08.md).
-    {
-      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, barOf(k)).take;
-      let bMass = 0;
-      for (let n = 0; n < bTake.length; n++) bMass += pf[bTake[n]];
-      const basinCensus = bMass * bridge;
-      born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
-    }
+    // Birth stores: makeSettlement already set household grain from
+    // coreCensus (a few ticks of the city's own mouths). Do not dump 500
+    // ticks of the whole basin into the warehouse — that filled every new
+    // city to the ~480 t cap and looked like a default gift.
+
     // T.CORE_HOLD — the spike HANDOFF (2026-08-07, the birth-crater killer):
     // until this line the gathered core was held by the SITE spike above
     // (min(coreNow, coreBarF×1.2)); from the next derive it is held by the

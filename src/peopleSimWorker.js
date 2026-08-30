@@ -691,7 +691,7 @@ function packSelected(s) {
     _attach: s._attach,
     _homelandName: (s._homeland ?? -1) >= 0 ? realmName(world, s._homeland) : null,
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
-    _houseK: s._houseK, _foodK: s._foodK,
+    _houseK: s._houseK, _foodK: s._foodK, _k: s._k,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
     _specKey: s._specKey, _specStr: s._specStr,                          // agglomeration: locked-in craft specialty
     _gPrice: s._gPrice || null, _gShare: s._gShare || null, _gNet: s._gNet || null,   // goods vector (T.GOODS_PRICES+): local market prices, craft labour, net flows

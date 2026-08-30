@@ -360,9 +360,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     parentSettlementId: opts.parentId ?? -1,
     name: opts.name || `settlement-${id}`,
     people: opts.people ?? 25,
-    // Start at the tier-0 storage cap (see storageCap in updateFood);
-    // a larger value would just be clamped away on the first tick.
-    food: 80,
+    // Household grain the founders carried — a few ticks of THEIR OWN
+    // ration, so the first harvest can book before the pot reads empty.
+    // Was 80 (the warehouse floor) then overwritten at city mint by 500
+    // ticks of the whole basin, which filled every new city to ~480 t.
+    food: (opts.food != null) ? opts.food : (opts.people ?? 25) * 0.0030 * 4,
     knowledge: opts.knowledge || {
       // The NATURAL-VILLAGE seed: an internally consistent neolithic package.
       // agriculture 0.5 asserts ESTABLISHED cereal farming — and no farming

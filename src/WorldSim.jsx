@@ -4097,7 +4097,7 @@ const renderInspect=()=>{
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
           {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
-          <span className="au-fade">Consumed /tick</span><span title="Catchment demand incl. garrison">{fmtFood(demand)}</span>
+          <span className="au-fade">Consumed /tick</span><span title="What the city itself eats this tick (urban core + garrison), not the whole province">{fmtFood(demand)}</span>
           {coreNeed>0&&coreNeed<demand*0.98&&<><span className="au-fade">· urban core</span><span className="au-fade">{fmtFood(coreNeed)}</span></>}
           {fedM!=null&&<><span className="au-fade">Core fed (avg)</span><span>{Math.round(fedM*100)}%</span></>}
           <span style={{color:statusColor}}>Flow balance</span>
@@ -4110,7 +4110,7 @@ const renderInspect=()=>{
             ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{fmtPeople(s._developRate||0)}/tk</span></>
             :<><span className="au-fade">· can't grow</span><span style={{color:"#c84"}}>{s._devReason==="space"?"no room (built out)":s._devReason==="materials"?"no timber/stone":s._devReason==="coin"?"can't afford materials":"—"}</span></>)}
           {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{fmtPeople(houseK)} if fed</span></>)}
-          {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(s.people)}/{fmtPeople(nextThr)}</span></>}
+          {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(cityPop??s.people)}/{fmtPeople(nextThr)}</span></>}
           {(s.army||0)>0.5&&(<>
             <span className="au-fade">Garrison</span>
             <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of catchment · fed from food ledger)</span></span>
