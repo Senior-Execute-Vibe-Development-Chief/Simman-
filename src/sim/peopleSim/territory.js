@@ -148,7 +148,7 @@ function _foodDemandOf(s) {
 // Farmers sell to whoever leaves them the most after freight. Hunger is
 // demand — it is not cash. The offer a field sees is the reservation price
 // the city will AND can fund:
-//   willing  = _scarcity (demand vs eatable supply, 0.5–3)
+//   willing  = _scarcity (demand vs harvest, 0.5–3)
 //   able     = spare coin per unit of demand (the same purse grainMarketPass
 //              spends — city wealth over the subsistence hoard, not tile
 //              coin, which is already the farmer's receipt)
@@ -185,8 +185,12 @@ export function marketPullOfferMap(world, byId) {
   const out = new Map();
   for (const s of byId.values()) {
     const wRel = (wtpOf.get(s.id) || 1e-6) / Math.max(1e-12, wBar);
-    if (!payBinds) {
-      out.set(s.id, Math.max(1e-6, wRel * wBar));   // hunger-only mass (Abar still normalises)
+    // GRAIN_MARKET's own institution gate: commercial payment needs coined
+    // money. Before that, the temple/levy assigns the belt on willingness
+    // alone. A cash-poor coined city still cannot pay (min with ~0).
+    const coined = !!(s._techEff && s._techEff.market);
+    if (!payBinds || !coined) {
+      out.set(s.id, Math.max(1e-6, wRel * wBar));
       continue;
     }
     const aRel = (atpOf.get(s.id) || 0) / aBar;
@@ -402,7 +406,7 @@ export function computeTerritory(world) {
   // race is additive and this is the SAME Dijkstra with a different starting
   // potential. A market that bids more starts lower and reaches further.
   //   BID = min(willingness, ability to pay). Willingness is _scarcity
-  // (demand vs eatable supply — flow + hinterland + granary — and NOT
+  // (demand vs harvest — flow + hinterland, not the granary — and NOT
   // _grainPrice, which carries GRAIN_PRICE_BY_TIER). Ability is spare city
   // coin per unit of demand, the same purse grainMarketPass spends. Hunger
   // is not cash: a poor hungry city cannot pay, and a richer less-hungry

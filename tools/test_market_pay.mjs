@@ -23,6 +23,7 @@ function sett(id, extra = {}) {
     _foodDemand: 1,
     _foodSupply: 1,
     _landFood: 1,
+    _techEff: { market: true },
     ...extra,
   };
 }
@@ -93,6 +94,16 @@ console.log("[market-pay] offer map");
     `hungry ${a.get(1).toFixed(4)} vs fed ${a.get(2).toFixed(4)}`);
 }
 
+{
+  const byId = new Map([
+    [1, sett(1, { wealth: 1000, _scarcity: 0.5, _techEff: { market: false } })],
+    [2, sett(2, { wealth: 0, _scarcity: 3, _techEff: { market: false } })],
+  ]);
+  const a = marketPullOfferMap({}, byId);
+  check("pre-coin temple: ability does not bind, hunger ranks", a.get(2) > a.get(1) * 2,
+    `fed ${a.get(1).toFixed(4)} vs hungry ${a.get(2).toFixed(4)}`);
+}
+
 console.log("[market-pay] willingness (grain scarcity)");
 
 {
@@ -106,11 +117,15 @@ console.log("[market-pay] willingness (grain scarcity)");
 }
 
 {
-  const stocked = grainScarcityOf({
+  const stockedGone = grainScarcityOf({
     _foodSupply: 0, _foodDemand: 2, _landFood: 0, _foodExportedPrev: 0, food: 80,
   });
-  check("full barn + empty flow is not famine", stocked === 0.5,
-    `scarcity ${stocked}`);
+  check("full barn + empty hinterland still reads famine (stores are a buffer, not harvest)", stockedGone === 3,
+    `scarcity ${stockedGone}`);
+  check("full barn does not hide a live hinterland",
+    grainScarcityOf({
+      _foodSupply: 0, _foodDemand: 2, _landFood: 2, _foodExportedPrev: 0, food: 80,
+    }) === 1, "");
 }
 
 {
