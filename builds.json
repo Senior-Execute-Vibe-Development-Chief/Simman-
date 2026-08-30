@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/settlement-trace-15e6",
+      "sha": "01d2c363809b0970f587b2996913c836ce60cd10",
+      "slug": "cursor-settlement-trace-15e6",
+      "builtAt": "2026-08-30T13:49:29.354Z",
+      "channel": "preview",
+      "saveVersion": 63,
+      "path": "/b/cursor-settlement-trace-15e6/"
+    },
+    {
       "branch": "cursor/market-pull-bid-15e6",
       "sha": "1ff84969d06e7c75e52b0051ba7ee1a7b179680b",
       "slug": "cursor-market-pull-bid-15e6",
