@@ -62,11 +62,30 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
 }
 
 {
-  ok(dressOf({ temp: 0.86 }).cut === "drape", "heat → drape");
+  ok(dressOf({ temp: 0.86 }).cut === "drape", "heat (not humid) → drape");
   ok(dressOf({ temp: 0.58, livestock: 0.6, horses: 0.2, open: true }).cut === "trousers",
     "cold + riding stock → trousers");
   ok(dressOf({ temp: 0.64 }).cut === "tailored" || dressOf({ temp: 0.64 }).cut === "trousers",
     "cool temperate is cut, not drape");
+}
+
+{
+  const poor = dressOf({ temp: 0.86, moist: 0.72, wealth: 0.15 });
+  ok(poor.cut === "bare" && poor.weight === "bare" && poor.silhouette === "minimal",
+    `hot-humid plain is bare (${poor.cut}/${poor.weight})`);
+  ok(poor.head === "none" && poor.foot === "none",
+    `bare has no covering (${poor.head}/${poor.foot})`);
+  const rich = dressOf({ temp: 0.86, moist: 0.72, wealth: 0.65 });
+  ok(rich.cut === "robe" && rich.weight === "light" && rich.station === "fine",
+    `hot-humid surplus is a light robe, silk not required (${rich.cut}/${rich.fibre})`);
+  ok(rich.head === "none" && rich.foot === "sandal",
+    `hot-humid robe is sandal, not a wrap (${rich.head}/${rich.foot})`);
+  const arid = dressOf({ temp: 0.86, moist: 0.12, wealth: 0.65 });
+  ok(arid.head === "wrap" && arid.cut === "drape" && arid.foot === "sandal",
+    `hot-dry surplus wraps the head (${arid.head}/${arid.cut})`);
+  const cold = dressOf({ temp: 0.54, moist: 0.50, wealth: 0.40 });
+  ok(cold.head === "hood" && cold.foot === "boot" && cold.weight === "heavy",
+    `cold sedentary is hood + boot (${cold.head}/${cold.foot}/${cold.weight})`);
 }
 
 {
@@ -99,6 +118,52 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
   });
   ok(oak.wall === "timber", `temperate oak country is timber (${oak.wall})`);
   ok(oak.roof === "pitched" || oak.roof === "steep", `rain country is not flat (${oak.roof})`);
+  ok(oak.cover === "shingle", `mill-timber rain is shingle (${oak.cover})`);
+}
+
+{
+  const tropic = builtOf({
+    temp: 0.86, moist: 0.62, wealth: 0.15,
+    materials: { trees: [{ id: "palm" }] },
+  });
+  ok(tropic.wall === "wattle" && tropic.cover === "thatch",
+    `hot-humid without mill-timber is wattle/thatch, not mudbrick (${tropic.wall}/${tropic.cover})`);
+  ok(tropic.roof === "pitched" && tropic.openings === "small" && tropic.scale === "hut",
+    `hot-humid hut is pitched + small openings (${tropic.roof}/${tropic.openings}/${tropic.scale})`);
+  const bamboo = builtOf({
+    temp: 0.86, moist: 0.62, wealth: 0.20,
+    materials: { trees: [{ id: "bamboo" }] },
+  });
+  ok(bamboo.wall === "bamboo", `hot-wet bamboo is a bamboo wall (${bamboo.wall})`);
+  const steppe = builtOf({
+    temp: 0.62, moist: 0.28, horses: 0.4, open: true, wealth: 0.25,
+  });
+  ok(steppe.wall === "felt" && steppe.roof === "tent" && steppe.plan === "camp" && steppe.scale === "camp",
+    `open pasture + horses, no mill-timber → felt tent (${steppe.wall}/${steppe.roof}/${steppe.plan})`);
+  const polar = builtOf({ temp: 0.50, moist: 0.28, wealth: 0.20 });
+  ok(polar.wall === "turf" && polar.roof === "low" && polar.cover === "turf",
+    `cold dry without timber is turf, not a steep hall (${polar.wall}/${polar.roof})`);
+  ok(polar.openings === "small", `polar openings stay small (${polar.openings})`);
+  const hall = builtOf({
+    temp: 0.56, moist: 0.50, elev: 0.12, wealth: 0.82,
+    materials: { trees: [{ id: "oak" }] },
+  });
+  ok(hall.scale === "hall" && hall.openings === "large" && hall.cover === "shingle",
+    `cold-wet surplus is a large-opening hall (${hall.scale}/${hall.openings})`);
+}
+
+{
+  const gem = dressOf({
+    temp: 0.76, wealth: 0.70,
+    materials: { gems: [{ id: "lapis" }], dyes: [{ id: "indigo" }] },
+  });
+  ok(gem.ornament === "lapis" && gem.dye === "indigo",
+    `lapis is jewelry, indigo is the cloth (${gem.ornament}/${gem.dye})`);
+  const poor = dressOf({
+    temp: 0.76, wealth: 0.20,
+    materials: { gems: [{ id: "lapis" }], metals: [{ id: "gold" }] },
+  });
+  ok(poor.ornament === null, "plain station wears no gem ornament");
 }
 
 {
@@ -160,8 +225,10 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
     materials: { fauna: [{ id: "deer" }], trees: [{ id: "oak" }] },
   });
 
-  ok(tropicPlain.dress.station === "plain" && tropicPlain.dress.cut === "drape",
-    `low-surplus heat is plain drape (${fp(tropicPlain)})`);
+  ok(tropicPlain.dress.station === "plain" && tropicPlain.dress.cut === "bare",
+    `low-surplus hot-humid is bare (${fp(tropicPlain)})`);
+  ok(tropicPlain.built.wall === "wattle" && tropicPlain.built.cover === "thatch",
+    `that analog is a thatch hut, not mill timber (${tropicPlain.built.wall}/${tropicPlain.built.cover})`);
   ok(aridFine.dress.cut === "drape" && aridFine.built.plan === "courtyard" && aridFine.dress.dye === "tyrian",
     `hot-dry surplus is flowing courtyard (${fp(aridFine)})`);
   ok(woolFine.dress.fibre === "wool" && woolFine.dress.cut === "tailored" && woolFine.dress.silhouette === "structured",

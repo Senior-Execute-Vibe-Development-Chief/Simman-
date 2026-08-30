@@ -11,8 +11,13 @@
 //           timber / mudbrick / stone / reed on the tile.
 //
 // Station (plain vs fine) is surplus, not a culture name: a court and a
-// tribesman can share a climate and still read apart. Silk vs wool vs
+// tribesman can share a climate and still read apart. Hot-humid + plain is
+// bare skin; the same climate + surplus is a light robe. Silk vs wool vs
 // leather decides robe vs tailored vs hide — still no place name.
+// Head/foot follow load (arid wrap, cold hood/boot, heat sandal, bare none).
+// Mobile open pasture without mill-timber is a felt tent; polar without
+// timber is turf. Roof cover is thatch / shingle / mud / felt from the
+// same load × materials, not a taste genome.
 //
 // Classification, not a fitted culture. No time gates, no place names.
 // Pure + deterministic. No save fields, no UI wiring.
@@ -158,29 +163,90 @@ function bestDye(c) {
   return dyeIds[0];
 }
 
+function humidHeat(temp, moist) {
+  return temp > 0.80 && moist > 0.50;
+}
+
+function TIMBER_IDS() {
+  return ["oak", "pine", "cedar", "teak", "beech", "spruce", "larch", "birch"];
+}
+
+function hasTimber(c) {
+  const trees = ids(c.materials && c.materials.trees);
+  return TIMBER_IDS().some(id => trees.includes(id));
+}
+
+function aridHeat(temp, moist) {
+  return temp > 0.74 && moist < 0.30;
+}
+
 function silhouetteOf(cut) {
+  if (cut === "bare") return "minimal";
   if (cut === "drape" || cut === "robe") return "flowing";
   if (cut === "trousers") return "split";
   return "structured";
 }
 
+function headOf(c, coverage, weight) {
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  if (weight === "bare") return "none";
+  if (aridHeat(temp, moist)) return "wrap";
+  if (coverage > 0.50) return "hood";
+  return "none";
+}
+
+function footOf(c, coverage, weight) {
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  if (weight === "bare") return "none";
+  if (aridHeat(temp, moist) || temp > 0.80) return "sandal";
+  if (coverage > 0.50) return "boot";
+  return "shoe";
+}
+
+function ornamentOf(c) {
+  if (stationOf(c) !== "fine") return null;
+  const gems = ids(c.materials && c.materials.gems);
+  const metals = ids(c.materials && c.materials.metals);
+  if (metals.includes("gold")) return "gold";
+  if (gems.includes("lapis")) return "lapis";
+  if (gems.includes("turquoise")) return "turquoise";
+  if (gems.includes("jade")) return "jade";
+  return null;
+}
+
 export function dressOf(c) {
   const temp = c.temp != null ? c.temp : 0.70;
-  const coverage = coldOf(temp);
-  const weight = coverage > 0.55 ? "heavy" : coverage < 0.28 ? "light" : "medium";
+  const moist = c.moist != null ? c.moist : 0.40;
+  let coverage = coldOf(temp);
   const livestock = c.livestock != null ? c.livestock : 0;
   const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
   const open = c.open != null ? c.open : (c.relief != null ? c.relief < 0.22 : false);
   const wealth = wealthOf(c);
+  const station = stationOf(c);
   const fibre = bestFibre(c, coverage);
   const mounted = (temp < 0.70 || livestock > 0.45) && (horses > 0.08 || (livestock > 0.4 && open));
+  const tropic = humidHeat(temp, moist);
+  let weight = coverage > 0.55 ? "heavy" : coverage < 0.28 ? "light" : "medium";
   let cut;
-  if (mounted) cut = "trousers";
-  else if (fibre === "silk" && wealth > 0.5) cut = "robe";
+  if (tropic && station === "plain" && !mounted) {
+    weight = "bare";
+    cut = "bare";
+    coverage = Math.min(coverage, 0.08);
+  } else if (mounted) cut = "trousers";
+  else if (wealth > 0.5 && (fibre === "silk" || tropic)) cut = "robe";
   else if (temp > 0.78 && coverage < 0.40) cut = "drape";
   else if (temp < 0.68) cut = "tailored";
   else if (fibre === "leather") cut = "drape";
   else cut = "tailored";
+  if (tropic && station === "fine" && !mounted) {
+    weight = "light";
+    cut = "robe";
+  }
+  if (fibre === "fur" || (coverage > 0.55 && ids(c.materials && c.materials.furs).length)) {
+    if (weight !== "bare") weight = "heavy";
+  }
   return {
     coverage,
     weight,
@@ -188,7 +254,10 @@ export function dressOf(c) {
     silhouette: silhouetteOf(cut),
     fibre,
     dye: bestDye(c),
-    station: stationOf(c),
+    head: headOf(c, coverage, weight),
+    foot: footOf(c, coverage, weight),
+    ornament: ornamentOf(c),
+    station,
   };
 }
 
@@ -200,8 +269,41 @@ function rainLoad(moist) {
   return moist > 0.50;
 }
 
-function aridHeat(temp, moist) {
-  return temp > 0.74 && moist < 0.30;
+function tundraBare(c, temp, moist) {
+  return temp < 0.58 && moist < 0.40 && !hasTimber(c);
+}
+
+function mobileCamp(c, temp, flood) {
+  const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
+  const open = c.open != null ? c.open : (c.relief != null ? c.relief < 0.22 : false);
+  const moist = c.moist != null ? c.moist : 0.40;
+  return !flood && horses > 0.08 && open && !hasTimber(c) && !aridHeat(temp, moist) && temp < 0.78;
+}
+
+function scaleOf(c, plan) {
+  if (plan === "camp") return "camp";
+  const w = wealthOf(c);
+  if (w > 0.75) return "hall";
+  if (w > 0.5) return "house";
+  return "hut";
+}
+
+function coverOf(c, roof, wall) {
+  if (roof === "tent") return "felt";
+  if (wall === "turf" || roof === "low") return "turf";
+  if (roof === "flat") return "mud";
+  const rain = roof === "pitched" || roof === "steep";
+  if (rain && !hasTimber(c)) return "thatch";
+  if (rain) return "shingle";
+  return "none";
+}
+
+function openingsOf(temp, moist) {
+  if (aridHeat(temp, moist) || temp > 0.80) return "small";
+  // Polar dry-cold keeps heat in. Temperate cold-wet opens for light.
+  if (temp < 0.58 && moist < 0.40) return "small";
+  if (temp < 0.62 && moist > 0.32) return "large";
+  return "medium";
 }
 
 function bestWall(c) {
@@ -215,12 +317,14 @@ function bestWall(c) {
   if (flood && (trees.includes("reed") || trees.includes("papyrus"))) return "reed";
   if (aridHeat(temp, moist) && (earths.includes("clay") || earths.includes("sand"))) return "mudbrick";
   if ((elev > 0.18 || (c.relief || 0) > 0.35) && stone.length) return "stone";
-  if (trees.includes("oak") || trees.includes("pine") || trees.includes("cedar")
-    || trees.includes("teak") || trees.includes("beech") || trees.includes("spruce")) return "timber";
+  if (hasTimber(c)) return "timber";
+  if (trees.includes("bamboo") && temp > 0.76 && moist > 0.42) return "bamboo";
   if (earths.includes("clay") && moist < 0.42) return "mudbrick";
   if (flood) return "reed";
   if (aridHeat(temp, moist)) return "mudbrick";
-  if (moist > 0.45) return "timber";
+  // Rain without mill-timber is wattle/thatch country, not a mudbrick hut
+  // and not a European hall. Palm is fibre and roof, not a framed wall.
+  if (moist > 0.45) return "wattle";
   if (stone.length) return "stone";
   return "wattle";
 }
@@ -229,24 +333,58 @@ export function builtOf(c) {
   const temp = c.temp != null ? c.temp : 0.70;
   const moist = c.moist != null ? c.moist : 0.40;
   const flood = !!c.flood;
-  let roof, pitch;
-  if (snowLoad(temp, moist)) { roof = "steep"; pitch = clamp(0.72 + (0.66 - temp) * 0.8); }
-  else if (rainLoad(moist)) { roof = "pitched"; pitch = clamp(0.40 + (moist - 0.50) * 0.5); }
-  else if (aridHeat(temp, moist)) { roof = "flat"; pitch = clamp(0.08 + moist * 0.15); }
-  else { roof = "pitched"; pitch = 0.38; }
   const wealth = wealthOf(c);
-  let plan;
-  if (flood) plan = "raised";
-  else if (aridHeat(temp, moist)) plan = "courtyard";
-  else if (wealth > 0.5 && temp > 0.72 && !snowLoad(temp, moist)) plan = "courtyard";
-  else if (temp < 0.62) plan = "compact";
-  else plan = "open";
+  let wall = bestWall(c);
+  let roof, pitch, plan, eaves;
+
+  if (flood) {
+    plan = "raised";
+    roof = rainLoad(moist) ? "pitched" : "flat";
+    pitch = rainLoad(moist) ? 0.42 : 0.12;
+    eaves = rainLoad(moist) ? "deep" : "none";
+  } else if (mobileCamp(c, temp, flood)) {
+    wall = "felt";
+    roof = "tent";
+    pitch = 0.22;
+    plan = "camp";
+    eaves = "none";
+  } else if (tundraBare(c, temp, moist)) {
+    wall = "turf";
+    roof = "low";
+    pitch = 0.14;
+    plan = "compact";
+    eaves = "none";
+  } else if (snowLoad(temp, moist)) {
+    roof = "steep";
+    pitch = clamp(0.72 + (0.66 - temp) * 0.8);
+    plan = temp < 0.62 ? "compact" : "open";
+    eaves = rainLoad(moist) ? "deep" : "none";
+  } else if (rainLoad(moist)) {
+    roof = "pitched";
+    pitch = clamp(0.40 + (moist - 0.50) * 0.5);
+    eaves = "deep";
+    plan = (wealth > 0.5 && temp > 0.72) ? "courtyard" : (temp < 0.62 ? "compact" : "open");
+  } else if (aridHeat(temp, moist)) {
+    roof = "flat";
+    pitch = clamp(0.08 + moist * 0.15);
+    plan = "courtyard";
+    eaves = "none";
+  } else {
+    roof = "pitched";
+    pitch = 0.38;
+    eaves = "none";
+    plan = (wealth > 0.5 && temp > 0.72) ? "courtyard" : (temp < 0.62 ? "compact" : "open");
+  }
+
   return {
-    wall: bestWall(c),
+    wall,
     roof,
     pitch: clamp(pitch),
-    eaves: rainLoad(moist) ? "deep" : "none",
+    eaves,
     plan,
+    cover: coverOf(c, roof, wall),
+    openings: openingsOf(temp, moist),
+    scale: scaleOf(c, plan),
     station: stationOf(c),
   };
 }
@@ -263,9 +401,11 @@ export function styleOf(c) {
 export function formatStyleLine(s) {
   if (!s) return "";
   const bits = [];
-  if (s.built) bits.push(`${s.built.station || ""} ${s.built.wall} ${s.built.roof} ${s.built.plan}`.trim());
+  if (s.built) {
+    bits.push(`${s.built.scale || ""} ${s.built.wall} ${s.built.roof} ${s.built.plan}`.trim());
+  }
   if (s.dress) {
-    bits.push(`${s.dress.station} ${s.dress.weight} ${s.dress.fibre} ${s.dress.cut}`.trim());
+    bits.push(`${s.dress.station} ${s.dress.weight} ${s.dress.fibre} ${s.dress.cut} ${s.dress.head || ""}`.trim());
   }
   return bits.join(" · ");
 }
