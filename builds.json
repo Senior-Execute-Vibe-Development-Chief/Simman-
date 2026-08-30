@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/earth-tile-materials-642a",
+      "sha": "94aa2b6563ceddd3346d1f2c45165a162a78e20a",
+      "slug": "cursor-earth-tile-materials-642a",
+      "builtAt": "2026-08-30T08:24:58.902Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-earth-tile-materials-642a/"
+    },
+    {
       "branch": "cursor/urban-print-15e6",
       "sha": "c89ab14e07c391343198b391c8994f7344cbcb81",
       "slug": "cursor-urban-print-15e6",
@@ -9,15 +18,6 @@
       "channel": "preview",
       "saveVersion": 64,
       "path": "/b/cursor-urban-print-15e6/"
-    },
-    {
-      "branch": "cursor/earth-tile-materials-642a",
-      "sha": "c05185c22d374afabf0b39a19ff59d41a2184acd",
-      "slug": "cursor-earth-tile-materials-642a",
-      "builtAt": "2026-08-30T08:01:25.466Z",
-      "channel": "preview",
-      "saveVersion": 64,
-      "path": "/b/cursor-earth-tile-materials-642a/"
     },
     {
       "branch": "cursor/urban-food-gate-15e6",
