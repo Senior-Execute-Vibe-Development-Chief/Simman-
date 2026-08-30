@@ -247,12 +247,12 @@ export function aggregateFoodHierarchy(world) {
   }
   // Goods-flow overlay recorder (render-only; the worker sets _wantGoodsFlows
   // while the "Goods flow" view is open — zero cost and zero allocations
-  // otherwise). Grain entries rebuild every tick here; the goods-vector
-  // entries rebuild each trade sweep in roads.js (_goodsFlowsTrade). An entry
-  // is {pts, mag, toEnd, kind}: pts is a tile-index path — a road/sea link's
-  // tiles where one exists, else a 2-point straight line (the renderer lerps
-  // over segments, so 2 points draw a direct stream — the liege tree is not
-  // road-constrained and never had a path).
+  // otherwise). Grain MARKET entries (settlement↔settlement purchases) rebuild
+  // every tick here as kind grainM; tile→city harvest levy lives in
+  // world._goodsFlowsLevy (territory tally). Goods-vector entries rebuild each
+  // trade sweep in roads.js (_goodsFlowsTrade). An entry is {pts, mag, toEnd,
+  // kind}: pts is a tile-index path — a road/sea link's tiles where one exists,
+  // else a 2-point straight line (the renderer lerps over segments).
   const gf = world._wantGoodsFlows ? [] : null;
   world._goodsFlowsGrain = gf;
   const tw = world.tw;
@@ -392,7 +392,9 @@ export function aggregateFoodHierarchy(world) {
           if (ts) { dbgLevied += levied; dbgBought += bought; dbgUnbought += Math.max(0, rest - bought); }
           const took = levied + bought;                      // grain that moved UP (levy + purchase); bought ≥ 0 always (rest > 0 since offer > 0 & levyShare ≤ 0.7; spare ≥ 0)
           if (took <= 0) continue;
-          if (gf && took > 1e-6) gf.push({ pts: [tiOf(k), tiOf(node)], mag: took, toEnd: true, kind: "grainL" });   // levy/tree grain, child → liege
+          // Overlay: grainM is food TRADED between settlements (coin purchase).
+          // Tile→city harvest levy is recorded in territory.js (_goodsFlowsLevy).
+          if (gf && bought > 1e-6) gf.push({ pts: [tiOf(k), tiOf(node)], mag: bought, toEnd: true, kind: "grainM" });
           pool += took;
           imported += took;
           k._foodNet = (k._foodNet || 0) - took;             // child keeps less — it gave up `took`

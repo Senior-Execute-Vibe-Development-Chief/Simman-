@@ -125,6 +125,13 @@ function _ensureTerrScratch(world, N) {
   return { cost2, tcost2, clm2 };
 }
 
+/** Persistent Int32 scratch of length N — replaces per-flood `owner.slice()` (allocation-wall). */
+function _ensureTerrOwnerCopy(world, key, N) {
+  let a = world[key];
+  if (!a || a.length !== N) a = world[key] = new Int32Array(N);
+  return a;
+}
+
 // After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
 // better on the SAME pass's effort metric (second-best slot). Marketing habit —
 // standing farm-gate relationships do not flip on float dust.
@@ -224,9 +231,35 @@ export function hinterlandRadiusFor(s, world) {
 }
 
 class MinHeap {
-  constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
-  _grow() { const c = this.cap * 2; const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d); this.ti = t; this.d = d; this.cap = c; }
-  push(ti, d) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; const tt = this.ti[p], td = this.d[p]; this.ti[p] = this.ti[i]; this.d[p] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = p; } }
+  constructor(cap = 4096) {
+    this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap;
+    this._maxCap = Math.max(cap * 4, 1 << 20);
+  }
+  _grow() {
+    const c = this.cap * 2;
+    // Soft ceiling — same posture as transport.js (mint-ready Max canary).
+    if (c > this._maxCap) return false;
+    try {
+      const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d);
+      this.ti = t; this.d = d; this.cap = c;
+      return true;
+    } catch (err) {
+      console.error(`[terrHeap] grow ${this.cap}→${c} failed:`, err && err.message);
+      return false;
+    }
+  }
+  push(ti, d) {
+    if (this.n >= this.cap && !this._grow()) return false;
+    let i = this.n++; this.ti[i] = ti; this.d[i] = d;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.d[p] <= this.d[i]) break;
+      const tt = this.ti[p], td = this.d[p];
+      this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
+      this.ti[i] = tt; this.d[i] = td; i = p;
+    }
+    return true;
+  }
   popMin() { const ti = this.ti[0], d = this.d[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; const tt = this.ti[b], td = this.d[b]; this.ti[b] = this.ti[i]; this.d[b] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = b; } } return { ti, d }; }
 }
 
@@ -454,11 +487,29 @@ export function computeTerritory(world) {
   // OWNER — ownership is persistent, that's what stabilises the borders.
   cost.fill(Infinity);
   tcost.fill(Infinity);
-  const heap = world._terrHeap || (world._terrHeap = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
+  // Pre-size like transport.js — avoid grow cascades under invent-jump memory pressure.
+  const wantTerr = (() => {
+    const need = Math.max(4096, N);
+    return need <= 1 ? 1 : 1 << (32 - Math.clz32(need - 1));
+  })();
+  let heap = world._terrHeap;
+  if (!heap || heap.cap < wantTerr) {
+    heap = world._terrHeap = new MinHeap(wantTerr);
+    heap._maxCap = Math.max(wantTerr * 4, 1 << 20);
+  }
+  heap.n = 0;
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
-  const prevOwner = mktPull && T.MARKET_PULL_HYST > 1 ? owner.slice() : null;
+  // MARKET_PULL_HYST needs the pre-flood owner map — copy into a reused lane
+  // (owner.slice() allocated ~N×4 bytes every territory flood; under Max +
+  // first-city mint that was a steady ArrayBuffer stream into the allocation
+  // wall — docs/allocation-wall-2026-08-20.md).
+  let prevOwner = null;
+  if (mktPull && T.MARKET_PULL_HYST > 1) {
+    prevOwner = _ensureTerrOwnerCopy(world, "_terrPrevOwner", N);
+    prevOwner.set(owner);
+  }
   const { cost2, tcost2, clm2 } = mktPull && T.MARKET_PULL_HYST > 1
     ? _ensureTerrScratch(world, N)
     : { cost2: null, tcost2: null, clm2: null };
@@ -537,7 +588,9 @@ export function computeTerritory(world) {
   // a locked tile owned by someone else is a wall; only tiles that are
   // wilderness in the snapshot are contestable — and they go to whoever
   // reaches them cheapest (true multi-source Voronoi over the free land).
-  const base = owner.slice();
+  // Reuse lane — same allocation-wall reason as _terrPrevOwner above.
+  const base = _ensureTerrOwnerCopy(world, "_terrBaseOwner", N);
+  base.set(owner);
   // Claimant carrier: water tiles propagate the cost frontier but are never
   // OWNED, so re-deriving the claimant from owner[ti] at pop time lost it the
   // moment the frontier stepped offshore (budget/knowledge read as nobody's →
@@ -716,6 +769,21 @@ function tallyTerritory(world, owner, cost, byId) {
   // (cost/rn). One normalisation point — every downstream consumer then sees
   // reference-scale numbers automatically. Off ⇒ rn=1, invA=1: byte-identical.
   const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  // Goods overlay: grainL = surplus walking from the FIELD to its city, not
+  // the old child→liege tree. Cap per owner so a fine grid does not emit a
+  // stream per tile (render CAPD is 9000 dots). Keep the strongest surplus
+  // tiles — those are the levy the city actually lives on.
+  const LEVY_PER_CITY = 12;
+  const levyBest = new Map();
+  const noteLevy = (sid, ti, mag) => {
+    if (!(mag > 1e-9)) return;
+    let b = levyBest.get(sid);
+    if (!b) { levyBest.set(sid, b = []); }
+    if (b.length < LEVY_PER_CITY) { b.push({ ti, mag }); return; }
+    let j = 0;
+    for (let i = 1; i < b.length; i++) if (b[i].mag < b[j].mag) j = i;
+    if (mag > b[j].mag) b[j] = { ti, mag };
+  };
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0) continue;
@@ -735,6 +803,7 @@ function tallyTerritory(world, owner, cost, byId) {
       const w = foodFalloff(cost[ti] / _rn);
       const gross = f * w * _invA;
       const surplus = landSurplusFrac(world, ti, gross, s);
+      noteLevy(oid, ti, gross * surplus);
       s._terrFertSum += gross * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
@@ -818,6 +887,17 @@ function tallyTerritory(world, owner, cost, byId) {
     // this so herds face the same countryside-eats-first gate as grain.
     s._terrMeanSurplus = s._terrPlantWt > 1e-9 ? s._terrSurplusAcc / s._terrPlantWt : 1;
   }
+  const levy = [];
+  for (const [sid, tiles] of levyBest) {
+    const s = byId.get(sid);
+    if (!s) continue;
+    const dest = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    for (const { ti, mag } of tiles) {
+      if (ti === dest) continue;
+      levy.push({ pts: [ti, dest], mag, toEnd: true, kind: "grainL" });
+    }
+  }
+  world._goodsFlowsLevy = levy;
   world._borders = borders;
 }
 

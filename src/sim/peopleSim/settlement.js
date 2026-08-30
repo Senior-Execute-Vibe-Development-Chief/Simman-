@@ -360,9 +360,10 @@ export function makeSettlement(world, x, y, opts = {}) {
     parentSettlementId: opts.parentId ?? -1,
     name: opts.name || `settlement-${id}`,
     people: opts.people ?? 25,
-    // Start at the tier-0 storage cap (see storageCap in updateFood);
-    // a larger value would just be clamped away on the first tick.
-    food: 80,
+    // Small starter store — a few ticks of household grain so the first
+    // harvest can book before the pot reads empty. This is a famine buffer,
+    // not a size gift: agglomeration aims at harvest supply, not the pile.
+    food: opts.food ?? 80,
     knowledge: opts.knowledge || {
       // The NATURAL-VILLAGE seed: an internally consistent neolithic package.
       // agriculture 0.5 asserts ESTABLISHED cereal farming — and no farming
@@ -3148,13 +3149,19 @@ function updateFood(world, s) {
     s.food = Math.max(0, (s.food || 0) - (s._coreNeed || 0));
   } else if (s._besiegedNow) s._besiegedNow = false;
 
-  // RETAINED land food — what the food HIERARCHY leaves this settlement: its
-  // aggregated subtree intake minus what its liege levied/bought away (computed
-  // at the END of last tick, foodHierarchy.js — a 1-tick lag that's invisible,
-  // production drifts slowly). Before the first aggregation (_foodNet unset)
-  // fall back to its own land food. ONE basis: both the fish gate below and the
-  // supply line eat from this same number.
-  const netLand = s._foodNet !== undefined ? s._foodNet : landFood;
+  // Carrying food this tick. `_foodNet` is last tick's hierarchy book
+  // (own harvest + imports − what shipped up). A real retained amount
+  // (including a provincial city that kept 20%) must be used as-is — that is
+  // the SHIP_FRAC law, villages stay small because they send grain away.
+  // `_foodNet === 0` is NOT a real book: it is the default after a tick with
+  // no harvest yet (founding, territory just assigned the first tiles, a
+  // skipped node). The old `!== undefined` test treated that 0 as "kept
+  // nothing" and stamped `_foodSupply = 0`. foodK followed it to 0, and under
+  // STAMP_RETIRE the size read is min(disk, foodK) — the city became a
+  // village in one derive, then agglomeration dumped the core at 20%/tick.
+  // Fall back to this tick's landFood only when the retained book is empty;
+  // imports (net > land) still raise supply.
+  const netLand = (s._foodNet > 1e-9) ? s._foodNet : landFood;
 
   // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
   // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
@@ -3723,9 +3730,19 @@ function updatePopulation(world, s) {
   // so urbanisation rises over history. This is what makes a big farming province
   // read as mostly rural rather than mislabelling its whole population "urban".
   if (T.DISSOLVE_FARMS) {
-    const ruralFrac = ruralShare(s);
-    s._ruralPop = s.people * ruralFrac;
-    s._urbanPop = s.people - s._ruralPop;
+    // ONE_POP: the field already split urban/rural. A yield-ratio heuristic
+    // (90% rural) overwriting _urbanPop every tick is what made the inspect
+    // card bounce between the measured city and 10% of the catchment — and
+    // any same-tick reader (tier, dissolve, food on a stride gap) saw the
+    // wrong number. Keep the field measurement when we have one.
+    if (T.ONE_POP && s._coreMeasured != null) {
+      s._urbanPop = Math.min(s.people, s._coreMeasured);
+      s._ruralPop = Math.max(0, s.people - s._urbanPop);
+    } else {
+      const ruralFrac = ruralShare(s);
+      s._ruralPop = s.people * ruralFrac;
+      s._urbanPop = s.people - s._ruralPop;
+    }
   } else {
     s._ruralPop = 0; s._urbanPop = s.people;
   }
