@@ -10,11 +10,12 @@ function ok(cond, msg) {
 }
 
 {
-  ok(MATERIAL_LAYERS.length >= 110, `catalog has ${MATERIAL_LAYERS.length} layers`);
+  ok(MATERIAL_LAYERS.length >= 180, `catalog has ${MATERIAL_LAYERS.length} layers`);
   const ids = new Set(MATERIAL_LAYERS.map(l => l.id));
   ok(ids.size === MATERIAL_LAYERS.length, "layer ids unique");
   ok(ids.has("oak") && ids.has("llama") && ids.has("cloves") && ids.has("papyrus"), "key endemics listed");
   ok(ids.has("wheat") && ids.has("rice"), "crop packages listed");
+  ok(ids.has("clay") && ids.has("woad") && ids.has("rubber") && ids.has("aurochs"), "§4 expansion ids listed");
 }
 
 {
@@ -25,7 +26,9 @@ function ok(cond, msg) {
   const oakN = layerTileCount(fields, "oak");
   const fishN = layerTileCount(fields, "fish");
   ok(oakN > 0 || fishN > 0, `some layers present (oak=${oakN}, fish=${fishN})`);
+  ok(oakN > 5 || fishN > 5, `eligibility paints ranges, not a 1–2 name pick (oak=${oakN}, fish=${fishN})`);
   ok(layerTileCount(fields, "not-a-material") === 0, "unknown id counts 0");
+  ok(fields._counts && fields._counts.fish === fishN, "counts cached on fields");
 }
 
 if (fails) {

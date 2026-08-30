@@ -10,7 +10,8 @@
 import { landComp } from "./peopleSim/countryClaim.js";
 import { hash32 } from "./peopleSim/rng.js";
 import { classifyBiome, observedClimate, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND,
-  B_COLD_DESERT, B_TROP_RAIN, B_TROP_DRY, B_SUBTROP, B_TEMP_RAIN } from "./biomeClass.js";
+  B_COLD_DESERT, B_TROP_RAIN, B_TROP_DRY, B_SUBTROP, B_TEMP_RAIN, B_TEMP_FOREST,
+  B_MEDITERRANEAN } from "./biomeClass.js";
 
 export function isEarthPreset(world) {
   const p = world && world.preset;
@@ -155,6 +156,38 @@ export const FAUNA_ORIGINS = {
       { fx: 0.80, fy: 0.34, reach: 0.05 },  // Himalaya
     ],
   },
+  aurochs: {
+    biomes: [B_GRASSLAND, B_TEMP_FOREST], nPicks: 1,
+    origins: [
+      { fx: 0.54, fy: 0.24, reach: 0.12 },  // Europe
+      { fx: 0.62, fy: 0.30, reach: 0.08 },  // Pontic / Anatolia
+    ],
+  },
+  ram: {
+    biomes: [B_GRASSLAND, B_SHRUBLAND, B_MEDITERRANEAN], nPicks: 2,
+    origins: [
+      { fx: 0.52, fy: 0.28, reach: 0.08 },  // Alps / Atlas / Near East
+      { fx: 0.80, fy: 0.34, reach: 0.06 },  // Himalaya
+    ],
+  },
+  peacock: {
+    biomes: [B_TROP_DRY, B_SAVANNA, B_SUBTROP], nPicks: 1,
+    origins: [
+      { fx: 0.717, fy: 0.389, reach: 0.08 },  // India
+    ],
+  },
+  cashmere: {
+    biomes: [B_GRASSLAND, B_SHRUBLAND], nPicks: 1,
+    origins: [
+      { fx: 0.80, fy: 0.33, reach: 0.06 },  // Himalaya / Tibet
+    ],
+  },
+  alpaca: {
+    biomes: [B_GRASSLAND, B_SHRUBLAND], nPicks: 1,
+    origins: [
+      { fx: 0.28, fy: 0.58, reach: 0.07 },  // Andes
+    ],
+  },
 };
 
 export const FLORA_ORIGINS = {
@@ -248,6 +281,158 @@ export const FLORA_ORIGINS = {
     origins: [
       { fx: 0.835, fy: 0.480, reach: 0.08 },  // Borneo / Sunda
       { fx: 0.780, fy: 0.450, reach: 0.06 },  // Indochina
+    ],
+  },
+  ebony: {
+    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 2,
+    origins: [
+      { fx: 0.556, fy: 0.500, reach: 0.10 },  // Congo
+      { fx: 0.80, fy: 0.46, reach: 0.08 },  // SE Asia
+    ],
+  },
+  "cork-oak": {
+    biomes: [B_MEDITERRANEAN, B_SHRUBLAND], nPicks: 1,
+    origins: [
+      { fx: 0.478, fy: 0.283, reach: 0.06 },  // Iberia
+      { fx: 0.51, fy: 0.32, reach: 0.04 },  // Maghreb
+    ],
+  },
+  rubber: {
+    biomes: [B_TROP_RAIN], nPicks: 1,
+    origins: [
+      { fx: 0.333, fy: 0.517, reach: 0.12 },  // Amazon
+    ],
+  },
+  "coconut-palm": {
+    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 1, hop: true,
+    origins: [
+      { fx: 0.833, fy: 0.500, reach: 0.10 },  // Indo-Pacific
+      { fx: 0.65, fy: 0.48, reach: 0.06 },  // Indian Ocean
+    ],
+  },
+  fig: {
+    biomes: [B_MEDITERRANEAN, B_SUBTROP, B_SHRUBLAND], nPicks: 1,
+    origins: [
+      { fx: 0.597, fy: 0.317, reach: 0.08 },  // Levant
+    ],
+  },
+  pomegranate: {
+    biomes: [B_MEDITERRANEAN, B_SUBTROP, B_SHRUBLAND], nPicks: 1,
+    origins: [
+      { fx: 0.647, fy: 0.333, reach: 0.08 },  // Iran / Caucasus
+    ],
+  },
+  saffron: {
+    biomes: [B_MEDITERRANEAN, B_SUBTROP, B_SHRUBLAND], nPicks: 1,
+    origins: [
+      { fx: 0.647, fy: 0.322, reach: 0.07 },  // Iran
+    ],
+  },
+  woad: {
+    biomes: [B_TEMP_FOREST, B_GRASSLAND], nPicks: 1,
+    origins: [
+      { fx: 0.514, fy: 0.233, reach: 0.10 },  // western Europe
+    ],
+  },
+  henna: {
+    biomes: [B_SAVANNA, B_DESERT, B_SHRUBLAND, B_TROP_DRY], nPicks: 1,
+    origins: [
+      { fx: 0.50, fy: 0.417, reach: 0.10 },  // Sahel
+      { fx: 0.72, fy: 0.40, reach: 0.08 },  // India
+    ],
+  },
+  logwood: {
+    biomes: [B_TROP_RAIN, B_TROP_DRY, B_SAVANNA], nPicks: 1,
+    origins: [
+      { fx: 0.25, fy: 0.40, reach: 0.06 },  // Yucatan / Caribbean
+    ],
+  },
+  brazilwood: {
+    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 1,
+    origins: [
+      { fx: 0.389, fy: 0.589, reach: 0.08 },  // Brazil coast
+    ],
+  },
+  gamboge: {
+    biomes: [B_TROP_RAIN, B_SUBTROP], nPicks: 1,
+    origins: [
+      { fx: 0.792, fy: 0.433, reach: 0.07 },  // Cambodia / Indochina
+    ],
+  },
+  lac: {
+    biomes: [B_TROP_DRY, B_SAVANNA, B_SUBTROP], nPicks: 1,
+    origins: [
+      { fx: 0.722, fy: 0.389, reach: 0.08 },  // India
+    ],
+  },
+  "gum-arabic": {
+    biomes: [B_SAVANNA, B_SHRUBLAND, B_DESERT], nPicks: 1,
+    origins: [
+      { fx: 0.50, fy: 0.422, reach: 0.10 },  // Sahel
+    ],
+  },
+  benzoin: {
+    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 1,
+    origins: [
+      { fx: 0.778, fy: 0.500, reach: 0.08 },  // Sumatra
+    ],
+  },
+  banana: {
+    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 1,
+    origins: [
+      { fx: 0.806, fy: 0.472, reach: 0.10 },  // SE Asia
+    ],
+  },
+  citrus: {
+    biomes: [B_SUBTROP, B_TROP_DRY], nPicks: 1,
+    origins: [
+      { fx: 0.814, fy: 0.367, reach: 0.08 },  // South China
+    ],
+  },
+  sugarcane: {
+    biomes: [B_TROP_RAIN, B_SAVANNA], nPicks: 1, hop: true,
+    origins: [
+      { fx: 0.897, fy: 0.533, reach: 0.06 },  // New Guinea
+      { fx: 0.806, fy: 0.472, reach: 0.06 },  // SE Asia
+    ],
+  },
+  sesame: {
+    biomes: [B_SAVANNA, B_TROP_DRY, B_SUBTROP], nPicks: 1,
+    origins: [
+      { fx: 0.717, fy: 0.389, reach: 0.08 },  // India
+      { fx: 0.608, fy: 0.450, reach: 0.06 },  // Ethiopia
+    ],
+  },
+  "opium-poppy": {
+    biomes: [B_MEDITERRANEAN, B_SUBTROP, B_GRASSLAND], nPicks: 1,
+    origins: [
+      { fx: 0.597, fy: 0.289, reach: 0.08 },  // Anatolia
+    ],
+  },
+  tobacco: {
+    biomes: [B_SUBTROP, B_TROP_DRY, B_SAVANNA, B_TEMP_FOREST], nPicks: 1,
+    origins: [
+      { fx: 0.225, fy: 0.400, reach: 0.08 },  // Mesoamerica
+    ],
+  },
+  jade: {
+    nPicks: 2,
+    origins: [
+      { fx: 0.806, fy: 0.344, reach: 0.06 },  // China
+      { fx: 0.25, fy: 0.40, reach: 0.05 },  // Mesoamerica
+    ],
+  },
+  lapis: {
+    nPicks: 1,
+    origins: [
+      { fx: 0.686, fy: 0.294, reach: 0.04 },  // Afghanistan
+    ],
+  },
+  turquoise: {
+    nPicks: 2,
+    origins: [
+      { fx: 0.20, fy: 0.34, reach: 0.05 },  // SW North America
+      { fx: 0.647, fy: 0.322, reach: 0.04 },  // Persia
     ],
   },
 };

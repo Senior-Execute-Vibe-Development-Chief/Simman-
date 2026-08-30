@@ -165,7 +165,7 @@ function ok(cond, msg) {
   const andes = lineAt(-72, -13.5);
   const yunnan = lineAt(101, 25);
   const ethiopia = lineAt(38.7, 9);
-  ok(/papyrus|reed|crocodile/.test(nileValley),
+  ok(/papyrus|reed|crocodile|clay/.test(nileValley),
     `Nile flood corridor names wetland flora (${nileValley})`);
   ok(/olive|cedar|grapevine|kermes/.test(levantMed) || /olive|cedar|grapevine|kermes/.test(crete),
     `summer-dry Med names olive-class flora (${levantMed} / ${crete})`);

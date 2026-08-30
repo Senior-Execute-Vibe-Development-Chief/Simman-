@@ -63,6 +63,13 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
 const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","materials","moisture","temperature","country","atlas"]);
+/** Raster cache key for checklist overlays — object identity is always "[object Object]". */
+function overlayToggleKey(state, layers){
+  if(!state||!layers)return "";
+  let s="";
+  for(const L of layers)s+=(state[L.id]!==false)?"1":"0";
+  return s;
+}
 // Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
 // putImageData every frame — the reason these lagged next to the country view),
 // but their raster must refresh as the sim advances, so the cache key carries a
@@ -569,7 +576,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
-const[activeMats,setActiveMats]=useState(()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=false;return s;});
+const[activeMats,setActiveMats]=useState(()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=true;return s;});
 const[activeGoods,setActiveGoods]=useState(()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
@@ -1310,7 +1317,7 @@ const _staticBase=(BASE_CACHE_VIEWS.has(vm)||_stepCacheV)&&!isGlobe;
 // raster refreshes as the world changes (and is stable/blitted while paused).
 const _simStep=(peopleRef.current&&peopleRef.current.step)||0;
 const _stepTag=_stepCacheV?('|s'+((_simStep/STEP_CACHE_REGEN)|0)):'';
-const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+(activeMatsRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+overlayToggleKey(activeResRef.current,RESOURCES)+'|'+overlayToggleKey(activeMatsRef.current,MATERIAL_LAYERS)+'|'+oceanLevelRef.current+_stepTag):null;
 let _baseHit=false;
 if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
 if(!_baseHit){
@@ -1425,8 +1432,9 @@ br=(12*invA+br*alpha)|0;bg=(11*invA+bg*alpha)|0;bb=(10*invA+bb*alpha)|0;
 d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
 }else if(vm==="materials"){
 // Named tile materials — climate / ecology classifier (not mine deposits).
-const am=activeMatsRef.current;
-const activeList=MATERIAL_LAYERS.filter(m=>am[m.id]);
+const am=activeMatsRef.current||{};
+const activeList=MATERIAL_LAYERS.filter(m=>am[m.id]!==false);
+if(!ter.matFields)ter.matFields=buildMaterialFields(w,ter);
 const mf=ter.matFields;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
@@ -4905,7 +4913,7 @@ return(
 {/* ─── Bottom-left collapsible legend ─── */}
 {(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="materials"||viewMode==="goodsflow")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:viewMode==="materials"?240:200,zIndex:20,maxHeight:viewMode==="materials"?320:undefined,overflowY:viewMode==="materials"?"auto":undefined}}>
+  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:viewMode==="materials"?280:200,zIndex:20,maxHeight:viewMode==="materials"?440:undefined,overflowY:viewMode==="materials"?"auto":undefined}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
   borderBottom:keyOpen?"1px solid rgba(216,190,150,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
   onClick={()=>setKeyOpen(v=>!v)}>
@@ -4944,13 +4952,19 @@ return(
     </div>
     {MATERIAL_CATEGORIES.map(cat=>(
       <div key={cat.id}>
-        <div className="au-heading au-sc au-fade" style={{fontSize:9,marginTop:5,marginBottom:2}}>{cat.label}</div>
-        {cat.layers.map(m=>{const on=activeMats[m.id];
-          const mf=terRef.current&&terRef.current.matFields;
-          const n=mf?layerTileCount(mf,m.id):0;
+        <div className="au-heading au-sc au-fade" style={{fontSize:9,marginTop:5,marginBottom:2,display:"flex",gap:6,alignItems:"baseline"}}>
+          <span style={{flex:1}}>{cat.label}</span>
+          <span style={{cursor:"pointer",fontWeight:400}} className="au-fade"
+            onClick={e=>{e.stopPropagation();setActiveMats(prev=>{const next={...prev};for(const m of cat.layers)next[m.id]=true;return next;});}}>all</span>
+          <span style={{cursor:"pointer",fontWeight:400}} className="au-fade"
+            onClick={e=>{e.stopPropagation();setActiveMats(prev=>{const next={...prev};for(const m of cat.layers)next[m.id]=false;return next;});}}>none</span>
+        </div>
+        {cat.layers.map(m=>{const on=activeMats[m.id]!==false;
+          const counts=terRef.current&&terRef.current.matCounts;
+          const n=counts&&counts[m.id]!=null?counts[m.id]:(terRef.current&&terRef.current.matFields?layerTileCount(terRef.current.matFields,m.id):0);
           return(
           <div key={m.id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:(n?0.55:0.3)}}
-            onClick={()=>setActiveMats(prev=>{const next={...prev};next[m.id]=!prev[m.id];return next;})}
+            onClick={()=>setActiveMats(prev=>{const next={...prev};next[m.id]=prev[m.id]===false;return next;})}
             title={n?`${n.toLocaleString()} tiles`: "absent on this map"}>
             <span className="au-key-swatch" style={{background:on?`rgb(${m.color.join(",")})`:"#888"}} />
             <span>{m.label}</span>

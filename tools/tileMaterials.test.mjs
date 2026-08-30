@@ -6,7 +6,7 @@ import {
   B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_RAIN, B_SAVANNA,
   B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY, B_SUBTROP, B_TUNDRA,
 } from "../src/sim/biomeClass.js";
-import { materialsFromSignals, tileMaterials, idsOf, TAU } from "../src/sim/tileMaterials.js";
+import { materialsFromSignals, tileMaterials, idsOf, TAU, eligibleFromSignals } from "../src/sim/tileMaterials.js";
 
 let fails = 0, checks = 0;
 function ok(cond, msg) {
@@ -53,7 +53,7 @@ function noneOf(list, ids) { return ids.every(id => !has(list, id)); }
   }));
   ok(has(m.trees, "pine") || has(m.trees, "spruce") || has(m.trees, "larch"), "taiga: conifer");
   ok(noneOf(m.trees, ["teak", "mahogany", "palm"]), "taiga: no tropical timber");
-  ok(has(m.furs, "sable") || has(m.furs, "fox"), "taiga: cold furs");
+  ok(has(m.furs, "sable") || has(m.furs, "fox") || has(m.furs, "marten") || has(m.furs, "lynx") || has(m.furs, "ermine"), "taiga: cold furs");
   ok(has(m.fauna, "bear") || has(m.fauna, "wolf") || has(m.fauna, "elk") || has(m.fauna, "reindeer"), "taiga: cold fauna");
   ok(!has(m.fauna, "lion") && !has(m.fauna, "tiger"), "taiga: no savanna/trop cats");
 }
@@ -95,7 +95,7 @@ function noneOf(list, ids) { return ids.every(id => !has(list, id)); }
     biome: B_TROP_RAIN, temp: 0.88, moist: 0.72, dep: { timber: 0.7, spices: 0.5, dyes: 0.4 },
     livestock: 0.1,
   }));
-  ok(has(m.trees, "teak") || has(m.trees, "mahogany") || has(m.trees, "bamboo"), "trop rain: trop timber");
+  ok(has(m.trees, "teak") || has(m.trees, "mahogany") || has(m.trees, "bamboo") || has(m.trees, "ebony") || has(m.trees, "rubber"), "trop rain: trop timber");
   ok(noneOf(m.trees, ["pine", "oak", "spruce"]), "trop rain: no pine/oak");
   ok(has(m.spices, "pepper") || has(m.spices, "cinnamon") || has(m.spices, "cloves"), "trop rain: spices");
   ok(has(m.dyes, "indigo"), "trop rain + dyes: indigo");
@@ -178,6 +178,33 @@ function noneOf(list, ids) { return ids.every(id => !has(list, id)); }
   ok(sea.trees.length === 0 && sea.deposits.length === 0, "mini world ocean tile empty");
   const again = tileMaterials(world, 1);
   ok(JSON.stringify(land) === JSON.stringify(again), "tileMaterials determinism on world");
+}
+
+// ── overlay eligibility (range, not hover pick) ────────────────────────────
+{
+  const e = eligibleFromSignals(ctx({
+    biome: B_TEMP_FOREST, temp: 0.70, moist: 0.48, dep: { timber: 0.5, stone: 0.4 },
+  }));
+  ok(e.includes("oak") || e.includes("beech"), `temperate forest eligible wood (${e.slice(0, 8)})`);
+  ok(e.includes("clay") || e.includes("lime") || e.includes("sand") || e.length > 3,
+    "eligible list is broader than a 2-name hover");
+}
+
+{
+  const e = eligibleFromSignals(ctx({
+    biome: B_DESERT, temp: 0.88, moist: 0.08, elev: 0.04, coastDist: 2, riverMag: 2,
+    dep: { stone: 0.3 },
+  }));
+  ok(e.includes("date-palm") || e.includes("sand") || e.includes("dates"),
+    `arid coast/river names desert plants or sand (${e.slice(0, 8)})`);
+}
+
+{
+  const e = eligibleFromSignals(ctx({
+    biome: B_TEMP_FOREST, temp: 0.66, moist: 0.42, flood: true, riverMag: 3, elev: 0.05,
+  }));
+  ok(e.includes("clay") || e.includes("willow") || e.includes("reed"),
+    `floodplain eligible earth/wet plants (${e.slice(0, 8)})`);
 }
 
 // ── TAU gate ───────────────────────────────────────────────────────────────

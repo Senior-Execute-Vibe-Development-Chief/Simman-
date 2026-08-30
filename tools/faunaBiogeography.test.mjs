@@ -71,6 +71,8 @@ function earthToy() {
   ok(faunaPresent(w, amazon, "deer"), "deer cosmopolitan → present in Amazon");
   ok(!floraPresent(w, amazon, "mulberry"), "no mulberry in Amazon");
   ok(!floraPresent(w, africa, "nutmeg"), "no nutmeg in Africa");
+  ok(floraPresent(w, amazon, "rubber"), "rubber in Amazon");
+  ok(!floraPresent(w, africa, "rubber"), "no rubber in Africa");
 }
 
 {

@@ -3,13 +3,14 @@
 // This module turns that into map fields + a layer checklist (Economy → Materials),
 // parallel to the deposit Resources overlay.
 
-import { tileMaterials, labelOf } from "./tileMaterials.js";
+import { eligibleMaterialIds, labelOf } from "./tileMaterials.js";
 import { CROP_PACKAGES } from "./cropPackages.js";
 
 /** Category order and base hues for stable swatch colours. */
 const CATEGORIES = [
   { id: "trees",    label: "Trees & plants", hue: 118 },
   { id: "stone",    label: "Stone",          hue: 28 },
+  { id: "earths",   label: "Earths",         hue: 32 },
   { id: "dyes",     label: "Dyes",           hue: 290 },
   { id: "fibres",   label: "Fibres",         hue: 42 },
   { id: "crops",    label: "Crops",          hue: 88 },
@@ -29,26 +30,46 @@ const LAYER_IDS = {
   trees: [
     "pine", "spruce", "larch", "birch", "oak", "beech", "teak", "mahogany", "palm",
     "olive", "grapevine", "acacia", "mulberry", "bamboo", "reed", "papyrus", "date-palm", "cedar",
+    "ebony", "cypress", "cork-oak", "walnut", "chestnut", "willow", "juniper", "rubber",
+    "coconut-palm", "fig", "pomegranate", "pitch-pine",
   ],
-  stone: ["granite", "limestone", "marble", "sandstone", "slate", "basalt", "flint"],
-  dyes: ["tyrian", "indigo", "madder", "weld", "ochre", "cochineal", "kermes"],
-  fibres: ["wool", "cotton", "flax", "hemp", "silk"],
-  crops: CROP_PACKAGES.map(p => p.id),
+  stone: [
+    "granite", "limestone", "marble", "sandstone", "slate", "basalt", "flint",
+    "porphyry", "alabaster", "travertine", "chalk", "soapstone", "serpentine",
+  ],
+  earths: ["clay", "kaolin", "gypsum", "sand", "peat", "lime"],
+  dyes: [
+    "tyrian", "indigo", "madder", "weld", "ochre", "cochineal", "kermes",
+    "saffron", "woad", "henna", "logwood", "brazilwood", "gamboge", "lac",
+  ],
+  fibres: ["wool", "cotton", "flax", "hemp", "silk", "cashmere", "alpaca"],
+  crops: [
+    ...CROP_PACKAGES.map(p => p.id),
+    "barley", "oats", "rye", "pulses", "sugarcane", "tea-bush", "coffee-shrub",
+    "cocoa-tree", "banana", "citrus", "sesame", "opium-poppy", "tobacco", "dates",
+  ],
   spices: ["pepper", "cinnamon", "cloves", "nutmeg", "ginger", "tea", "coffee",
-    "vanilla", "cocoa", "capsicum", "cardamom", "turmeric", "agarwood"],
-  incense: ["frankincense", "myrrh", "sandalwood", "olibanum"],
-  furs: ["sable", "ermine", "fox", "beaver", "seal"],
+    "vanilla", "cocoa", "capsicum", "cardamom", "turmeric", "agarwood", "gum-arabic"],
+  incense: ["frankincense", "myrrh", "sandalwood", "olibanum", "benzoin"],
+  furs: ["sable", "ermine", "fox", "beaver", "seal", "marten", "lynx", "otter"],
   fauna: [
     "lion", "leopard", "tiger", "bear", "wolf", "hyena", "horse", "cattle", "bison", "camel",
     "llama", "yak", "elephant", "reindeer", "deer", "elk", "antelope", "boar",
     "crocodile", "hippo", "rhino", "zebra", "ibex", "eagle", "bee",
+    "falcon", "aurochs", "ram", "peacock", "serpent",
     "fish", "salmon",
   ],
-  gems: ["ruby", "sapphire", "emerald", "diamond", "pearl"],
+  gems: [
+    "ruby", "sapphire", "emerald", "diamond", "pearl",
+    "jade", "lapis", "turquoise", "malachite", "carnelian", "agate", "jet",
+  ],
   metals: ["gold", "silver"],
   salt: ["sea-salt", "rock-salt"],
   marine: ["coral", "whale", "amber", "mangrove", "shellfish"],
-  geology: ["obsidian", "sulfur", "pumice", "metamorphic", "natron"],
+  geology: [
+    "obsidian", "sulfur", "pumice", "metamorphic", "natron",
+    "lead", "cinnabar", "alum", "niter", "asphalt", "bog-iron",
+  ],
 };
 
 function hslToRgb(h, s, l) {
@@ -136,41 +157,42 @@ export function materialView(world, ter) {
   };
 }
 
-const MATERIAL_KEYS = [
-  "trees", "stone", "dyes", "fibres", "crops", "spices", "incense", "furs",
-  "fauna", "gems", "metals", "salt", "marine", "geology",
-];
-
 /**
  * Precompute per-material presence on the territory grid (same resolution as
- * ter.deposits). Called once when the world is forged.
+ * ter.deposits). Called once when the world is forged. Paints every eligible
+ * id (overlay range), not the hover-line pick.
  */
 export function buildMaterialFields(world, ter) {
   const N = ter.tw * ter.th;
   if (!N) return {};
   const mv = materialView(world, ter);
   const fields = {};
+  const counts = {};
   for (let ti = 0; ti < N; ti++) {
-    const m = tileMaterials(mv, ti);
-    for (const key of MATERIAL_KEYS) {
-      for (const x of m[key] || []) {
-        if (!x || !x.id) continue;
-        let arr = fields[x.id];
-        if (!arr) {
-          arr = new Uint8Array(N);
-          fields[x.id] = arr;
-        }
+    const list = eligibleMaterialIds(mv, ti);
+    for (const id of list) {
+      if (!id) continue;
+      let arr = fields[id];
+      if (!arr) {
+        arr = new Uint8Array(N);
+        fields[id] = arr;
+      }
+      if (!arr[ti]) {
         arr[ti] = 1;
+        counts[id] = (counts[id] || 0) + 1;
       }
     }
   }
+  fields._counts = counts;
+  ter.matCounts = counts;
   return fields;
 }
 
 /** Count tiles where a layer is present (for checklist hints). */
 export function layerTileCount(fields, id) {
+  if (fields && fields._counts && fields._counts[id] != null) return fields._counts[id];
   const arr = fields && fields[id];
-  if (!arr) return 0;
+  if (!arr || arr === fields._counts) return 0;
   let n = 0;
   for (let i = 0; i < arr.length; i++) if (arr[i]) n++;
   return n;
