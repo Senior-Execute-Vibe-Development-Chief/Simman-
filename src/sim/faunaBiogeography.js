@@ -139,12 +139,18 @@ export const FAUNA_ORIGINS = {
 
 export const FLORA_ORIGINS = {
   nutmeg: {
-    biomes: [B_TROP_RAIN], nPicks: 1,
-    origins: [{ fx: 0.855, fy: 0.505, reach: 0.04 }],  // Moluccas
+    biomes: [B_TROP_RAIN], nPicks: 1, hop: true,
+    origins: [
+      { fx: 0.855, fy: 0.505, reach: 0.04 },  // Moluccas
+      { fx: 0.856, fy: 0.520, reach: 0.03 },  // Banda / Ambon
+    ],
   },
   cloves: {
-    biomes: [B_TROP_RAIN], nPicks: 1,
-    origins: [{ fx: 0.855, fy: 0.505, reach: 0.045 }],
+    biomes: [B_TROP_RAIN], nPicks: 1, hop: true,
+    origins: [
+      { fx: 0.855, fy: 0.505, reach: 0.045 },
+      { fx: 0.854, fy: 0.496, reach: 0.03 },  // Ternate / Halmahera
+    ],
   },
   frankincense: {
     biomes: [B_DESERT, B_SHRUBLAND], nPicks: 1,
@@ -165,6 +171,26 @@ export const FLORA_ORIGINS = {
       { fx: 0.82, fy: 0.36, reach: 0.10 },  // East Asian sericulture belt
     ],
   },
+  papyrus: {
+    nPicks: 1,
+    origins: [
+      { fx: 0.586, fy: 0.356, reach: 0.07 },  // Nile corridor
+      { fx: 0.589, fy: 0.461, reach: 0.05 },  // Sudd
+    ],
+  },
+  tea: {
+    nPicks: 1,
+    origins: [
+      { fx: 0.781, fy: 0.361, reach: 0.08 },  // Yunnan
+      { fx: 0.758, fy: 0.350, reach: 0.05 },  // Assam
+    ],
+  },
+  coffee: {
+    nPicks: 1,
+    origins: [
+      { fx: 0.608, fy: 0.450, reach: 0.06 },  // Ethiopian highlands
+    ],
+  },
 };
 
 function paintEarth(world, spec, mask) {
@@ -181,7 +207,7 @@ function paintEarth(world, spec, mask) {
   if (!pts.length) return;
   for (let ti = 0; ti < N; ti++) {
     if (elev[ti] <= 0) continue;
-    if (!originComps.has(comp[ti])) continue;
+    if (!spec.hop && !originComps.has(comp[ti])) continue;
     const { fx, fy } = tileFrac(world, ti);
     for (const o of pts) {
       if (mapDist(fx, fy, o.fx, o.fy) <= o.reach) { mask[ti] = 1; break; }

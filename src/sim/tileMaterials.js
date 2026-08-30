@@ -95,16 +95,42 @@ function genWorld(world) {
 
 function samplePix(world, ti, arr, missing) {
   if (!arr) return missing;
-  if (world.N && arr.length === world.N) return arr[ti];
+  const n = world.N || 0;
+  if (n && arr.length === n) return arr[ti];
   const wg = genWorld(world);
-  const W = wg.width, H = wg.height;
-  if (!W || arr.length !== W * H) return missing;
+  const W = world.width || wg.width, H = world.height || wg.height;
+  if (!W || arr.length !== W * H) return arr[ti] == null ? missing : arr[ti];
   const tw = world.tw || W;
-  const tr = world.tileRes || (tw > 0 ? W / tw : 1);
+  const tr = tw > 0 ? W / tw : 1;
   const y = (ti / tw) | 0, x = ti - y * tw;
   const px = Math.min(W - 1, (x * tr) | 0);
   const py = Math.min(H - 1, (y * tr) | 0);
   return arr[py * W + px];
+}
+
+function fieldAt(world, ti, arr, missing) {
+  if (!arr) return missing;
+  if (world.N && arr.length === world.N) return arr[ti] == null ? missing : arr[ti];
+  return samplePix(world, ti, arr, missing);
+}
+
+/** Valley adjacency: a tile next to the flood ribbon is on the valley. */
+function localWater(world, ti) {
+  let flood = !!(world.tFlood && world.tFlood[ti]);
+  let riverMag = at(world.riverMag, ti);
+  const { tw, th } = world;
+  if (!(tw > 0) || !(th > 0)) return { flood, riverMag };
+  const cx = ti % tw, cy = (ti - cx) / tw;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const nx = (cx + dx + tw) % tw, ny = cy + dy;
+    if (ny < 0 || ny >= th) continue;
+    const ni = ny * tw + nx;
+    if (world.tFlood && world.tFlood[ni]) flood = true;
+    const rm = at(world.riverMag, ni);
+    if (rm > riverMag) riverMag = rm;
+  }
+  return { flood, riverMag };
 }
 
 function ensureBoundDist(world) {
@@ -168,14 +194,18 @@ function ensureBoundDist(world) {
 }
 
 function signals(world, ti) {
+  const wg = genWorld(world);
   const elev = at(world.elev, ti);
   const temp = at(world.temp, ti);
   const moist = at(world.moist, ti);
-  const dry = at(world._dryFrac, ti);
-  const sumDry = at(world._summerDry, ti);
-  const biome = elev > 0 ? classifyBiome(elev, moist, temp, dry, sumDry, observedClimate(world)) : -1;
-  const flood = !!(world.tFlood && world.tFlood[ti]);
-  const riverMag = at(world.riverMag, ti);
+  const dryArr = world._dryFrac || wg.dryFrac;
+  const sumArr = world._summerDry || wg.summerDry;
+  const dry = fieldAt(world, ti, dryArr, 0);
+  const sumDry = fieldAt(world, ti, sumArr, 0);
+  const biome = elev > 0 ? classifyBiome(elev, moist, temp, dry, sumDry, observedClimate(world) || observedClimate(wg)) : -1;
+  const water = localWater(world, ti);
+  const flood = water.flood;
+  const riverMag = water.riverMag;
   const relief = at(world.relief, ti);
   const coastDist = ensureCoastDist(world)[ti];
   const boundDist = ensureBoundDist(world)[ti];
@@ -227,10 +257,12 @@ const TREE_RULES = [
   { id: "mahogany",   ok: c => c.biome === B_TROP_RAIN && c.moist > 0.65 && timberOk(c) },
   { id: "palm",       ok: c => (c.biome === B_TROP_DRY || c.biome === B_SAVANNA || (c.biome === B_DESERT && c.coastDist <= 3)) && c.moist > 0.25 },
   { id: "olive",      ok: c => c.biome === B_MEDITERRANEAN || (c.biome === B_SHRUBLAND && c.temp > 0.70 && c.temp < 0.84) },
+  { id: "grapevine",  ok: c => c.biome === B_MEDITERRANEAN || (c.biome === B_SHRUBLAND && c.temp > 0.70 && c.temp < 0.82 && c.moist >= 0.18 && c.moist <= 0.50) },
   { id: "acacia",     ok: c => c.biome === B_SAVANNA || c.biome === B_SHRUBLAND || (c.biome === B_DESERT && c.moist > 0.12) },
   { id: "mulberry",   ok: c => (c.biome === B_SUBTROP || c.biome === B_TEMP_RAIN || c.flood) && floraPresent(c.world, c.ti, "mulberry") },
   { id: "bamboo",     ok: c => c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY || (c.biome === B_SUBTROP && c.moist > 0.50) },
   { id: "reed",       ok: c => c.flood || c.riverMag >= 3 },
+  { id: "papyrus",    ok: c => (c.flood || c.riverMag >= 2) && c.temp > 0.78 && floraPresent(c.world, c.ti, "papyrus") },
   { id: "date-palm",  ok: c => (c.biome === B_DESERT || c.biome === B_COLD_DESERT) && (c.coastDist <= 4 || c.riverMag >= 1) },
   { id: "cedar",      ok: c => c.biome === B_MEDITERRANEAN || (c.elev > 0.18 && c.biome === B_SHRUBLAND) || (c.biome === B_TEMP_FOREST && c.moist < 0.40) },
 ];
@@ -328,9 +360,11 @@ function cropsOf(c) {
 const SPICE_RULES = [
   { id: "pepper",     ok: c => rich(c, "spices") >= TAU && (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) },
   { id: "cinnamon",   ok: c => rich(c, "spices") >= TAU && ((c.biome === B_TROP_RAIN && c.moist > 0.6) || (c.biome === B_SUBTROP && c.moist > 0.55)) },
-  { id: "cloves",     ok: c => rich(c, "spices") >= TAU && c.biome === B_TROP_RAIN && c.moist > 0.55 && floraPresent(c.world, c.ti, "cloves") },
-  { id: "nutmeg",     ok: c => rich(c, "spices") >= TAU && c.biome === B_TROP_RAIN && c.coastDist <= 6 && floraPresent(c.world, c.ti, "nutmeg") },
+  { id: "cloves",     ok: c => c.biome === B_TROP_RAIN && c.moist > 0.55 && floraPresent(c.world, c.ti, "cloves") },
+  { id: "nutmeg",     ok: c => c.biome === B_TROP_RAIN && c.coastDist <= 8 && floraPresent(c.world, c.ti, "nutmeg") },
   { id: "ginger",     ok: c => rich(c, "spices") >= TAU && (c.biome === B_SUBTROP || c.biome === B_TROP_DRY) },
+  { id: "tea",        ok: c => c.elev > 0.08 && c.elev < 0.36 && c.moist > 0.45 && c.temp > 0.70 && c.temp < 0.84 && floraPresent(c.world, c.ti, "tea") },
+  { id: "coffee",     ok: c => c.elev > 0.12 && c.elev < 0.42 && c.moist > 0.35 && c.temp > 0.72 && c.temp < 0.86 && floraPresent(c.world, c.ti, "coffee") },
 ];
 
 const INCENSE_RULES = [
@@ -347,6 +381,24 @@ const FUR_RULES = [
   { id: "beaver",  ok: c => rich(c, "furs") >= TAU && (c.biome === B_BOREAL || c.biome === B_TEMP_FOREST) && c.riverMag >= 2 },
   { id: "seal",    ok: c => c.coastDist <= 2 && c.temp < 0.55 },
 ];
+
+function spicesOf(c) {
+  const elig = SPICE_RULES.filter(r => r.ok(c)).map(r => r.id);
+  const endemic = ["cloves", "nutmeg", "tea", "coffee"].filter(id => elig.includes(id));
+  const out = [...endemic];
+  const rest = elig.filter(id => !out.includes(id));
+  while (out.length < 2 && rest.length) {
+    const id = pickNamed(rest, c.seed, c.ti, "spice:" + out.length);
+    if (!id) break;
+    out.push(id);
+    const i = rest.indexOf(id);
+    if (i >= 0) rest.splice(i, 1);
+  }
+  return out.slice(0, 3).map(id => ({
+    id,
+    richness: ["tea", "coffee", "cloves", "nutmeg"].includes(id) ? 0.55 : rich(c, "spices"),
+  }));
+}
 
 function withRich(rules, c, tag, depId) {
   return collect(rules, c, tag).map(({ id }) => ({
@@ -366,6 +418,8 @@ const FAUNA_RULES = [
   { id: "cattle",    ok: c => (c.biome === B_GRASSLAND || c.biome === B_SAVANNA || c.biome === B_MEDITERRANEAN) && c.livestock > 0.45 },
   { id: "bison",     ok: c => (c.biome === B_GRASSLAND || (c.biome === B_SHRUBLAND && c.temp < 0.70)) && c.temp >= 0.45 && c.temp <= 0.70 },
   { id: "camel",     ok: c => ARID.has(c.biome) },
+  { id: "llama",     ok: c => c.elev > 0.20 && c.temp < 0.76 && faunaPresent(c.world, c.ti, "llama") },
+  { id: "yak",       ok: c => c.elev > 0.20 && c.temp < 0.74 && faunaPresent(c.world, c.ti, "yak") },
   { id: "elephant",  ok: c => (c.biome === B_SAVANNA || c.biome === B_TROP_DRY) && c.moist > 0.30 },
   { id: "reindeer",  ok: c => (c.biome === B_TUNDRA || c.biome === B_TAIGA) && c.temp < 0.58 },
   { id: "deer",      ok: c => c.biome === B_TEMP_FOREST || c.biome === B_BOREAL || c.biome === B_TEMP_RAIN },
@@ -382,15 +436,20 @@ function faunaOf(c) {
   const elig = FAUNA_RULES.filter(r => r.ok(c) && faunaPresent(c.world, c.ti, r.id)).map(r => r.id);
   const out = [];
   const used = new Set();
+  for (const id of ["llama", "yak", "tiger", "lion", "hippo"]) {
+    if (elig.includes(id)) { out.push(id); used.add(id); }
+  }
   const tags = ["fauna:pred", "fauna:herd", "fauna:game", "fauna:wet"];
   for (const tag of tags) {
     const pool = elig.filter(id => !used.has(id));
     const id = pickNamed(pool, c.seed, c.ti, tag);
     if (!id) continue;
     used.add(id);
-    out.push({ id, abundance: 0.45 + (hash32(c.seed, c.ti, id) % 50) / 100 });
+    out.push(id);
   }
-  return out;
+  return out.slice(0, 4).map(id => ({
+    id, abundance: 0.45 + (hash32(c.seed, c.ti, id) % 50) / 100,
+  }));
 }
 
 function gemsOf(c) {
@@ -461,7 +520,7 @@ export function materialsFromSignals(c) {
     dyes: dyesOf(c),
     fibres: fibresOf(c),
     crops: cropsOf(c),
-    spices: withRich(SPICE_RULES, c, "spice", "spices"),
+    spices: spicesOf(c),
     incense: withRich(INCENSE_RULES, c, "incense", "incense"),
     furs: withRich(FUR_RULES, c, "fur", "furs"),
     fauna: faunaOf(c),
@@ -497,11 +556,24 @@ export function labelOf(id) {
 /** Compact hover/inspect line: a handful of named local materials. */
 export function formatMaterialsLine(m) {
   if (!m) return "";
+  const keys = ["trees", "stone", "fauna", "dyes", "spices", "incense",
+    "marine", "geology", "fibres", "crops", "furs", "gems", "metals", "salt"];
   const ids = [];
-  for (const key of ["trees", "stone", "fauna", "dyes", "spices", "incense",
-    "marine", "geology", "fibres", "crops", "furs", "gems", "metals", "salt"]) {
-    for (const x of m[key] || []) {
-      if (x && x.id && !ids.includes(x.id)) ids.push(x.id);
+  const push = id => {
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+  for (const key of keys) {
+    const x = (m[key] || [])[0];
+    if (x) push(x.id);
+    if (ids.length >= 8) break;
+  }
+  if (ids.length < 8) {
+    for (const key of keys) {
+      for (const x of m[key] || []) {
+        push(x && x.id);
+        if (ids.length >= 8) break;
+      }
+      if (ids.length >= 8) break;
     }
   }
   return ids.slice(0, 8).map(labelOf).join(" · ");

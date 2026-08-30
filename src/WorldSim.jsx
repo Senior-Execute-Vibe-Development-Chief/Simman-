@@ -3141,7 +3141,7 @@ if(terTi>=0&&ter){
       elev:ter.tElev,temp:ter.tTemp,moist:ter.tMoist,coast:ter.tCoast,tFlood:ter.tFlood,
       riverMag:ter.rivers&&ter.rivers.riverMag,relief:ter.tRelief,deposits:ter.deposits,
       pixPlate:w.pixPlate,earthPixPlate:w.earthPixPlate,boundKind:w.boundKind,hotspotDist:w.hotspotDist,
-      width:w.width,height:w.height,tileRes:1,worldRef:w,
+      width:w.width,height:w.height,tileRes:ter.tw>0?w.width/ter.tw:1,worldRef:w,
       _dryFrac:w.dryFrac,_summerDry:w.summerDry,
       realWindUsed:w.realWindUsed,realClimateUsed:w.realClimateUsed,
     };
@@ -4204,6 +4204,10 @@ const renderInspect=()=>{
             if(!psw.earthPixPlate&&wg.earthPixPlate)psw.earthPixPlate=wg.earthPixPlate;
             if(!psw.boundKind&&wg.boundKind)psw.boundKind=wg.boundKind;
             if(!psw.hotspotDist&&wg.hotspotDist)psw.hotspotDist=wg.hotspotDist;
+            if(!psw._dryFrac&&wg.dryFrac)psw._dryFrac=wg.dryFrac;
+            if(!psw._summerDry&&wg.summerDry)psw._summerDry=wg.summerDry;
+            if(!psw.width)psw.width=wg.width;
+            if(!psw.height)psw.height=wg.height;
             if(wg.realWindUsed)psw._realWindGen=true;
             if(wg.realClimateUsed)psw.realClimateUsed=true;
           }

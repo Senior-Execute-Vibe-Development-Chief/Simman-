@@ -74,6 +74,25 @@ function earthToy() {
 }
 
 {
+  // Island hops: cloves reach neighbouring islets, not a far continent.
+  const tw = 180, th = 90, N = tw * th;
+  const elev = new Float32Array(N);
+  fillBlob(elev, tw, th, 0.855, 0.505, 0.012);
+  fillBlob(elev, tw, th, 0.868, 0.505, 0.012);
+  fillBlob(elev, tw, th, 0.55, 0.48, 0.07);
+  const w = {
+    N, tw, th, elev, temp: new Float32Array(N).fill(0.86),
+    moist: new Float32Array(N).fill(0.7), seed: 3, preset: "earth_sim",
+  };
+  const a = nearestLand(w, 0.855, 0.505);
+  const b = nearestLand(w, 0.868, 0.505);
+  const africa = nearestLand(w, 0.55, 0.48);
+  ok(floraPresent(w, a, "cloves"), "cloves on origin islet");
+  ok(floraPresent(w, b, "cloves"), "cloves hop a neighbouring islet");
+  ok(!floraPresent(w, africa, "cloves"), "cloves do not hop to Africa");
+}
+
+{
   const w = earthToy();
   const africa = nearestLand(w, 0.55, 0.48);
   const amazon = nearestLand(w, 0.28, 0.50);

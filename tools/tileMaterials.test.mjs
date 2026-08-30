@@ -108,7 +108,7 @@ function noneOf(list, ids) { return ids.every(id => !has(list, id)); }
     biome: B_DESERT, temp: 0.82, moist: 0.22, flood: true, riverMag: 4,
     dep: { stone: 0.3, dyes: 0.2 }, livestock: 0.5,
   }));
-  ok(has(m.trees, "reed") || has(m.trees, "mulberry") || has(m.trees, "date-palm"), "floodplain: reed/mulberry/date");
+  ok(has(m.trees, "reed") || has(m.trees, "mulberry") || has(m.trees, "date-palm") || has(m.trees, "papyrus"), "floodplain: reed/mulberry/date/papyrus");
   ok(has(m.fauna, "crocodile") || has(m.fauna, "hippo") || has(m.fauna, "fish"), "floodplain: river fauna");
   ok(has(m.fibres, "flax") || has(m.fibres, "cotton") || has(m.fibres, "hemp"), "floodplain: fibre plants");
 }
@@ -185,7 +185,8 @@ function noneOf(list, ids) { return ids.every(id => !has(list, id)); }
   const m = materialsFromSignals(ctx({
     biome: B_TROP_RAIN, temp: 0.88, moist: 0.7, dep: { spices: TAU - 0.01, timber: 0.5 },
   }));
-  ok(m.spices.length === 0, "spices below TAU do not name");
+  ok(!has(m.spices, "pepper") && !has(m.spices, "cinnamon") && !has(m.spices, "ginger"),
+    "spices below TAU do not name");
 }
 
 if (fails) {

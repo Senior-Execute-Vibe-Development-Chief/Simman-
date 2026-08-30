@@ -46,8 +46,8 @@ function ok(cond, msg) {
     dep: { timber: 0, stone: 0.3, copper: 0, tin: 0, iron: 0, coal: 0, salt: 0,
       horses: 0, precious: 0, gems: 0, spices: 0, furs: 0, incense: 0, dyes: 0.4 },
   });
-  ok(idsOf(m.trees).includes("olive") || idsOf(m.trees).includes("cedar"),
-    "Med tile: olive or cedar");
+  ok(idsOf(m.trees).includes("olive") || idsOf(m.trees).includes("cedar") || idsOf(m.trees).includes("grapevine"),
+    "Med tile: olive, cedar, or grapevine");
   ok(idsOf(m.dyes).includes("kermes") || idsOf(m.dyes).includes("madder") || idsOf(m.dyes).includes("tyrian"),
     "Med dyes analogue");
 }
@@ -158,6 +158,21 @@ function ok(cond, msg) {
   ok(/rice/.test(java), `Java names rice from wet tropics (${java})`);
   ok(/oak|beech|cedar/.test(kansas) && !/date palm/.test(kansas),
     `Kansas temperate wood, not Sahara flora (${kansas})`);
+  const nileValley = lineAt(31, 24);
+  const levantMed = lineAt(36, 34.5);
+  const crete = lineAt(25, 35.2);
+  const moluccas = lineAt(127.4, 0.8);
+  const andes = lineAt(-72, -13.5);
+  const yunnan = lineAt(101, 25);
+  const ethiopia = lineAt(38.7, 9);
+  ok(/papyrus|reed|crocodile/.test(nileValley),
+    `Nile flood corridor names wetland flora (${nileValley})`);
+  ok(/olive|cedar|grapevine|kermes/.test(levantMed) || /olive|cedar|grapevine|kermes/.test(crete),
+    `summer-dry Med names olive-class flora (${levantMed} / ${crete})`);
+  ok(/cloves|nutmeg/.test(moluccas), `Moluccas endemic spices (${moluccas})`);
+  ok(/llama/.test(andes), `Andean highland names llama (${andes})`);
+  ok(/tea/.test(yunnan), `Yunnan highland names tea (${yunnan})`);
+  ok(/coffee/.test(ethiopia), `Ethiopian highland names coffee (${ethiopia})`);
 }
 
 // ── Marine ────────────────────────────────────────────────────────────────
