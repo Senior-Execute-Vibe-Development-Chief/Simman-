@@ -360,11 +360,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     parentSettlementId: opts.parentId ?? -1,
     name: opts.name || `settlement-${id}`,
     people: opts.people ?? 25,
-    // Household grain the founders carried — a few ticks of THEIR OWN
-    // ration, so the first harvest can book before the pot reads empty.
-    // Was 80 (the warehouse floor) then overwritten at city mint by 500
-    // ticks of the whole basin, which filled every new city to ~480 t.
-    food: (opts.food != null) ? opts.food : (opts.people ?? 25) * 0.0030 * 4,
+    // Small starter store — the old village warehouse floor, not a filled
+    // city granary. City mint used to overwrite this with 500 ticks of the
+    // whole basin (~480 t). That gift is gone; this is only enough that the
+    // first harvest can book before the pot reads empty.
+    food: opts.food ?? 80,
     knowledge: opts.knowledge || {
       // The NATURAL-VILLAGE seed: an internally consistent neolithic package.
       // agriculture 0.5 asserts ESTABLISHED cereal farming — and no farming
