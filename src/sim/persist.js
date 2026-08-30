@@ -86,6 +86,7 @@ const SETT_FIELDS = [
   "_coloniesSent", "_isColony", "_overlordCC", "_fisherFrac",   // fisher labor share (T.FISH_LABOR) — carries the boats-built ramp across ticks (_shoreTiles is static geography, recomputed lazily)
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "_harvestYearMul",   // HARVEST_YEARS: the standing year's annual multiplier — dropping it would feed every settlement a neutral harvest between load and the next year tick (the _thinBasinSince lesson)
+  "_fedM",             // STARVE_SHED: sustained fed-ness (flow + granary vs core need). Missing on load used to stamp 1 (fully fed) and hold a starving core for ~100 ticks; the size-read buffer now keys on it so it must round-trip.
   "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
@@ -115,7 +116,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac", "_seaShare", "_tvAll", "_tvSea", "_harvestYearMul"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac", "_seaShare", "_tvAll", "_tvSea", "_harvestYearMul", "_fedM"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only

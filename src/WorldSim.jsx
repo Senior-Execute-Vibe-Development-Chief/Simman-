@@ -4095,7 +4095,7 @@ const renderInspect=()=>{
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
           {demand>0&&isFinite(ticksLeft)&&<><span className="au-fade">Store runway</span><span>{ticksLeft>=500?"500+":Math.round(ticksLeft)} tick{Math.round(ticksLeft)===1?"":"s"}</span></>}
-          <span className="au-fade">Supply /tick</span><span title="Harvest + trade this tick — the city sizes to THIS, not the granary. Stores only cover a dip below requirement.">{fmtFood(supply)}</span>
+          <span className="au-fade">Supply /tick</span><span title="Harvest + trade this tick — the city GROWS to this. Stores hold the core through a dip (Core fed avg); they do not grow it.">{fmtFood(supply)}</span>
           {landFood>0.001&&landFood!==supply&&<><span className="au-fade">· local harvest</span><span className="au-fade">{fmtFood(landFood)}</span></>}
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
@@ -4104,7 +4104,7 @@ const renderInspect=()=>{
           {coreNeed>0&&coreNeed<demand*0.98&&<><span className="au-fade">· urban core</span><span className="au-fade">{fmtFood(coreNeed)}</span></>}
           {fedM!=null&&<><span className="au-fade">Core fed (avg)</span><span>{Math.round(fedM*100)}%</span></>}
           <span style={{color:statusColor}}>Flow balance</span>
-          <span style={{color:statusColor}} title="Supply − city requirement this tick. The granary is only a buffer when supply dips below that — it does not grow the city.">{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
+          <span style={{color:statusColor}} title="Supply − city requirement this tick. The granary holds the core through a dip (it does not grow the city).">{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
           <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
           <span>{fmtPeople(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
