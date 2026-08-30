@@ -8,7 +8,7 @@
 // from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL, updateFishStocks, FISH_REGEN_INTERVAL } from "./settlement.js";
+import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL, updateFishStocks, FISH_REGEN_INTERVAL, reconcileFoodSupply } from "./settlement.js";
 import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
@@ -186,6 +186,7 @@ export function stepPeopleSim(world, n = 1) {
     // whole hinterland (foodHierarchy.js). Produces _foodNet for next tick's
     // updateFood; runs here so it sees this tick's fresh production + housing.
     aggregateFoodHierarchy(world);
+    reconcileFoodSupply(world);
     // Population field (T.POP_FIELD): advance the per-tile people/carrying-capacity
     // substrate. It's a SLOW diffusion (logistic growth + capacity-seeking migration),
     // so it runs on a STRIDE (POP_FIELD_STRIDE) at stride× the step size — same
