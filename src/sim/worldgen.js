@@ -22,6 +22,7 @@ import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture, terrainShelter } from "./moistureSolver.js";
 import { demand } from "./biomeClass.js";
+import { rasterizeEarthPlates } from "./earthPlates.js";
 
 const RES = 1;
 
@@ -95,7 +96,7 @@ const summerDry=new Float32Array(W*H);
 // path, and from a latitude/season fallback otherwise (the loop before the return).
 const tAmp=new Float32Array(W*H),warmRainFrac=new Float32Array(W*H);
 let realClimateUsed=false;
-let tecPlates=null,tecWindX=null,tecWindY=null;
+let tecPlates=null,tecWindX=null,tecWindY=null,tecEarthPlates=null,tecBoundKind=null,tecHotspotDist=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
@@ -866,4 +867,10 @@ const em=elevation[i]>0?moisture[i]/demand(temperature[i]):1;
 const aridBoost=3.9*Math.max(0,Math.min(1,1-em))*Math.min(1,lat/0.22);   // °C
 tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
-return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
+if(preset==="earth"||preset==="earth_sim"){
+const ep=rasterizeEarthPlates(W,H);
+// Bird/PB2002 geometry is sparse in plate interiors (Kansas, Congo), so
+// the existing boundDist BFS on pixPlate is honest enough to drive
+// copper/gems/young-soil. earthPixPlate stays as an alias for inspect UI.
+tecPlates=ep.pixPlate;tecEarthPlates=ep.pixPlate;tecBoundKind=ep.boundKind;tecHotspotDist=ep.hotspotDist;}
+return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,earthPixPlate:tecEarthPlates,boundKind:tecBoundKind,hotspotDist:tecHotspotDist,windX:tecWindX||null,windY:tecWindY||null,_seed:seed,realClimateUsed};}

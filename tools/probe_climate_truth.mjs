@@ -17,7 +17,7 @@
 //      often the model is wrong but WHAT it confuses for what.
 import { readFileSync } from "node:fs";
 import { generateWorld } from "../src/sim/worldgen.js";
-import { classifyBiome } from "../src/sim/biomeClass.js";
+import { classifyBiome, observedClimate } from "../src/sim/biomeClass.js";
 
 const W = +(process.argv[2] || 1920), H = W >> 1;
 const load = n => JSON.parse(readFileSync(new URL(`../data/${n}`, import.meta.url)));
@@ -132,7 +132,7 @@ for (let y = 0; y < H; y += STEP) {
       mM: w.moisture[i],
       oP: o.p.reduce((a, b) => a + b, 0),
       mC: MCLS(classifyBiome(w.elevation[i], w.moisture[i], w.temperature[i],
-        w.dryFrac ? w.dryFrac[i] : 0, w.summerDry ? w.summerDry[i] : 0)),
+        w.dryFrac ? w.dryFrac[i] : 0, w.summerDry ? w.summerDry[i] : 0, observedClimate(w))),
       oC: kcls(koppen(o.p, o.t)) });
   }
 }

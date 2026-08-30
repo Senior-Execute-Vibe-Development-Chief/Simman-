@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import { isRealClimateAvailable, fillRealClimate } from "./realClimateData.js";
-import { classifyBiome } from "./sim/biomeClass.js";
+import { classifyBiome, observedClimate } from "./sim/biomeClass.js";
 import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor } from "./TuningPanel.jsx";
 import { loadPresets, deletePreset } from "./paramDefs.js";
@@ -15,6 +15,8 @@ const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fi
 // so the toggle is live if EITHER data set made it into the bundle.
 const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
+import { tileMaterials, formatMaterialsLine } from "./sim/tileMaterials.js";
+import { MATERIAL_LAYERS, MATERIAL_CATEGORIES, buildMaterialFields, layerTileCount } from "./sim/materialLayers.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -60,7 +62,14 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","moisture","temperature","country","atlas"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","materials","moisture","temperature","country","atlas"]);
+/** Raster cache key for checklist overlays — object identity is always "[object Object]". */
+function overlayToggleKey(state, layers){
+  if(!state||!layers)return "";
+  let s="";
+  for(const L of layers)s+=(state[L.id]!==false)?"1":"0";
+  return s;
+}
 // Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
 // putImageData every frame — the reason these lagged next to the country view),
 // but their raster must refresh as the sim advances, so the cache key carries a
@@ -130,12 +139,12 @@ const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / 
 // Both optional: 0 reproduces the older behaviour. The classification itself lives in
 // src/sim/biomeClass.js — this wrapper only adds the things the RENDER knows about
 // (sea level, floodplain ribbons) on top of it.
-function getBiomeD(e,m,t,sl,flood,dry,sumDry){
+function getBiomeD(e,m,t,sl,flood,dry,sumDry,medOk){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
   if(flood)return 19;   // arid-river floodplain: its own biome, not the savanna its t+m alone reads as
-  return classifyBiome(e,m,t,dry,sumDry);
+  return classifyBiome(e,m,t,dry,sumDry,medOk);
 }
-function getColorD(e,m,t,sl,flood,dry,sumDry){const c=BC[getBiomeD(e,m,t,sl,flood,dry,sumDry)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
+function getColorD(e,m,t,sl,flood,dry,sumDry,medOk){const c=BC[getBiomeD(e,m,t,sl,flood,dry,sumDry,medOk)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 
 // ── Live country colouring (Country view) ───────────────────────────
@@ -199,7 +208,7 @@ const LENSES=[
   {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
   {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["tilecoin","Coin field"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["tilecoin","Coin field"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["materials","Materials"],["crop","Cropland"],["technique","Technique"]]},
   ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 // Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
@@ -567,6 +576,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const[activeMats,setActiveMats]=useState(()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=true;return s;});
 const[activeGoods,setActiveGoods]=useState(()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
@@ -578,6 +588,7 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
+const activeMatsRef=useRef(null);activeMatsRef.current=activeMats;
 const activeGoodsRef=useRef(null);activeGoodsRef.current=activeGoods;
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(30),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
@@ -689,6 +700,7 @@ if(w.seed==null)w.seed=w._seed??1;
 setGenBusy(false);
 resetEmblems();labelAnchorsRef.current=null;   // a new world bears new arms & names
 setWorld(w);worldRef.current=w;const t=buildTerritory(w,RES);
+t.matFields=buildMaterialFields(w,t);
 terRef.current=t;
 // Rivers (and deposits) are computed inside buildTerritory and stored
 // on the `ter` object, not on the raw worldgen output. peopleSim reads
@@ -925,7 +937,7 @@ if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl,flood,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);r=c[0];g=c[1];b=c[2];}
+}else{const c=getColorD(e,m,t,sl,flood,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));r=c[0];g=c[1];b=c[2];}
 // Swamp overlay
 let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
@@ -1006,7 +1018,7 @@ const sd=seaDist[i];
 if(sd<HALO&&!(lk&&lk[si]>=0)){const hh=1-sd/HALO,hk=hh*hh;
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
-const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 let r=197,g=174,b=126;
 // broad uneven aged tone
 r+=big*40;g+=big*37;b+=big*31;
@@ -1106,7 +1118,7 @@ const px=(gx+(atlasHash(gx+2,gy+3)-0.5)*8)|0,py=(gy+(atlasHash(gx+5,gy+7)-0.5)*8
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
 if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
 else if(biome===11){if(h>0.4)continue;
@@ -1142,7 +1154,7 @@ const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
 if(biome===6){cover=0.40;kind=0;}            // taiga — fir, closed forest
 else if(biome===8||biome===17){cover=0.42;kind=1;} // temperate / subtropical — broadleaf
@@ -1159,7 +1171,7 @@ const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 if(bm!==9&&bm!==10&&bm!==7)continue;
 if(atlasHash(gx+7,gy+9)>0.95)continue;
 const tone=atlasHash(gx+2,gy+11);
@@ -1171,7 +1183,7 @@ const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6
 if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si],dm=w.moisture[si];
-if(getBiomeD(e,dm,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0)!==13)continue;
+if(getBiomeD(e,dm,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w))!==13)continue;
 if(atlasHash(gx+3,gy+7)>0.62-dm*1.6)continue;
 octx.fillStyle="rgba(120,84,38,0.5)";
 octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
@@ -1305,7 +1317,7 @@ const _staticBase=(BASE_CACHE_VIEWS.has(vm)||_stepCacheV)&&!isGlobe;
 // raster refreshes as the world changes (and is stable/blitted while paused).
 const _simStep=(peopleRef.current&&peopleRef.current.step)||0;
 const _stepTag=_stepCacheV?('|s'+((_simStep/STEP_CACHE_REGEN)|0)):'';
-const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+overlayToggleKey(activeResRef.current,RESOURCES)+'|'+overlayToggleKey(activeMatsRef.current,MATERIAL_LAYERS)+'|'+oceanLevelRef.current+_stepTag):null;
 let _baseHit=false;
 if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
 if(!_baseHit){
@@ -1415,6 +1427,26 @@ const v=ter.deposits[r.id][ti];
 if(v>0.05){const w2=v*v;br+=r.color[0]*w2;bg+=r.color[1]*w2;bb+=r.color[2]*w2;totalW+=w2;}}}
 if(totalW>0.001){const inv=1/totalW;br=(br*inv)|0;bg=(bg*inv)|0;bb=(bb*inv)|0;
 const alpha=Math.min(0.95,Math.sqrt(totalW)*0.8+0.15);const invA=1-alpha;
+br=(12*invA+br*alpha)|0;bg=(11*invA+bg*alpha)|0;bb=(10*invA+bb*alpha)|0;
+}else{br=12;bg=11;bb=10;}
+d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
+}else if(vm==="materials"){
+// Named tile materials — climate / ecology classifier (not mine deposits).
+const am=activeMatsRef.current||{};
+const activeList=MATERIAL_LAYERS.filter(m=>am[m.id]!==false);
+if(!ter.matFields)ter.matFields=buildMaterialFields(w,ter);
+const mf=ter.matFields;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=6;d[pi4+1]=8;d[pi4+2]=16;d[pi4+3]=255;continue;}
+let br=0,bg=0,bb=0,totalW=0;
+if(mf){
+for(const m of activeList){
+const v=mf[m.id]&&mf[m.id][ti];
+if(v){br+=m.color[0];bg+=m.color[1];bb+=m.color[2];totalW+=1;}}}
+if(totalW>0.001){const inv=1/totalW;br=(br*inv)|0;bg=(bg*inv)|0;bb=(bb*inv)|0;
+const alpha=Math.min(0.92,0.35+totalW*0.12);const invA=1-alpha;
 br=(12*invA+br*alpha)|0;bg=(11*invA+bg*alpha)|0;bb=(10*invA+bb*alpha)|0;
 }else{br=12;bg=11;bb=10;}
 d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
@@ -2956,7 +2988,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'m
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,activeGoods,layers,priceGood]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,activeMats,activeGoods,layers,priceGood]);
 
 // Opening the Ancestry lens replays the peopling of the world: the wavefront
 // spreads from the East-African cradle outward over ~10s (animLoop drives it).
@@ -3108,7 +3140,7 @@ const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
 const isFlood=terTi>=0&&terRef.current&&terRef.current.tFlood?terRef.current.tFlood[terTi]===1:false;
-const biome=getBiomeD(elev,moist,temp,0,isFlood,w.dryFrac?w.dryFrac[i]:0,w.summerDry?w.summerDry[i]:0);
+const biome=getBiomeD(elev,moist,temp,0,isFlood,w.dryFrac?w.dryFrac[i]:0,w.summerDry?w.summerDry[i]:0,observedClimate(w));
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
@@ -3130,6 +3162,23 @@ if(_hv.ti===terTi&&_now-_hv.t<90){_hv.x=ev.clientX;_hv.y=ev.clientY;return;}
 _hv.ti=terTi;_hv.t=_now;
 // Resource info at this tile
 const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
+const ter=terRef.current;
+let matLine="";
+if(terTi>=0&&ter){
+  let mv=w._matView;
+  if(!mv||mv.tw!==ter.tw||mv.th!==ter.th){
+    mv=w._matView={
+      N:ter.tw*ter.th,tw:ter.tw,th:ter.th,seed:w.seed,preset:w.preset,
+      elev:ter.tElev,temp:ter.tTemp,moist:ter.tMoist,coast:ter.tCoast,tFlood:ter.tFlood,
+      riverMag:ter.rivers&&ter.rivers.riverMag,relief:ter.tRelief,deposits:ter.deposits,
+      pixPlate:w.pixPlate,earthPixPlate:w.earthPixPlate,boundKind:w.boundKind,hotspotDist:w.hotspotDist,
+      width:w.width,height:w.height,tileRes:ter.tw>0?w.width/ter.tw:1,worldRef:w,
+      _dryFrac:w.dryFrac,_summerDry:w.summerDry,
+      realWindUsed:w.realWindUsed,realClimateUsed:w.realClimateUsed,
+    };
+  }
+  matLine=formatMaterialsLine(tileMaterials(mv,terTi));
+}
 const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.riverMag[terTi]:0;
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
@@ -3155,7 +3204,7 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
     if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,urbanPop:best._urbanPop,
       isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
  }}
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,materials:matLine,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -4177,6 +4226,26 @@ const renderInspect=()=>{
               ))}
             </div>
           :<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>No notable deposits in reach.</span>}
+        {(()=>{
+          const ti=((s.pos.y)|0)*psw.tw+((s.pos.x)|0);
+          const wg=worldRef.current;
+          if(wg){
+            if(!psw.worldRef)psw.worldRef=wg;
+            if(!psw.pixPlate&&wg.pixPlate)psw.pixPlate=wg.pixPlate;
+            if(!psw.earthPixPlate&&wg.earthPixPlate)psw.earthPixPlate=wg.earthPixPlate;
+            if(!psw.boundKind&&wg.boundKind)psw.boundKind=wg.boundKind;
+            if(!psw.hotspotDist&&wg.hotspotDist)psw.hotspotDist=wg.hotspotDist;
+            if(!psw._dryFrac&&wg.dryFrac)psw._dryFrac=wg.dryFrac;
+            if(!psw._summerDry&&wg.summerDry)psw._summerDry=wg.summerDry;
+            if(!psw.width)psw.width=wg.width;
+            if(!psw.height)psw.height=wg.height;
+            if(wg.realWindUsed)psw._realWindGen=true;
+            if(wg.realClimateUsed)psw.realClimateUsed=true;
+          }
+          const line=formatMaterialsLine(tileMaterials(psw,ti));
+          if(!line)return null;
+          return <div className="au-fade" style={{fontSize:10,marginTop:6,fontStyle:"italic"}}>Local materials: {line}</div>;
+        })()}
       </PsSection>
 
       {/* ── Trade & economy ── */}
@@ -4824,7 +4893,10 @@ return(
     {hoverInfo.fert>0.05&&<> · {(hoverInfo.fert*100|0)}% fertile</>}
   </div>
   {hoverInfo.resources&&hoverInfo.resources.length>0&&<div className="au-fade" style={{fontSize:10}}>
-    {hoverInfo.resources.join(" · ")}
+    {hoverInfo.resources.map(r=>typeof r==="string"?r:r.label).filter(Boolean).join(" · ")}
+  </div>}
+  {hoverInfo.materials&&<div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>
+    {hoverInfo.materials}
   </div>}
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
@@ -4839,16 +4911,16 @@ return(
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
-{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="goodsflow")&&
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="materials"||viewMode==="goodsflow")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
+  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:viewMode==="materials"?280:200,zIndex:20,maxHeight:viewMode==="materials"?440:undefined,overflowY:viewMode==="materials"?"auto":undefined}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
   borderBottom:keyOpen?"1px solid rgba(216,190,150,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
   onClick={()=>setKeyOpen(v=>!v)}>
   <span className="au-heading au-sc" style={{fontSize:10,flex:1}}>{keyOpen?"▾":"▸"} Key</span>
 </div>
 {keyOpen&&<div className="au-key">
-  {viewMode==="terrain"&&[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
+  {viewMode==="terrain"&&[4,5,6,7,8,9,10,15,11,12,14,13,16,20].map(bi=>(
     <div key={bi} className="au-key-row">
       <span className="au-key-swatch" style={{background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
       <span>{BN[bi]}</span>
@@ -4872,6 +4944,39 @@ return(
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}>All</span>
       <span style={{cursor:"pointer"}} className="au-fade"
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}>None</span>
+    </div>
+  </div>}
+  {viewMode==="materials"&&<div>
+    <div className="au-fade" style={{fontSize:9,marginBottom:4,lineHeight:1.35}}>
+      Named flora, fauna, stone types, and harvest goods from climate — not mine deposits (see Resources).
+    </div>
+    {MATERIAL_CATEGORIES.map(cat=>(
+      <div key={cat.id}>
+        <div className="au-heading au-sc au-fade" style={{fontSize:9,marginTop:5,marginBottom:2,display:"flex",gap:6,alignItems:"baseline"}}>
+          <span style={{flex:1}}>{cat.label}</span>
+          <span style={{cursor:"pointer",fontWeight:400}} className="au-fade"
+            onClick={e=>{e.stopPropagation();setActiveMats(prev=>{const next={...prev};for(const m of cat.layers)next[m.id]=true;return next;});}}>all</span>
+          <span style={{cursor:"pointer",fontWeight:400}} className="au-fade"
+            onClick={e=>{e.stopPropagation();setActiveMats(prev=>{const next={...prev};for(const m of cat.layers)next[m.id]=false;return next;});}}>none</span>
+        </div>
+        {cat.layers.map(m=>{const on=activeMats[m.id]!==false;
+          const counts=terRef.current&&terRef.current.matCounts;
+          const n=counts&&counts[m.id]!=null?counts[m.id]:(terRef.current&&terRef.current.matFields?layerTileCount(terRef.current.matFields,m.id):0);
+          return(
+          <div key={m.id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:(n?0.55:0.3)}}
+            onClick={()=>setActiveMats(prev=>{const next={...prev};next[m.id]=prev[m.id]===false;return next;})}
+            title={n?`${n.toLocaleString()} tiles`: "absent on this map"}>
+            <span className="au-key-swatch" style={{background:on?`rgb(${m.color.join(",")})`:"#888"}} />
+            <span>{m.label}</span>
+            {n>0&&<span className="au-fade au-num" style={{fontSize:9,marginLeft:"auto"}}>{n>=1000?(n/1000).toFixed(1)+"k":n}</span>}
+          </div>);})}
+      </div>))}
+    <div className="au-rule" style={{margin:"4px 0"}} />
+    <div style={{display:"flex",gap:8,fontSize:10}}>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=true;setActiveMats(s);}}>All</span>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=false;setActiveMats(s);}}>None</span>
     </div>
   </div>}
   {viewMode==="goodsflow"&&<div>
