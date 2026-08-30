@@ -4,7 +4,7 @@
 import {
   classifyBiome, observedClimate, B_MEDITERRANEAN, B_SHRUBLAND,
 } from "../src/sim/biomeClass.js";
-import { materialsFromSignals, idsOf, tileMaterials, formatMaterialsLine } from "../src/sim/tileMaterials.js";
+import { materialsFromSignals, idsOf, tileMaterials, formatMaterialsLine, eligibleMaterialIds } from "../src/sim/tileMaterials.js";
 import {
   rasterizeEarthPlates, plateBoundDist, lonLatToIndex, kindOfPair, seamTiles,
   NAZ, SAM, IND, EUR, NAM, AFR, AP, ND, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT,
@@ -193,6 +193,61 @@ function ok(cond, msg) {
   ok(/rhino/.test(kaziranga), `Assam floodplain names rhino (${kaziranga})`);
   ok(/ibex/.test(alps), `Alpine belt names ibex (${alps})`);
   ok(/shellfish|fish/.test(medCoast), `Mediterranean coast names shellfish (${medCoast})`);
+
+  const mv = {
+    N: ter.tw * ter.th, tw: ter.tw, th: ter.th, seed: w.seed, preset: w.preset,
+    elev: ter.tElev, temp: ter.tTemp, moist: ter.tMoist, coast: ter.tCoast,
+    tFlood: ter.tFlood, riverMag: ter.rivers && ter.rivers.riverMag,
+    relief: ter.tRelief, deposits: ter.deposits,
+    pixPlate: w.pixPlate, earthPixPlate: w.earthPixPlate,
+    boundKind: w.boundKind, hotspotDist: w.hotspotDist,
+    width: w.width, height: w.height, tileRes: 1, worldRef: w,
+    _dryFrac: w.dryFrac, _summerDry: w.summerDry,
+    realClimateUsed: w.realClimateUsed,
+  };
+  const N = ter.tw * ter.th;
+  const n = {};
+  let land = 0, ocean = 0, oceanFish = 0, oceanPearl = 0, oceanCoral = 0;
+  let iceLand = 0, iceGranite = 0, granite = 0, gemMulti = 0, landElig = 0;
+  for (let ti = 0; ti < N; ti++) {
+    const ids = eligibleMaterialIds(mv, ti);
+    if (ter.tElev[ti] > 0) {
+      land++;
+      landElig += ids.length;
+      if (ter.tTemp[ti] < 0.45) iceLand++;
+      if (ids.includes("granite")) {
+        granite++;
+        if (ter.tTemp[ti] < 0.45) iceGranite++;
+      }
+    } else {
+      ocean++;
+      if (ids.includes("fish")) oceanFish++;
+      if (ids.includes("pearl")) oceanPearl++;
+      if (ids.includes("coral")) oceanCoral++;
+    }
+    for (const id of ids) n[id] = (n[id] || 0) + 1;
+    const hues = ["ruby", "sapphire", "emerald", "diamond"].filter(id => ids.includes(id));
+    if (hues.length > 1) gemMulti++;
+  }
+  const pct = (a, b) => b ? (100 * a / b).toFixed(1) : "0";
+  console.log(`earth materials census W=${ter.tw}: land=${land} ocean=${ocean}`
+    + ` fishOcean=${pct(oceanFish, ocean)}% pearl=${pct(oceanPearl, ocean)}% coral=${pct(oceanCoral, ocean)}%`
+    + ` horse=${n.horse || 0} ram=${n.ram || 0} banana=${n.banana || 0} teak=${n.teak || 0}`
+    + ` cotton=${pct(n.cotton || 0, land)}% hemp=${pct(n.hemp || 0, land)}% clay=${pct(n.clay || 0, land)}%`
+    + ` iceGranite=${iceGranite}/${granite} meanElig=${(landElig / land).toFixed(1)}`);
+  ok(oceanFish / ocean < 0.35, `ocean fish is coastal, not the whole sea (${pct(oceanFish, ocean)}%)`);
+  ok(oceanPearl / ocean < 0.20, `pearl is reef/enclosed, not all shelf (${pct(oceanPearl, ocean)}%)`);
+  ok((n.horse || 0) >= 8, `horse has a steppe range (${n.horse || 0} tiles)`);
+  ok((n.ram || 0) >= 4, `ram has a highland range (${n.ram || 0} tiles)`);
+  ok((n.banana || 0) >= 8, `banana is more than a 1-tiler (${n.banana || 0} tiles)`);
+  ok((n.cotton || 0) / land < 0.22, `cotton is notable, not a third of land (${pct(n.cotton || 0, land)}%)`);
+  ok(granite === 0 || iceGranite / granite < 0.20, `granite is not an ice-cap pile (${iceGranite}/${granite})`);
+  ok(gemMulti === 0, `overlay gems are one hue per tile (${gemMulti} multi)`);
+  const amazonTi = lonLatToIndex(-60, -3, ter.tw, ter.th);
+  const indiaTi = lonLatToIndex(76, 16, ter.tw, ter.th);
+  ok(!eligibleMaterialIds(mv, amazonTi).includes("teak"), "Amazon eligible list has no teak");
+  ok(eligibleMaterialIds(mv, indiaTi).includes("teak") || (n.teak || 0) > 0,
+    "teak exists in the Old-World monsoon belt");
 }
 
 // ── Marine ────────────────────────────────────────────────────────────────
@@ -229,6 +284,15 @@ function ok(cond, msg) {
   ok(deep === M_DEEP, `deep open ocean (got ${deep})`);
   ok(marineGoods({ elev: -0.12, temp: 0.70, coastDist: 20, lat: 0.2 }).length === 0,
     "deep ocean has no harvest goods");
+
+  const shelf = classifyMarine({
+    elev: -0.08, temp: 0.70, moist: 0.5, landDeg: 0.4, riverMag: 0, lat: 0.2,
+  });
+  ok(shelf !== M_DEEP, `on-shelf ocean is not deep (got ${shelf})`);
+  const pastDrop = classifyMarine({
+    elev: -0.08, temp: 0.70, moist: 0.5, landDeg: 3.0, riverMag: 0, lat: 0.2,
+  });
+  ok(pastDrop === M_DEEP, `past the shelf drop is deep (got ${pastDrop})`);
 }
 
 {

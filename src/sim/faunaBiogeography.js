@@ -126,7 +126,7 @@ export const FAUNA_ORIGINS = {
   horse: {
     biomes: [B_GRASSLAND, B_SHRUBLAND], nPicks: 1,
     origins: [
-      { fx: 0.64, fy: 0.28, reach: 0.16 },  // Eurasian steppe
+      { fx: 0.686, fy: 0.217, reach: 0.16 },  // Kazakh steppe (~67°E 51°N), not the Caspian
     ],
   },
   antelope: {
@@ -164,16 +164,23 @@ export const FAUNA_ORIGINS = {
     ],
   },
   ram: {
-    biomes: [B_GRASSLAND, B_SHRUBLAND, B_MEDITERRANEAN], nPicks: 2,
+    biomes: [B_SHRUBLAND, B_GRASSLAND, B_MEDITERRANEAN], nPicks: 2,
     origins: [
-      { fx: 0.52, fy: 0.28, reach: 0.08 },  // Alps / Atlas / Near East
-      { fx: 0.80, fy: 0.34, reach: 0.06 },  // Himalaya
+      { fx: 0.522, fy: 0.244, reach: 0.06 },  // Alps (~8°E 46°N)
+      { fx: 0.80, fy: 0.34, reach: 0.05 },  // Himalaya
+      { fx: 0.639, fy: 0.317, reach: 0.05 },  // Zagros
     ],
   },
   peacock: {
     biomes: [B_TROP_DRY, B_SAVANNA, B_SUBTROP], nPicks: 1,
     origins: [
       { fx: 0.717, fy: 0.389, reach: 0.08 },  // India
+    ],
+  },
+  cochineal: {
+    biomes: [B_TROP_DRY, B_SUBTROP], nPicks: 1,
+    origins: [
+      { fx: 0.225, fy: 0.394, reach: 0.08 },  // Mesoamerica
     ],
   },
   cashmere: {
@@ -297,6 +304,19 @@ export const FLORA_ORIGINS = {
       { fx: 0.51, fy: 0.32, reach: 0.04 },  // Maghreb
     ],
   },
+  teak: {
+    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 1,
+    origins: [
+      { fx: 0.775, fy: 0.400, reach: 0.10 },  // monsoon India
+      { fx: 0.80, fy: 0.46, reach: 0.08 },  // SE Asia
+    ],
+  },
+  sandalwood: {
+    biomes: [B_TROP_DRY, B_SAVANNA], nPicks: 1,
+    origins: [
+      { fx: 0.775, fy: 0.400, reach: 0.08 },  // monsoon India / Mysore
+    ],
+  },
   rubber: {
     biomes: [B_TROP_RAIN], nPicks: 1,
     origins: [
@@ -378,9 +398,9 @@ export const FLORA_ORIGINS = {
     ],
   },
   banana: {
-    biomes: [B_TROP_RAIN, B_TROP_DRY], nPicks: 1,
+    biomes: [B_TROP_RAIN, B_TROP_DRY, B_SAVANNA], nPicks: 1, hop: true,
     origins: [
-      { fx: 0.806, fy: 0.472, reach: 0.10 },  // SE Asia
+      { fx: 0.783, fy: 0.478, reach: 0.10 },  // Malay / SE Asia (~102°E 4°N)
     ],
   },
   citrus: {
