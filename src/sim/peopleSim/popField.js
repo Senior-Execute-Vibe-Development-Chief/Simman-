@@ -1703,6 +1703,35 @@ function depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, amount) {
   spreadExact(pf, _spreadTiles, _spreadW, n, sumW, amount);
 }
 
+// T.URBAN_FOOD_GATE — agrarian arithmetic on the agglomeration pull: a farmer
+// may not be drawn into the core if losing them would leave the city's food
+// flow short of its urban mouths. Uses the same rural-share → harvest scaling
+// as T.URBAN_LABOR and credits unchanged import flow (supply − landFood).
+function capAgglomByFood(s, catchmentF, coreF, delta, scale) {
+  if (!(delta > 0) || !(catchmentF > 0) || !(scale > 0)) return delta;
+  const landFood = s._landFood || 0;
+  const supply = s._foodSupply || 0;
+  const coreNeed = s._coreNeed || 0;
+  if (landFood <= 0 && coreNeed <= 0) return delta;
+  const perCap = 0.003 * (s._urbanFactor || 1);
+  const useLabor = T.URBAN_LABOR > 0;
+  const coreShare = Math.min(1, coreF / catchmentF);
+  const ruralLabor = useLabor ? Math.max(0, 1 - coreShare) : 1;
+  if (supply <= coreNeed && ruralLabor <= 1e-6) return 0;
+  let lo = 0, hi = delta;
+  for (let i = 0; i < 24; i++) {
+    const take = (lo + hi) * 0.5;
+    const cs = Math.min(1, (coreF + take) / catchmentF);
+    const rl = useLabor ? Math.max(0, 1 - cs) : 1;
+    const landDrop = useLabor && ruralLabor > 1e-9 ? landFood * (1 - rl / ruralLabor) : 0;
+    const supplyP = supply - landDrop;
+    const coreNeedP = coreNeed + take * scale * perCap;
+    if (supplyP + 1e-9 >= coreNeedP) lo = take;
+    else hi = take;
+  }
+  return lo;
+}
+
 /** Move `delta` field-people between the urban CORE and its OWN countryside
  *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out.
  *  R<=0: the core is the single tile coreTi (byte-identical to the pre-footprint
@@ -2023,7 +2052,9 @@ export function deriveOnePop(world) {
         // Relax the whole urban FOOTPRINT (disk of radius coreR) toward the target,
         // not just the centre tile — so the concentration target is a real area, not
         // one tile whose people shrink ∝1/rn². coreR=0 ⇒ diskSum === pf[ti] exactly.
-        const delta = URBAN_CONC_LAMBDA * (uTarget - diskSum(pf, tw, world.th, cx, cy, coreR));
+        const coreNow = diskSum(pf, tw, world.th, cx, cy, coreR);
+        let delta = URBAN_CONC_LAMBDA * (uTarget - coreNow);
+        if (delta > 1e-6 && T.URBAN_FOOD_GATE > 0) delta = capAgglomByFood(s, f, coreNow, delta, scale);
         if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta, useGamma ? URBAN_CONC_MAXFRAC_G : URBAN_CONC_MAXFRAC, coreR);
       }
     }
