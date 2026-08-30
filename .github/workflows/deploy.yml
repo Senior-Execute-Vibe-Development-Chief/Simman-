@@ -1,17 +1,32 @@
 name: Deploy to GitHub Pages
 
+# Multi-channel Pages:
+#   main              → live site root  (/Simman-/)
+#   claude/**, cursor/** → preview under /Simman-/b/<slug>/
+# Previews accumulate on the orphan `pages-site` branch so one channel cannot
+# clobber another. The picker lives at /Simman-/builds/.
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'cursor/**']
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Optional git ref to publish (branch or SHA). Empty = the branch this workflow runs on."
+        required: false
+        default: ""
+      as_preview:
+        description: "Force preview channel even if ref is main (true/false)"
+        required: false
+        default: "false"
 
 permissions:
-  contents: read
+  contents: write   # push the persistent pages-site tree
   pages: write
   id-token: write
 
+# Serialize deploys so two channels don't race the pages-site branch.
 concurrency:
-  group: "pages"
+  group: pages-deploy
   cancel-in-progress: false
 
 jobs:
@@ -21,21 +36,157 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          REQ="${{ github.event.inputs.ref }}"
+          if [ -n "$REQ" ]; then
+            echo "ref=$REQ" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Channel meta
+        id: meta
+        run: |
+          # Prefer the checked-out branch name; fall back to the requested ref.
+          REF=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$REF" = "HEAD" ]; then REF="${{ steps.ref.outputs.ref }}"; fi
+          SHA=$(git rev-parse HEAD)
+          FORCE_PREVIEW="${{ github.event.inputs.as_preview }}"
+          SLUG=$(printf '%s' "$REF" | sed -E 's/[^A-Za-z0-9._-]+/-/g' | tr '[:upper:]' '[:lower:]' | sed -E 's/^-+|-+$//g')
+          if [ "$REF" = "main" ] && [ "$FORCE_PREVIEW" != "true" ]; then
+            echo "channel=live" >> "$GITHUB_OUTPUT"
+            echo "vite_base=/Simman-/" >> "$GITHUB_OUTPUT"
+            echo "dest=." >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=preview" >> "$GITHUB_OUTPUT"
+            echo "vite_base=/Simman-/b/${SLUG}/" >> "$GITHUB_OUTPUT"
+            echo "dest=b/${SLUG}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "branch=$REF" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Building channel ref=$REF sha=$SHA slug=$SLUG"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+
       - run: npm ci
       - run: npm run lint
       - run: npm test
-      - run: npm run build
-      # The stale-tab detector's beacon: the app polls this file and offers a
-      # reload when the deployed sha differs from the one baked into its bundle.
-      - run: printf '{"sha":"%s"}' "$GITHUB_SHA" > dist/version.json
+
+      - name: Build
+        env:
+          GITHUB_SHA: ${{ steps.meta.outputs.sha }}
+          VITE_BASE: ${{ steps.meta.outputs.vite_base }}
+        run: npm run build
+
+      # Music Lab — standalone page for phone/browser. Inlines the recorded
+      # instrument bank (~13MB) so Bodies → recorded works with no server.
+      - run: node tools/build_musiclab.mjs dist/musiclab.html
+
+      # Stale-tab beacon + channel identity (the app header reads these).
+      - name: Write version.json
+        run: |
+          python3 - <<'PY'
+          import json, os
+          import re, pathlib
+          save_v = None
+          persist = pathlib.Path("src/sim/persist.js").read_text(encoding="utf-8")
+          m = re.search(r"export const SAVE_VERSION\s*=\s*(\d+)", persist)
+          if m: save_v = int(m.group(1))
+          meta = {
+            "sha": os.environ["GITHUB_SHA"],
+            "branch": os.environ["BRANCH"],
+            "slug": os.environ["SLUG"],
+            "channel": os.environ["CHANNEL"],
+            "saveVersion": save_v,
+            "builtAt": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+          }
+          open("dist/version.json","w").write(json.dumps(meta)+"\n")
+          print(meta)
+          PY
+        env:
+          GITHUB_SHA: ${{ steps.meta.outputs.sha }}
+          BRANCH: ${{ steps.meta.outputs.branch }}
+          SLUG: ${{ steps.meta.outputs.slug }}
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+
+      - name: Load persistent pages tree
+        run: |
+          set -e
+          TOKEN="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$TOKEN" pages-site >/dev/null 2>&1; then
+            git clone --depth 1 --branch pages-site "$TOKEN" site
+          else
+            mkdir site
+            git -C site init
+            git -C site checkout -b pages-site
+            echo "Simman Pages channels" > site/README.md
+            git -C site add README.md
+            git -C site -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore(pages): init pages-site tree"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install channel into site tree
+        run: |
+          set -e
+          DEST="site/${{ steps.meta.outputs.dest }}"
+          mkdir -p "$DEST"
+          if [ "${{ steps.meta.outputs.channel }}" = "live" ]; then
+            cp -a dist/. site/
+          else
+            rm -rf "$DEST"
+            mkdir -p "$DEST"
+            cp -a dist/. "$DEST"/
+          fi
+
+      - name: Update builds catalog + picker
+        run: |
+          SAVE_V=$(python3 -c "import re,pathlib; m=re.search(r'export const SAVE_VERSION\s*=\s*(\d+)', pathlib.Path('src/sim/persist.js').read_text()); print(m.group(1) if m else '')")
+          node tools/pages-catalog.mjs \
+            --site=./site \
+            --branch="${{ steps.meta.outputs.branch }}" \
+            --sha="${{ steps.meta.outputs.sha }}" \
+            --slug="${{ steps.meta.outputs.slug }}" \
+            --channel="${{ steps.meta.outputs.channel }}" \
+            --saveVersion="$SAVE_V"
+
+      - name: Persist pages-site branch
+        run: |
+          set -e
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No pages-site changes to commit"
+          else
+            git commit -m "deploy(${{ steps.meta.outputs.channel }}): ${{ steps.meta.outputs.branch }} @ ${GITHUB_SHA:0:8}"
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          else
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          git push -u origin pages-site
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ steps.meta.outputs.sha }}
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4

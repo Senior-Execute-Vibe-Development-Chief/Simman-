@@ -256,3 +256,28 @@ compared across grids. That is what `tools/resgate.mjs` adds.
 - The `resgate` bands encode a **known, open gap** (~1.3-2.2× capacity dilution from
   1-D coast/river terms). They are a ratchet to be tightened as that closes — never a
   target to tune toward. If a change improves them, re-baseline downward and say so.
+
+---
+
+## THE MARTIN EFFECT — recognizable vibe, not scripting
+
+> **Human-facing output (music, language, flags, names) should feel like
+> recognizable *families* of real things — scored from world state, never
+> assigned by place name.** Like GRRM's trick: copy life-shaped texture enough
+> that priors fire ("maritime north," "river court"), while the map stays invented.
+> Fully alien and fully random both make everyone blend together.
+
+Not a fourth cardinal rule — a **style note** on top of rule 2. Rule 2 bans
+`if (onNile) giveEgypt`. This bans free-generation soup. When free derivation
+sounds samey or unmusical, **pick from a catalog of measured forms** using the
+same emergent inputs (materials, society, contact) — don't name the people.
+
+```
+WRONG:  if (biome === "delta") scale = maqamRast
+WRONG:  arbitrary chromatic crawl because physics allows it
+RIGHT:  score pentatonic / maqām / pélog families from spectrum + capacity; seeded tie-break
+```
+
+Sim mechanics (claims, population, trade) never use this. First code path:
+`musicArchetypes.js` for derived peoples' scales. Language typology and emblem
+pools already rhyme with the same idea.

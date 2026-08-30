@@ -1,0 +1,617 @@
+// ── Rendering the instruments ────────────────────────────────────────────
+//
+// Every voice is built from the SAME partial list that decided the culture's
+// tuning (musicInstruments.js → musicTuning.js), so the causal chain is
+// audible. Nothing is sampled; the page carries no audio assets.
+//
+// The signal path models the whole physical chain, which the first version
+// did not:
+//
+//     exciter  →  vibrating element  →  radiating body  →  room
+//
+// The body (musicBody.js) is the stage that was missing, and its absence was
+// the loudest synthetic tell: every filter used to track the played pitch, so
+// the instrument was one timbre transposed across its range instead of one
+// object being played. A body's resonances are fixed in absolute Hz.
+//
+// Three other things the first version got structurally wrong, all fixed here:
+//
+//   · DECAY. Scheduling `exponentialRampToValueAtTime(0.0001, when + ring)`
+//     spreads about 78 dB of decay across the ring time, so the note is 20 dB
+//     down a quarter of the way in and inaudible past half. Real decay is
+//     exponential with a time constant: a T60 is the time to fall 60 dB, and
+//     τ = T60/6.91 drives it. Bronze's nine-second ring can now actually
+//     happen.
+//   · DAMPING. A blanket `dur*1.5+0.3` cap turned a nine-second bronze bar
+//     into a woodblock. Real practice damps the note being REPLACED and lets
+//     everything else ring — which is exactly why those instruments sound
+//     full, as overlapping decays accumulate into a bed. Damping is now a
+//     scheduled gesture on a voice channel, not a cap at note-on.
+//   · PER-PARTIAL DECAY. One gain node over a fixed PeriodicWave gives every
+//     partial the same envelope, so the tone never changes colour as it
+//     decays. Struck and plucked bodies now get one oscillator per mode with
+//     its own time constant, which also lets real inharmonicity through — a
+//     PeriodicWave is an exact harmonic series by definition.
+import { buildBody } from "./musicBody.js";
+import { scoreSong, renderScore } from "./vocalTract.js";
+import { playDriven } from "./musicDriven.js";
+import { playImpulse } from "./musicImpulse.js";
+import { pluckString, flexible } from "./musicString.js";
+import { MATERIALS, FAMILIES, slidesTo, slideSecs } from "./musicInstruments.js";
+import { playSampled } from "./musicSamples.js";
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// Role balance, in dB relative to the melody. Without a bus per part every
+// voice lands at the same level and the drum buries the tune.
+// Balance in dB against the melody. Velocity is HOW HARD A PART IS PLAYED —
+// it drives timbre as well as level, because on every real instrument those
+// are the same gesture — and the bus alone carries mix balance. Doing both
+// with velocity, as this used to, meant the quiet parts were also permanently
+// the dullest ones. And a part with no entry here bypassed the balance
+// altogether and arrived at full level.
+const ROLE_DB = {
+  // The heterophonic voices are CO-EQUAL PLAYERS on the same line, not an
+  // accompaniment layer under it — in a takht the qanun is not eight decibels
+  // beneath the oud. They sit just under the lead so the line stays followable
+  // and no further, because the point of the texture is hearing several
+  // versions of it at once.
+  lead: 0, voice: 1, elab: -7, core: -8, skeleton: -9, het: -4,
+  bass: -6, pad: -14, ost: -11,
+  // percussion is the drive, not the background — a drum ensemble is what
+  // makes this music powerful rather than moody, and it was mixed as an
+  // afterthought
+  pulse: -2,
+  // loud and rare: a punctuating stroke is the biggest single sound in the
+  // bar precisely because it is the least frequent one — but it rings for
+  // seconds, so what it costs in average level is far more than one note
+  mark: -7,
+};
+const ROLE_PAN = { lead: 0, voice: 0, elab: 0.32, core: -0.22, skeleton: -0.28, het: 0.4, bass: 0,
+  pad: -0.15, ost: -0.35, pulse: 0.2, mark: -0.28 };
+const dB = (d) => Math.pow(10, d / 20);
+
+/** Master chain: role buses → limiter → soft clip, with a real room. */
+// the mix level `silence` ducks through and restores
+const MASTER_GAIN = 0.42;
+
+export function makeAudio(ctx) {
+  const out = ctx.createGain(); out.gain.value = 0.9;
+  // A safety limiter, then a tanh soft-clip. Web Audio hard-clips at the
+  // destination, and this graph sums dozens of voices; without these the
+  // dense passages distort rather than getting loud.
+  const comp = ctx.createDynamicsCompressor();
+  // gentle: this is a safety limiter, not a loudness war. Squashing the crest
+  // factor to under 10 dB makes a dense passage sound flat and tiring.
+  comp.threshold.value = -8; comp.knee.value = 10; comp.ratio.value = 3.5;
+  comp.attack.value = 0.005; comp.release.value = 0.15;
+  // tanh(2.5x)/tanh(2.5) has a SMALL-SIGNAL GAIN of 2.5/tanh(2.5) = 2.53,
+  // i.e. +8 dB, and it sat after the compressor and after the reverb sum —
+  // several per cent of harmonic distortion plus intermodulation across
+  // seventy simultaneous partials, on everything, all the time. A fuzz box
+  // across the mix. Unity small-signal gain, ceiling below 1, oversampled.
+  const shaper = ctx.createWaveShaper();
+  const n = 2048, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(1.2 * x) / 1.2; }
+  shaper.curve = curve; shaper.oversample = "4x";
+
+  const master = ctx.createGain(); master.gain.value = MASTER_GAIN;
+  const tone = ctx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 16000; tone.Q.value = 0.5;
+  const dry = ctx.createGain(); dry.gain.value = 0.78;
+  const wet = ctx.createGain(); wet.gain.value = 0.26;
+  // Pre-delay before the room: a real space returns its first reflection some
+  // milliseconds after the direct sound, and that gap is what keeps a
+  // reverberated source sounding present rather than smeared into the tail.
+  const pre = ctx.createDelay(0.2); pre.delayTime.value = 0.028;
+  const verbLo = ctx.createBiquadFilter(); verbLo.type = "highpass"; verbLo.frequency.value = 260;
+  const verbHi = ctx.createBiquadFilter(); verbHi.type = "lowpass"; verbHi.frequency.value = 5200;
+  const verb = ctx.createConvolver(); verb.buffer = roomIR(ctx, 2.8, 2.2);
+
+  master.connect(tone);
+  tone.connect(dry);
+  tone.connect(pre); pre.connect(verbLo); verbLo.connect(verbHi); verbHi.connect(verb); verb.connect(wet);
+  dry.connect(out); wet.connect(out);
+  out.connect(comp); comp.connect(shaper); shaper.connect(ctx.destination);
+
+  // one bus per role, panned so the parts occupy different places
+  const buses = {};
+  for (const [role, d] of Object.entries(ROLE_DB)) {
+    const g = ctx.createGain(); g.gain.value = dB(d);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) { pan.pan.value = ROLE_PAN[role] || 0; g.connect(pan); pan.connect(master); }
+    else g.connect(master);
+    buses[role] = g;
+  }
+  // EVERY SOUNDING SOURCE, so that stopping can actually stop.
+  //
+  // A scheduled note lives in the audio graph, not in the scheduler: clearing
+  // the timer that would have queued the NEXT bar does nothing to the two
+  // seconds already queued, and nothing at all to a body still ringing. A gong
+  // rings for eighteen seconds and a bell for eight, so "stop" left the room
+  // sounding long after the button said it had stopped.
+  //
+  // TRACKED AT THE CONTEXT, not at the call sites. Tracking them by hand was
+  // tried first and got it wrong inside ten minutes: `playPluck` and `playSung`
+  // looked like the only two places a source is made, and there are seven, in
+  // five files — the recorded-sample path among them, which is the default, so
+  // the fix silenced the modelled bodies and left the ones actually playing.
+  // Wrapping the two factory methods once means a source cannot be created
+  // without being seen, including by code written after this.
+  const live = new Set();
+  for (const kind of ["createBufferSource", "createOscillator", "createConstantSource"]) {
+    const make = ctx[kind];
+    if (typeof make !== "function") continue;
+    ctx[kind] = function wrapped(...args) {
+      const node = make.apply(ctx, args);
+      live.add(node);
+      node.addEventListener("ended", () => live.delete(node));
+      return node;
+    };
+  }
+  return { ctx, master, tone, dry, wet, verb, comp, buses, live,
+    bodies: new Map(), voices: new Map() };
+}
+/** A room, made of decaying noise — no impulse response file to ship. The two
+ *  channels are independent so the tail is wide rather than a point source. */
+function roomIR(ctx, secs, decay) {
+  const n = Math.floor(ctx.sampleRate * secs);
+  const buf = ctx.createBuffer(2, n, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      // lowpass the noise so the tail darkens as it decays, as a real room does
+      lp += ((Math.random() * 2 - 1) - lp) * (0.35 - 0.28 * t);
+      d[i] = lp * Math.pow(1 - t, decay) * (i < 60 ? i / 60 : 1);
+    }
+  }
+  return buf;
+}
+/**
+ * STOP MEANS STOP: every source sounding right now is ended, and the ones
+ * scheduled after this call are left alone.
+ *
+ * Two details that both turned out to matter.
+ *
+ * THE SET IS SNAPSHOT FIRST. `silence` is called at the START of playing
+ * something new — that is what stops a second press from laying a whole second
+ * performance over the first — so killing whatever is in the set when the timer
+ * fires would kill the notes just scheduled. Take the doomed list now, empty
+ * the set now, and anything added afterwards is somebody else's music.
+ *
+ * AND THE MIX DUCKS RATHER THAN THE NOTES BEING CUT. Ending a buffer mid-cycle
+ * is a step discontinuity, which is a click, and a click across a whole
+ * ensemble at once is the loudest thing this page can make. So the master ramps
+ * away over about ten milliseconds, the sources end fifty milliseconds in, and
+ * the mix is restored ten milliseconds after that — all on the audio clock, all
+ * finished long before the 150 ms lead-in every player here schedules against.
+ */
+export function silence(A) {
+  if (!A || !A.live) return;
+  const doomed = [...A.live];
+  A.live.clear();
+  A.voices.clear();
+  if (!doomed.length) return;
+  const t = A.ctx.currentTime, g = A.master.gain;
+  try {
+    if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t); else g.cancelScheduledValues(t);
+  } catch { /* older engines */ }
+  g.setTargetAtTime(0.0001, t, 0.010);
+  g.setValueAtTime(MASTER_GAIN, t + 0.06);
+  for (const n of doomed) { try { n.stop(t + 0.05); } catch { /* never started */ } }
+}
+
+/** Distance: far away, a settlement's music is dark and mostly reflection. */
+/**
+ * Distance: far away, a settlement's music is dark and mostly reflection.
+ *
+ * AND THE ROOM IS WHERE THE MUSIC IS PLAYED. The reverberation was a constant —
+ * one 2.8-second hall over everything — so a drum ensemble that has never in
+ * its history been indoors was washed through a stone room, and a dense
+ * percussion part through a long tail is the thing a listener hears as echo
+ * before they hear anything else.
+ *
+ * `built` is how built the space is, and the engine already derives it as
+ * `texture.courtly`: a court, a temple and a concert hall are stone with a roof
+ * over them, and a village ensemble, a street procession and a panyard are
+ * outside, where there is nothing to reflect off at all. Measured across the
+ * bench it separates exactly the right way — European 1.0, gamelan and Chinese
+ * court 0.85, against West African 0.05, Aboriginal 0, Caribbean and flamenco
+ * 0.1 — which is to say the percussive traditions are the outdoor ones, and
+ * they are the ones that were drowning.
+ */
+export function setDistance(A, intimacy, built = 0.5) {
+  const k = clamp(intimacy, 0, 1);
+  const b = clamp(built, 0, 1);
+  A.tone.frequency.setTargetAtTime(1400 + 13000 * Math.pow(k, 1.35), A.ctx.currentTime, 0.12);
+  // outdoors is nearly dry however far away you are; a hall is a hall, and at
+  // a distance in one you hear more reflection than direct sound
+  A.wet.gain.setTargetAtTime((0.05 + 0.25 * b) * (1.5 - 0.7 * k), A.ctx.currentTime, 0.12);
+  A.dry.gain.setTargetAtTime(0.55 + 0.34 * k, A.ctx.currentTime, 0.12);
+}
+
+/** The instrument's body, built once and shared by every note it plays. */
+// PLAYERS SIT IN DIFFERENT PLACES. Every other part has one body on it, so a
+// role bus and a role pan are the same thing — but the heterophonic voices are
+// several people playing one line at once, and stacking them at a single point
+// in the stereo field is what turns an ensemble back into a chorus effect on
+// one instrument. Spread them across the side the role sits on, deterministically
+// by body, so the same tradition always seats its players the same way.
+function spreadFor(A, inst, role) {
+  if (role !== "het" || !A.ctx.createStereoPanner) return null;
+  let h = 0;
+  for (let i = 0; i < inst.id.length; i++) h = (h * 31 + inst.id.charCodeAt(i)) >>> 0;
+  const pan = A.ctx.createStereoPanner();
+  pan.pan.value = Math.max(-1, Math.min(1, (ROLE_PAN.het || 0) + ((h % 1000) / 1000 - 0.5) * 1.1));
+  return pan;
+}
+
+// Where this player sits: their role's bus, through their own seat on the
+// stage if the role has several people in it. Shared by both paths, because a
+// recorded body and a modelled one are the same player in the same room.
+function busFor(A, inst, role) {
+  const key = "bus:" + inst.id + ":" + role;
+  let n = A.bodies.get(key);
+  if (!n) {
+    const seat = spreadFor(A, inst, role);
+    if (seat) { seat.connect(A.buses[role] || A.master); n = { input: seat }; }
+    else n = { input: A.buses[role] || A.master };
+    A.bodies.set(key, n);
+  }
+  return n.input;
+}
+
+function bodyFor(A, inst, role) {
+  const key = inst.id + ":" + role;
+  let b = A.bodies.get(key);
+  if (!b) {
+    b = buildBody(A.ctx, inst);
+    b.output.connect(busFor(A, inst, role));
+    A.bodies.set(key, b);
+  }
+  return b;
+}
+
+
+/**
+ * Play one note. `freq` is whatever the culture's scale says — no note names,
+ * no MIDI, no twelve-tone grid anywhere in the path.
+ *
+ * Returns a handle so the caller can damp this note later, when a player's
+ * hand would actually land on it.
+ */
+// A drum stroke is not an equaliser setting. It is WHERE the hand lands and
+// how long it stays there — and every difference in sound follows from those
+// two, through the same excitation model every other struck body uses. A bass
+// tone is a fleshy hand in the middle of the head, which sits on the
+// axisymmetric mode and misses the ring modes entirely; an open tone is at the
+// rim, where the ring modes are strongest; a slap is a hard, brief contact
+// almost at the edge; a ghost note never lets go.
+const STROKE_DSP = {
+  bass:  { pitch: 1, beta: 0.5, damp: 1.5 },
+  open:  { pitch: 1, beta: 0.82, damp: 1 },
+  slap:  { pitch: 1, beta: 0.94, damp: 0.4 },
+  ghost: { pitch: 1, beta: 0.7, damp: 0.28 },
+};
+
+// ── the halo ─────────────────────────────────────────────────────────────
+//
+// Sympathetic strings are the only thing in an instrument that plays itself.
+// They are not struck, plucked or blown: they take whatever energy the bridge
+// hands them at their own frequency and give it back slowly, so a phrase leaves
+// a wash behind it in the scale's own pitches and every note lands on the
+// resonance of the notes before it. That halo outlasting the line is the whole
+// sound of a sarangi or a sitar.
+//
+// Built as a bank of decaying sinusoids convolved with the voice, rather than
+// as a feedback bank: it is exactly the same thing mathematically, has no
+// stability to lose, and costs one node. The strings are never damped, because
+// nobody is touching them.
+function sympatheticFor(A, inst, hz) {
+  const key = inst.id + ":symp";
+  let s = A.bodies.get(key);
+  if (s) return s;
+  const { ctx } = A;
+  const SR = ctx.sampleRate, n = Math.floor(SR * 2.2);
+  const buf = ctx.createBuffer(1, n, SR);
+  const d = buf.getChannelData(0);
+  for (let k = 0; k < hz.length; k++) {
+    const f = hz[k];
+    if (!(f > 40 && f < 6000)) continue;
+    // a thin unplayed string is very lightly damped; the high ones less so
+    const t60 = 2.6 * Math.pow(220 / f, 0.45);
+    const dec = 6.907755 / (t60 * SR);
+    const w = 2 * Math.PI * f / SR;
+    const ph = (k * 2.399) % (2 * Math.PI);
+    for (let i = 0; i < n; i++) {
+      const e = Math.exp(-dec * i);
+      if (e < 2e-4) break;
+      d[i] += e * Math.sin(w * i + ph);
+    }
+  }
+  let e = 0; for (let i = 0; i < n; i++) e += d[i] * d[i];
+  e = Math.sqrt(e) || 1;
+  for (let i = 0; i < n; i++) d[i] /= e;
+  const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = buf;
+  const send = ctx.createGain(); send.gain.value = 0.11;
+  const out = ctx.createGain(); out.gain.value = 1;
+  send.connect(conv); conv.connect(out);
+  s = { send, out };
+  A.bodies.set(key, s);
+  return s;
+}
+
+// ── the waveguide path ───────────────────────────────────────────────────
+// A flexible string is rendered as an actual wave running back and forth in a
+// JS loop and handed to the graph as a buffer, because a feedback loop cannot
+// exist in the graph at all. It costs about a millisecond a note. A handful of
+// variants per pitch and dynamic are kept so a repeated note is not a copy of
+// itself, which is the whole reason not to cache just one.
+const PLUCKS = new Map();
+function pluckBuffer(ctx, inst, f, vel, variant) {
+  const key = `${inst.id}|${f.toFixed(1)}|${Math.round(vel * 4)}|${variant}`;
+  let buf = PLUCKS.get(key);
+  if (buf) return buf;
+  const mat = MATERIALS[inst.mat] || MATERIALS.gut;
+  const fam = FAMILIES[inst.fam] || {};
+  const pcm = pluckString(ctx.sampleRate, f, {
+    t60: inst.partials[0] ? inst.partials[0].d : 2,
+    bright: mat.bright,
+    // where the hand falls is never twice the same place, and the comb it
+    // makes is one of the loudest differences between two plucks of one string
+    beta: (fam.beta ?? 0.15) * (0.82 + 0.36 * (variant / 3)),
+    width: fam.wid ?? 8,
+    vel: vel * 0.5, seed: 1 + variant * 7717 + Math.round(f),
+  });
+  if (!pcm) return null;
+  buf = ctx.createBuffer(1, pcm.length, ctx.sampleRate);
+  buf.getChannelData(0).set(pcm);
+  if (PLUCKS.size > 96) PLUCKS.clear();
+  PLUCKS.set(key, buf);
+  return buf;
+}
+function playPluck(A, inst, f, when, dur, vel, dest, opts) {
+  const { ctx } = A;
+  const variant = Math.floor(Math.random() * 4);
+  const buf = pluckBuffer(ctx, inst, f, vel, variant);
+  if (!buf) return null;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  // fine tuning and per-note wander live here rather than in the render, so
+  // they cost nothing and the buffer still gets reused
+  if (src.detune) src.detune.value = (Math.random() - 0.5) * 7;
+  const gate = ctx.createGain(); gate.gain.value = 1;
+  src.connect(gate); gate.connect(dest);
+  src.start(when);
+  src.stop(when + Math.min(buf.duration, 14));
+  if (opts.damped) gate.gain.setTargetAtTime(0.0001, when + dur, 0.06);
+  return {
+    damp(at) {
+      const t = Math.max(at, when + 0.02);
+      gate.gain.cancelScheduledValues(t);
+      gate.gain.setTargetAtTime(0.0001, t, 0.05);
+      try { src.stop(t + 0.25); } catch { /* already stopped */ }
+    },
+  };
+}
+
+/**
+ * FORM LISTEN: one oscillator per structural role. Timbre is not the question
+ * when debugging form — vocabulary, return, skeleton and closure are — so each
+ * role gets a fixed simple wave and a short envelope.
+ */
+function playPlain(A, freq, when, dur, vel, role, opts = {}) {
+  const ctx = A.ctx;
+  const bus = A.buses[role] || A.buses.lead || A.master;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  const wave = role === "mark" || role === "pulse" ? "square"
+    : role === "lead" || role === "voice" ? "triangle"
+      : role === "bass" ? "sine"
+        : "sine";
+  osc.type = wave;
+  osc.frequency.setValueAtTime(freq, when);
+  const peak = Math.max(0.015, Math.min(0.32, (vel || 0.3) * (role === "mark" ? 0.22 : 0.3)));
+  const hold = Math.max(0.05, dur || 0.2);
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(peak, when + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + hold);
+  osc.connect(g);
+  g.connect(bus);
+  osc.start(when);
+  osc.stop(when + hold + 0.06);
+  const handle = {
+    damp(at) {
+      const t = Math.max(at, when + 0.01);
+      try {
+        g.gain.cancelScheduledValues(t);
+        g.gain.setTargetAtTime(0.0001, t, 0.02);
+        osc.stop(t + 0.08);
+      } catch { /* already stopped */ }
+    },
+  };
+  if (opts.channel) {
+    const prev = A.voices.get(opts.channel);
+    if (prev && prev.h && prev.h.damp) prev.h.damp(when);
+    A.voices.set(opts.channel, { h: handle, hz: freq, end: when + hold });
+  }
+  return handle;
+}
+
+export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
+  const role = opts.role || "lead";
+  // A stroke is a real change to how and where the body is struck, not a
+  // preset: it moves where the hand lands, how long it stays in contact, and
+  // how fast it takes the sound away again.
+  const K = STROKE_DSP[opts.stroke] || null;
+  const f = freq * (K ? K.pitch : 1) * (1 + (inst && inst.detune || 0) + 0.004 * (Math.random() - 0.5));
+  if (!(f > 20 && f < 12000)) return null;
+  // FORM LISTEN: one oscillator per role so structure is audible without
+  // sample/model colour. The composition is unchanged; only the body is.
+  if (A.formPlain) return playPlain(A, f, when, dur, vel, role, opts);
+  // WHERE THE HAND WAS. A voice channel is one player, so the note it played
+  // last is where that player's finger still is — and whether the next note is
+  // travelled to or jumped to falls out of that plus the body, with nothing to
+  // decide and no style dial to set. See `slidesTo`.
+  const prev = opts.channel ? A.voices.get(opts.channel) : null;
+  const from = prev && prev.hz && slidesTo(inst, prev.hz, f, when - prev.end) ? prev.hz : 0;
+  // ── the recorded body, if there is one and the Lab asked for it ──
+  // It bypasses the modelled body deliberately: the recording already contains
+  // the instrument's own box, and convolving a second one over it would be
+  // putting the sound in two rooms. Everything downstream — the role bus, the
+  // stage seat, the room — is shared, so this is the same player either way.
+  if (A.sampled) {
+    const rec = playSampled(A, inst, f, when, dur, vel, opts, busFor(A, inst, role), K, from);
+    if (rec) {
+      // the same bookkeeping the modelled path does at the bottom: stop the
+      // note this player is replacing, and leave the hand where it ended up
+      if (opts.channel) {
+        if (prev && prev.h && prev.h.damp) {
+          prev.h.damp(when, from > 0 && role === "voice" ? { soft: 0.04 } : undefined);
+        }
+        A.voices.set(opts.channel, { h: rec, hz: f, end: when + dur });
+      }
+      return rec;
+    }
+  }
+  const body = bodyFor(A, inst, role);
+  const dest = body.input;
+  // Everything this instrument plays feeds the halo, and the halo radiates
+  // through a body of its own — the same box, but a second instance of it,
+  // because routing it back into the one that feeds it would be a loop and
+  // Web Audio silences those.
+  if (inst.symp && opts.symp && opts.symp.length) {
+    const h = sympatheticFor(A, inst, opts.symp);
+    if (!h.wired) {
+      body.input.connect(h.send);
+      h.out.connect(bodyFor(A, inst, role + ":symp").input);
+      h.wired = true;
+    }
+  }
+
+  const mat = MATERIALS[inst.mat];
+  const wave = inst.drive === "pluck" && (FAMILIES[inst.fam] || {}).vib === "string"
+    && flexible(mat ? mat.B : 0);
+  const handle = wave
+    // A flexible string is a WAVE, not a sum of modes: one round trip sets one
+    // period for every partial at once, the loss at the ends is what makes the
+    // top die first, and plucking near the bridge cancels the modes with a node
+    // under the finger. None of that has to be described because it happens.
+    ? playPluck(A, inst, f, when, dur, vel, dest, opts)
+    : inst.kind === "sustain"
+    // Everything held up by continuous energy — bow, breath, reed, lip — is
+    // built in musicDriven.js: a sine through the mechanism's own nonlinear
+    // valve, so the harmonics are MADE by the drive rather than read from a
+    // table, plus turbulence shaped by the same bore as the tone.
+    ? playDriven(A, inst, f, when, dur, vel, dest, { seed: opts.seedFor || 1, expressive: opts.expressive, from })
+    // Everything excited by one blow is built in musicImpulse.js: the modes
+    // are driven by the blow itself, so how hard, with what, and where all
+    // shape the spectrum instead of being painted on with exponents.
+    : playImpulse(A, inst, f, when, dur, vel, dest, {
+      stroke: K, damped: opts.damped, beta: K ? K.beta : undefined,
+      jitter: (Math.random() - 0.5) * 2,
+    });
+
+  // The damping handle. A player's free hand stops the note being replaced
+  // and lets everything else ring; that selective damping is why ringing
+  // instruments sound full instead of muddy.
+  if (opts.channel) {
+    if (prev && prev.h && prev.h.damp) prev.h.damp(when);
+    // and the channel remembers WHERE the hand ended up and WHEN it got free,
+    // which is all the next note needs to know whether it can travel
+    A.voices.set(opts.channel, { h: handle, hz: f, end: when + dur });
+  }
+  return handle;
+}
+
+
+
+// ── the voice: this people's own language, SUNG ──────────────────────────
+//
+// The voice is the one instrument every people has. It needs no ore, no
+// timber and no craft, which is why the overwhelming majority of the world's
+// music is sung and why a tradition can exist with no built instrument at
+// all. It was the one thing this engine modelled worst: a sawtooth through
+// three bandpass filters, which is a formant SKETCH — it paints the effect.
+//
+// src/sim/vocalTract.js is a Kelly-Lochbaum waveguide of the real air column
+// with a Liljencrants-Fant glottis, and it was sitting in this repo unused by
+// the music. It is pure and deterministic, so a whole sung line renders
+// OFFLINE into a buffer under Node or in the page, exactly as langLab already
+// does for speech. Which also settles the harder question this file kept
+// running into: a feedback loop at audio rate is impossible in the Web Audio
+// node graph, but it is trivial in a JS loop that fills a buffer. Physical
+// models do not need the graph.
+const SUNG = new Map();
+
+/** Render one sung line, cached. `notes` are [{f, dur, vel}] in Hz/seconds. */
+export function sungLine(sampleRate, syls, notes, opts = {}) {
+  const key = `${sampleRate}|${opts.key || ""}|${notes.map(n => `${n.f.toFixed(1)},${n.dur.toFixed(3)},${(n.vel ?? 1).toFixed(2)}`).join(";")}`;
+  let pcm = SUNG.get(key);
+  if (!pcm) {
+    pcm = renderScore(scoreSong(syls, notes, opts), sampleRate, opts.seed || 1);
+    if (SUNG.size > 64) SUNG.clear();
+    SUNG.set(key, pcm);
+  }
+  return pcm;
+}
+
+/**
+ * Schedule a rendered line. The tract's own level control evens speech out so
+ * words stay intelligible, so the musical dynamics are applied here instead —
+ * on the buffer, note by note. What the tract DOES carry is the part a gain
+ * cannot fake: a harder-sung note is brighter, not merely louder.
+ */
+/**
+ * THE VOICE HAS TO ARRIVE ON THE SAME SCALE AS EVERYTHING ELSE.
+ *
+ * `renderScore` drives its output to a fixed absolute level so that speech
+ * stays intelligible whatever is being said. That is right for speech and
+ * wrong for an ensemble: it means the singer's level is set by the vocal
+ * tract's own gain control rather than by how hard they are singing next to
+ * the players. Measured at written velocity 0.6 — one note, one second,
+ * straight to master, no bus — the engine's loudest body (a struck iron
+ * lamella) arrives at −19.9 dB, its quietest (a bone flute) at −39.8, and the
+ * voice at −48.7. Nine decibels under the quietest instrument in the world and
+ * twenty-nine under the loudest. In a rendered ensemble the voice was 0.0–0.6%
+ * of the mix power: everything sung was inaudible.
+ *
+ * An unamplified singer is not quieter than a flute. A singer is what fronts
+ * an ensemble across most of the world's traditions, which is the whole reason
+ * the singer's formant exists. So this is a CALIBRATION between two synthesis
+ * paths that never agreed on what a velocity means — the same kind of bridge
+ * as a unit conversion, with a measured target: the voice is brought to the
+ * MEDIAN body's level at the same velocity. Dynamics above that are the
+ * note-by-note gain below, which was always working and was working on a
+ * signal nobody could hear.
+ */
+const VOICE_PATH = Math.pow(10, 15 / 20);   // +15 dB: median body −33 dB vs voice −48.7 dB
+
+export function playSung(A, pcm, notes, when, gain = 1) {
+  const { ctx } = A;
+  const buf = ctx.createBuffer(1, pcm.length, ctx.sampleRate);
+  buf.getChannelData(0).set(pcm);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(Math.max(0.0001, (notes[0]?.vel ?? 0.5) * gain * VOICE_PATH), when);
+  let t = 0.03;
+  for (const n of notes) {
+    g.gain.setTargetAtTime(Math.max(0.0001, (n.vel ?? 0.5) * gain * VOICE_PATH), when + t, 0.035);
+    t += n.dur;
+  }
+  src.connect(g); g.connect(A.buses.voice || A.master);
+  src.start(when);
+  // Damping a voice is a RELEASE, not a cut: the folds come apart over a few
+  // tens of milliseconds. A hard stop mid-vowel is a click, and this is called
+  // exactly where one line hands over to the next.
+  return { damp(at) {
+    const t = Math.max(at, when + 0.02);
+    try {
+      if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(t);
+      else { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); }
+      g.gain.setTargetAtTime(0.0001, t, 0.02);
+      src.stop(t + 0.14);
+    } catch { /* already stopped, or the context has moved past it */ }
+  } };
+}

@@ -12,10 +12,12 @@
 
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf, dialectsOf, cultureOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
-import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
+import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES, prosodyOf, DEFAULT_PROS, accentOf, DEFAULT_ACCENT } from "./sim/languagePhonetics.js";
 import { scorePlan as tractScorePlan, scoreClause as tractScoreClause, renderScore as tractRender } from "./sim/vocalTract.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
 import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
+import { IPA_CLIPS, IPA_CLIP_CREDIT } from "./sim/ipaAudioManifest.js";
+import { FORMANT_VOWELS } from "./sim/formantVowelCal.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -30,7 +32,7 @@ import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VE
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
 const S = {
-  seed: 8817, preset: "random", divergence: 0.5, search: "", voice: "tract", noun: STONE, verb: VERBS[2],
+  seed: 8817, preset: "random", divergence: 0.5, search: "", voice: "formant", noun: STONE, verb: VERBS[2],
   sent: { type: "plain", s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl", pred: "adj" },
   hist: { seed: 9917, eras: 14, english: true, russian: true, mandarin: true, random: 3 },
 };
@@ -96,6 +98,130 @@ function ac() {
   if (AC.state === "suspended") AC.resume();
   return AC;
 }
+
+// ── the recorded-phone bank (the third voice) ─────────────────────────────
+// Human citation recordings of the base phones, one file per IPA symbol
+// (assets/ipa-audio/, openly licensed — see CREDITS-ipa-audio.md). These are
+// PHONEME clips only: isolated citation phones do not concatenate into words,
+// so word playback always stays with the synthesizers. A phone without its
+// own recording plays its nearest recorded base phone (strip length/phonation/
+// nasality, then click accompaniments, then secondary articulation, then
+// voicelessness/dentality) — and if nothing matches, the synth speaks instead.
+const HAS_CLIPS = Object.keys(IPA_CLIPS).length > 0;
+// the standalone single-file build inlines the audio as data URIs on
+// window.__IPA_AUDIO__; the dev server just fetches the assets directory
+const IPA_AUDIO_BASE = (typeof window !== "undefined" && window.__IPA_AUDIO_BASE__) || "assets/ipa-audio/";
+const CLIPS = new Map();                            // file → AudioBuffer | null (a miss stays a miss)
+function clipCandidates(sym) {
+  const out = [];
+  const push = (s) => { if (s && !out.includes(s)) out.push(s); };
+  push(sym);
+  // nasal ̃ · length ː · breathy ̤ · creaky ̰ · −ATR ̙ · mid-centralized ̽
+  let s = sym.replace(/[̃ː̤̰̙̽]/g, "");
+  push(s);
+  push(s = s.replace(/^[ɡŋ]͡/, ""));           // click accompaniment ɡ͡ / ŋ͡
+  push(s = s.replace(/[ʲʷᵐⁿᵑ]|ʰ$|ʼ$/g, ""));        // ʲ ʷ ᵐ ⁿ ᵑ, final ʰ ʼ
+  push(s = s.replace(/[̥̊̈]/g, "")); // voiceless rings ̥ ̊, centralized ̈
+  push(s.replace(/̪/g, ""));                   // dental bridge ̪ → alveolar
+  return out;
+}
+// A citation recording is spoken as "[C], a-[C]-a" (the chart convention) —
+// several utterances separated by silence. Segment each decoded clip by
+// energy once, so a chip click plays only the FIRST take and the word
+// stitcher can carve short phone slices instead of replaying whole files.
+function segmentClip(buf) {
+  const d = buf.getChannelData(0), sr = buf.sampleRate;
+  const win = Math.max(1, (sr * 0.01) | 0);           // 10 ms windows
+  const n = Math.floor(d.length / win);
+  let peak = 0;
+  const rms = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = i * win, e = j + win; j < e; j++) s += d[j] * d[j];
+    rms[i] = Math.sqrt(s / win);
+    if (rms[i] > peak) peak = rms[i];
+  }
+  const floor = Math.max(peak * 0.06, 0.004);
+  const segs = [];
+  let a = -1, lastOn = -1;
+  for (let i = 0; i < n; i++) {
+    if (rms[i] > floor) { if (a < 0) a = i; lastOn = i; }
+    else if (a >= 0 && i - lastOn > 9) {              // ≥90 ms of quiet ends a take
+      if (lastOn - a >= 3) segs.push({ a: a * win, b: (lastOn + 1) * win });
+      a = -1;
+    }
+  }
+  if (a >= 0 && lastOn - a >= 3) segs.push({ a: a * win, b: (lastOn + 1) * win });
+  if (!segs.length) segs.push({ a: 0, b: d.length });
+  // per-take loudness: the bank mixes recorders ~18× apart in level, so every
+  // take carries its own RMS + peak and playback normalizes to one target
+  for (const s of segs) {
+    let e = 0, pk = 0;
+    for (let j = s.a; j < s.b; j++) { const v = d[j]; e += v * v; const av = v < 0 ? -v : v; if (av > pk) pk = av; }
+    s.rms = Math.sqrt(e / Math.max(1, s.b - s.a));
+    s.peak = pk;
+  }
+  return segs;
+}
+async function loadClip(sym) {
+  for (const cand of clipCandidates(sym)) {
+    const file = IPA_CLIPS[cand];
+    if (!file) continue;
+    if (CLIPS.has(file)) { const r = CLIPS.get(file); if (r) return r; continue; }
+    try {
+      // inlined bank (standalone file / hosted Artifact): decode the data URI
+      // ourselves — fetch() of data: URLs is blocked under a strict CSP
+      const inline = typeof window !== "undefined" && window.__IPA_AUDIO__ && window.__IPA_AUDIO__[file];
+      let bytes;
+      if (inline) {
+        const bin = atob(inline.slice(inline.indexOf(",") + 1));
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } else {
+        const res = await fetch(IPA_AUDIO_BASE + file);
+        if (!res.ok) throw new Error(String(res.status));
+        bytes = new Uint8Array(await res.arrayBuffer());
+      }
+      const buf = await ac().decodeAudioData(bytes.buffer);
+      const rec = { buf, segs: segmentClip(buf) };
+      CLIPS.set(file, rec);
+      return rec;
+    } catch { CLIPS.set(file, null); }
+  }
+  return null;
+}
+// play a take's [start, start+dur) with click-free edges (fast attack so stop
+// bursts keep their pop) and per-take loudness normalization; returns end time
+const TAKE_RMS = 0.09;                        // target level every take plays at
+function playSlice(rec, seg, dur, when, base = 1, pad = 0) {
+  const ctx = ac();
+  const t = when != null ? when : ctx.currentTime + 0.03;
+  let vol = base * Math.min(8, Math.max(0.35, TAKE_RMS / (seg.rms || TAKE_RMS)));
+  if (seg.peak * vol > 0.92) vol = 0.92 / seg.peak;
+  const src = ctx.createBufferSource();
+  src.buffer = rec.buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.004);
+  g.gain.setValueAtTime(vol, t + Math.max(0.005, dur - 0.014));
+  g.gain.linearRampToValueAtTime(0.0001, t + dur);
+  src.connect(g);
+  g.connect(ctx.destination);
+  src.start(t, Math.max(0, seg.a / rec.buf.sampleRate - pad), dur + pad + 0.02);
+  return t + dur;
+}
+function playClipOr(sym, fallbackPlan) {
+  loadClip(sym).then(rec => {
+    if (!rec) { if (fallbackPlan) speakPlanFormant(fallbackPlan); return; }
+    const sr = rec.buf.sampleRate, s0 = rec.segs[0];
+    playSlice(rec, s0, Math.min(1.4, (s0.b - s0.a) / sr + 0.02), undefined, 1, 0.02);
+    window.__lastClipPlayed = sym;             // headless-check breadcrumb
+  });
+}
+// (Stitching words from citation phones was tried and retired: isolated
+// citation recordings carry no coarticulation, so concatenation reads as a
+// spelling drill at best. The recordings serve as per-phoneme reference —
+// and as the calibration ground truth the tract is fitted against.)
 // the glottal source: a Rosenberg glottal-flow pulse's DERIVATIVE (the actual
 // acoustic source at the folds) as a PeriodicWave, replacing the buzzy
 // sawtooth. Same harmonic richness (it still excites every formant) but the
@@ -127,6 +253,13 @@ function glottalWave(ctx, breathy) {
   return wave;
 }
 const VOWEL_F = (v) => {
+  // measured HUMAN formants from the recorded bank (formantVowelCal.js),
+  // VTL-normalized to one speaker — a formant synth takes formants as
+  // input, so the calibration is used directly. Unmeasured qualities keep
+  // the analytic formula.
+  const cal = FORMANT_VOWELS[`${v.h},${v.b},${v.r ? 1 : 0},${v.atr ? 1 : 0}`]
+    || FORMANT_VOWELS[`${v.h},${v.b},${v.r ? 1 : 0},0`];
+  if (cal) return cal;
   const F1 = [300, 480, 720][v.h] || 480;
   let F2 = v.b === 0 ? 2150 - v.h * 150 : v.b === 1 ? 1400 : 950 + v.h * 100;
   if (v.r) F2 -= v.b === 0 ? 300 : 100; else if (v.b === 2) F2 += 350;
@@ -182,8 +315,9 @@ function vVoiced(ctx, out, t, dur, frs, gains, f0pts, opts = {}) {
   osc.start(t); osc.stop(t + dur + 0.02);
 }
 // one consonant segment; returns its duration. `final` softens codas.
-function consSeg(ctx, out, t, c, f0pts, final) {
+function consSeg(ctx, out, t, c, f0pts, final, acc = DEFAULT_ACCENT) {
   const p = Math.min(c.p, 8);
+  const dent = acc.dental && p === 1 ? 0.87 : 1;      // dental coronals: duller burst/hiss
   if (c.m === 7) {                                   // CLICK (phase 4): its own burst model —
     // a nasal/voice lead where the accompaniment says so, then a sharp
     // double transient (release + rarefaction snap), centre keyed to the
@@ -207,12 +341,13 @@ function consSeg(ctx, out, t, c, f0pts, final) {
   if (c.m === 2) {                                   // fricative
     const dur = final ? 0.13 : 0.105;
     const breathy = p >= 6;
-    vNoise(ctx, out, t, dur, FRIC_F[p], breathy ? 0.35 : SIB(p) ? 3 : 0.7, SIB(p) ? 0.3 : breathy ? 0.13 : 0.17);
+    vNoise(ctx, out, t, dur, FRIC_F[p] * dent, breathy ? 0.35 : SIB(p) ? 3 : 0.7, SIB(p) ? 0.3 : breathy ? 0.13 : 0.17);
     if (c.l === 1) vVoiced(ctx, out, t, dur, [300, FRIC_F[p] * 0.5, 2500], [0.5, 0.15, 0.04], f0pts, { peak: 0.5 });
     return dur;
   }
-  if (c.m === 4) {                                   // lateral
-    vVoiced(ctx, out, t, 0.075, [360, 1150, 2600], [0.85, 0.3, 0.1], f0pts, { peak: 0.85 });
+  if (c.m === 4) {                                   // lateral — dark coda ɫ pulls F2 down
+    const dark = final && acc.darkL;
+    vVoiced(ctx, out, t, 0.075, [360, dark ? 830 : 1150, 2600], [0.85, 0.3, 0.1], f0pts, { peak: 0.85 });
     return 0.075;
   }
   if (c.m === 5) {                                   // rhotic: trill/flap by place
@@ -231,10 +366,17 @@ function consSeg(ctx, out, t, c, f0pts, final) {
   if (c.l === 4) { vVoiced(ctx, out, t, 0.055, [250, NASAL_F2[p], 2500], [0.9, 0.16, 0.05], f0pts, { nasal: true, peak: 0.7 }); dt += 0.055; }   // prenasalized
   if (c.l === 1) vVoiced(ctx, out, t + dt, closure, [130, 300, 2500], [0.5, 0.08, 0], [1, 0.95], { peak: 0.35 });   // voice bar
   dt += closure;
-  if (c.p !== 7) vNoise(ctx, out, t + dt, 0.018, BURST_F[p], 1.2, c.l === 3 ? 0.5 : final ? 0.18 : 0.32);   // burst (glottal stop = silence)
+  if (c.p !== 7) vNoise(ctx, out, t + dt, 0.018, BURST_F[p] * dent, 1.2, c.l === 3 ? 0.5 : final ? 0.18 : 0.32);   // burst (glottal stop = silence)
   dt += 0.02;
-  if (c.m === 3) { vNoise(ctx, out, t + dt, 0.07, FRIC_F[p], SIB(p) ? 3 : 0.8, SIB(p) ? 0.26 : 0.15); dt += 0.07; }   // affricate tail
+  if (c.m === 3) { vNoise(ctx, out, t + dt, 0.07, FRIC_F[p] * dent, SIB(p) ? 3 : 0.8, SIB(p) ? 0.26 : 0.15); dt += 0.07; }   // affricate tail
   if (c.l === 2) { vNoise(ctx, out, t + dt, 0.055, 1600, 0.4, 0.16); dt += 0.055; }   // aspiration
+  // VOT habit: a long-lag language releases its PLAIN voiceless stops with a
+  // puff too (the English th-puff on p/t/k); short-lag languages release bare
+  if (c.m === 0 && c.l === 0 && c.p !== 7 && acc.vot > 0.25 && !final) {
+    const ad = 0.01 + 0.05 * acc.vot;
+    vNoise(ctx, out, t + dt, ad, 1600, 0.4, 0.07 + 0.1 * acc.vot);
+    dt += ad * 0.8;
+  }
   if (c.l === 3) dt += 0.04;                          // ejective: a beat of silence
   return dt;
 }
@@ -242,45 +384,75 @@ function consSeg(ctx, out, t, c, f0pts, final) {
 // a declination scale and, on the clause's last word, a boundary tone
 // (statements FALL, questions RISE — the near-universal pair)
 function scheduleWord(ctx, master, plan, t, mod = {}) {
+  const pros = plan.pros || DEFAULT_PROS;             // the language's own music
+  const acc = plan.acc || DEFAULT_ACCENT;             // ...and its segmental habits
   const scale = mod.scale || 1;
   const nSyl = plan.syls.length;
   plan.syls.forEach((syl, i) => {
-    // pitch: the syllable's own tone melody, or stress + declination
-    let f0pts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone].map(k => k * scale)
-      : (() => { const k = (1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
+    // pitch: the syllable's own tone melody (dug to the language's contour
+    // depth), or stress + declination swept by the language's melodic range
+    let f0pts = plan.tone > 0 && syl.tone != null
+      ? TONE_SHAPES[syl.tone].map(k => (1 + (k - 1) * pros.toneDepth) * scale)
+      : (() => { const k = (1 + (i === plan.stress ? pros.stressGain - 1 : 0) - 0.1 * pros.range * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
     if (mod.boundary && i === nSyl - 1) {
-      f0pts = mod.boundary === "rise" ? [...f0pts, f0pts[f0pts.length - 1] * 1.35] : [...f0pts, f0pts[f0pts.length - 1] * 0.72];
+      const b = mod.boundary === "rise" ? 1 + 0.35 * pros.range : 1 - 0.28 * pros.range;
+      f0pts = [...f0pts, f0pts[f0pts.length - 1] * b];
     }
+    // PITCH ACCENT (phase 4): the accent is pitch, not loudness — a high
+    // target on the accented syllable and a fall off it (the Japanese shape)
+    if (plan.pitchAccent && i === plan.stress) f0pts = f0pts.map(k => k * (1 + 0.22 * pros.range));
+    f0pts = f0pts.map(k => k * pros.f0k);             // the language's pitch frame
     const secondary = (c, after) => {                 // ʲ/ʷ: a short on-glide after the consonant
       if (!c.s) return 0;
       const gv = c.s === 1 ? GLIDE_V[3] : GLIDE_V[0];
       vVoiced(ctx, master, after, 0.035, VOWEL_F(gv), [0.7, 0.4, 0.12], f0pts, { peak: 0.6 });
       return 0.035;
     };
-    // PITCH ACCENT (phase 4): the accent is pitch, not loudness — a high
-    // target on the accented syllable and a fall off it (the Japanese shape)
-    if (plan.pitchAccent && i === plan.stress) f0pts = f0pts.map(k => k * 1.22);
-    for (const c of syl.on) { const d = consSeg(ctx, master, t, c, f0pts, false); t += d + secondary(c, t + d) + 0.004; }
+    for (const c of syl.on) {
+      const d = consSeg(ctx, master, t, c, f0pts, false, acc);
+      t += d + secondary(c, t + d) + 0.004;
+      // the soft-consonant setting: a plain coronal/velar before a front
+      // vowel takes a light ʲ glide (the Russian lean), scaled by the habit
+      if (acc.soften > 0 && !c.s && syl.nu.length && syl.nu[0].b === 0 && ((c.p >= 1 && c.p <= 4) || c.p === 8)) {
+        const gd = 0.022 * acc.soften;
+        vVoiced(ctx, master, t, gd, VOWEL_F(GLIDE_V[3]), [0.6, 0.4, 0.12], f0pts, { peak: 0.55 });
+        t += gd;
+      }
+    }
     if (syl.nu.length) {                              // nucleus (diphthongs glide)
       const v0 = syl.nu[0];
-      let dur = (i === plan.stress ? 0.19 : 0.15) * (v0.lg ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
-      const A = VOWEL_F(v0), B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
-      const frs = B ? A.map((f, k) => [f, B[k]]) : A;
+      // RHYTHM: syllable-timed beats are equal (Spanish machine-gun; tone
+      // languages count syllables too); stress-timed beats crush the weak
+      // ones and REDUCE their vowels toward schwa (the English/Russian
+      // signature); "even" trains sit between
+      const stressed = plan.tone > 0 || i === plan.stress || nSyl === 1;
+      const base = pros.rhythm === "syllable" ? 0.165 : stressed ? 0.2 : pros.rhythm === "stress" ? 0.12 : 0.15;
+      const red = !stressed && syl.nu.length === 1 && !v0.lg ? pros.reduce : 0;
+      let dur = base * (v0.lg ? 1.5 : 1) * (1 - red * 0.35) / pros.rate;
+      dur *= i === nSyl - 1 ? (mod.final ? pros.finalLen : 1.06) : 1;
+      let A = VOWEL_F(v0);
+      if (red) { const SC = VOWEL_F({ h: 1, b: 1, r: 0 }); A = A.map((f, k2) => f + (SC[k2] - f) * red); }
+      const B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
+      const frs = B ? A.map((f, k2) => [f, B[k2]]) : A;
       // PHONATION (phase 4): creaky voice drops the pitch and pulses it;
       // breathy voice mixes an aspiration wash over the vowel
       const vf0 = v0.ph === 2 ? f0pts.map(k => k * 0.72) : f0pts;
-      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0, breathy: v0.ph === 1 });
+      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0, breathy: v0.ph === 1, ...(red ? { peak: 0.72 } : {}) });
       if (v0.ph === 1) vNoise(ctx, master, t, dur, 1500, 0.35, 0.12);
       t += dur + 0.004;
     }
-    for (const c of syl.co) {
+    for (const c0 of syl.co) {
+      // final devoicing (the Russian/German habit): a word-final voiced
+      // obstruent hardens in SPEECH — the spelling and the phonology keep it
+      const c = acc.finalDevoice && i === nSyl - 1 && c0.l === 1 && (c0.m === 0 || c0.m === 2 || c0.m === 3)
+        ? { ...c0, l: 0 } : c0;
       // GEMINATE hold (phase 4): an identical coda+onset pair across the seam
       // is one long consonant — hold the closure instead of re-articulating
       const nx = plan.syls[i + 1];
       const gem = nx && nx.on.length && ["p", "m", "l", "s"].every(k => nx.on[0][k] === c[k]);
-      const d = consSeg(ctx, master, t, c, f0pts, true); t += d + (gem ? 0.055 : 0) + 0.004;
+      const d = consSeg(ctx, master, t, c, f0pts, true, acc); t += d + (gem ? 0.055 : 0) + 0.004;
     }
-    t += 0.015;                                       // syllable seam
+    t += 0.015 / pros.rate;                           // syllable seam, at the language's tempo
   });
   return t;
 }
@@ -316,14 +488,14 @@ function speakClauseTract(groups, contour) {
 }
 // engine dispatch: the Sound card's toggle picks the articulatory tract (the
 // vocal-tract model) or the formant sketch; both read the SAME phonetic plans
-function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : speakPlanTract(plan); }
+function speakPlan(plan) { S.voice === "tract" ? speakPlanTract(plan) : speakPlanFormant(plan); }
 // a whole sentence: word plans in sequence, grouped into intonation
 // phrases (one per clause) — pitch declines across the whole utterance,
 // each NON-final clause ends on a continuation rise with a comma pause
 // (the near-universal spoken comma), and only the final clause carries
 // the sentence's boundary tone (fall for statements/commands, rise for
 // questions)
-function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : speakClauseTract(groups, contour); }
+function speakClause(groups, contour = "fall") { S.voice === "tract" ? speakClauseTract(groups, contour) : speakClauseFormant(groups, contour); }
 function speakClauseFormant(groups, contour = "fall") {
   const ctx = ac();
   const master = mkMaster(ctx);
@@ -333,10 +505,13 @@ function speakClauseFormant(groups, contour = "fall") {
   groups.forEach((g, gi) => {
     const lastG = gi === groups.length - 1;
     g.forEach((p, i) => {
+      const pros = p.pros || DEFAULT_PROS;
+      const declSpan = 0.12 * pros.range;             // the utterance falls as far as the language sweeps
       t = scheduleWord(ctx, master, p, t, {
-        scale: 1.05 - 0.12 * (k / Math.max(1, total - 1)),
+        scale: 1.05 - declSpan * (k / Math.max(1, total - 1)),
         boundary: i === g.length - 1 ? (lastG ? contour : "rise") : null,
-      }) + 0.08;                                      // inter-word gap
+        final: lastG && i === g.length - 1,           // phrase-final drawl on the last word
+      }) + 0.08 / pros.rate;                          // inter-word gap, at tempo
       k++;
     });
     if (!lastG) t += 0.16;                            // the comma pause
@@ -437,7 +612,7 @@ function soundHTML(l) {
     if (seenC.has(sym)) return "";
     seenC.add(sym);
     const idx = regPlan(phoneticPlan(l, { syls: [{ on: [{ ...b }], nu: [{ ...demoV }], co: [] }], tseed: 0 }));
-    return `<button class="cell spk" data-p="${idx}" title="hear it"><span class="w">${esc(romanizeC(b, prof.romTaste, prof.rom, prof.orthoStyle))}</span> <span class="gloss">${esc(sym)}</span></button>`;
+    return `<button class="cell spk" data-p="${idx}" data-ipa="${esc(sym)}" title="hear it"><span class="w">${esc(romanizeC(b, prof.romTaste, prof.rom, prof.orthoStyle))}</span> <span class="gloss">${esc(sym)}</span></button>`;
   }).filter(Boolean).join(" ");
   const seenV = new Set();
   const vChips = inv.vows.map(v => {
@@ -445,7 +620,7 @@ function soundHTML(l) {
     if (seenV.has(sym)) return "";
     seenV.add(sym);
     const idx = regPlan(phoneticPlan(l, { syls: [{ on: [], nu: [{ ...v }], co: [] }], tseed: 0 }));
-    return `<button class="cell spk" data-p="${idx}" title="hear it"><span class="w">${esc(romanizeV(v, prof.rom))}</span> <span class="gloss">${esc(sym)}</span></button>`;
+    return `<button class="cell spk" data-p="${idx}" data-ipa="${esc(sym)}" title="hear it"><span class="w">${esc(romanizeV(v, prof.rom))}</span> <span class="gloss">${esc(sym)}</span></button>`;
   }).filter(Boolean).join(" ");
   const loanSet = new Set((l.loans || []).map(x => x.c));
   const rows = [];
@@ -457,10 +632,29 @@ function soundHTML(l) {
     addRow(glossOf(cid), renderWord(form, prof), form);
   }
   return `<section class="card"><h2>Sound <span class="count">— IPA &amp; a voice</span></h2>
-    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a synthesizer for the ear. Two voices are on offer: an <b>articulatory vocal tract</b> — a Kelly–Lochbaum waveguide where you set a tongue and a constriction and the formants fall out of the tube's shape, so clicks, ejectives, nasals and breathy/creaky voice all emerge from the mechanism — and the older <b>formant sketch</b> (a buzz through three resonators). Either way the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
+    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a synthesizer for the ear. The primary voice is the <b>formant voice</b> — resonators driven directly at the vowel formants <b>measured from real human recordings</b> (the same openly licensed bank the third option plays), with per-place burst and frication colour. The <b>articulatory tract</b> — a Kelly–Lochbaum waveguide where the formants fall out of the tube's shape — stays available as the physical-model experiment. Either way the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
     <p class="cells"><span class="lbl">voice</span>
-      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" ? " checked" : ""}/> articulatory tract</label>
-      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label></p>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice !== "tract" && S.voice !== "human" ? " checked" : ""}/> formant voice</label>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice === "tract" ? " checked" : ""}/> articulatory tract (experimental)</label>${HAS_CLIPS ? `
+      <label class="vopt"><input type="radio" name="voiceEngine" value="human"${S.voice === "human" ? " checked" : ""}/> recorded phones</label>` : ""}</p>${HAS_CLIPS ? `
+    <p class="note">With <b>recorded phones</b> selected, each phoneme chip plays a <b>human recording</b> of that exact phone — real citation audio, openly licensed (${esc(IPA_CLIP_CREDIT)}), loudness-matched across recorders. A phone without its own recording plays its nearest recorded base phone. Words and sentences still speak through the formant voice — isolated citation phones cannot be stitched into connected speech, but they are the <b>measured ground truth both synthesizers' vowels are calibrated against</b>.</p>` : ""}
+    ${(() => {
+    const pr = prosodyOf(l);
+    const rhythmDesc = pr.rhythm === "syllable"
+      ? (prof.tone ? "<b>syllable-timed</b>, every beat equal, melody carried by the tones" : "<b>syllable-timed</b> — even machine-gun beats, every vowel full")
+      : pr.rhythm === "stress"
+        ? `<b>stress-timed</b> — strong beats, weak syllables crushed and their vowels reduced toward ə (${Math.round(pr.reduce * 100)}%)`
+        : "<b>evenly timed</b> — light syllables in steady trains";
+    const ac = accentOf(l);
+    const habits = [
+      ac.vot > 0.55 ? "aspirated p/t/k (the long-lag puff)" : ac.vot < 0.2 ? "bare unaspirated stops" : null,
+      ac.finalDevoice ? "final devoicing (voiced codas harden)" : null,
+      ac.soften > 0 ? "consonants soften before front vowels" : null,
+      ac.darkL ? "dark coda ɫ" : null,
+      ac.dental ? "dental t/d" : null,
+    ].filter(Boolean);
+    return `<p class="note">The music of this tongue: ${rhythmDesc} · tempo ×${pr.rate.toFixed(2)} · pitch frame ×${pr.f0k.toFixed(2)} with ${pr.range > 1.1 ? "a wide, expressive" : pr.range < 0.9 ? "a flat, level" : "a moderate"} melody · phrase-final drawl ×${pr.finalLen.toFixed(2)}.<br/>Its accent — the habits worn by every matching sound: ${habits.length ? habits.join(" · ") : "no marked segmental habits"}. Sisters inherit the family's music and accent — half of what makes a language recognizable before a single word is understood.</p>`;
+  })()}
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>
@@ -1644,7 +1838,16 @@ export function mount() {
     const cp = e.target.closest("[data-cp]");
     if (cp) { const c = CLAUSES[+cp.dataset.cp]; if (c) speakClause(c.groups, c.contour); return; }
     const el = e.target.closest("[data-p]");
-    if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); return; }
+    if (el) {
+      const p = PLANS[+el.dataset.p];
+      if (!p) return;
+      // recorded-phones voice: phoneme chips (they carry their IPA) play the
+      // human clip, with the chip's own CV plan as the synth fallback; words
+      // have no recording to play and stay with the tract
+      if (S.voice === "human" && el.dataset.ipa) playClipOr(el.dataset.ipa, p);
+      else speakPlan(p);
+      return;
+    }
     // inspect a tongue from the History card: it becomes the Lab's
     // specimen, with its ancestor chain as the family (cognates light up)
     const ins = e.target.closest("[data-inspect]");

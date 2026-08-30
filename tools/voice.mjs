@@ -7,8 +7,9 @@
 //   node tools/voice.mjs --wav DIR  # also write demo WAVs to DIR
 //
 // The DSP core is pure, so this exercises the EXACT code the Lab plays.
-import { writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { renderScore, scorePlan, scoreClause } from "../src/sim/vocalTract.js";
+import { stats, estimateF0, measureVowelFormants, writeWav as writeWavAt } from "./lib/formants.mjs";
 
 const SR = 48000;
 const args = process.argv.slice(2);
@@ -23,73 +24,12 @@ const vowelPlan = (v) => ({ syls: [{ on: [], nu: [{ ...v, lg: 1 }], co: [], tone
 const cvPlan = (c, v) => ({ syls: [{ on: [c], nu: [v], co: [], tone: null }], stress: -1, tone: 0, pitchAccent: false });
 const wordPlan = (syls) => ({ syls: syls.map(s => ({ tone: null, ...s })), stress: 0, tone: 0, pitchAccent: false });
 
-// ── measurement ──────────────────────────────────────────────────────────
-function stats(x) {
-  let sum = 0, sq = 0, peak = 0, bad = 0;
-  for (let i = 0; i < x.length; i++) { const v = x[i]; if (!Number.isFinite(v)) bad++; sum += v; sq += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
-  return { rms: Math.sqrt(sq / x.length), dc: sum / x.length, peak, bad };
-}
-// pitch by autocorrelation over the voiced middle
-function estimateF0(x) {
-  const a = Math.floor(x.length * 0.35), b = Math.floor(x.length * 0.6);
-  const seg = x.subarray(a, b);
-  const minLag = Math.floor(SR / 400), maxLag = Math.floor(SR / 70);
-  let best = 0, bestLag = 0;
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let s = 0; for (let i = 0; i + lag < seg.length; i++) s += seg[i] * seg[i + lag];
-    if (s > best) { best = s; bestLag = lag; }
-  }
-  return bestLag ? SR / bestLag : 0;
-}
-// LPC formants: decimate to ~11 kHz first (at 44.1 kHz a low-order LPC can't
-// resolve low formants — the standard fix is to work at ~2× the formant range),
-// then Levinson–Durbin and pick spectral-envelope peaks.
-function estimateFormants(x) {
-  const DEC = 4, sr = SR / DEC;                            // 11025 Hz
-  const a = Math.floor(x.length * 0.4), b = Math.min(x.length, a + Math.floor(0.04 * SR));
-  // anti-alias (box average) + decimate
-  const m = Math.floor((b - a) / DEC), seg = new Float64Array(m);
-  for (let i = 0; i < m; i++) { let s = 0; for (let j = 0; j < DEC; j++) s += x[a + i * DEC + j]; seg[i] = s / DEC; }
-  for (let i = seg.length - 1; i > 0; i--) seg[i] -= 0.98 * seg[i - 1];         // pre-emphasis
-  for (let i = 0; i < seg.length; i++) seg[i] *= 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (seg.length - 1)); // Hamming
-  const p = 12;
-  const r = new Float64Array(p + 1);
-  for (let k = 0; k <= p; k++) { let s = 0; for (let i = 0; i + k < seg.length; i++) s += seg[i] * seg[i + k]; r[k] = s; }
-  if (r[0] < 1e-12) return [];
-  const aC = new Float64Array(p + 1); aC[0] = 1; let err = r[0];
-  for (let i = 1; i <= p; i++) {
-    let acc = r[i]; for (let j = 1; j < i; j++) acc += aC[j] * r[i - j];
-    const k = -acc / err;
-    const tmp = aC.slice();
-    for (let j = 1; j < i; j++) aC[j] = tmp[j] + k * tmp[i - j];
-    aC[i] = k; err *= (1 - k * k);
-    if (err <= 0) break;
-  }
-  const peaks = [], mags = [];
-  for (let f = 150; f <= 4500; f += 10) {
-    const w = 2 * Math.PI * f / sr; let re = 1, im = 0;
-    for (let k = 1; k <= p; k++) { re += aC[k] * Math.cos(-w * k); im += aC[k] * Math.sin(-w * k); }
-    mags.push({ f, m: 1 / Math.sqrt(re * re + im * im) });
-  }
-  for (let i = 2; i < mags.length - 2; i++)
-    if (mags[i].m > mags[i - 1].m && mags[i].m >= mags[i + 1].m && mags[i].m > mags[i - 2].m) peaks.push(mags[i].f);
-  return peaks;
-}
+// ── measurement (shared with the calibration tools: tools/lib/formants.mjs) ─
 function measure(plan, seed = 12345) {
   const x = renderScore(scorePlan(plan), SR, seed);
-  return { x, st: stats(x), f0: estimateF0(x), F: estimateFormants(x) };
+  return { x, st: stats(x), f0: estimateF0(x, SR), F: measureVowelFormants(x, SR) };
 }
-
-// ── WAV writer (16-bit mono PCM) ──────────────────────────────────────────
-function writeWav(path, x) {
-  const n = x.length, buf = Buffer.alloc(44 + n * 2);
-  buf.write("RIFF", 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write("WAVE", 8);
-  buf.write("fmt ", 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
-  buf.writeUInt32LE(SR, 24); buf.writeUInt32LE(SR * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
-  buf.write("data", 36); buf.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, x[i])); buf.writeInt16LE((s * 32767) | 0, 44 + i * 2); }
-  writeFileSync(path, buf);
-}
+const writeWav = (path, x) => writeWavAt(path, x, SR);
 
 // ── cardinal-vowel sanity ──────────────────────────────────────────────────
 const cardinals = [
