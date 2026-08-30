@@ -360,10 +360,9 @@ export function makeSettlement(world, x, y, opts = {}) {
     parentSettlementId: opts.parentId ?? -1,
     name: opts.name || `settlement-${id}`,
     people: opts.people ?? 25,
-    // Small starter store — the old village warehouse floor, not a filled
-    // city granary. City mint used to overwrite this with 500 ticks of the
-    // whole basin (~480 t). That gift is gone; this is only enough that the
-    // first harvest can book before the pot reads empty.
+    // Small starter store — a few ticks of household grain so the first
+    // harvest can book before the pot reads empty. This is a famine buffer,
+    // not a size gift: agglomeration aims at harvest supply, not the pile.
     food: opts.food ?? 80,
     knowledge: opts.knowledge || {
       // The NATURAL-VILLAGE seed: an internally consistent neolithic package.

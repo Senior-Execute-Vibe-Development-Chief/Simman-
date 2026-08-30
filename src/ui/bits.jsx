@@ -77,7 +77,7 @@ export function foodLedgerInfo(s) {
       status = "eating stores";
       statusColor = "#a95";
     } else {
-      status = "deficit";
+      status = "on stores";
       statusColor = "#c84";
     }
   } else {

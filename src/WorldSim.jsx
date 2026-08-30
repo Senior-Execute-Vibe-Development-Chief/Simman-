@@ -69,9 +69,9 @@ const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","re
 // blit every frame and cost nothing.
 const STEP_CACHE_VIEWS = new Set(["money","goodsflow","roads"]);
 // Goods-flow overlay: per-kind cargo colors + legend labels (grain split by
-// channel: the levy/tree vs the open market — the two food systems).
+// channel: levy = fields→city; market = grain bought between cities).
 const GOODS_FLOW_KINDS={grainL:[110,205,90],grainM:[190,255,80],materials:[176,148,109],ore:[151,151,166],metal:[121,166,209],cloth:[186,121,222],wares:[235,164,84],luxury:[240,95,190]};
-const GOODS_FLOW_LABELS=[["grainL","Grain \u2014 levy"],["grainM","Grain \u2014 market"],["materials","Materials"],["ore","Ore"],["metal","Metal"],["cloth","Cloth"],["wares","Wares"],["luxury","Luxury"]];
+const GOODS_FLOW_LABELS=[["grainL","Levy — fields \u2192 city"],["grainM","Market — city \u2194 city"],["materials","Materials"],["ore","Ore"],["metal","Metal"],["cloth","Cloth"],["wares","Wares"],["luxury","Luxury"]];
 const STEP_CACHE_REGEN = 8;
 let _mercator = false; // module-level flag for projection functions
 
@@ -211,10 +211,12 @@ function subLockReason(sub,psw,stats){
     return "No coin has been struck yet — the world still barters.";
   if(sub==="tilecoin"){
     if(!(SIM_T.TILE_MONEY>0)) return "Per-tile coin is off — enable TILE_MONEY in levers.";
-    if(!(psw&&psw._tileCoinMax>0)) return "No farm-gate coin on the land yet — grain must trade for coin to pile on tiles.";
+    // Open even at 0: an empty field is the finding (cities eat levy, not purchases).
   }
-  if(sub==="goodsflow"&&!((stats&&stats.totalWealth)>0))
-    return "No trade yet — goods move once towns meet in trade.";
+  if(sub==="goodsflow"){
+    if(!(psw.settlements&&psw.settlements.some(s=>s&&s.mode!=="abandoned")))
+      return "No cities yet — the land's harvest has nowhere to flow.";
+  }
   if(sub==="prices"&&!(psw.settlements&&psw.settlements.some(s=>s&&s._gPrice)))
     return "No market prices yet — towns must first meet in trade.";
   if(sub==="society"&&!(psw.settlements&&psw.settlements.some(s=>s&&(s._coerce||0)>0.02)))
@@ -1719,12 +1721,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
   }
   if(psw&&ctx&&viewRef.current==="goodsflow"){
-    // ── Goods-flow overlay ── animated cargo streams colored by KIND (grain
-    // levy vs market, ore, metal, cloth, wares, materials, luxury), normalized
-    // PER KIND (grain units and goods units are different scales — one global
-    // max would blank the smaller book). Same particle scheme as the money
-    // view; 2-point entries (tree levies, sea hops without a path) draw a
-    // straight stream whose dot count follows real distance.
+    // ── Goods-flow overlay ── animated cargo streams colored by KIND.
+    // Levy (grainL): surplus grain from worked TILES into their city.
+    // Market (grainM): grain bought between settlements. Other kinds are
+    // the goods-vector trades. Normalized PER KIND (grain units and goods
+    // units are different scales — one global max would blank the smaller
+    // book). Same particle scheme as the money view; 2-point entries
+    // (field→city, sea hops without a path) draw a straight stream.
     const TR=psw.tileRes;
     const gsx=ti=>((ti%psw.tw)+0.5)*TR;
     const gsy=ti=>dataYtoScreenY(((ti/psw.tw|0)+0.5)*TR,H,CH);
@@ -4092,7 +4095,7 @@ const renderInspect=()=>{
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
           {demand>0&&isFinite(ticksLeft)&&<><span className="au-fade">Store runway</span><span>{ticksLeft>=500?"500+":Math.round(ticksLeft)} tick{Math.round(ticksLeft)===1?"":"s"}</span></>}
-          <span className="au-fade">Supply /tick</span><span title="Net food flow after trade & hierarchy — what feeds the granary this tick">{fmtFood(supply)}</span>
+          <span className="au-fade">Supply /tick</span><span title="Harvest + trade this tick — the city sizes to THIS, not the granary. Stores only cover a dip below requirement.">{fmtFood(supply)}</span>
           {landFood>0.001&&landFood!==supply&&<><span className="au-fade">· local harvest</span><span className="au-fade">{fmtFood(landFood)}</span></>}
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
@@ -4101,7 +4104,7 @@ const renderInspect=()=>{
           {coreNeed>0&&coreNeed<demand*0.98&&<><span className="au-fade">· urban core</span><span className="au-fade">{fmtFood(coreNeed)}</span></>}
           {fedM!=null&&<><span className="au-fade">Core fed (avg)</span><span>{Math.round(fedM*100)}%</span></>}
           <span style={{color:statusColor}}>Flow balance</span>
-          <span style={{color:statusColor}} title="Supply − demand this tick; the granary bridges lean years">{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
+          <span style={{color:statusColor}} title="Supply − city requirement this tick. The granary is only a buffer when supply dips below that — it does not grow the city.">{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
           <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
           <span>{fmtPeople(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
@@ -4889,6 +4892,9 @@ return(
       <span style={{cursor:"pointer"}} className="au-fade"
         onClick={()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=false;setActiveGoods(s);}}>None</span>
     </div>
+    <div className="au-fade" style={{fontSize:10,fontStyle:"italic",marginTop:5,lineHeight:1.45}}>
+      Levy is grain the countryside sends to its city. Market is grain cities buy from each other. Coin on tiles (Coin field) is only the paid slice.
+    </div>
   </div>}
 </div>}
 </div>}
@@ -4921,7 +4927,9 @@ return(
     const psw=peopleRef.current;
     const max=psw._tileCoinMax;
     const tot=psStats.tileWealth;
-    if(!max&&!tot)return null;
+    if(!max&&!tot)return <div className="au-fade" style={{fontSize:10,marginTop:3,lineHeight:1.45}}>
+      Empty — no city is BUYING grain. Food arrives as in-kind levy (fields→city) and local harvest; those moves create no coin on the tile. Watch Goods → Levy for that flow, Money for city treasuries.
+    </div>;
     return <div className="au-fade" style={{fontSize:10,marginTop:3,lineHeight:1.45}}>
       {max>0&&<>richest farm tile ≈ {max.toFixed(1)} coin<br/></>}
       {tot>0&&<>≈ {fmtGoldKg(tot)} on farm tiles · ≈ {fmtGoldKg(psStats.totalWealth||0)} in city & state purses</>}

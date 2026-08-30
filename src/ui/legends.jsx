@@ -102,7 +102,7 @@ export const LEGENDS = {
       [ramp(["rgb(180,140,50)"]), "farm belt — grain sold for coin"],
       [ramp(["rgb(255,250,190)"]), "hot farm gates — coin piling unserved"],
     ],
-    tip: "Farm-gate coin only — grain paid for in coin piles here after a sale; most food moves as in-kind levy and local harvest (no coin on the tile). City treasuries and the Money lens hold the bulk of wealth. Rural tax, rent, salt, and tithe drain this field into capitals. Bright gold = unserved piles that can pull founding.",
+    tip: "Farm-gate coin only — grain PAID FOR in coin piles here after a sale. The countryside's harvest levy and a city's own fields move grain with no coin, so a dark field does not mean cities are unfed. City treasuries sit on the Money lens. Rural tax, rent, salt, and tithe drain this field into capitals. Bright gold = unserved piles that can pull founding.",
   },
   roads: {
     title: "Trade & roads",

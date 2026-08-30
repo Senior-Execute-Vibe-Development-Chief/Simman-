@@ -1703,22 +1703,6 @@ function depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, amount) {
   spreadExact(pf, _spreadTiles, _spreadW, n, sumW, amount);
 }
 
-// T.STARVE_SHED already counts the granary in _fedM (flow + store vs core
-// need — v61). STAMP_RETIRE still sized the city and chased agglomeration
-// off THIS TICK's harvest flow (s._k / foodK), so a stocked city whose
-// ledger was cold or whose year was lean read as a hamlet and the
-// concentration flow expelled the core in one update. Hold is the people
-// already counted urban (or the birth pile on the first derive), scaled
-// by that same fed-ness: a full pot holds the city; an empty one melts.
-function granaryHoldF(s, scale) {
-  if (!(T.STARVE_SHED > 0) || !(scale > 0)) return 0;
-  const fedY = s._fedM !== undefined ? Math.max(0, Math.min(1, s._fedM)) : 1;
-  if (!(fedY > 0)) return 0;
-  const prev = s._coreMeasured != null ? s._coreMeasured / scale
-    : (s._coreHoldCapF > 0 ? s._coreHoldCapF : 0);
-  return prev * fedY;
-}
-
 // T.URBAN_FOOD_GATE — agrarian arithmetic on the agglomeration pull: a farmer
 // may not be drawn into the core if losing them would leave the city's food
 // flow short of its urban mouths. Uses the same rural-share → harvest scaling
@@ -2084,12 +2068,12 @@ export function deriveOnePop(world) {
       // not this exponent, does the compressing).
       const share = Math.pow(pull, betaEff) / sumKb;
       uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of the pull that concentrates in the core — of IMPORT-fed capacity off T.AGGLOM_LOCAL, of the region's WHOLE capacity on it (there it reads as an urbanisation rate, and 0.13 sits in history's 5-15% agrarian band); ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
-      // A stocked city does not expel its core because this tick's harvest
-      // flow (or a cold newborn ledger) under-states what the pot can feed.
-      // URBAN_FOOD_GATE already refuses hungry GROWTH; this is the shrink
-      // half — the granary's job. Grows still follow the economy target.
-      const holdF = granaryHoldF(s, scale);
-      if (holdF > uTarget) uTarget = holdF;
+      // The city AIMS at harvest supply (s._k / the pull above). Stored grain
+      // is a famine buffer (updateFood _fedM: flow + store vs core need) — it
+      // must not raise this target, or a birth warehouse grows a metropolis
+      // that dies when the gift runs out. URBAN_FOOD_GATE still refuses
+      // hungry GROWTH; a lean year sheds toward what the land actually feeds.
+      //
       // A city lives WITHIN its hinterland: cap the target at a share of the
       // region's own people. Under β-share this is the binding limiter (and, for
       // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to
@@ -2212,13 +2196,12 @@ export function deriveOnePop(world) {
         // that one. Zero new constants: the birth SEED is untouched (the site law
         // still gathers the pile before the mint), it simply stops being floored
         // forever after.
-        // STAMP_RETIRE drops the 12k birth floor so a city can fail — but
-        // "what the economy holds" is not this tick's harvest flow. Without
-        // the granary term a stocked core clipped to foodK (hundreds of
-        // people) in one derive while s.food still held hundreds of tonnes.
-        const storeHold = granaryHoldF(s, scale);
+        // STAMP_RETIRE drops the 12k birth floor so a city can fail: what a
+        // city IS is what its harvest (and imports) can feed. The granary is
+        // the buffer when that flow dips — not a second size floor. A gift-
+        // stuffed warehouse must not read as a metropolis.
         coreEff = T.STAMP_RETIRE
-          ? Math.min(_coreF, Math.max(kLocal + kBeyond, storeHold))
+          ? Math.min(_coreF, kLocal + kBeyond)
           : Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);
         // THE ARMING CHECK — the instrument this repo keeps needing and keeps
         // not having. TWO mechanisms were "validated" in regimes where their
@@ -2298,24 +2281,15 @@ export function deriveOnePop(world) {
     // plantations) carry no stash and are untouched.
     // T.STAMP_RETIRE also lifts the stamp off the CAPACITY spike — "no minimum"
     // has to mean both sites (§11 named them), or the floor simply moves.
-    if (T.CORE_HOLD && !T.STAMP_RETIRE && s._coreHoldCapF > 0 && _coreF > 0) {
-      // T.STARVE_SHED: the floor yields to SUSTAINED starvation — "hold what
-      // arrived" was food-blind, so a chronically unfed core kept its full
-      // capacity and the field logistic kept growing it through famine. The
-      // floor now carries the settlement's fed-ness average (s._fedM, a
-      // granary-decade memory stamped by the food pass): a fed core holds
-      // exactly as before (fedM ≈ 1 — birth-crater behaviour unchanged; new
-      // mints start at 1), a starving one melts at generational pace and
-      // hunger finally empties the CITY, not just the land around it.
+    // Stamp floor: hold the gathered birth pile until a CATCHMENT exists to
+    // measure harvest. STAMP_RETIRE lifts it the moment the city has land
+    // (f > 0) so size follows supply, not a warehouse — but NOT before, or
+    // the mint-window crater returns (capacity spike 0 while the ledger is
+    // still cold). Stores still gate famine via _fedM; they do not size the
+    // city. Off STAMP_RETIRE the stamp stays for the whole life of the city.
+    if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0 && (!T.STAMP_RETIRE || !(f > 0))) {
       const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
       const hold = Math.min(_coreF, s._coreHoldCapF) * fedY;
-      if (hold > kCap) kCap = hold;
-    }
-    // STAMP_RETIRE skipped the block above (no 12k floor) and left kCap as
-    // the flow target, so the spike dropped out from under a stocked core
-    // and the logistic killed it. Same granary term, live core not stamp.
-    {
-      const hold = Math.min(_coreF, granaryHoldF(s, scale));
       if (hold > kCap) kCap = hold;
     }
     // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess

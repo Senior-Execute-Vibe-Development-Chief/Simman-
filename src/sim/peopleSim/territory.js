@@ -769,6 +769,21 @@ function tallyTerritory(world, owner, cost, byId) {
   // (cost/rn). One normalisation point — every downstream consumer then sees
   // reference-scale numbers automatically. Off ⇒ rn=1, invA=1: byte-identical.
   const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  // Goods overlay: grainL = surplus walking from the FIELD to its city, not
+  // the old child→liege tree. Cap per owner so a fine grid does not emit a
+  // stream per tile (render CAPD is 9000 dots). Keep the strongest surplus
+  // tiles — those are the levy the city actually lives on.
+  const LEVY_PER_CITY = 12;
+  const levyBest = new Map();
+  const noteLevy = (sid, ti, mag) => {
+    if (!(mag > 1e-9)) return;
+    let b = levyBest.get(sid);
+    if (!b) { levyBest.set(sid, b = []); }
+    if (b.length < LEVY_PER_CITY) { b.push({ ti, mag }); return; }
+    let j = 0;
+    for (let i = 1; i < b.length; i++) if (b[i].mag < b[j].mag) j = i;
+    if (mag > b[j].mag) b[j] = { ti, mag };
+  };
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0) continue;
@@ -788,6 +803,7 @@ function tallyTerritory(world, owner, cost, byId) {
       const w = foodFalloff(cost[ti] / _rn);
       const gross = f * w * _invA;
       const surplus = landSurplusFrac(world, ti, gross, s);
+      noteLevy(oid, ti, gross * surplus);
       s._terrFertSum += gross * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
@@ -871,6 +887,17 @@ function tallyTerritory(world, owner, cost, byId) {
     // this so herds face the same countryside-eats-first gate as grain.
     s._terrMeanSurplus = s._terrPlantWt > 1e-9 ? s._terrSurplusAcc / s._terrPlantWt : 1;
   }
+  const levy = [];
+  for (const [sid, tiles] of levyBest) {
+    const s = byId.get(sid);
+    if (!s) continue;
+    const dest = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    for (const { ti, mag } of tiles) {
+      if (ti === dest) continue;
+      levy.push({ pts: [ti, dest], mag, toEnd: true, kind: "grainL" });
+    }
+  }
+  world._goodsFlowsLevy = levy;
   world._borders = borders;
 }
 

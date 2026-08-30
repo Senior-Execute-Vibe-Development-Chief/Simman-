@@ -953,8 +953,8 @@ function buildSnapshotUnsafe() {
   const moneyFlows = (viewMode === "money" && world._moneyFlows) ? world._moneyFlows : null;
   // Goods view: grain entries rebuild per tick (foodHierarchy), goods-vector
   // entries per trade sweep (roads) — concatenate for the renderer.
-  const goodsFlows = (viewMode === "goodsflow" && (world._goodsFlowsGrain || world._goodsFlowsTrade))
-    ? [...(world._goodsFlowsGrain || []), ...(world._goodsFlowsTrade || [])] : null;
+  const goodsFlows = (viewMode === "goodsflow" && (world._goodsFlowsLevy || world._goodsFlowsGrain || world._goodsFlowsTrade))
+    ? [...(world._goodsFlowsLevy || []), ...(world._goodsFlowsGrain || []), ...(world._goodsFlowsTrade || [])] : null;
   let tileComp = null;
   if (viewMode === "roads" && sendStatic && world._tileComp && world._tileCompSeen) {
     const tc = world._tileComp, seen = world._tileCompSeen, stamp = world._tileCompStampVal, N = world.N;
