@@ -636,7 +636,8 @@ function packSettlement(s) {
   return {
     id: s.id, name: s.name, mode: s.mode,
     pos: { x: s.pos.x, y: s.pos.y },
-    people: s.people, tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
+    people: s.people, _urbanPop: s._urbanPop, _ruralPop: s._ruralPop,
+    tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
     faithId: s.faithMix && s.faithMix.length ? s.faithMix[0][0] : -1,
     langId: s.langMix && s.langMix.length ? s.langMix[0][0] : -1,   // SPOKEN tongue (separate layer from the people)
     ancId: dominantAnc(s),   // dominant deep-ancestry stock (the slow genetic bedrock)
@@ -672,7 +673,9 @@ function packSelected(s) {
     knowledge: s.knowledge, localRes: s.localRes,
     _minedRate: s._minedRate, _terrTiles: s._terrTiles, _terrFertSum: s._terrFertSum,
     waterAccess: s.waterAccess, _fishYield: s._fishYield, _pastoral: s._pastoral,
-    _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _urbanFactor: s._urbanFactor,
+    _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _foodNet: s._foodNet,
+    _landFood: s._landFood, _coreNeed: s._coreNeed, _fedM: s._fedM,
+    _urbanFactor: s._urbanFactor, _besiegedNow: !!s._besiegedNow,
     // CITY CORE vs whole PROVINCE: s.people bundles the rural hinterland (it's the
     // sum over the settlement's entire catchment). _urbanPop is the people in the
     // urban core itself — the number the card should headline as "the city".
@@ -925,17 +928,21 @@ function buildSnapshotUnsafe() {
 
   // Coin-field view: farm-gate coin on worked tiles (_tileWealth). Absolute
   // log ruler 0.01..10k coin/tile — same colour means the same pile in every era.
+  // tileCoinMax is computed whenever TILE_MONEY is on (not only while the lens
+  // is open) so the Coin field sub-lens can unlock once coin exists on the land.
   let tileCoinDens = null, tileCoinMax = 0;
-  if (viewMode === "tilecoin" && sendStatic && T.TILE_MONEY > 0 && world._tileWealth) {
+  if (T.TILE_MONEY > 0 && world._tileWealth) {
     const tw = world._tileWealth, N = world.N;
     for (let ti = 0; ti < N; ti++) if (tw[ti] > tileCoinMax) tileCoinMax = tw[ti];
-    const LO = -2, SPAN = 4;   // log10(0.01) .. log10(10000)
-    tileCoinDens = pooledArr(Uint8Array, N);
-    tileCoinDens.fill(0);
-    for (let ti = 0; ti < N; ti++) {
-      const c = tw[ti];
-      if (c <= 0.01) continue;
-      tileCoinDens[ti] = Math.min(250, Math.round((Math.log10(c) - LO) / SPAN * 250));
+    if (viewMode === "tilecoin" && sendStatic) {
+      const LO = -2, SPAN = 4;   // log10(0.01) .. log10(10000)
+      tileCoinDens = pooledArr(Uint8Array, N);
+      tileCoinDens.fill(0);
+      for (let ti = 0; ti < N; ti++) {
+        const c = tw[ti];
+        if (c <= 0.01) continue;
+        tileCoinDens[ti] = Math.min(250, Math.round((Math.log10(c) - LO) / SPAN * 250));
+      }
     }
   }
 
@@ -1135,7 +1142,7 @@ function buildSnapshotUnsafe() {
     // × bridge × rNormPop² at pack time); the legend then ×POP_SCALE via fmtPeople.
     popDens, popMax: popDens ? popMax : undefined,   // population lens: absolute-ruler people-on-land
     devDens,                          // technique lens: the idea field, absolute 0..1 ruler ×250
-    tileCoinDens, tileCoinMax: tileCoinDens ? tileCoinMax : undefined,   // coin field: farm-gate coin per tile
+    tileCoinDens, tileCoinMax: tileCoinMax > 0 ? tileCoinMax : undefined,   // coin field: farm-gate coin per tile (max always when TILE_MONEY)
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last

@@ -26,7 +26,7 @@ import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
 import { TechTreeOverlay, ChronicleOverlay, DynastyOverlay, CHRON_COL, ERA_BG } from "./ui/documents.jsx";
-import { fmtPeople, fmtFood, fmtGoldKg, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
+import { fmtPeople, fmtFood, fmtGoldKg, fmtUrbanCatchment, foodLedgerInfo, foodShockLabel, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
 import { resetEmblems, realmEmblemImg, realmEmblemURL } from "./ui/emblems.jsx";
 import { realmLabelAnchors, drawMapLabels } from "./ui/labels.js";
 import { TopBarBell, ToastHost, HelpOverlay, evMeta, evCatColor, EV_CATS } from "./ui/events.jsx";
@@ -2883,7 +2883,8 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.loyal){_drop(psw._loyal);_drop(psw._loyalHome);psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
   if(snap.popDens){_drop(psw._popDens);psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
   if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (absolute 0..1 ruler ×250)
-  if(snap.tileCoinDens){_drop(psw._tileCoinDens);psw._tileCoinDens=snap.tileCoinDens;psw._tileCoinMax=snap.tileCoinMax||0;}   // coin field: farm-gate coin on tiles
+  if(snap.tileCoinMax!=null)psw._tileCoinMax=snap.tileCoinMax;
+  if(snap.tileCoinDens){_drop(psw._tileCoinDens);psw._tileCoinDens=snap.tileCoinDens;}   // coin field: farm-gate coin on tiles
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   psw._goodsFlows=snap.goodsFlows||null;           // animated cargo flows (goods-flow view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
@@ -3151,7 +3152,8 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
       let dx=Math.abs(s.pos.x-psTx);if(dx>psw.tw/2)dx=psw.tw-dx;
       const dy=s.pos.y-psTy,d2=dx*dx+dy*dy;
       if(d2<bestD2){bestD2=d2;best=s;}}
-    if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
+    if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,urbanPop:best._urbanPop,
+      isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
  }}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
 },[CW,CH]);
@@ -3505,7 +3507,7 @@ const renderRealmDetail=()=>{
           style={{background:"transparent",border:"none",cursor:"pointer",fontSize:15}}>📜</button>
       </div>
       <div className="au-fade" style={{fontSize:11,marginBottom:8}}>
-        {c.members.length} settlements · {fmtPeople(pop)} souls
+        {c.members.length} settlements · {fmtPeople(pop)} catchment
         {capCul?<> · <Chip hue={capCul.hue} onClick={()=>navigate({tab:"peoples"})} title="Open the Peoples registry">{capCul.name}</Chip> people</>:null}
         {pers?` · ${pers.label}`:""}
       </div>
@@ -3553,7 +3555,7 @@ const renderRealmDetail=()=>{
           {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
           {(m.tier|0)>=3&&<span className="au-fade">· metropolis</span>}
           <div style={{flex:1}}/>
-          <span className="au-fade au-num">{fmtPeople(m.people||0)}</span>
+          <span className="au-fade au-num">{fmtPeople(m.people||0)} catchment</span>
         </div>
       ))}
     </div>
@@ -3587,12 +3589,12 @@ const renderPeoples=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       <div className="au-fade" style={{fontSize:9,marginBottom:8,lineHeight:1.4}}>
-        A <b>people</b> is an ethnic identity — names, descent and culture, carried by population (not genetics). Its <b>language</b> is a SEPARATE, faster-moving layer (the Languages lens): under a foreign crown a people keeps its name long after it adopts the ruler's tongue, so the two maps diverge. Peoples branch from a common <b>family</b> (their cradle stock), assimilate slowly under shared rule, and diverge in isolation.
+        A <b>people</b> is an ethnic identity — names, descent and culture, carried by population (not genetics). Its <b>language</b> is a SEPARATE, faster-moving layer (the Languages lens): under a foreign crown a people keeps its name long after it adopts the ruler's tongue, so the two maps diverge. Peoples branch from a common <b>family</b> (their cradle stock), assimilate slowly under shared rule, and diverge in isolation. Population figures are <b>catchment</b> totals (city + countryside each settlement administers).
       </div>
       {famList.map((f,fi)=>(
         <div key={fi} style={{marginBottom:8}}>
           <div className="au-heading au-sc" style={{fontSize:11,marginBottom:2,color:"var(--au-ink)"}}>
-            {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)}</span>
+            {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)} catchment</span>
           </div>
           {f.rows.map(({c,a})=>(
             <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
@@ -3600,7 +3602,7 @@ const renderPeoples=()=>{
               <span style={{fontWeight:600}}>{c.name}</span>
               {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
               <div style={{flex:1}}/>
-              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>
+              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)} catchment</span>
             </div>
           ))}
         </div>
@@ -3629,11 +3631,11 @@ const renderFaiths=()=>{
           <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
           <span className="au-fade" style={{fontSize:9}}>{f.character||f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
           <div style={{flex:1}}/>
-          <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)}`:"faded"}</span>
+          <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)} catchment`:"faded"}</span>
         </div>
       ))}
       <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
-        Organized faiths spread along trade routes, convert courts, and schism across distance. The Faiths lens maps them.</div>
+        Organized faiths spread along trade routes, convert courts, and schism across distance. The Faiths lens maps them. Population is catchment (city + countryside).</div>
     </div>
   );
 };
@@ -3664,19 +3666,19 @@ const renderLanguages=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       <div className="au-fade" style={{fontSize:9,marginBottom:8,lineHeight:1.4}}>
-        A <b>language</b> is the spoken tongue — a SEPARATE, faster layer than the <i>people</i> who speak it. A conquering crown spreads its standard across subject peoples, so one tongue can blanket many peoples and the map STEPS at political borders, while a people keeps its name long after it changes speech. Tongues branch from a common <b>family</b> and drift apart in isolation.
+        A <b>language</b> is the spoken tongue — a SEPARATE, faster layer than the <i>people</i> who speak it. A conquering crown spreads its standard across subject peoples, so one tongue can blanket many peoples and the map STEPS at political borders, while a people keeps its name long after it changes speech. Tongues branch from a common <b>family</b> and drift apart in isolation. Population is catchment (city + countryside).
       </div>
       {famList.map((f,fi)=>{const ls=live(f);return(
         <div key={fi} style={{marginBottom:8}}>
           <div className="au-heading au-sc" style={{fontSize:11,marginBottom:2,color:"var(--au-ink)"}}>
-            {famName(f)} <span className="au-fade" style={{fontSize:9}}>family · {ls.length} {ls.length===1?"tongue":"tongues"} · {fmtPeople(f.pop)}</span>
+            {famName(f)} <span className="au-fade" style={{fontSize:9}}>family · {ls.length} {ls.length===1?"tongue":"tongues"} · {fmtPeople(f.pop)} catchment</span>
           </div>
           {ls.map(({l,a})=>(
             <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
               <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{l.name||"(tongue)"}</span>
               <div style={{flex:1}}/>
-              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>
+              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)} catchment</span>
             </div>
           ))}
         </div>
@@ -3749,34 +3751,9 @@ const renderInspect=()=>{
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // Food balance. surplus is the REAL flow balance — supply − consumption,
-  // where _foodSupply already contains hierarchy-delivered grain (via
-  // _foodNet); _foodImportRate is the display-only decomposition of that
-  // delivered share, so adding it here would double-count imports. An
-  // import-fed city sits near 0 (it eats grain as fast as it arrives, so
-  // stored food stays low); that is "balanced", NOT starving. Only a
-  // genuine, uncovered shortfall that is actually draining the granary
-  // counts as starving.
-  const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
-  const surplus=supply-demand;
-  const eps=Math.max(0.02,demand*0.02);
-  const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
-  // "Starving" reads the SAME ruler the famine physics reads (owner report:
-  // "every single city says starving and still grows"): under ONE_POP the
-  // catchment's countryside eats from the LAND (the field feeds them), and
-  // the granary's real customers are the urban CORE (s._coreNeed — the
-  // famine flow-gate's own bar). A city whose total-catchment demand
-  // outruns the granary but whose core is flow-fed is living off its land
-  // ("land-fed"), not starving — and the one that IS starving now also
-  // contracts (STARVE_SHED melts its capacity floor on the same signal).
-  const coreNeed=s._coreNeed!==undefined?s._coreNeed:demand;
-  let status,statusColor;
-  if(surplus>eps){status="surplus";statusColor="#3a7";}
-  else if(surplus<-eps){
-    if((s.food||0)<=0.01&&supply<coreNeed){status="starving";statusColor="#c44";}
-    else if(ticksLeft<50){status="land-fed";statusColor="#a95";}
-    else{status="deficit";statusColor="#c84";}
-  } else {status="balanced";statusColor="#888";}
+  // Food balance — shared helper mirrors the famine physics' rulers.
+  const fl=foodLedgerInfo(s);
+  const {supply,demand,importRate,landFood,surplus,ticksLeft,coreNeed,fedM,status,statusColor}=fl;
 
   // Treasury + trade.
   const wealth=Math.round(s.wealth||0);
@@ -4038,15 +4015,14 @@ const renderInspect=()=>{
         );
       })()}
 
-      {/* ── Active shock (plague / famine) ── */}
+      {/* ── Active shock (plague / famine / siege) ── */}
       {(()=>{
-        const sh=s._shock||0;
-        if(!sh)return null;
-        const plague=sh===2;
+        const shock=foodShockLabel(s);
+        if(!shock)return null;
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:plague?"hsl(280,55%,52%)":"hsl(30,80%,48%)",flexShrink:0}}/>
-            <span className="au-fade">{plague?"struck by plague":"famine — harvest failing"}</span>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${shock.hue},${shock.hue===280?55:80}%,${shock.hue===280?52:48}%)`,flexShrink:0}}/>
+            <span className="au-fade">{shock.text}</span>
           </div>
         );
       })()}
@@ -4094,7 +4070,7 @@ const renderInspect=()=>{
           </>):(<>
             <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s.people)}</span>
             {K?<span className="au-fade" style={{fontSize:10}}> / {fmtPeople(K)}</span>:null}
-            <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
+            <span className="au-fade" style={{fontSize:9,marginLeft:3}}>catchment</span>
           </>)}
         </div>
         <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
@@ -4114,13 +4090,17 @@ const renderInspect=()=>{
         right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)}</span>}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
-          <span className="au-fade">Produced /tick</span><span>{fmtFood(supply)}</span>
+          {demand>0&&isFinite(ticksLeft)&&<><span className="au-fade">Store runway</span><span>{ticksLeft>=500?"500+":Math.round(ticksLeft)} tick{Math.round(ticksLeft)===1?"":"s"}</span></>}
+          <span className="au-fade">Supply /tick</span><span title="Net food flow after trade & hierarchy — what feeds the granary this tick">{fmtFood(supply)}</span>
+          {landFood>0.001&&landFood!==supply&&<><span className="au-fade">· local harvest</span><span className="au-fade">{fmtFood(landFood)}</span></>}
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
           {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
-          <span className="au-fade">Consumed /tick</span><span>{fmtFood(demand)}</span>
-          <span style={{color:statusColor}}>Balance</span>
-          <span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
+          <span className="au-fade">Consumed /tick</span><span title="Catchment demand incl. garrison">{fmtFood(demand)}</span>
+          {coreNeed>0&&coreNeed<demand*0.98&&<><span className="au-fade">· urban core</span><span className="au-fade">{fmtFood(coreNeed)}</span></>}
+          {fedM!=null&&<><span className="au-fade">Core fed (avg)</span><span>{Math.round(fedM*100)}%</span></>}
+          <span style={{color:statusColor}}>Flow balance</span>
+          <span style={{color:statusColor}} title="Supply − demand this tick; the granary bridges lean years">{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
           <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
           <span>{fmtPeople(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
@@ -4132,7 +4112,7 @@ const renderInspect=()=>{
           {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(s.people)}/{fmtPeople(nextThr)}</span></>}
           {(s.army||0)>0.5&&(<>
             <span className="au-fade">Garrison</span>
-            <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
+            <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of catchment · fed from food ledger)</span></span>
           </>)}
         </div>
       </PsSection>
@@ -4391,7 +4371,7 @@ const renderBoard=()=>{
 
   // Sort keys per mode. Functions return a number (descending sort).
   const SETT_SORTS={
-    population:[s=>s.people,"Population",fmtPeople],
+    population:[s=>s.people,"Catchment pop",fmtPeople],
     wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
     army:[s=>s.army||0,"Garrison",fmtPeople],
     mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
@@ -4400,7 +4380,7 @@ const renderBoard=()=>{
   };
   const CNT_SORTS={
     size:[c=>c.members?c.members.length:0,"Size (settlements)"],
-    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Catchment pop",fmtPeople],
     wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
     treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
     army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
@@ -4549,7 +4529,7 @@ const renderCharts=()=>{
             </div>))}
           {rows.length===0&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>Nothing in these categories yet.</div>}
         </div>;})()}
-      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
+      <MiniChart data={H} get={d=>d.pop}            label="Catchment population (Σ settlement catchments)" color="#c98a3a" fmtY={fmtPeople}/>
       <MiniChart data={H} get={d=>d.gold}           label="Gold by weight (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
       <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
       <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
@@ -4828,7 +4808,7 @@ return(
         {hoverInfo.sett&&<div className="au-pico-title" style={{textTransform:"capitalize"}}>
           {hoverInfo.sett.name}{hoverInfo.sett.isCap?" ★":""}</div>}
         {hoverInfo.sett&&<div className="au-fade" style={{fontSize:11,textTransform:"capitalize"}}>
-          {tierName} · {fmtPeople(hoverInfo.sett.people)} souls</div>}
+          {tierName} · {fmtUrbanCatchment(hoverInfo.sett.urbanPop, hoverInfo.sett.people)}</div>}
         {ctry&&<div style={{fontSize:hoverInfo.sett?11:12.5,fontWeight:hoverInfo.sett?400:700}}>
           {!hoverInfo.sett&&<span className="au-fade" style={{fontWeight:400}}>realm of </span>}
           <span style={{textTransform:"capitalize"}}>{hoverInfo.realm}</span></div>}
@@ -4841,7 +4821,11 @@ return(
   </div>
   <div className="au-fade" style={{fontSize:11}}>
     {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
+    {hoverInfo.fert>0.05&&<> · {(hoverInfo.fert*100|0)}% fertile</>}
   </div>
+  {hoverInfo.resources&&hoverInfo.resources.length>0&&<div className="au-fade" style={{fontSize:10}}>
+    {hoverInfo.resources.join(" · ")}
+  </div>}
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
   </div>}
