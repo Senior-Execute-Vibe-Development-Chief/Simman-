@@ -21,7 +21,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { landSurplusFrac } from "./landSurplus.js";
+import { landSurplusFrac, FOOD_PER_PERSON } from "./landSurplus.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -130,6 +130,69 @@ function _ensureTerrOwnerCopy(world, key, N) {
   let a = world[key];
   if (!a || a.length !== N) a = world[key] = new Int32Array(N);
   return a;
+}
+
+// Spare coin the grain market will actually spend — getWealthReserve inlined
+// so this file does not import settlement.js (settlement → territory cycle).
+function _spareCoin(s) {
+  const reserve = 30 + Math.max(0, s.people || 0) * 0.3;
+  return Math.max(0, (s.wealth || 0) - reserve);
+}
+
+function _foodDemandOf(s) {
+  return s._foodDemand > 0 ? s._foodDemand
+    : Math.max(1e-6, (s.people || 0) * FOOD_PER_PERSON);
+}
+
+// ── MARKET_PULL offer: min(willingness, ability) ─────────────────────
+// Farmers sell to whoever leaves them the most after freight. Hunger is
+// demand — it is not cash. The offer a field sees is the reservation price
+// the city will AND can fund:
+//   willing  = _scarcity (demand vs eatable supply, 0.5–3)
+//   able     = spare coin per unit of demand (the same purse grainMarketPass
+//              spends — city wealth over the subsistence hoard, not tile
+//              coin, which is already the farmer's receipt)
+//   offer    = min(willing / mean willing, able / mean able)
+//
+// Calibration falls out of those two existing quantities, no new constant:
+//   rich + fed     willing 0.5, able high → offer 0.5 (won't overpay for
+//                  bread it does not need, but it CAN take the grain)
+//   poor + hungry  willing 3,   able ~0  → offer ~0 (cannot pay, however
+//                  badly it wants the food)
+//   rich + hungry  willing 3,   able high → offer high (wants it AND can)
+// A coinless dawn (mean spare ≈ 0) is temple/levy: ability does not bind,
+// willingness ranks alone. Abar then keeps an average market at the edict
+// haul. Tile money is not the buyer's purse — GRAIN_MARKET already debits
+// s.wealth; counting farm-gate receipts as urban purchasing power would let
+// a broke city keep bidding on the coin it already paid out.
+export function marketPullOfferMap(world, byId) {
+  let sumW = 0, sumA = 0, n = 0;
+  const wtpOf = new Map();
+  const atpOf = new Map();
+  for (const s of byId.values()) {
+    const wtp = s._scarcity > 0 ? s._scarcity : 1;
+    const demand = _foodDemandOf(s);
+    const atp = _spareCoin(s) / demand;
+    wtpOf.set(s.id, wtp);
+    atpOf.set(s.id, atp);
+    sumW += wtp;
+    sumA += atp;
+    n++;
+  }
+  const wBar = n > 0 ? sumW / n : 1;
+  const aBar = n > 0 ? sumA / n : 0;
+  const payBinds = T.MARKET_PAY > 0 && aBar >= 1e-12;
+  const out = new Map();
+  for (const s of byId.values()) {
+    const wRel = (wtpOf.get(s.id) || 1e-6) / Math.max(1e-12, wBar);
+    if (!payBinds) {
+      out.set(s.id, Math.max(1e-6, wRel * wBar));   // hunger-only mass (Abar still normalises)
+      continue;
+    }
+    const aRel = (atpOf.get(s.id) || 0) / aBar;
+    out.set(s.id, Math.max(1e-6, Math.min(wRel, aRel)));
+  }
+  return out;
 }
 
 // After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
@@ -338,14 +401,15 @@ export function computeTerritory(world) {
   // the OUTCOME of a bid: delivered value falls with carriage, so in logs the
   // race is additive and this is the SAME Dijkstra with a different starting
   // potential. A market that bids more starts lower and reaches further.
-  //   BID = hunger x ability to pay. Hunger is _scarcity (demand/supply, the
-  // emergent signal) and NOT _grainPrice, which carries GRAIN_PRICE_BY_TIER and
-  // would let a metropolis outbid a town 11x on its label — promoting the
-  // ratchet from a side-grant to the thing that assigns land. Ability to pay is
-  // wealth, which is EARNED. The owner's crowding-out argument survives intact;
-  // only its source changes from granted to earned.
-  //   NORMALISED BY THE WORLD MEAN, which is what keeps this constant-free: the
-  // seed is -haulTiles*ln(A_i / Abar), so an average market seeds at exactly 0
+  //   BID = min(willingness, ability to pay). Willingness is _scarcity
+  // (demand vs eatable supply — flow + hinterland + granary — and NOT
+  // _grainPrice, which carries GRAIN_PRICE_BY_TIER). Ability is spare city
+  // coin per unit of demand, the same purse grainMarketPass spends. Hunger
+  // is not cash: a poor hungry city cannot pay, and a richer less-hungry
+  // city takes the grain if it wants it. marketPullOfferMap. Abar keeps an
+  // average market at the edict haul.
+  //   NORMALISED BY THE WORLD MEAN, which is what keeps this constant-free:
+  // seed is -haulTiles*(A_i / Abar), so an average market seeds at exactly 0
   // and only RELATIVE standing moves anyone. haulTiles is HAUL_LAND_KM/(km per
   // tile) — the same edict-derived figure foodHierarchy already hauls grain on.
   const mktPull = T.MARKET_PULL > 0;
@@ -354,9 +418,8 @@ export function computeTerritory(world) {
   if (mktPull) {
     _rebuildMarketKn(byId);
     let sum = 0, n = 0;
-    for (const s of byId.values()) {
-      const a = Math.max(1e-6, (s._scarcity || 1));
-      seedOf.set(s.id, a); sum += a; n++;
+    for (const [id, a] of marketPullOfferMap(world, byId)) {
+      seedOf.set(id, a); sum += a; n++;
     }
     const abar = n > 0 ? sum / n : 1;
     // HAUL_LAND_KM = 340 km is an E-FOLDING distance, not a zero point: under the
