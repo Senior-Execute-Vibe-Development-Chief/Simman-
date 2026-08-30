@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/market-pull-bid-15e6",
+      "sha": "1ff84969d06e7c75e52b0051ba7ee1a7b179680b",
+      "slug": "cursor-market-pull-bid-15e6",
+      "builtAt": "2026-08-30T12:52:58.715Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-market-pull-bid-15e6/"
+    },
+    {
       "branch": "cursor/materials-accuracy-642a",
       "sha": "765cf2380742a3fe0695e302d87a7d7afe2aa8b8",
       "slug": "cursor-materials-accuracy-642a",
