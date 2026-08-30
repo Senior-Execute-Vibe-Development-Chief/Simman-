@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/earth-tile-materials-642a",
+      "sha": "c403bf222d998400f701a0413db72c1c42ff56d1",
+      "slug": "cursor-earth-tile-materials-642a",
+      "builtAt": "2026-08-30T11:24:19.962Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-earth-tile-materials-642a/"
+    },
+    {
       "branch": "cursor/catalog-full-642a",
       "sha": "c403bf222d998400f701a0413db72c1c42ff56d1",
       "slug": "cursor-catalog-full-642a",
@@ -18,15 +27,6 @@
       "channel": "preview",
       "saveVersion": 64,
       "path": "/b/cursor-urban-print-15e6/"
-    },
-    {
-      "branch": "cursor/earth-tile-materials-642a",
-      "sha": "e3a4cc6a7c5368c35fe64e3afa9633f97582e48d",
-      "slug": "cursor-earth-tile-materials-642a",
-      "builtAt": "2026-08-30T11:06:29.830Z",
-      "channel": "preview",
-      "saveVersion": 64,
-      "path": "/b/cursor-earth-tile-materials-642a/"
     },
     {
       "branch": "cursor/catalog-expand-642a",
