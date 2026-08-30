@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "claude/language-flag-generators-m5gmhf",
+      "sha": "41375db2071f6750def25dd54bcac45c537b6f58",
+      "slug": "claude-language-flag-generators-m5gmhf",
+      "builtAt": "2026-08-30T05:51:39.315Z",
+      "channel": "preview",
+      "saveVersion": 45,
+      "path": "/b/claude-language-flag-generators-m5gmhf/"
+    },
+    {
       "branch": "cursor/deploy-channel-picker-642a",
       "sha": "7c9e0b1236c267082f0779cf75f8067a669e1d13",
       "slug": "cursor-deploy-channel-picker-642a",
