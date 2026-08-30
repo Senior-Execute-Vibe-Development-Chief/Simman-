@@ -307,9 +307,9 @@ Note: `materialsOf(people)` already exists in `musicGenome.js` for the Music
 Lab's endowment chain — a **sim-wide** `tileMaterials(world, ti)` would be the
 same idea at map resolution, shared by dress, architecture, and coinage.
 
-**Minimal taxonomy:** see `docs/materials-vocabulary.md` (~29 type strings, zero
-new simulation — split timber/stone/dyes by biome, add six fauna buckets, reuse
-14 deposit ids and 6 crop ids).
+**Minimal taxonomy:** see `docs/materials-vocabulary.md` — **~100 specific named
+types** (oak, teak, marble, tyrian, lion, mulberry/silk, pepper, sable, …)
+derived from existing tile state + deterministic picks; zero new simulation.
 
 ---
 
