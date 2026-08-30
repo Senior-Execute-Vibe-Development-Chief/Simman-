@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/urban-food-gate-15e6",
+      "sha": "d2203c2b6c520be64ea8a9e3103f2d6351a6df8c",
+      "slug": "cursor-urban-food-gate-15e6",
+      "builtAt": "2026-08-30T07:57:08.458Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-urban-food-gate-15e6/"
+    },
+    {
       "branch": "cursor/earth-tile-materials-642a",
       "sha": "8330a7b1de7566e54bc3fb407f80af66c15c7912",
       "slug": "cursor-earth-tile-materials-642a",
@@ -18,15 +27,6 @@
       "channel": "preview",
       "saveVersion": 45,
       "path": "/b/cursor-aesthetics-doc-642a/"
-    },
-    {
-      "branch": "cursor/urban-food-gate-15e6",
-      "sha": "430f067e56b903937f738b803c8618de95de9c01",
-      "slug": "cursor-urban-food-gate-15e6",
-      "builtAt": "2026-08-30T06:57:08.843Z",
-      "channel": "preview",
-      "saveVersion": 64,
-      "path": "/b/cursor-urban-food-gate-15e6/"
     },
     {
       "branch": "claude/language-flag-generators-m5gmhf",
