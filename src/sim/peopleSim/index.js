@@ -42,6 +42,7 @@ import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
 import { chronicleTick } from "./chronicle.js";
+import { sumTileWealth } from "./tileMoney.js";
 import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from "./faiths.js";
@@ -424,6 +425,7 @@ export function peopleSimStats(world) {
     territoryTiles,
     totalPeople: Math.round(sPeople),
     totalWealth: Math.round(sWealth + treasury),   // total gold in the world (settlement coin + state treasuries)
+    tileWealth: T.TILE_MONEY > 0 ? Math.round(sumTileWealth(world)) : 0,   // farm-gate coin on worked tiles (coin-field lens)
     totalArmy:   Math.round(sArmy),
     claimedTiles, landTiles,
     landPct: landTiles > 0 ? claimedTiles / landTiles : 0,

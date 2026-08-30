@@ -4916,9 +4916,17 @@ return(
   {viewMode==="population"&&peopleRef.current&&peopleRef.current._popMax
     ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest region ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
     :null}
-  {viewMode==="tilecoin"&&peopleRef.current&&peopleRef.current._tileCoinMax
-    ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>richest farm tile ≈ {peopleRef.current._tileCoinMax.toFixed(1)} coin</div>
-    :null}
+  {viewMode==="tilecoin"&&peopleRef.current&&(()=>{
+    const psw=peopleRef.current;
+    const max=psw._tileCoinMax;
+    const tot=psStats.tileWealth;
+    if(!max&&!tot)return null;
+    return <div className="au-fade" style={{fontSize:10,marginTop:3,lineHeight:1.45}}>
+      {max>0&&<>richest farm tile ≈ {max.toFixed(1)} coin<br/></>}
+      {tot>0&&<>≈ {fmtGoldKg(tot)} on farm tiles · ≈ {fmtGoldKg(psStats.totalWealth||0)} in city & state purses</>}
+      {!(tot>0)&&max>0&&<>trace coin only — most wealth sits in city treasuries (Money lens)</>}
+    </div>;
+  })()}
 </LegendCard>}
 
 {/* ─── World-forging indicator: regeneration keeps the old map on screen,
