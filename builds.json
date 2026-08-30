@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/ui-info-accuracy-15e6",
+      "sha": "82b57f0f6ad7652a0d8464ea79ea5df3ca1d72cf",
+      "slug": "cursor-ui-info-accuracy-15e6",
+      "builtAt": "2026-08-30T03:13:27.505Z",
+      "channel": "preview",
+      "saveVersion": 63,
+      "path": "/b/cursor-ui-info-accuracy-15e6/"
+    },
+    {
       "branch": "cursor/mint-ready-genesis-pace-15e6",
       "sha": "fa7ac9a24ff53a413081eadb429979da188adefd",
       "slug": "cursor-mint-ready-genesis-pace-15e6",
