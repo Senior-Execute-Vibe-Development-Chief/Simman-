@@ -35,6 +35,70 @@ export function fmtFood(simFood){ return fmtMass((simFood||0)*FOOD_KG_PER_UNIT);
 // Wealth shown as a mass of gold.
 export function fmtGoldKg(simCoin){ return fmtMass((simCoin||0)*GOLD_G_PER_COIN/1000); }
 
+// Settlement population readout: s.people is the CATCHMENT (city + countryside);
+// s._urbanPop is the city core alone (when CITY_CORE is on).
+export function fmtCatchmentPop(simUnits, note) {
+  const p = fmtPeople(simUnits);
+  return note ? `${p} (${note})` : p;
+}
+export function fmtUrbanCatchment(urban, catchment) {
+  if (urban != null && urban > 0 && catchment > urban * 1.05) {
+    return `${fmtPeople(urban)} in the city · ${fmtPeople(catchment)} catchment`;
+  }
+  return `${fmtPeople(catchment)} catchment`;
+}
+
+// Food ledger for the inspect card — mirrors the famine physics' rulers
+// (_foodSupply = net flow incl. imports; _landFood = local harvest only;
+// granary = s.food; _coreNeed = urban core + garrison mouths).
+export function foodLedgerInfo(s) {
+  const supply = s._foodSupply || 0;
+  const demand = s._foodDemand || 0;
+  const importRate = s._foodImportRate || 0;
+  const landFood = s._landFood || 0;
+  const surplus = supply - demand;
+  const eps = Math.max(0.02, demand * 0.02);
+  const ticksLeft = demand > 0 ? (s.food || 0) / demand : Infinity;
+  const coreNeed = s._coreNeed !== undefined ? s._coreNeed : demand;
+  const fedM = s._fedM;
+  const besieged = !!s._besiegedNow;
+  let status, statusColor;
+  if (besieged) {
+    status = "besieged";
+    statusColor = "#a44";
+  } else if (surplus > eps) {
+    status = "surplus";
+    statusColor = "#3a7";
+  } else if (surplus < -eps) {
+    if ((s.food || 0) <= 0.01 && supply < coreNeed) {
+      status = "starving";
+      statusColor = "#c44";
+    } else if (ticksLeft < 50) {
+      status = "eating stores";
+      statusColor = "#a95";
+    } else {
+      status = "deficit";
+      statusColor = "#c84";
+    }
+  } else {
+    status = "balanced";
+    statusColor = "#888";
+  }
+  return { supply, demand, importRate, landFood, surplus, eps, ticksLeft, coreNeed, fedM, besieged, status, statusColor };
+}
+
+// Shock banner copy — distinguish lean harvest from granary crisis.
+export function foodShockLabel(s) {
+  const sh = s._shock || 0;
+  if (sh === 2) return { text: "struck by plague", hue: 280 };
+  if (s._besiegedNow) return { text: "under siege — eating granary stores", hue: 8 };
+  if (sh !== 1) return null;
+  const demand = s._foodDemand || 1;
+  const runway = demand > 0 ? (s.food || 0) / demand : Infinity;
+  if (runway < 30) return { text: "famine — granary draining", hue: 30 };
+  return { text: "lean harvest — stores buffering", hue: 42 };
+}
+
 // ── History charts ──────────────────────────────────────────────────
 // One metric over sim-steps as a small SVG line chart (the History panel).
 export function MiniChart({data,get,label,color,fmtY}){
@@ -71,10 +135,10 @@ export function buildHistoryExport(H){
   const N=H.length,stride=Math.max(1,Math.ceil(N/40)),rows=[];
   for(let i=0;i<N;i+=stride)rows.push(H[i]);
   if(rows[rows.length-1]!==H[N-1])rows.push(H[N-1]);
-  const head="| step | population | gold | land % | countries | settlements | villages | cities | metros | largest empire (tiles) | army |";
+  const head="| step | catchment pop | gold | land % | countries | settlements | villages | cities | metros | largest empire (tiles) | army |";
   const sep ="|---|---|---|---|---|---|---|---|---|---|---|";
   const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${(r.towns||0)+(r.cities||0)} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
-  return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
+  return `Simman — global stats over time (catchment pop = Σ settlement catchments; 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
 }
 
 // ── Settlement-card presentational components ──
