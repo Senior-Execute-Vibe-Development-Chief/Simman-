@@ -3149,15 +3149,19 @@ function updateFood(world, s) {
     s.food = Math.max(0, (s.food || 0) - (s._coreNeed || 0));
   } else if (s._besiegedNow) s._besiegedNow = false;
 
-  // RETAINED land food — what the food HIERARCHY leaves this settlement: its
-  // aggregated subtree intake minus what its liege levied/bought away (computed
-  // at the END of last tick, foodHierarchy.js). Before the first aggregation
-  // (_foodNet unset) fall back to its own land food. Floor at this tick's local
-  // harvest: _foodNet === 0 is a valid retained book (exports ate last tick's
-  // pool) and must not suppress landFood > 0 — reconcileFoodSupply() re-stamps
-  // _foodSupply after the hierarchy pass with the fresh book.
-  const retained = s._foodNet !== undefined ? s._foodNet : landFood;
-  const netLand = Math.max(retained, landFood);
+  // Carrying food this tick. `_foodNet` is last tick's hierarchy book
+  // (own harvest + imports − what shipped up). A real retained amount
+  // (including a provincial city that kept 20%) must be used as-is — that is
+  // the SHIP_FRAC law, villages stay small because they send grain away.
+  // `_foodNet === 0` is NOT a real book: it is the default after a tick with
+  // no harvest yet (founding, territory just assigned the first tiles, a
+  // skipped node). The old `!== undefined` test treated that 0 as "kept
+  // nothing" and stamped `_foodSupply = 0`. foodK followed it to 0, and under
+  // STAMP_RETIRE the size read is min(disk, foodK) — the city became a
+  // village in one derive, then agglomeration dumped the core at 20%/tick.
+  // Fall back to this tick's landFood only when the retained book is empty;
+  // imports (net > land) still raise supply.
+  const netLand = (s._foodNet > 1e-9) ? s._foodNet : landFood;
 
   // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
   // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
@@ -3322,31 +3326,6 @@ function updateFood(world, s) {
   const storageCap = granaryCap(s);
   if (s.food > storageCap) s.food = storageCap;
   if (s.food < 0) s.food = 0;
-}
-
-// updateFood runs BEFORE aggregateFoodHierarchy, so its _foodSupply stamp can
-// lag this tick's hierarchy book (_foodNet). Without this reconcile pass the
-// inspect card reads supply /tick = 0 while local harvest and _foodNet are
-// both positive — a same-tick ordering artefact, not a famine.
-export function reconcileFoodSupply(world) {
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
-    const fish = s._fishYield || 0;
-    const net = s._foodNet !== undefined ? s._foodNet : (s._landFood || 0);
-    const supply = (T.SIEGE_STARVE && s._besiegedNow) ? 0 : net + fish;
-    const prev = s._foodSupply || 0;
-    if (Math.abs(supply - prev) < 1e-9) continue;
-    s._foodSupply = supply;
-    s.food = Math.max(0, (s.food || 0) + supply - prev);
-    const need = s._coreNeed || 0;
-    const store = s.food || 0;
-    const flow = s._foodSupply || 0;
-    const covered = need > 0 ? Math.min(need, flow + store) : need;
-    const fedNow = need > 0 ? Math.min(1, covered / need) : 1;
-    s._fedM = s._fedM === undefined ? 1 : 0.99 * s._fedM + 0.01 * fedNow;
-    const storageCap = granaryCap(s);
-    if (s.food > storageCap) s.food = storageCap;
-  }
 }
 
 // The granary's capacity — ONE definition, two consumers: the updateFood clamp

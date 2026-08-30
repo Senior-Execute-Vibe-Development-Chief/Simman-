@@ -14,9 +14,11 @@ const stats = {
   zeroSupplyNet: 0,
   zeroSupplyNetNotBesieged: 0,
   cliffDrop: 0,
+  urbanHalvedOnZeroSupply: 0,
 };
 const examples = [];
 const prev = new Map();
+const prevUrb = new Map();
 
 for (let t = 0; t < STEPS; t++) {
   stepPeopleSim(world, 1);
@@ -51,7 +53,20 @@ for (let t = 0; t < STEPS; t++) {
       }
     }
     if (ps > 1 && supply <= 1e-6) stats.cliffDrop++;
+    const urb = s._urbanPop || 0;
+    const pu = prevUrb.get(s.id) || 0;
+    if (pu > 20 && urb < pu * 0.5 && supply <= 1e-6) {
+      stats.urbanHalvedOnZeroSupply++;
+      if (examples.length < 12) {
+        examples.push({
+          kind: "urban-halved", step: world.step, id: s.id,
+          urb: +urb.toFixed(1), was: +pu.toFixed(1), land: +land.toFixed(3),
+          supply, k: +(s._k || 0).toFixed(1), besieged: !!s._besiegedNow,
+        });
+      }
+    }
     prev.set(s.id, supply);
+    prevUrb.set(s.id, urb);
   }
 }
 
