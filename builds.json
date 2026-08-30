@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/materials-accuracy-642a",
+      "sha": "765cf2380742a3fe0695e302d87a7d7afe2aa8b8",
+      "slug": "cursor-materials-accuracy-642a",
+      "builtAt": "2026-08-30T12:01:47.212Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-materials-accuracy-642a/"
+    },
+    {
       "branch": "cursor/urban-print-15e6",
       "sha": "5900fc85c780aab4c6ab4733d8cf4f426aaec20b",
       "slug": "cursor-urban-print-15e6",
