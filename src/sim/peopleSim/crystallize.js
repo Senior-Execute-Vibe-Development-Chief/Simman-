@@ -2410,9 +2410,16 @@ export function maybeDawnGather(world) {
  * Lives HERE (not dawnJump.js) so the gather call is same-module — a
  * dawnJump→crystallize→state→dawnJump cycle left maybeDawnGather undefined
  * in some bundles and silently opened at invent-only (~step 3k).
+ *
+ * App-grid note: a per-tick gather at tw=960 is minutes of blocked worker
+ * init (UI live, play appears to do nothing, then a sudden jump to ~20-30k).
+ * Stride by SITE_CITY_IVL (drift/mint cadence) with popField sub-steps — same
+ * bars, far less wall-clock. Progress callbacks keep the chrome honest.
  */
-export function jumpToCivReady(world) {
+export function jumpToCivReady(world, opts = {}) {
   if (!(T.INVENT_JUMP > 0) || !T.DAWN_LIVE) return false;
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress
+    : (typeof world._onGenesisProgress === "function" ? world._onGenesisProgress : null);
   const invented = jumpToFirstInvent(world);
   if (!invented && !(world._hearthSeeds && world._hearthSeeds.length)) {
     world._openKind = "dawn";
@@ -2426,15 +2433,30 @@ export function jumpToCivReady(world) {
   const maxStep = inventStep + 80_000;
   const t0 = performance.now();
   let lastLog = inventStep;
+  // Match the site drift/mint cadence: one gather pass per IVL, field advances
+  // in the same chunk (dt capped inside stepPopField at 8 — so chunk as 8s).
+  const CHUNK = Math.min(8, SITE_CITY_IVL);
 
   try {
+    if (onProgress) onProgress({ phase: "mint-ready", step: world.step, inventStep, maxStep });
     while (world.step < maxStep && !world._dawnMintReady) {
-      world.step++;
-      stepPopField(world, 1);
+      // Land exactly on SITE_CITY_IVL boundaries so drift/mint fire (a fixed
+      // +8 stride from invent@3700 never hit step%25===0 and starved drift).
+      const mod = world.step % SITE_CITY_IVL;
+      const target = Math.min(
+        world.step + (mod === 0 ? SITE_CITY_IVL : SITE_CITY_IVL - mod),
+        maxStep,
+      );
+      while (world.step < target) {
+        const n = Math.min(CHUNK, target - world.step);
+        world.step += n;
+        stepPopField(world, n);
+      }
       maybeDawnGather(world);
       if (world.step - lastLog >= 2000) {
         lastLog = world.step;
         console.log(`[peopleSim] invent-jump: gathering… step ${world.step} (+${world.step - inventStep} since invent)`);
+        if (onProgress) onProgress({ phase: "mint-ready", step: world.step, inventStep, maxStep });
       }
     }
   } catch (err) {
@@ -2445,14 +2467,25 @@ export function jumpToCivReady(world) {
   }
 
   delete world._dawnHoldMint;
+  // Invent-jump gather is ~15-30k sync field steps with no GC window. Drop the
+  // popField worker pool (and any frontier heaps) so play's first transport /
+  // territory flood is not the canary that OOMs the worker
+  // ("Array buffer allocation failed" in MinHeap._grow @ ~first crystallize).
+  try {
+    if (world._pfPool) { world._pfPool.dispose(); world._pfPool = null; }
+  } catch { /* pool already dead */ }
+  delete world._transHeap;
+  delete world._terrHeap;
   const ms = (performance.now() - t0).toFixed(0);
   if (world._dawnMintReady) {
     world._openKind = "mint-ready";
     console.log(`[peopleSim] invent-jump: mint-ready at step ${world.step} (invent @ ${inventStep}, +${world.step - inventStep} steps) in ${ms}ms — first city will mint on play`);
+    if (onProgress) onProgress({ phase: "done", step: world.step, inventStep, maxStep });
     return true;
   }
   world._openKind = "invent";
   console.warn(`[peopleSim] invent-jump: no mint-ready site by step ${world.step} (${ms}ms) — opening with farming; live mint continues`);
+  if (onProgress) onProgress({ phase: "done", step: world.step, inventStep, maxStep });
   return false;
 }
 

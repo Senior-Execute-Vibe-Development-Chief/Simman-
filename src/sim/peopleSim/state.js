@@ -106,7 +106,7 @@ export function createWorld(w, opts = {}) {
   seedCradleVillage(world);
   // T.INVENT_JUMP × DAWN_LIVE: solve invent, then gather to first mint-ready
   // site (URBAN_DRIFT + land-know), hold the mint so play watches the city rise.
-  jumpToCivReady(world);
+  jumpToCivReady(world, { onProgress: opts.onGenesisProgress });
   return world;
 }
 
