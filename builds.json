@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/catalog-full-642a",
+      "sha": "c403bf222d998400f701a0413db72c1c42ff56d1",
+      "slug": "cursor-catalog-full-642a",
+      "builtAt": "2026-08-30T11:21:47.493Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-catalog-full-642a/"
+    },
+    {
       "branch": "cursor/urban-print-15e6",
       "sha": "d2bee9bc611e06384eba155a98846275b87366f2",
       "slug": "cursor-urban-print-15e6",
