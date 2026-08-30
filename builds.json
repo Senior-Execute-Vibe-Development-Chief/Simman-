@@ -3,9 +3,9 @@
   "previews": [
     {
       "branch": "cursor/settlement-trace-15e6",
-      "sha": "01d2c363809b0970f587b2996913c836ce60cd10",
+      "sha": "c5ae52437f2452f528ad204cb2335a1a6b1eff64",
       "slug": "cursor-settlement-trace-15e6",
-      "builtAt": "2026-08-30T13:49:29.354Z",
+      "builtAt": "2026-08-30T14:23:21.082Z",
       "channel": "preview",
       "saveVersion": 63,
       "path": "/b/cursor-settlement-trace-15e6/"
