@@ -9,7 +9,7 @@
 
 import { landComp } from "./peopleSim/countryClaim.js";
 import { hash32 } from "./peopleSim/rng.js";
-import { classifyBiome, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND,
+import { classifyBiome, observedClimate, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND,
   B_COLD_DESERT, B_TROP_RAIN, B_TROP_DRY, B_SUBTROP, B_TEMP_RAIN } from "./biomeClass.js";
 
 export function isEarthPreset(world) {
@@ -197,7 +197,8 @@ function paintProcedural(world, spec, mask, kind, id) {
   const counts = new Map();
   for (let ti = 0; ti < N; ti++) {
     if (elev[ti] <= 0) continue;
-    const b = classifyBiome(elev[ti], moist[ti], temp[ti], dry ? dry[ti] : 0, sum ? sum[ti] : 0);
+    const b = classifyBiome(elev[ti], moist[ti], temp[ti], dry ? dry[ti] : 0, sum ? sum[ti] : 0,
+      observedClimate(world));
     if (!biomes.includes(b)) continue;
     const c = comp[ti];
     counts.set(c, (counts.get(c) || 0) + 1);

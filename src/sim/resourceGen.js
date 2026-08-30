@@ -75,7 +75,7 @@ function depositField(tx, ty, tw, th, salt, freq, threshold) {
 
 // The classifier lives in ONE place now (src/sim/biomeClass.js) — this file used to
 // carry a hand-synced copy of it, as did WorldSim.jsx and every probe in tools/.
-import { classifyBiome, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
+import { classifyBiome, observedClimate, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
   B_TROP_RAIN, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY,
   B_ALPINE, B_SUBTROP, B_COLD_DESERT } from "./biomeClass.js";
 
@@ -85,9 +85,10 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
 
   // Pre-compute biome per tile
   const tileBiome = new Int8Array(N);
+  const medOk = observedClimate(world);
   for (let ti = 0; ti < N; ti++) {
     tileBiome[ti] = classifyBiome(tElev[ti], tMoist[ti], tTemp[ti], tDryFrac ? tDryFrac[ti] : 0,
-      tSummerDry ? tSummerDry[ti] : 0);
+      tSummerDry ? tSummerDry[ti] : 0, medOk);
   }
 
   // Plate boundary proximity (tectonic/earth modes)

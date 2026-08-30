@@ -8,13 +8,15 @@
 // Cardinal rules: classification, not a fitted outcome; no time gates; no
 // `if (Nile)`. Earth pins belong in faunaBiogeography.js when that lands.
 
-import { classifyBiome, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
+import { classifyBiome, observedClimate, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
   B_TROP_RAIN, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY,
   B_SUBTROP, B_COLD_DESERT, B_MEDITERRANEAN } from "./biomeClass.js";
 import { hash32 } from "./peopleSim/rng.js";
 import { CROP_PACKAGES, pkgClimateBell } from "./cropPackages.js";
 import { livestockClimate } from "./peopleSim/settlement.js";
 import { faunaPresent, floraPresent } from "./faunaBiogeography.js";
+import { marineGoods } from "./marineClass.js";
+import { BK_RIDGE, BK_TRANSFORM, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT } from "./earthPlates.js";
 
 export const TAU = 0.12;
 
@@ -37,6 +39,8 @@ const EMPTY = Object.freeze({
   gems: Object.freeze([]),
   metals: Object.freeze([]),
   salt: Object.freeze([]),
+  marine: Object.freeze([]),
+  geology: Object.freeze([]),
 });
 
 // Endemism: faunaPresent / floraPresent (faunaBiogeography.js). Cosmopolitan
@@ -85,24 +89,59 @@ function ensureCoastDist(world) {
   return dist;
 }
 
+function genWorld(world) {
+  return (world && world.worldRef) || world;
+}
+
+function samplePix(world, ti, arr, missing) {
+  if (!arr) return missing;
+  if (world.N && arr.length === world.N) return arr[ti];
+  const wg = genWorld(world);
+  const W = wg.width, H = wg.height;
+  if (!W || arr.length !== W * H) return missing;
+  const tw = world.tw || W;
+  const tr = world.tileRes || (tw > 0 ? W / tw : 1);
+  const y = (ti / tw) | 0, x = ti - y * tw;
+  const px = Math.min(W - 1, (x * tr) | 0);
+  const py = Math.min(H - 1, (y * tr) | 0);
+  return arr[py * W + px];
+}
+
 function ensureBoundDist(world) {
   const N = world.N;
   if (world._matBoundDist && world._matBoundDist.length === N) return world._matBoundDist;
   const dist = new Uint8Array(N);
   dist.fill(255);
-  const plates = world.pixPlate;
+  const kinds = new Uint8Array(N);
+  const hs = new Uint8Array(N);
+  hs.fill(255);
+  const wg = genWorld(world);
+  const plates = world.pixPlate || (wg && wg.pixPlate);
+  const boundKind = world.boundKind || (wg && wg.boundKind);
+  const hotspotDist = world.hotspotDist || (wg && wg.hotspotDist);
   const { tw, th, elev } = world;
-  if (!plates || plates.length !== N || !elev) { world._matBoundDist = dist; return dist; }
+  if (!plates || !elev || !(tw > 0) || !(th > 0)) {
+    world._matBoundDist = dist;
+    world._matBoundKind = kinds;
+    world._matHotspot = hs;
+    return dist;
+  }
+  const plateAt = ti => samplePix(world, ti, plates, 0);
   const q = [];
   for (let i = 0; i < N; i++) {
     if (elev[i] <= 0) continue;
     const cx = i % tw, cy = (i - cx) / tw;
-    const my = plates[i];
+    const my = plateAt(i);
     const ns = [cy * tw + (cx === 0 ? tw - 1 : cx - 1), cy * tw + (cx === tw - 1 ? 0 : cx + 1),
       cy > 0 ? i - tw : -1, cy < th - 1 ? i + tw : -1];
     for (let k = 0; k < 4; k++) {
       const ni = ns[k];
-      if (ni >= 0 && plates[ni] !== my) { dist[i] = 0; q.push(i); break; }
+      if (ni >= 0 && plateAt(ni) !== my) {
+        dist[i] = 0;
+        kinds[i] = samplePix(world, i, boundKind, 0);
+        q.push(i);
+        break;
+      }
     }
   }
   for (let qi = 0; qi < q.length; qi++) {
@@ -115,10 +154,16 @@ function ensureBoundDist(world) {
       const ni = ns[k];
       if (ni < 0 || elev[ni] <= 0 || dist[ni] <= cd + 1) continue;
       dist[ni] = cd + 1;
+      kinds[ni] = kinds[ci];
       q.push(ni);
     }
   }
+  if (hotspotDist) {
+    for (let i = 0; i < N; i++) hs[i] = samplePix(world, i, hotspotDist, 255);
+  }
   world._matBoundDist = dist;
+  world._matBoundKind = kinds;
+  world._matHotspot = hs;
   return dist;
 }
 
@@ -128,19 +173,21 @@ function signals(world, ti) {
   const moist = at(world.moist, ti);
   const dry = at(world._dryFrac, ti);
   const sumDry = at(world._summerDry, ti);
-  const biome = elev > 0 ? classifyBiome(elev, moist, temp, dry, sumDry) : -1;
+  const biome = elev > 0 ? classifyBiome(elev, moist, temp, dry, sumDry, observedClimate(world)) : -1;
   const flood = !!(world.tFlood && world.tFlood[ti]);
   const riverMag = at(world.riverMag, ti);
   const relief = at(world.relief, ti);
   const coastDist = ensureCoastDist(world)[ti];
   const boundDist = ensureBoundDist(world)[ti];
+  const boundKind = world._matBoundKind ? world._matBoundKind[ti] : 0;
+  const hotspotDist = world._matHotspot ? world._matHotspot[ti] : 255;
   const dep = {};
   const deposits = world.deposits || {};
   for (const id of DEPOSIT_IDS) dep[id] = at(deposits[id], ti);
   return {
     world, ti, seed: (world.seed >>> 0) || 1,
     elev, temp, moist, dry, sumDry, biome, flood, riverMag, relief,
-    coastDist, boundDist, dep,
+    coastDist, boundDist, boundKind, hotspotDist, dep,
     livestock: livestockClimate(temp, moist),
   };
 }
@@ -370,6 +417,26 @@ function saltOf(c) {
   return [{ id, richness: rich(c, "salt") }];
 }
 
+function geologyOf(c) {
+  const bd = c.boundDist == null ? 255 : c.boundDist;
+  const kind = c.boundKind || 0;
+  const hs = c.hotspotDist == null ? 255 : c.hotspotDist;
+  const volcanic = hs < 8
+    || (bd < 8 && (kind === BK_SUBDUCTION || kind === BK_RIDGE || kind === BK_HOTSPOT))
+    || (bd < 6 && kind === 0 && kind !== BK_TRANSFORM);
+  const meta = bd < 10 && kind === BK_COLLISION;
+  const evap = ARID.has(c.biome) && c.elev < 0.08 && c.coastDist > 6 && c.moist < 0.18;
+  const out = [];
+  if (volcanic && c.elev > 0) {
+    out.push({ id: "obsidian" });
+    if (kind === BK_SUBDUCTION || kind === BK_HOTSPOT || hs < 6) out.push({ id: "sulfur" });
+    if (kind === BK_RIDGE || kind === BK_HOTSPOT || hs < 8) out.push({ id: "pumice" });
+  }
+  if (meta) out.push({ id: "metamorphic" });
+  if (evap) out.push({ id: "natron" });
+  return out.slice(0, 3);
+}
+
 function depositsOf(c) {
   const out = [];
   for (const id of DEPOSIT_IDS) {
@@ -382,7 +449,11 @@ function depositsOf(c) {
 
 /** Core classifier — tests may pass a hand-built signal bag. */
 export function materialsFromSignals(c) {
-  if (!(c.elev > 0)) return EMPTY;
+  const marine = marineGoods(c);
+  if (!(c.elev > 0)) {
+    if (!marine.length) return EMPTY;
+    return { ...EMPTY, marine };
+  }
   return {
     deposits: depositsOf(c),
     trees: treesOf(c),
@@ -397,6 +468,8 @@ export function materialsFromSignals(c) {
     gems: gemsOf(c),
     metals: metalsOf(c),
     salt: saltOf(c),
+    marine,
+    geology: geologyOf(c),
   };
 }
 
@@ -409,4 +482,27 @@ export function tileMaterials(world, ti) {
 
 export function idsOf(list) {
   return (list || []).map(x => x.id);
+}
+
+const MATERIAL_LABELS = {
+  "sea-salt": "sea salt", "rock-salt": "rock salt", "date-palm": "date palm",
+  "enclosed-sea": "enclosed sea", "rocky-coast": "rocky coast",
+};
+
+export function labelOf(id) {
+  if (!id) return "";
+  return MATERIAL_LABELS[id] || String(id).replace(/-/g, " ");
+}
+
+/** Compact hover/inspect line: a handful of named local materials. */
+export function formatMaterialsLine(m) {
+  if (!m) return "";
+  const ids = [];
+  for (const key of ["trees", "stone", "fauna", "dyes", "spices", "incense",
+    "marine", "geology", "fibres", "crops", "furs", "gems", "metals", "salt"]) {
+    for (const x of m[key] || []) {
+      if (x && x.id && !ids.includes(x.id)) ids.push(x.id);
+    }
+  }
+  return ids.slice(0, 8).map(labelOf).join(" · ");
 }

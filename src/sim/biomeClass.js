@@ -97,26 +97,25 @@ const CUT = [
 // annual total, is what Koppen's Cs is defined by and what makes sclerophyll scrub
 // instead of forest, so it is tested before the wet/dry ladder and only in the bands
 // where C climates live. Cuts placed with the same F1 objective as the rest.
-const MED_PHASE = 0.390, MED_EM = 0.166;
-// DISABLED, and the reason is worth keeping. The rule itself is right: given a truthful
-// summer-dry phase it places Mediterranean at 1.1% of land against a true 0.9%, with 52%
-// recall at 49% precision. But the SOLVER's phase field cannot support it. Measured over
-// 21,587 land points, the solver's summerDry reaches a best-case MED F1 of 0.157 at 4.8%
-// of land — 3-6% precision at every threshold tried, i.e. 94-97% of the Mediterranean it
-// would paint would be in the wrong place, several percent of the default world.
+export const MED_PHASE = 0.390, MED_EM = 0.166;
+// The Med branch is right given a truthful summer-dry phase (1.1% of land vs a
+// true 0.9%, 52% recall / 49% precision). The SOLVER's phase cannot support it:
+// measured F1 0.157 at 4.8% of land — 94–97% of the Med it would paint is in
+// the wrong place. Cause is the solver, not this cut: solstice solves differ
+// mainly by ITCZ latitude, so phase is zonally uniform (median summerDry 0.00
+// vs observation's -0.29). Real Cs needs a west-coast subtropical high + a
+// winter storm track the solver does not model.
 //
-// The cause is diagnosable and is NOT this classifier: the solver's two solstice solves
-// differ mainly by where the ITCZ sits, so their phase difference is close to zonally
-// uniform (median summerDry 0.00 against observation's -0.29). Real Mediterranean climate
-// needs the west-coast pattern — a subtropical high that suppresses summer rain over the
-// eastern side of an ocean, and a mid-latitude storm track that moves equatorward in
-// winter to water it. The solver models no seasonal storm track, so it cannot make one.
-//
-// Turn this on when it can: re-run tools/probe_climate_truth.mjs and check that the MED
-// column of the confusion matrix is near the 0.9% truth row rather than several times it.
-// Everything else — the field, the biome, the colour, the calibrated cuts — is in place
-// and working, and the observed-climate mode already exercises the whole path.
-const MED_ENABLED = false;
+// So the branch is gated on OBSERVED climate (NCEP via fillRealClimate /
+// Real Climate), never on the solver field. Callers pass medOk, or
+// observedClimate(world) reads the worldgen/sim flags. Solver worlds keep
+// the documented fallback (sumDry ignored for Med).
+
+/** True when this world's climate fields came from observed NCEP, not the solver. */
+export function observedClimate(world) {
+  if (!world) return false;
+  return !!(world.realClimateUsed || world.realWindUsed || world._realWindGen);
+}
 
 /**
  * @param {number} e elevation (>0 = land; callers handle water themselves)
@@ -126,9 +125,11 @@ const MED_ENABLED = false;
  * @param {number} [sumDry] summer-dry phase, -1..1; >0 means the drought is in summer
  *                          (world.summerDry). 0 means "unknown", which disables the
  *                          Mediterranean branch and reproduces the older behaviour.
+ * @param {boolean} [medOk] enable the Cs branch — only when summerDry is observed.
+ *                          Omit / false keeps the solver-safe default.
  * @returns {number} biome id
  */
-export function classifyBiome(e, m, t, dry, sumDry) {
+export function classifyBiome(e, m, t, dry, sumDry, medOk) {
   if (e <= 0) return -1;
   if (t < BANDS[0]) return B_ICE;
   const band = t < BANDS[1] ? 0 : t < BANDS[2] ? 1 : t < BANDS[3] ? 2
@@ -156,7 +157,7 @@ export function classifyBiome(e, m, t, dry, sumDry) {
     if (wet !== null && em > wet) return B_BOREAL;
     return em > forest ? B_TAIGA : em > grass ? B_TUNDRA : B_COLD_DESERT;
   }
-  if (MED_ENABLED && band <= 4 && sumDry > MED_PHASE && em > MED_EM) return B_MEDITERRANEAN;
+  if (medOk && band <= 4 && sumDry > MED_PHASE && em > MED_EM) return B_MEDITERRANEAN;
   if (em > wet) return band === 3 ? B_TEMP_RAIN : band === 4 ? B_SUBTROP : B_TROP_RAIN;
   if (em > forest) return band === 3 ? B_TEMP_FOREST : B_TROP_DRY;
   if (em > grass) return band === 3 ? B_GRASSLAND
@@ -201,10 +202,11 @@ export function ensureBiome(world) {
   if (bm && bm.length === world.N && (world.step - (world._biomeStep || 0)) < CANOPY_REBUILD) return bm;
   const { N, elev, moist, temp } = world;
   const dryF = world._dryFrac, sumF = world._summerDry;
+  const medOk = observedClimate(world);
   if (!bm || bm.length !== N) bm = world._biome = new Int8Array(N);
   for (let i = 0; i < N; i++) {
     bm[i] = elev[i] > 0
-      ? classifyBiome(elev[i], moist[i], temp[i], dryF ? dryF[i] : 0, sumF ? sumF[i] : 0)
+      ? classifyBiome(elev[i], moist[i], temp[i], dryF ? dryF[i] : 0, sumF ? sumF[i] : 0, medOk)
       : -1;
   }
   world._biomeStep = world.step | 0;

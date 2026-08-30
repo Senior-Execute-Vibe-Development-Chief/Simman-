@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import { isRealClimateAvailable, fillRealClimate } from "./realClimateData.js";
-import { classifyBiome } from "./sim/biomeClass.js";
+import { classifyBiome, observedClimate } from "./sim/biomeClass.js";
 import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor } from "./TuningPanel.jsx";
 import { loadPresets, deletePreset } from "./paramDefs.js";
@@ -15,6 +15,7 @@ const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fi
 // so the toggle is live if EITHER data set made it into the bundle.
 const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
+import { tileMaterials, formatMaterialsLine } from "./sim/tileMaterials.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -130,12 +131,12 @@ const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / 
 // Both optional: 0 reproduces the older behaviour. The classification itself lives in
 // src/sim/biomeClass.js — this wrapper only adds the things the RENDER knows about
 // (sea level, floodplain ribbons) on top of it.
-function getBiomeD(e,m,t,sl,flood,dry,sumDry){
+function getBiomeD(e,m,t,sl,flood,dry,sumDry,medOk){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
   if(flood)return 19;   // arid-river floodplain: its own biome, not the savanna its t+m alone reads as
-  return classifyBiome(e,m,t,dry,sumDry);
+  return classifyBiome(e,m,t,dry,sumDry,medOk);
 }
-function getColorD(e,m,t,sl,flood,dry,sumDry){const c=BC[getBiomeD(e,m,t,sl,flood,dry,sumDry)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
+function getColorD(e,m,t,sl,flood,dry,sumDry,medOk){const c=BC[getBiomeD(e,m,t,sl,flood,dry,sumDry,medOk)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 
 // ── Live country colouring (Country view) ───────────────────────────
@@ -925,7 +926,7 @@ if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl,flood,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);r=c[0];g=c[1];b=c[2];}
+}else{const c=getColorD(e,m,t,sl,flood,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));r=c[0];g=c[1];b=c[2];}
 // Swamp overlay
 let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
@@ -1006,7 +1007,7 @@ const sd=seaDist[i];
 if(sd<HALO&&!(lk&&lk[si]>=0)){const hh=1-sd/HALO,hk=hh*hh;
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
-const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 let r=197,g=174,b=126;
 // broad uneven aged tone
 r+=big*40;g+=big*37;b+=big*31;
@@ -1106,7 +1107,7 @@ const px=(gx+(atlasHash(gx+2,gy+3)-0.5)*8)|0,py=(gy+(atlasHash(gx+5,gy+7)-0.5)*8
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
 if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
 else if(biome===11){if(h>0.4)continue;
@@ -1142,7 +1143,7 @@ const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
 if(biome===6){cover=0.40;kind=0;}            // taiga — fir, closed forest
 else if(biome===8||biome===17){cover=0.42;kind=1;} // temperate / subtropical — broadleaf
@@ -1159,7 +1160,7 @@ const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
+const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w));
 if(bm!==9&&bm!==10&&bm!==7)continue;
 if(atlasHash(gx+7,gy+9)>0.95)continue;
 const tone=atlasHash(gx+2,gy+11);
@@ -1171,7 +1172,7 @@ const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6
 if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si],dm=w.moisture[si];
-if(getBiomeD(e,dm,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0)!==13)continue;
+if(getBiomeD(e,dm,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0,observedClimate(w))!==13)continue;
 if(atlasHash(gx+3,gy+7)>0.62-dm*1.6)continue;
 octx.fillStyle="rgba(120,84,38,0.5)";
 octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
@@ -3108,7 +3109,7 @@ const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
 const isFlood=terTi>=0&&terRef.current&&terRef.current.tFlood?terRef.current.tFlood[terTi]===1:false;
-const biome=getBiomeD(elev,moist,temp,0,isFlood,w.dryFrac?w.dryFrac[i]:0,w.summerDry?w.summerDry[i]:0);
+const biome=getBiomeD(elev,moist,temp,0,isFlood,w.dryFrac?w.dryFrac[i]:0,w.summerDry?w.summerDry[i]:0,observedClimate(w));
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
@@ -3130,6 +3131,23 @@ if(_hv.ti===terTi&&_now-_hv.t<90){_hv.x=ev.clientX;_hv.y=ev.clientY;return;}
 _hv.ti=terTi;_hv.t=_now;
 // Resource info at this tile
 const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
+const ter=terRef.current;
+let matLine="";
+if(terTi>=0&&ter){
+  let mv=w._matView;
+  if(!mv||mv.tw!==ter.tw||mv.th!==ter.th){
+    mv=w._matView={
+      N:ter.tw*ter.th,tw:ter.tw,th:ter.th,seed:w.seed,preset:w.preset,
+      elev:ter.tElev,temp:ter.tTemp,moist:ter.tMoist,coast:ter.tCoast,tFlood:ter.tFlood,
+      riverMag:ter.rivers&&ter.rivers.riverMag,relief:ter.tRelief,deposits:ter.deposits,
+      pixPlate:w.pixPlate,boundKind:w.boundKind,hotspotDist:w.hotspotDist,
+      width:w.width,height:w.height,tileRes:1,worldRef:w,
+      _dryFrac:w.dryFrac,_summerDry:w.summerDry,
+      realWindUsed:w.realWindUsed,realClimateUsed:w.realClimateUsed,
+    };
+  }
+  matLine=formatMaterialsLine(tileMaterials(mv,terTi));
+}
 const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.riverMag[terTi]:0;
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
@@ -3155,7 +3173,7 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
     if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,urbanPop:best._urbanPop,
       isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
  }}
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,materials:matLine,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -4177,6 +4195,21 @@ const renderInspect=()=>{
               ))}
             </div>
           :<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>No notable deposits in reach.</span>}
+        {(()=>{
+          const ti=((s.pos.y)|0)*psw.tw+((s.pos.x)|0);
+          const wg=worldRef.current;
+          if(wg){
+            if(!psw.worldRef)psw.worldRef=wg;
+            if(!psw.pixPlate&&wg.pixPlate)psw.pixPlate=wg.pixPlate;
+            if(!psw.boundKind&&wg.boundKind)psw.boundKind=wg.boundKind;
+            if(!psw.hotspotDist&&wg.hotspotDist)psw.hotspotDist=wg.hotspotDist;
+            if(wg.realWindUsed)psw._realWindGen=true;
+            if(wg.realClimateUsed)psw.realClimateUsed=true;
+          }
+          const line=formatMaterialsLine(tileMaterials(psw,ti));
+          if(!line)return null;
+          return <div className="au-fade" style={{fontSize:10,marginTop:6,fontStyle:"italic"}}>Local materials: {line}</div>;
+        })()}
       </PsSection>
 
       {/* ── Trade & economy ── */}
@@ -4826,6 +4859,9 @@ return(
   {hoverInfo.resources&&hoverInfo.resources.length>0&&<div className="au-fade" style={{fontSize:10}}>
     {hoverInfo.resources.join(" · ")}
   </div>}
+  {hoverInfo.materials&&<div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>
+    {hoverInfo.materials}
+  </div>}
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
   </div>}
@@ -4848,7 +4884,7 @@ return(
   <span className="au-heading au-sc" style={{fontSize:10,flex:1}}>{keyOpen?"▾":"▸"} Key</span>
 </div>
 {keyOpen&&<div className="au-key">
-  {viewMode==="terrain"&&[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
+  {viewMode==="terrain"&&[4,5,6,7,8,9,10,15,11,12,14,13,16,20].map(bi=>(
     <div key={bi} className="au-key-row">
       <span className="au-key-swatch" style={{background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
       <span>{BN[bi]}</span>
