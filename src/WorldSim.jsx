@@ -4946,7 +4946,8 @@ return(
       <div key={cat.id}>
         <div className="au-heading au-sc au-fade" style={{fontSize:9,marginTop:5,marginBottom:2}}>{cat.label}</div>
         {cat.layers.map(m=>{const on=activeMats[m.id];
-          const n=ter.matFields?layerTileCount(ter.matFields,m.id):0;
+          const mf=terRef.current&&terRef.current.matFields;
+          const n=mf?layerTileCount(mf,m.id):0;
           return(
           <div key={m.id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:(n?0.55:0.3)}}
             onClick={()=>setActiveMats(prev=>{const next={...prev};next[m.id]=!prev[m.id];return next;})}
