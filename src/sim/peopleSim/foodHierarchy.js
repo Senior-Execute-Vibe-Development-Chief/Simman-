@@ -204,6 +204,24 @@ const SHIP_FRAC_BY_TIER = [0.8, 0.5, 0.2, 0.05];
 // coin into the countryside.
 const GRAIN_PRICE_BY_TIER = [2, 8, 14, 22];
 
+// Physical demand/supply, clamped 0.5–3. Same production-relative book as
+// capacity when PRICE_GROSS (retained + last export). A 0 retained ledger
+// with hinterland still growing food is the hierarchy's empty default — the
+// same case updateFood's netLand fallback treats as landFood, not famine.
+// Pricing that as 0.01 used to slam scarcity to 3 and let MARKET_PULL steal
+// tiles on a bookkeeping artefact. Real empty pot + mouths still reads 3.
+export function grainScarcityOf(s) {
+  const land = s._landFood || 0;
+  const retained = s._foodSupply || 0;
+  const exported = (T.PRICE_GROSS && T.GRAIN_MARKET > 0) ? (s._foodExportedPrev || 0) : 0;
+  let supply = retained + exported;
+  if (supply < 1e-9 && land > 1e-9) supply = land;
+  const demand = s._foodDemand || 0;
+  if (supply < 1e-9) return demand > 1e-9 ? 3 : 1;
+  if (demand < 1e-9) return 0.5;
+  return Math.min(3, Math.max(0.5, demand / supply));
+}
+
 export function aggregateFoodHierarchy(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -287,10 +305,7 @@ export function aggregateFoodHierarchy(world) {
     // production-relative, exports added back — so the two agree. Zero new
     // constants and no new term: it is the identical _foodExported the capacity
     // add-back already applies, gated on the same T.GRAIN_MARKET.
-    const _priceSupply = (s._foodSupply || 0)
-      + ((T.PRICE_GROSS && T.GRAIN_MARKET > 0) ? (s._foodExportedPrev || 0) : 0);
-    const scarcity = Math.min(3, Math.max(0.5,
-      (s._foodDemand || 1) / Math.max(0.01, _priceSupply)));   // no `|| 1` on supply: a food-empty settlement must read as MOST scarce, not neutral (Math.max(0.01,…) guards the divide)
+    const scarcity = grainScarcityOf(s);
     // T.MARKET_PULL reads this: the BID is hunger, not the tier label. Kept
     // beside _grainPrice rather than derived from it, because _grainPrice
     // carries GRAIN_PRICE_BY_TIER and dividing it back out would reintroduce
