@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/urban-print-15e6",
+      "sha": "c89ab14e07c391343198b391c8994f7344cbcb81",
+      "slug": "cursor-urban-print-15e6",
+      "builtAt": "2026-08-30T08:15:17.649Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-urban-print-15e6/"
+    },
+    {
       "branch": "cursor/earth-tile-materials-642a",
       "sha": "c05185c22d374afabf0b39a19ff59d41a2184acd",
       "slug": "cursor-earth-tile-materials-642a",
