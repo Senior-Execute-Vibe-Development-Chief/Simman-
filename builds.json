@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/market-profit-bid-15e6",
+      "sha": "f613adaa4816247a8cb4fe8490824625f99c1dca",
+      "slug": "cursor-market-profit-bid-15e6",
+      "builtAt": "2026-08-30T15:48:51.221Z",
+      "channel": "preview",
+      "saveVersion": 65,
+      "path": "/b/cursor-market-profit-bid-15e6/"
+    },
+    {
       "branch": "cursor/people-style-642a",
       "sha": "0e8939e0b03cb5e1132b9f82c9147dedd59d175c",
       "slug": "cursor-people-style-642a",
