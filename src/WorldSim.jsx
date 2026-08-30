@@ -16,6 +16,7 @@ const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fi
 const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { tileMaterials, formatMaterialsLine } from "./sim/tileMaterials.js";
+import { MATERIAL_LAYERS, MATERIAL_CATEGORIES, buildMaterialFields, layerTileCount } from "./sim/materialLayers.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -61,7 +62,7 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","moisture","temperature","country","atlas"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","materials","moisture","temperature","country","atlas"]);
 // Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
 // putImageData every frame — the reason these lagged next to the country view),
 // but their raster must refresh as the sim advances, so the cache key carries a
@@ -200,7 +201,7 @@ const LENSES=[
   {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
   {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["tilecoin","Coin field"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["tilecoin","Coin field"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["materials","Materials"],["crop","Cropland"],["technique","Technique"]]},
   ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 // Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
@@ -568,6 +569,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const[activeMats,setActiveMats]=useState(()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=false;return s;});
 const[activeGoods,setActiveGoods]=useState(()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
@@ -579,6 +581,7 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
+const activeMatsRef=useRef(null);activeMatsRef.current=activeMats;
 const activeGoodsRef=useRef(null);activeGoodsRef.current=activeGoods;
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(30),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
@@ -690,6 +693,7 @@ if(w.seed==null)w.seed=w._seed??1;
 setGenBusy(false);
 resetEmblems();labelAnchorsRef.current=null;   // a new world bears new arms & names
 setWorld(w);worldRef.current=w;const t=buildTerritory(w,RES);
+t.matFields=buildMaterialFields(w,t);
 terRef.current=t;
 // Rivers (and deposits) are computed inside buildTerritory and stored
 // on the `ter` object, not on the raw worldgen output. peopleSim reads
@@ -1306,7 +1310,7 @@ const _staticBase=(BASE_CACHE_VIEWS.has(vm)||_stepCacheV)&&!isGlobe;
 // raster refreshes as the world changes (and is stable/blitted while paused).
 const _simStep=(peopleRef.current&&peopleRef.current.step)||0;
 const _stepTag=_stepCacheV?('|s'+((_simStep/STEP_CACHE_REGEN)|0)):'';
-const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+(activeMatsRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
 let _baseHit=false;
 if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
 if(!_baseHit){
@@ -1416,6 +1420,25 @@ const v=ter.deposits[r.id][ti];
 if(v>0.05){const w2=v*v;br+=r.color[0]*w2;bg+=r.color[1]*w2;bb+=r.color[2]*w2;totalW+=w2;}}}
 if(totalW>0.001){const inv=1/totalW;br=(br*inv)|0;bg=(bg*inv)|0;bb=(bb*inv)|0;
 const alpha=Math.min(0.95,Math.sqrt(totalW)*0.8+0.15);const invA=1-alpha;
+br=(12*invA+br*alpha)|0;bg=(11*invA+bg*alpha)|0;bb=(10*invA+bb*alpha)|0;
+}else{br=12;bg=11;bb=10;}
+d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
+}else if(vm==="materials"){
+// Named tile materials — climate / ecology classifier (not mine deposits).
+const am=activeMatsRef.current;
+const activeList=MATERIAL_LAYERS.filter(m=>am[m.id]);
+const mf=ter.matFields;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=6;d[pi4+1]=8;d[pi4+2]=16;d[pi4+3]=255;continue;}
+let br=0,bg=0,bb=0,totalW=0;
+if(mf){
+for(const m of activeList){
+const v=mf[m.id]&&mf[m.id][ti];
+if(v){br+=m.color[0];bg+=m.color[1];bb+=m.color[2];totalW+=1;}}}
+if(totalW>0.001){const inv=1/totalW;br=(br*inv)|0;bg=(bg*inv)|0;bb=(bb*inv)|0;
+const alpha=Math.min(0.92,0.35+totalW*0.12);const invA=1-alpha;
 br=(12*invA+br*alpha)|0;bg=(11*invA+bg*alpha)|0;bb=(10*invA+bb*alpha)|0;
 }else{br=12;bg=11;bb=10;}
 d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
@@ -2957,7 +2980,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'m
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,activeGoods,layers,priceGood]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,activeMats,activeGoods,layers,priceGood]);
 
 // Opening the Ancestry lens replays the peopling of the world: the wavefront
 // spreads from the East-African cradle outward over ~10s (animLoop drives it).
@@ -4880,9 +4903,9 @@ return(
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
-{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="goodsflow")&&
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="materials"||viewMode==="goodsflow")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
+  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:viewMode==="materials"?240:200,zIndex:20,maxHeight:viewMode==="materials"?320:undefined,overflowY:viewMode==="materials"?"auto":undefined}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
   borderBottom:keyOpen?"1px solid rgba(216,190,150,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
   onClick={()=>setKeyOpen(v=>!v)}>
@@ -4913,6 +4936,32 @@ return(
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}>All</span>
       <span style={{cursor:"pointer"}} className="au-fade"
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}>None</span>
+    </div>
+  </div>}
+  {viewMode==="materials"&&<div>
+    <div className="au-fade" style={{fontSize:9,marginBottom:4,lineHeight:1.35}}>
+      Named flora, fauna, stone types, and harvest goods from climate — not mine deposits (see Resources).
+    </div>
+    {MATERIAL_CATEGORIES.map(cat=>(
+      <div key={cat.id}>
+        <div className="au-heading au-sc au-fade" style={{fontSize:9,marginTop:5,marginBottom:2}}>{cat.label}</div>
+        {cat.layers.map(m=>{const on=activeMats[m.id];
+          const n=ter.matFields?layerTileCount(ter.matFields,m.id):0;
+          return(
+          <div key={m.id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:(n?0.55:0.3)}}
+            onClick={()=>setActiveMats(prev=>{const next={...prev};next[m.id]=!prev[m.id];return next;})}
+            title={n?`${n.toLocaleString()} tiles`: "absent on this map"}>
+            <span className="au-key-swatch" style={{background:on?`rgb(${m.color.join(",")})`:"#888"}} />
+            <span>{m.label}</span>
+            {n>0&&<span className="au-fade au-num" style={{fontSize:9,marginLeft:"auto"}}>{n>=1000?(n/1000).toFixed(1)+"k":n}</span>}
+          </div>);})}
+      </div>))}
+    <div className="au-rule" style={{margin:"4px 0"}} />
+    <div style={{display:"flex",gap:8,fontSize:10}}>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=true;setActiveMats(s);}}>All</span>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const m of MATERIAL_LAYERS)s[m.id]=false;setActiveMats(s);}}>None</span>
     </div>
   </div>}
   {viewMode==="goodsflow"&&<div>
