@@ -6,7 +6,7 @@ import {
 } from "../src/sim/biomeClass.js";
 import { materialsFromSignals, idsOf, tileMaterials } from "../src/sim/tileMaterials.js";
 import {
-  rasterizeEarthPlates, plateBoundDist, lonLatToIndex, kindOfPair,
+  rasterizeEarthPlates, plateBoundDist, lonLatToIndex, kindOfPair, seamTiles,
   NAZ, SAM, IND, EUR, NAM, AFR, AP, ND, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT,
 } from "../src/sim/earthPlates.js";
 import { generateWorld } from "../src/sim/worldgen.js";
@@ -79,6 +79,8 @@ function ok(cond, msg) {
     "Andes pixel is SAM/NAZ or an Andean microplate");
   ok(pixPlate[kansas] === NAM, "Kansas is North America plate");
   ok(pixPlate[congo] === AFR, "Congo is African plate");
+  ok(seamTiles(320, 4, 12, true) === 4, "Earth seam radius is 4° in tiles");
+  ok(seamTiles(320, 4, 12, false) === 12, "tectonic seam radius stays legacy tiles");
 }
 
 {
