@@ -365,6 +365,12 @@ const SPICE_RULES = [
   { id: "ginger",     ok: c => rich(c, "spices") >= TAU && (c.biome === B_SUBTROP || c.biome === B_TROP_DRY) },
   { id: "tea",        ok: c => c.elev > 0.08 && c.elev < 0.36 && c.moist > 0.45 && c.temp > 0.70 && c.temp < 0.84 && floraPresent(c.world, c.ti, "tea") },
   { id: "coffee",     ok: c => c.elev > 0.12 && c.elev < 0.42 && c.moist > 0.35 && c.temp > 0.72 && c.temp < 0.86 && floraPresent(c.world, c.ti, "coffee") },
+  { id: "vanilla",    ok: c => (c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY || c.biome === B_SAVANNA) && c.moist > 0.58 && c.temp > 0.72 && floraPresent(c.world, c.ti, "vanilla") },
+  { id: "cocoa",      ok: c => (c.biome === B_TROP_RAIN || c.biome === B_SAVANNA) && c.moist > 0.55 && c.elev < 0.28 && c.temp > 0.78 && floraPresent(c.world, c.ti, "cocoa") },
+  { id: "capsicum",   ok: c => (c.biome === B_SUBTROP || c.biome === B_TROP_DRY || c.biome === B_TROP_RAIN || c.biome === B_SAVANNA) && c.temp > 0.72 && floraPresent(c.world, c.ti, "capsicum") },
+  { id: "cardamom",   ok: c => (c.biome === B_TROP_RAIN || c.biome === B_SUBTROP || c.biome === B_SAVANNA) && c.moist > 0.50 && c.elev > 0.02 && c.elev < 0.28 && floraPresent(c.world, c.ti, "cardamom") },
+  { id: "turmeric",   ok: c => (c.biome === B_SUBTROP || c.biome === B_TROP_RAIN || c.biome === B_SAVANNA) && c.moist > 0.45 && c.temp > 0.74 && floraPresent(c.world, c.ti, "turmeric") },
+  { id: "agarwood",   ok: c => (c.biome === B_TROP_RAIN || c.biome === B_SUBTROP || c.biome === B_TROP_DRY) && c.moist > 0.58 && floraPresent(c.world, c.ti, "agarwood") },
 ];
 
 const INCENSE_RULES = [
@@ -384,7 +390,8 @@ const FUR_RULES = [
 
 function spicesOf(c) {
   const elig = SPICE_RULES.filter(r => r.ok(c)).map(r => r.id);
-  const endemic = ["cloves", "nutmeg", "tea", "coffee"].filter(id => elig.includes(id));
+  const endemic = ["cloves", "nutmeg", "tea", "coffee", "vanilla", "cocoa", "capsicum",
+    "cardamom", "turmeric", "agarwood"].filter(id => elig.includes(id));
   const out = [...endemic];
   const rest = elig.filter(id => !out.includes(id));
   while (out.length < 2 && rest.length) {
@@ -396,7 +403,8 @@ function spicesOf(c) {
   }
   return out.slice(0, 3).map(id => ({
     id,
-    richness: ["tea", "coffee", "cloves", "nutmeg"].includes(id) ? 0.55 : rich(c, "spices"),
+    richness: ["tea", "coffee", "cloves", "nutmeg", "vanilla", "cocoa", "capsicum",
+      "cardamom", "turmeric", "agarwood"].includes(id) ? 0.55 : rich(c, "spices"),
   }));
 }
 
@@ -430,13 +438,18 @@ const FAUNA_RULES = [
   { id: "hippo",     ok: c => (c.biome === B_SAVANNA || c.biome === B_TROP_RAIN || c.biome === B_TROP_DRY) && c.riverMag >= 3 && c.moist > 0.45 },
   { id: "fish",      ok: c => c.coastDist <= 3 || c.riverMag >= 1 },
   { id: "salmon",    ok: c => (c.coastDist <= 3 || c.riverMag >= 1) && c.temp >= 0.45 && c.temp <= 0.65 },
+  { id: "rhino",     ok: c => (c.biome === B_SAVANNA || c.biome === B_TROP_DRY || c.biome === B_TROP_RAIN) && c.moist > 0.28 && faunaPresent(c.world, c.ti, "rhino") },
+  { id: "zebra",     ok: c => c.biome === B_SAVANNA && c.moist >= 0.22 && c.moist <= 0.52 && faunaPresent(c.world, c.ti, "zebra") },
+  { id: "ibex",      ok: c => c.elev > 0.12 && c.temp >= 0.52 && c.temp <= 0.76 && faunaPresent(c.world, c.ti, "ibex") },
+  { id: "eagle",     ok: c => c.elev > 0.12 && (COLD_FOREST.has(c.biome) || c.biome === B_SHRUBLAND || c.biome === B_GRASSLAND || c.biome === B_MEDITERRANEAN) },
+  { id: "bee",       ok: c => c.temp >= 0.58 && c.temp <= 0.82 && c.moist > 0.30 && !ARID.has(c.biome) },
 ];
 
 function faunaOf(c) {
   const elig = FAUNA_RULES.filter(r => r.ok(c) && faunaPresent(c.world, c.ti, r.id)).map(r => r.id);
   const out = [];
   const used = new Set();
-  for (const id of ["llama", "yak", "tiger", "lion", "hippo"]) {
+  for (const id of ["llama", "yak", "tiger", "lion", "hippo", "rhino", "zebra", "ibex"]) {
     if (elig.includes(id)) { out.push(id); used.add(id); }
   }
   const tags = ["fauna:pred", "fauna:herd", "fauna:game", "fauna:wet"];

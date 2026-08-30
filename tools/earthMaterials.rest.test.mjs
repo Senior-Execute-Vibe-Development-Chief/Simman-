@@ -173,6 +173,26 @@ function ok(cond, msg) {
   ok(/llama/.test(andes), `Andean highland names llama (${andes})`);
   ok(/tea/.test(yunnan), `Yunnan highland names tea (${yunnan})`);
   ok(/coffee/.test(ethiopia), `Ethiopian highland names coffee (${ethiopia})`);
+  const madagascar = lineAt(48, -19);
+  const mexicoChili = lineAt(-99, 18);
+  const ghanaCocoa = lineAt(3, 8);
+  const kerala = lineAt(76, 10);
+  const indiaTurmeric = lineAt(74, 16);
+  const borneo = lineAt(115, 1);
+  const serengeti = lineAt(36, -4);
+  const kaziranga = lineAt(93, 24);
+  const alps = lineAt(8, 46);
+  const medCoast = lineAt(3, 43);
+  ok(/vanilla/.test(madagascar), `Madagascar names vanilla (${madagascar})`);
+  ok(/capsicum/.test(mexicoChili), `Mesoamerica names capsicum (${mexicoChili})`);
+  ok(/cocoa/.test(ghanaCocoa), `West Africa names cocoa (${ghanaCocoa})`);
+  ok(/cardamom/.test(kerala), `Western Ghats names cardamom (${kerala})`);
+  ok(/turmeric/.test(indiaTurmeric), `monsoon India names turmeric (${indiaTurmeric})`);
+  ok(/agarwood/.test(borneo), `Borneo names agarwood (${borneo})`);
+  ok(/zebra/.test(serengeti), `East African savanna names zebra (${serengeti})`);
+  ok(/rhino/.test(kaziranga), `Assam floodplain names rhino (${kaziranga})`);
+  ok(/ibex/.test(alps), `Alpine belt names ibex (${alps})`);
+  ok(/shellfish|fish/.test(medCoast), `Mediterranean coast names shellfish (${medCoast})`);
 }
 
 // ── Marine ────────────────────────────────────────────────────────────────

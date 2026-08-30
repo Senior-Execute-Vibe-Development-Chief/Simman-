@@ -34,18 +34,20 @@ const LAYER_IDS = {
   dyes: ["tyrian", "indigo", "madder", "weld", "ochre", "cochineal", "kermes"],
   fibres: ["wool", "cotton", "flax", "hemp", "silk"],
   crops: CROP_PACKAGES.map(p => p.id),
-  spices: ["pepper", "cinnamon", "cloves", "nutmeg", "ginger", "tea", "coffee"],
+  spices: ["pepper", "cinnamon", "cloves", "nutmeg", "ginger", "tea", "coffee",
+    "vanilla", "cocoa", "capsicum", "cardamom", "turmeric", "agarwood"],
   incense: ["frankincense", "myrrh", "sandalwood", "olibanum"],
   furs: ["sable", "ermine", "fox", "beaver", "seal"],
   fauna: [
     "lion", "leopard", "tiger", "bear", "wolf", "hyena", "horse", "cattle", "bison", "camel",
     "llama", "yak", "elephant", "reindeer", "deer", "elk", "antelope", "boar",
-    "crocodile", "hippo", "fish", "salmon",
+    "crocodile", "hippo", "rhino", "zebra", "ibex", "eagle", "bee",
+    "fish", "salmon",
   ],
   gems: ["ruby", "sapphire", "emerald", "diamond", "pearl"],
   metals: ["gold", "silver"],
   salt: ["sea-salt", "rock-salt"],
-  marine: ["coral", "whale", "amber", "mangrove"],
+  marine: ["coral", "whale", "amber", "mangrove", "shellfish"],
   geology: ["obsidian", "sulfur", "pumice", "metamorphic", "natron"],
 };
 

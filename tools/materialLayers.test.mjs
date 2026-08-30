@@ -10,7 +10,7 @@ function ok(cond, msg) {
 }
 
 {
-  ok(MATERIAL_LAYERS.length >= 90, `catalog has ${MATERIAL_LAYERS.length} layers`);
+  ok(MATERIAL_LAYERS.length >= 110, `catalog has ${MATERIAL_LAYERS.length} layers`);
   const ids = new Set(MATERIAL_LAYERS.map(l => l.id));
   ok(ids.size === MATERIAL_LAYERS.length, "layer ids unique");
   ok(ids.has("oak") && ids.has("llama") && ids.has("cloves") && ids.has("papyrus"), "key endemics listed");

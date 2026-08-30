@@ -135,6 +135,26 @@ export const FAUNA_ORIGINS = {
       { fx: 0.76, fy: 0.38, reach: 0.10 },
     ],
   },
+  rhino: {
+    biomes: [B_SAVANNA, B_TROP_DRY, B_TROP_RAIN], nPicks: 2,
+    origins: [
+      { fx: 0.53, fy: 0.50, reach: 0.16 },  // East / southern Africa
+      { fx: 0.767, fy: 0.42, reach: 0.05 },  // Assam / NE India
+    ],
+  },
+  zebra: {
+    biomes: [B_SAVANNA], nPicks: 1,
+    origins: [
+      { fx: 0.547, fy: 0.52, reach: 0.14 },  // East African savanna
+    ],
+  },
+  ibex: {
+    biomes: [B_SHRUBLAND, B_GRASSLAND], nPicks: 2,
+    origins: [
+      { fx: 0.522, fy: 0.244, reach: 0.06 },  // Alps (~8°E 46°N)
+      { fx: 0.80, fy: 0.34, reach: 0.05 },  // Himalaya
+    ],
+  },
 };
 
 export const FLORA_ORIGINS = {
@@ -189,6 +209,45 @@ export const FLORA_ORIGINS = {
     nPicks: 1,
     origins: [
       { fx: 0.608, fy: 0.450, reach: 0.06 },  // Ethiopian highlands
+    ],
+  },
+  vanilla: {
+    biomes: [B_TROP_RAIN], nPicks: 1, hop: true,
+    origins: [
+      { fx: 0.631, fy: 0.600, reach: 0.05 },  // Madagascar
+      { fx: 0.225, fy: 0.394, reach: 0.06 },  // Veracruz / Gulf tropics (~19°N)
+    ],
+  },
+  cocoa: {
+    biomes: [B_TROP_RAIN], nPicks: 2,
+    origins: [
+      { fx: 0.530, fy: 0.520, reach: 0.08 },  // West African forest belt
+      { fx: 0.320, fy: 0.550, reach: 0.10 },  // Amazon
+    ],
+  },
+  capsicum: {
+    biomes: [B_SUBTROP, B_TROP_DRY, B_TROP_RAIN], nPicks: 1,
+    origins: [
+      { fx: 0.225, fy: 0.394, reach: 0.08 },  // Mesoamerica (~-99°E 19°N)
+    ],
+  },
+  cardamom: {
+    biomes: [B_TROP_RAIN, B_SUBTROP], nPicks: 1,
+    origins: [
+      { fx: 0.767, fy: 0.440, reach: 0.06 },  // Western Ghats
+    ],
+  },
+  turmeric: {
+    biomes: [B_SUBTROP, B_TROP_RAIN], nPicks: 1,
+    origins: [
+      { fx: 0.775, fy: 0.400, reach: 0.08 },  // monsoon India
+    ],
+  },
+  agarwood: {
+    biomes: [B_TROP_RAIN], nPicks: 1,
+    origins: [
+      { fx: 0.835, fy: 0.480, reach: 0.08 },  // Borneo / Sunda
+      { fx: 0.780, fy: 0.450, reach: 0.06 },  // Indochina
     ],
   },
 };

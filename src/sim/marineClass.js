@@ -129,6 +129,7 @@ const GOODS = [
   { id: "whale",     ok: m => m === M_POLAR || m === M_UPWELLING },
   { id: "amber",     ok: m => m === M_ENCLOSED },
   { id: "fish",      ok: m => m !== M_NONE && m !== M_DEEP && m !== M_DUNE },
+  { id: "shellfish", ok: m => m === M_SHELF || m === M_ESTUARY || m === M_ENCLOSED },
   { id: "mangrove",  ok: m => m === M_MANGROVE },
 ];
 
