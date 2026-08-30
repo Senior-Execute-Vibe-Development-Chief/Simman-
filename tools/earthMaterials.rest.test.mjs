@@ -4,12 +4,14 @@
 import {
   classifyBiome, observedClimate, B_MEDITERRANEAN, B_SHRUBLAND,
 } from "../src/sim/biomeClass.js";
-import { materialsFromSignals, idsOf, tileMaterials } from "../src/sim/tileMaterials.js";
+import { materialsFromSignals, idsOf, tileMaterials, formatMaterialsLine } from "../src/sim/tileMaterials.js";
 import {
   rasterizeEarthPlates, plateBoundDist, lonLatToIndex, kindOfPair, seamTiles,
   NAZ, SAM, IND, EUR, NAM, AFR, AP, ND, BK_SUBDUCTION, BK_COLLISION, BK_HOTSPOT,
 } from "../src/sim/earthPlates.js";
 import { generateWorld } from "../src/sim/worldgen.js";
+import { buildWorld as pipelineBuild } from "../src/sim/pipeline.js";
+import { readFileSync } from "node:fs";
 import {
   classifyMarine, marineGoods, M_REEF, M_POLAR, M_MANGROVE,
   M_ESTUARY, M_DEEP,
@@ -112,6 +114,50 @@ function ok(cond, msg) {
   ok(w.earthPixPlate && w.earthPixPlate.length === 120 * 60, "earthPixPlate alias present");
   ok(!!w.boundKind && !!w.hotspotDist, "typed boundaries + hotspots present");
   ok(w.realClimateUsed === false, "solver Earth is not observed climate");
+}
+
+{
+  // NCEP climate + Bird plates: the hover line is named things from tile
+  // state, not `if (Nile)`. Coarse W=240 so this stays in the rest suite.
+  const rc = await import("../src/realClimateData.js");
+  rc.provideRealClimateData(
+    JSON.parse(readFileSync(new URL("../data/global_precip.json", import.meta.url))),
+    JSON.parse(readFileSync(new URL("../data/global_airtemp.json", import.meta.url))),
+  );
+  const { w, ter } = pipelineBuild({
+    W: 240, H: 120, seed: 7, preset: "earth_sim", realWind: true,
+    realWindFns: {
+      isRealWindAvailable: () => false,
+      isRealClimateAvailable: rc.isRealClimateAvailable,
+      fillRealClimate: rc.fillRealClimate,
+    },
+  });
+  ok(w.realClimateUsed === true, "NCEP arm sets realClimateUsed");
+  ok(!!w.pixPlate && !!w.boundKind, "NCEP Earth still carries Bird pixPlate");
+  const lineAt = (lon, lat) => {
+    const ti = lonLatToIndex(lon, lat, ter.tw, ter.th);
+    const mv = {
+      N: ter.tw * ter.th, tw: ter.tw, th: ter.th, seed: w.seed, preset: w.preset,
+      elev: ter.tElev, temp: ter.tTemp, moist: ter.tMoist, coast: ter.tCoast,
+      tFlood: ter.tFlood, riverMag: ter.rivers && ter.rivers.riverMag,
+      relief: ter.tRelief, deposits: ter.deposits,
+      pixPlate: w.pixPlate, earthPixPlate: w.earthPixPlate,
+      boundKind: w.boundKind, hotspotDist: w.hotspotDist,
+      width: w.width, height: w.height, tileRes: 1, worldRef: w,
+      _dryFrac: w.dryFrac, _summerDry: w.summerDry,
+      realClimateUsed: w.realClimateUsed,
+    };
+    return formatMaterialsLine(tileMaterials(mv, ti));
+  };
+  const nile = lineAt(31, 30);
+  const sahel = lineAt(0, 15);
+  const java = lineAt(110, -7);
+  const kansas = lineAt(-98, 39);
+  ok(/date palm/.test(nile), `Nile names date palm from arid+water (${nile})`);
+  ok(/sorghum|millet/.test(sahel), `Sahel names a Sahel grain (${sahel})`);
+  ok(/rice/.test(java), `Java names rice from wet tropics (${java})`);
+  ok(/oak|beech|cedar/.test(kansas) && !/date palm/.test(kansas),
+    `Kansas temperate wood, not Sahara flora (${kansas})`);
 }
 
 // ── Marine ────────────────────────────────────────────────────────────────
