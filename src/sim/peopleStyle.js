@@ -17,7 +17,9 @@
 // Head/foot follow load (arid wrap, cold hood/boot, heat sandal, bare none).
 // Mobile open pasture without mill-timber is a felt tent; polar without
 // timber is turf. Roof cover is thatch / shingle / mud / felt from the
-// same load × materials, not a taste genome.
+// Roof cover is thatch / shingle / mud / felt from the same load × materials.
+// Residual fashion (haircut, embroidery, palette layout, corner flare) lives in
+// styleTaste.js — a taste genome expressing WITHIN this envelope, not replacing it.
 //
 // Classification, not a fitted culture. No time gates, no place names.
 // Pure + deterministic. No save fields, no UI wiring.
