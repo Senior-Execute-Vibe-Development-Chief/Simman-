@@ -292,9 +292,33 @@ lawyered.
     cardinal rule). Spec: `18-foundations.md`; 05.3 fixed; 08 + 09
     amended.
 
+## 2026-08-31 — Substrate round
+
+19. **The compute substrate.** (All five ratified.)
+    a. **Hybrid**: TypeScript shell + mechanisms; **routing engine in
+       Rust→WebAssembly from day one** (the measured 97% hotspot with a
+       stable interface); all hot loops kernel-disciplined behind narrow
+       typed-array APIs for later wasm drop-ins; ONE core serving the
+       browser worker and headless Node (batteries).
+    b. **CRP-style three-phase routing**: preprocess fixed topology once,
+       customize on cost change (season/tech/roads), query constantly;
+       dirty-region invalidation.
+    c. **Determinism laws**: no stdlib transcendentals in sim code (own
+       polynomial implementations, lint-enforced); fixed-order
+       reductions; tri-engine hash tests (Chromium/Firefox/WebKit + Node)
+       in CI.
+    d. **Memory doctrine**: SoA, arenas/pools, zero steady-state
+       allocation in tick paths; history as keyframes+deltas spilled to
+       OPFS (browser) / disk (headless).
+    e. **Performance budgets are standing CI gates from M1**; working
+       target: a full Phase-1 run headless in ≤ ~30 min on a normal
+       laptop, so 20-seed batteries run overnight.
+    Spec: 02 substrate section; 10 M0 expanded.
+    Implementation begins: M0 handed off (spec/handoffs/M0.md).
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 18)*
+*(empty — all proposals ratified as of round 19)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

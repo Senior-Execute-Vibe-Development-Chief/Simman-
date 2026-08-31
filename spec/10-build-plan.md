@@ -22,10 +22,16 @@ V1 remains at repo root, runnable, as reference oracle and parts shop.
 
 ## M0 — Skeleton (small, boring, load-bearing)
 
-Build: TS + Vite + worker scaffold; RNG module (ported); world-hash;
-save/load shell; the collector skeleton; smoke gate (determinism +
-save/load + invariants); two-grid runner; constants-ledger lint; CI wiring.
-Gate: smoke green on an empty world at both grids.
+Build: TS + Vite + worker scaffold; RNG module (ported byte-compatible);
+world-hash; save/load shell (save→load→save identity); the collector
+skeleton; deterministic math module (own sin/cos/exp/pow) + the
+no-`Math.*` lint; smoke gate (determinism + save/load + conservation
+harness + invariants); two-grid runner; **wasm toolchain bootstrap**
+(Rust crate → wasm, called from TS, deterministic across engines);
+**tri-engine CI** (Chromium/Firefox/WebKit + Node hash identity);
+constants-ledger lint; perf-bench harness (budgets arm at M1).
+Gate: smoke green on an empty world at both grids, identical hashes on
+all four engines, wasm round-trip proven. Handoff: spec/handoffs/M0.md.
 
 ## M1 — The land and the cost of moving
 

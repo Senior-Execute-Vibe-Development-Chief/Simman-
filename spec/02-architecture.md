@@ -15,6 +15,32 @@
   GPU-friendly (flat arrays, no object graphs in the hot path) so the
   option stays open.
 
+## Substrate rulings (DECISIONS 19)
+
+- **Hybrid split along the churn boundary**: TypeScript for shell and
+  mechanisms (where iteration lives); **Rust→WebAssembly for the routing
+  engine from day one** (the stable-interface 97% hotspot); every hot
+  loop kernel-disciplined behind a narrow typed-array API so any kernel
+  that misses budget gets a wasm drop-in without touching callers. One
+  core, two run modes: browser worker (observatory) and headless Node
+  (validation batteries — the dominant compute consumer).
+- **Routing is CRP-style, three phases**: metric-independent
+  preprocessing of the fixed terrain topology, once; cheap customization
+  when costs change (season is a 12-cycle; roads/tech drift slowly);
+  near-instant queries; dirty-region invalidation. Algorithm choice
+  outranks language here by 100×.
+- **Determinism laws**: no stdlib transcendentals in sim code — own
+  polynomial sin/cos/exp/pow, lint-enforced (basic IEEE arithmetic is
+  cross-engine exact; `Math.*` is not); fixed-order parallel reductions;
+  CI runs the same seed under Chromium, Firefox, WebKit, and Node and
+  requires identical world hashes. Wasm parts are deterministic by spec.
+- **Memory doctrine**: SoA everywhere; arena/pool allocation with zero
+  steady-state allocation in tick paths (the allocation-wall cure);
+  history for scrubbing as keyframes+deltas spilled to OPFS in the
+  browser, plain files headless.
+- **Performance budgets are CI gates from M1** (regressions fail like
+  physics); working target ≤ ~30 min per full headless run on a laptop.
+
 ## Grids
 
 - Dev grid: coarse (fast iteration, seconds/run). Target grid: **10–20 km
