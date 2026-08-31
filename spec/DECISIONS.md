@@ -107,6 +107,27 @@ lawyered.
     d. **Mercenary market and siege reputation** both in Phase 1.
     Spec: `13-war.md`.
 
+## 2026-08-31 — Discovery & colonization round
+
+11. **The known world.** (All four sub-rulings ratified.)
+    a. **Geographic knowledge is a real system** (coarse per-tradition
+       known-world frontiers; exploration = demand-driven frontier
+       pushing; pilots as carriers, charts as writing-domain artifacts).
+       Owner addition: the **mappa mundi lens** — view the world as a
+       given city/tradition believes it: high-fidelity known coasts,
+       warped speculative far shores (warp derived from actual report
+       quality), fog at the edge of knowledge.
+    b. **Colony types are strictly emergent** from disease burden × native
+       density/organization × profitability — never a typed choice
+       (trading post / settler / extraction / protectorate as outcomes).
+    c. **Isolation by physics**: Old/New World contact waits for real
+       blue-water capability, every seed — early, late, or reversed
+       contact are legitimate alternate Earths.
+    d. **Port v1's validated colonial arc** (charters, colonial economy,
+       independence when local capacity outgrows projected metropole
+       force) onto the obligation-graph substrate.
+    Spec: `14-discovery.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 These are in the specs as the working design; the owner has not explicitly

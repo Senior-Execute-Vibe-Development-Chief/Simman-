@@ -25,6 +25,7 @@ Nothing is staged or propped up.
 | `11-knowledge.md` | Knowledge & technology: techniques as living populations (carriers, practice, transmission, loss, blocking) |
 | `12-zoom.md` | The living zoom: altitude bands, the no-lies rule, persistent micro-genealogy, follow-the-grain |
 | `13-war.md` | War in the concrete: armies as supplied columns, devastation, two-clock sieges, assessment-convergence endings |
+| `14-discovery.md` | Discovery & colonization: the known world, the mappa mundi lens, first contact, colonies as outcomes |
 | `research/` | The distilled v1 learnings corpus (five dossiers) — the evidence base these specs cite |
 
 ## Spec depth rule
