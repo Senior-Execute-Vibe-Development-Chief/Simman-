@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aesthetic Identity — people look, dress &amp; built lab</title>
+<style>
+  :root{
+    --ground:#e8e4da; --surface:#f3efe6; --raised:#faf7f0; --ink:#262a31; --muted:#6b6559;
+    --accent:#8b5a2b; --accent-2:#3d6b8c; --rule:#cec5af; --plate:#1e2228;
+    --serif:"Iowan Old Style",Palatino,Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.5; }
+  .wrap{ max-width:1100px; margin:0 auto; padding:clamp(16px,3vw,32px); }
+  .eyebrow{ font-size:.68rem; text-transform:uppercase; letter-spacing:.18em; font-weight:700; color:var(--accent); margin:0 0 6px; }
+  h1{ font-family:var(--serif); font-weight:500; font-size:clamp(1.6rem,3vw,2.2rem); margin:0 0 8px; }
+  .sub{ color:var(--muted); max-width:62ch; margin:0 0 20px; font-size:.94rem; }
+  .workbench{ display:grid; grid-template-columns:240px minmax(0,1fr) 200px; gap:14px; align-items:start; }
+  @media (max-width:860px){ .workbench{ grid-template-columns:1fr; } }
+  .rail{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:14px; }
+  .rail h2{ font-size:.68rem; text-transform:uppercase; letter-spacing:.14em; color:var(--accent); margin:0 0 4px; font-weight:700; }
+  .rail p.hint{ font-size:.72rem; color:var(--muted); margin:0 0 12px; }
+  .ctrl{ margin-bottom:11px; }
+  .ctrl label{ display:flex; justify-content:space-between; font-size:.76rem; margin-bottom:3px; }
+  .ctrl label .val{ color:var(--muted); font-family:var(--mono); font-size:.7rem; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .stage{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:18px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .plate{ background:var(--plate); border:1px solid var(--accent); border-radius:6px; padding:12px; }
+  .plate svg{ display:block; width:min(320px,80vw); height:auto; }
+  .caption{ font-size:.78rem; color:var(--muted); text-align:center; max-width:52ch; font-family:var(--mono); line-height:1.45; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .chip{ font:inherit; font-size:.72rem; padding:6px 10px; border:1px solid var(--rule); border-radius:999px; background:var(--raised); cursor:pointer; }
+  .chip.on{ border-color:var(--accent); background:#efe4d4; font-weight:600; }
+  .btn{ display:block; width:100%; background:var(--raised); border:1px solid var(--rule); border-radius:6px; padding:8px 10px; font:inherit; font-size:.8rem; cursor:pointer; margin-bottom:7px; text-align:left; }
+  .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  .btn small{ display:block; color:var(--muted); font-size:.65rem; margin-top:1px; }
+  .btn.primary small{ color:#f0e6d8; }
+  .seedrow{ display:flex; gap:6px; margin-bottom:10px; }
+  .seedrow input{ flex:1; font:inherit; font-size:.74rem; font-family:var(--mono); background:var(--raised); border:1px solid var(--rule); border-radius:6px; padding:6px 8px; }
+  .toolrow{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .mini{ background:var(--raised); border:1px solid var(--rule); border-radius:6px; font:inherit; font-size:.72rem; padding:5px 9px; cursor:pointer; }
+  .divider{ height:1px; background:var(--rule); margin:12px 0; }
+  footer{ margin-top:18px; font-size:.72rem; color:var(--muted); border-top:1px solid var(--rule); padding-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Simman · aesthetic genetics</p>
+    <h1>People Look, Dress &amp; Built</h1>
+    <p class="sub">One aesthetic identity — carried look, local dress envelope, local built envelope, culture taste genome. Pick a climate context, bias the taste axes, morph the face. Everything renders as procedural SVG.</p>
+  </header>
+
+  <div class="workbench">
+    <aside class="rail">
+      <h2>Place</h2>
+      <p class="hint">Climate × materials × wealth sets dress &amp; built. Look follows the homeland profile unless you edit face sliders.</p>
+      <div class="chips" id="places"></div>
+
+      <h2>Taste axes</h2>
+      <p class="hint">Bias the culture genome at founding — ornament, austerity, colour…</p>
+      <div id="taste-sliders"></div>
+
+      <h2>Face (creator)</h2>
+      <p class="hint">Override ancestry look for the Mii Maker path.</p>
+      <div id="look-sliders"></div>
+    </aside>
+
+    <section class="stage">
+      <div class="plate"><div id="preview"></div></div>
+      <p class="caption" id="caption">—</p>
+      <div class="toolrow">
+        <button class="mini" id="dlsvg">Download SVG</button>
+        <button class="mini" id="copylink">Copy link</button>
+      </div>
+    </section>
+
+    <aside class="rail">
+      <h2>Seed</h2>
+      <div class="seedrow">
+        <input id="seedbox" type="text" inputmode="numeric" aria-label="seed">
+        <button class="mini" id="loadseed">Load</button>
+      </div>
+      <button class="btn primary" id="reroll">Reroll <small>new taste seed, same axes</small></button>
+      <button class="btn" id="mutate">Mutate taste <small>one generation of drift</small></button>
+      <div class="divider"></div>
+      <button class="btn" id="resetface">Reset face <small>homeland look from place</small></button>
+    </aside>
+  </div>
+
+  <footer>From <b>Simman</b> — pure decider modules inlined at build time (<code>build_aesthetic_lab.mjs</code>). No sim wiring; this is the creator preview path.</footer>
+</div>
+
+<script>
+/* ═══ hash32 ═══ */
+function hash32(...parts) {
+  let h = 0x811c9dc5;
+  for (const p of parts) {
+    if (typeof p === "number") {
+      // fold 64-bit-ish values in 8 bytes so large ids hash cleanly
+      const hi = Math.floor(p / 4294967296), lo = p >>> 0;
+      for (const v of [lo, hi]) {
+        h = Math.imul(h ^ (v & 0xff), 0x01000193);
+        h = Math.imul(h ^ ((v >>> 8) & 0xff), 0x01000193);
+        h = Math.imul(h ^ ((v >>> 16) & 0xff), 0x01000193);
+        h = Math.imul(h ^ ((v >>> 24) & 0xff), 0x01000193);
+      }
+    } else {
+      const s = String(p);
+      for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    }
+  }
+  return h >>> 0;
+}
+
+/* ═══ lineage genetics ═══ */
+// ── Lineage genetics — Rail B look traits carried with ancestry ─────────────
+//
+// Climate look (skin, limbs, …) lives in peopleStyle.lookFromHomeland.
+// These traits are mostly heritable lineage capacity — stamped at each
+// ancestry anchor, inherited on fission with drift, mixed through ancMix.
+// Not per-person random; not culture names; not calendar gates.
+//
+// arrN is peopling depth (0 cradle → 1 last frontier), not the display year.
+
+function clamp01(x) {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+/** Ordered Rail B genes — stamp order is the inheritance backbone. */
+const RAIL_B_GENES = [
+  "facialHair", "hairHue", "hairDensity",
+  "epicanthic", "eyeAperture",
+  "noseBridge", "noseLength",
+  "jawWidth", "chinProminence", "cheekFullness", "lipFullness",
+  "browRidge", "earSize", "headBreadth",
+];
+
+const RAIL_B_TAG = Object.fromEntries(RAIL_B_GENES.map((g, i) => [g, 0xFACE0000 ^ (i * 0x9e3779b9)]));
+
+function unit(seed, ancId, parentId, tag) {
+  return hash32(seed >>> 0, ancId | 0, (parentId + 1) | 0, tag) / 4294967296;
+}
+
+function inheritGene(parentVal, u) {
+  return clamp01(parentVal * 0.90 + (u - 0.5) * 0.14);
+}
+
+/** Follicle density / androgen response at an ancestry anchor (0–1). */
+function facialHairAtAnchor(seed, ancId, parentId, parentHair, ti, tTemp, tMoist, arrN) {
+  const temp = tTemp[ti];
+  const moist = tMoist[ti];
+  const u = unit(seed, ancId, parentId, RAIL_B_TAG.facialHair);
+  if (parentId < 0) {
+    const cold = clamp01((0.82 - temp) / 0.34);
+    const arid = temp > 0.74 && moist < 0.30;
+    const humid = temp > 0.80 && moist > 0.50;
+    const climate = clamp01(0.68 + 0.22 * cold + 0.14 * (arid ? 1 : 0) - 0.08 * (humid ? 1 : 0));
+    const frontier = arrN[ti] < Infinity ? arrN[ti] : 1;
+    const founder = clamp01(1 - 0.32 * frontier * frontier);
+    return clamp01(0.05 + 0.90 * u * climate * founder);
+  }
+  const humid = temp > 0.80 && moist > 0.50;
+  return clamp01(inheritGene(parentHair, u) - 0.03 * (humid ? 1 : 0));
+}
+
+function founderBias(gene, temp, moist, arrN, ti, u) {
+  const cold = clamp01((0.82 - temp) / 0.34);
+  const frontier = arrN[ti] < Infinity ? arrN[ti] : 1;
+  switch (gene) {
+    case "hairHue":
+      // Lighter hair capacity nudges in cold/arid founder climates — heritable, not per-tile.
+      return clamp01(0.08 + 0.84 * u * (0.55 + 0.35 * cold));
+    case "hairDensity":
+      return clamp01(0.12 + 0.86 * u * (0.70 + 0.22 * cold));
+    case "epicanthic":
+      return clamp01(0.04 + 0.92 * u * (0.82 - 0.18 * frontier));
+    case "eyeAperture":
+      return clamp01(0.10 + 0.80 * u);
+    case "noseBridge":
+      return clamp01(0.08 + 0.84 * u * (0.65 + 0.25 * cold));
+    case "noseLength":
+      return clamp01(0.10 + 0.80 * u * (0.55 + 0.30 * cold));
+    case "jawWidth":
+      return clamp01(0.12 + 0.76 * u * (0.60 + 0.28 * cold));
+    case "chinProminence":
+      return clamp01(0.08 + 0.84 * u * (0.58 + 0.30 * cold));
+    case "cheekFullness":
+      return clamp01(0.10 + 0.80 * u);
+    case "lipFullness":
+      return clamp01(0.12 + 0.76 * u * (0.55 + 0.35 * (1 - cold)));
+    case "browRidge":
+      return clamp01(0.06 + 0.88 * u * (0.62 + 0.28 * cold));
+    case "earSize":
+      return clamp01(0.10 + 0.80 * u);
+    case "headBreadth":
+      return clamp01(0.10 + 0.80 * u * (0.58 + 0.28 * cold));
+    default:
+      return clamp01(u);
+  }
+}
+
+function railBAtAnchor(seed, gene, ancId, parentId, parentVal, ti, tTemp, tMoist, arrN) {
+  if (gene === "facialHair") {
+    return facialHairAtAnchor(seed, ancId, parentId, parentVal, ti, tTemp, tMoist, arrN);
+  }
+  const u = unit(seed, ancId, parentId, RAIL_B_TAG[gene]);
+  if (parentId < 0) {
+    const temp = tTemp[ti], moist = tMoist[ti];
+    return founderBias(gene, temp, moist, arrN, ti, u);
+  }
+  return inheritGene(parentVal, u);
+}
+
+/** Stamp Rail-B genetics onto ancHomelands (parents before children). */
+function stampLineageGenetics(ancHomelands, K, ancParent, src, seed, tTemp, tMoist, arrN) {
+  for (let a = 0; a < K; a++) {
+    const ti = src[a];
+    const par = ancParent[a];
+    for (const gene of RAIL_B_GENES) {
+      const parentVal = par >= 0 ? (ancHomelands[par][gene] ?? 0) : 0;
+      ancHomelands[a][gene] = railBAtAnchor(
+        seed, gene, a, par, parentVal, ti, tTemp, tMoist, arrN);
+    }
+  }
+}
+
+/** Below this, a lineage rarely grows a visible beard (capacity, not style). */
+const BEARD_VISIBLE = 0.15;
+
+function canGrowBeard(look, threshold = BEARD_VISIBLE) {
+  return !!(look && (look.facialHair ?? 0) >= threshold);
+}
+
+
+/* ═══ people style ═══ */
+// ── People style — look, dress, built as derived forms ─────────────────────
+//
+// Companion to tileMaterials.js. That module names what grows or sits on a
+// tile. This one decides how people LOOK and what they WEAR and BUILD.
+//
+// Split:
+//   look  — carried. Genesis-homeland climate + lineage genetics (Rail B),
+//           mixed by ancMix. Never the tile you stand on.
+//   dress — local. Climate is insulation and motion; fibre/dye from materials.
+//   built — local. Climate is the load (snow, rain, heat, flood); wall from
+//           timber / mudbrick / stone / reed on the tile.
+//
+// Station (plain vs fine) is surplus, not a culture name: a court and a
+// tribesman can share a climate and still read apart. Hot-humid + plain is
+// bare skin; the same climate + surplus is a light robe. Silk vs wool vs
+// leather decides robe vs tailored vs hide — still no place name.
+// Head/foot follow load (arid wrap, cold hood/boot, heat sandal, bare none).
+// Mobile open pasture without mill-timber is a felt tent; polar without
+// timber is turf. Roof cover is thatch / shingle / mud / felt from the
+// Roof cover is thatch / shingle / mud / felt from the same load × materials.
+// Residual fashion (haircut, embroidery, palette layout, corner flare) lives in
+// styleTaste.js — a taste genome expressing WITHIN this envelope, not replacing it.
+//
+// Classification, not a fitted culture. No time gates, no place names.
+// Pure + deterministic. No save fields, no UI wiring.
+
+function clamp(x, a = 0, b = 1) {
+  return x < a ? a : x > b ? b : x;
+}
+
+function ids(list) {
+  if (!list) return [];
+  return list.map(x => (typeof x === "string" ? x : x && x.id)).filter(Boolean);
+}
+
+function hasId(list, id) {
+  return ids(list).includes(id);
+}
+
+function absLatOf(c) {
+  if (c.absLat != null) return clamp(c.absLat);
+  if (c.lat != null) return clamp(Math.abs(c.lat) / 90);
+  return 0.5;
+}
+
+function warmOf(temp) {
+  return clamp((temp - 0.52) / 0.36);
+}
+
+function coldOf(temp) {
+  return clamp((0.82 - temp) / 0.34);
+}
+
+function wetOf(moist) {
+  return clamp((moist - 0.18) / 0.55);
+}
+
+/** Continuous facial / body clines from a lineage's genesis climate. */
+function lookFromHomeland(h) {
+  const temp = h.temp != null ? h.temp : 0.70;
+  const moist = h.moist != null ? h.moist : 0.40;
+  const elev = h.elev != null ? h.elev : 0;
+  const absLat = absLatOf(h);
+  const warm = warmOf(temp);
+  const cold = coldOf(temp);
+  const wet = wetOf(moist);
+  // UV: equator + altitude. Cloud (moist) only weakly shades it.
+  const uv = clamp((1 - absLat) * (1 - 0.15 * wet) + 0.22 * elev * (1 - absLat));
+  const skin = clamp(0.12 + 0.78 * uv * (0.45 + 0.55 * warm));
+  const look = {
+    skin,
+    stature: clamp(0.38 + 0.28 * cold + 0.12 * (1 - absLat)),
+    build: clamp(0.22 + 0.62 * cold),
+    limbs: clamp(0.22 + 0.64 * warm),
+    hairCurl: clamp(0.08 + 0.82 * warm * wet),
+    hairDark: clamp(0.22 + 0.72 * skin),
+    noseWidth: clamp(0.16 + 0.70 * warm * Math.max(wet, 0.25)),
+  };
+  for (const k of RAIL_B_GENES) {
+    if (h[k] != null) look[k] = clamp(h[k]);
+  }
+  return look;
+}
+
+function mixLook(parts) {
+  const keys = [...LOOK_RAIL_A, ...RAIL_B_GENES];
+  const acc = Object.fromEntries(keys.map(k => [k, 0]));
+  let w = 0;
+  for (const p of parts || []) {
+    const look = p.look || p;
+    const share = p.share != null ? p.share : 1;
+    if (!look || share <= 0) continue;
+    w += share;
+    for (const k of keys) acc[k] += (look[k] || 0) * share;
+  }
+  if (w <= 0) return null;
+  for (const k of keys) acc[k] /= w;
+  return acc;
+}
+
+/**
+ * Genesis-homeland climates stamped at ancestry anchors (pipeline generateAncestry).
+ * Indexed by ancestry id; null when the world predates the stamp.
+ */
+function homelandsFrom(world) {
+  const arr = world && world.ancHomelands;
+  if (!arr || !arr.length) return null;
+  return arr;
+}
+
+const LOOK_RAIL_A = [
+  "skin", "stature", "build", "limbs", "hairCurl", "hairDark", "noseWidth",
+];
+
+/**
+ * Carried look. Needs `homeland`, or `ancMix` + `homelands` / `world.ancHomelands`.
+ * Does not read the current tile's climate.
+ */
+function lookOf(c) {
+  const homelands = (c && c.homelands) || (c && c.world && homelandsFrom(c.world));
+  if (c && c.ancMix && homelands) {
+    const parts = [];
+    for (const pair of c.ancMix) {
+      const id = pair[0], share = pair[1];
+      const h = homelands[id];
+      if (!h || !(share > 0)) continue;
+      parts.push({ look: lookFromHomeland(h), share });
+    }
+    return mixLook(parts);
+  }
+  if (c && c.homeland) return lookFromHomeland(c.homeland);
+  return null;
+}
+
+/** Pure ancestry mix at a sim tile (pre-settlement probe). */
+function ancMixAtTile(world, ti) {
+  const anc = world && world.ancestry;
+  if (!anc || ti == null || ti < 0 || ti >= anc.length) return null;
+  const id = anc[ti];
+  return id < 0 ? null : [[id, 1]];
+}
+
+function wealthOf(c) {
+  return c.wealth != null ? c.wealth : 0.3;
+}
+
+function stationOf(c) {
+  return wealthOf(c) > 0.5 ? "fine" : "plain";
+}
+
+function bestFibre(c, coverage) {
+  const fibreIds = ids(c.materials && c.materials.fibres);
+  const faunaIds = ids(c.materials && c.materials.fauna);
+  const wealth = wealthOf(c);
+  const cold = coverage > 0.55;
+  const hot = coverage < 0.35;
+  if (cold && (faunaIds.includes("seal") || hasId(c.materials && c.materials.furs, "seal")
+    || hasId(c.materials && c.materials.furs, "sable"))) {
+    if (!fibreIds.includes("fur")) fibreIds.push("fur");
+  }
+  const hideFauna = ["deer", "bison", "elk", "antelope"].some(id => faunaIds.includes(id));
+  if (wealth < 0.4 && (hideFauna || (c.livestock || 0) > 0.35) && !fibreIds.includes("silk")) {
+    if (!fibreIds.includes("leather")) fibreIds.push("leather");
+  }
+  // Surplus silk is a court cloth even in the temperate band — otherwise
+  // silk-country and wool-country gentry collapse to the same cut.
+  const prefer = wealth > 0.5 && fibreIds.includes("silk")
+    ? ["silk", "cotton", "linen", "flax", "wool", "hemp"]
+    : cold
+      ? ["fur", "cashmere", "wool", "alpaca", "leather", "hemp", "flax", "silk", "cotton"]
+      : hot
+        ? ["cotton", "linen", "flax", "leather", "silk", "hemp", "wool"]
+        : ["leather", "wool", "flax", "hemp", "silk", "cotton", "linen"];
+  for (const id of prefer) {
+    if (id === "linen" && fibreIds.includes("flax")) return "linen";
+    if (fibreIds.includes(id)) return id === "flax" ? (hot ? "linen" : "flax") : id;
+  }
+  if (wealth < 0.4 && hideFauna) return "leather";
+  if (cold && (c.livestock || 0) > 0.35) return "wool";
+  if (hot) return "linen";
+  return "wool";
+}
+
+function bestDye(c) {
+  const dyeIds = ids(c.materials && c.materials.dyes);
+  if (!dyeIds.length) return null;
+  const wealth = wealthOf(c);
+  const costly = ["tyrian", "cochineal", "kermes", "indigo", "saffron"];
+  if (wealth > 0.45) {
+    for (const id of costly) if (dyeIds.includes(id)) return id;
+  }
+  return dyeIds[0];
+}
+
+function humidHeat(temp, moist) {
+  return temp > 0.80 && moist > 0.50;
+}
+
+function TIMBER_IDS() {
+  return ["oak", "pine", "cedar", "teak", "beech", "spruce", "larch", "birch"];
+}
+
+function hasTimber(c) {
+  const trees = ids(c.materials && c.materials.trees);
+  return TIMBER_IDS().some(id => trees.includes(id));
+}
+
+function aridHeat(temp, moist) {
+  return temp > 0.74 && moist < 0.30;
+}
+
+function silhouetteOf(cut) {
+  if (cut === "bare") return "minimal";
+  if (cut === "drape" || cut === "robe") return "flowing";
+  if (cut === "trousers") return "split";
+  return "structured";
+}
+
+function headOf(c, coverage, weight) {
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  if (weight === "bare") return "none";
+  if (aridHeat(temp, moist)) return "wrap";
+  if (coverage > 0.50) return "hood";
+  return "none";
+}
+
+function footOf(c, coverage, weight) {
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  if (weight === "bare") return "none";
+  if (aridHeat(temp, moist) || temp > 0.80) return "sandal";
+  if (coverage > 0.50) return "boot";
+  return "shoe";
+}
+
+function ornamentOf(c) {
+  if (stationOf(c) !== "fine") return null;
+  const gems = ids(c.materials && c.materials.gems);
+  const metals = ids(c.materials && c.materials.metals);
+  if (metals.includes("gold")) return "gold";
+  if (gems.includes("lapis")) return "lapis";
+  if (gems.includes("turquoise")) return "turquoise";
+  if (gems.includes("jade")) return "jade";
+  return null;
+}
+
+function layersOf(cut, weight, station) {
+  if (weight === "bare" || cut === "bare") return "none";
+  if (station === "fine" && cut !== "bare") return "double";
+  if (weight === "heavy") return "double";
+  if (cut === "robe" || cut === "drape") return "mantle";
+  return "single";
+}
+
+function sleeveOf(cut, weight, coverage) {
+  if (weight === "bare" || cut === "bare") return "bare";
+  if (coverage > 0.55) return "full";
+  if (cut === "robe" || cut === "drape") return "wide";
+  if (cut === "trousers") return "wrist";
+  return coverage < 0.35 ? "short" : "wrist";
+}
+
+function lowerOf(cut, mounted) {
+  if (cut === "bare") return "bare";
+  if (cut === "trousers" || mounted) return "trousers";
+  if (cut === "robe" || cut === "drape") return "wrap";
+  return "skirt";
+}
+
+function cloakOf(coverage, weight, temp) {
+  if (weight === "bare") return "none";
+  if (coverage > 0.62 && temp < 0.64) return "long";
+  if (coverage > 0.48 && temp < 0.70) return "short";
+  return "none";
+}
+
+function beltOf(station, cut) {
+  if (cut === "bare") return "none";
+  if (station === "fine") return "chain";
+  if (cut === "robe" || cut === "drape") return "sash";
+  return "girdle";
+}
+
+function bodyArtOf(c, station) {
+  const dyeIds = ids(c.materials && c.materials.dyes);
+  if (dyeIds.includes("henna")) return station === "fine" ? "henna" : "henna";
+  if (dyeIds.includes("ochre")) return "ochre";
+  if (dyeIds.includes("woad")) return "woad";
+  return "none";
+}
+
+function headdressOf(c, head, station) {
+  if (head === "hood") return "none";
+  if (station === "fine" && head === "wrap") return "turban";
+  if (station === "fine") return "crown";
+  if (head === "wrap") return "wrap";
+  return "none";
+}
+
+function dressOf(c) {
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  let coverage = coldOf(temp);
+  const livestock = c.livestock != null ? c.livestock : 0;
+  const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
+  const open = c.open != null ? c.open : (c.relief != null ? c.relief < 0.22 : false);
+  const wealth = wealthOf(c);
+  const station = stationOf(c);
+  const fibre = bestFibre(c, coverage);
+  const mounted = (temp < 0.70 || livestock > 0.45) && (horses > 0.08 || (livestock > 0.4 && open));
+  const tropic = humidHeat(temp, moist);
+  let weight = coverage > 0.55 ? "heavy" : coverage < 0.28 ? "light" : "medium";
+  let cut;
+  if (tropic && station === "plain" && !mounted) {
+    weight = "bare";
+    cut = "bare";
+    coverage = Math.min(coverage, 0.08);
+  } else if (mounted) cut = "trousers";
+  else if (wealth > 0.5 && (fibre === "silk" || tropic)) cut = "robe";
+  else if (temp > 0.78 && coverage < 0.40) cut = "drape";
+  else if (temp < 0.68) cut = "tailored";
+  else if (fibre === "leather") cut = "drape";
+  else cut = "tailored";
+  if (tropic && station === "fine" && !mounted) {
+    weight = "light";
+    cut = "robe";
+  }
+  if (fibre === "fur" || (coverage > 0.55 && ids(c.materials && c.materials.furs).length)) {
+    if (weight !== "bare") weight = "heavy";
+  }
+  const head = headOf(c, coverage, weight);
+  return {
+    coverage,
+    weight,
+    cut,
+    silhouette: silhouetteOf(cut),
+    fibre,
+    dye: bestDye(c),
+    head,
+    foot: footOf(c, coverage, weight),
+    ornament: ornamentOf(c),
+    station,
+    layers: layersOf(cut, weight, station),
+    sleeve: sleeveOf(cut, weight, coverage),
+    lower: lowerOf(cut, mounted),
+    cloak: cloakOf(coverage, weight, temp),
+    belt: beltOf(station, cut),
+    bodyArt: bodyArtOf(c, station),
+    headdress: headdressOf(c, head, station),
+  };
+}
+
+function snowLoad(temp, moist) {
+  return temp < 0.66 && moist > 0.32;
+}
+
+function rainLoad(moist) {
+  return moist > 0.50;
+}
+
+function tundraBare(c, temp, moist) {
+  return temp < 0.58 && moist < 0.40 && !hasTimber(c);
+}
+
+function mobileCamp(c, temp, flood) {
+  const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
+  const open = c.open != null ? c.open : (c.relief != null ? c.relief < 0.22 : false);
+  const moist = c.moist != null ? c.moist : 0.40;
+  return !flood && horses > 0.08 && open && !hasTimber(c) && !aridHeat(temp, moist) && temp < 0.78;
+}
+
+function scaleOf(c, plan) {
+  if (plan === "camp") return "camp";
+  const w = wealthOf(c);
+  if (w > 0.75) return "hall";
+  if (w > 0.5) return "house";
+  return "hut";
+}
+
+function verticalityOf(c, plan, wealth, wall) {
+  if (plan === "camp") return "low";
+  if (wealth > 0.72 && wall === "stone") return "high";
+  if (wealth > 0.55 && wall !== "wattle" && wall !== "reed") return "mid";
+  return "low";
+}
+
+function roofFormOf(roof, wealth, wall) {
+  if (roof === "tent") return "conical";
+  if (roof === "low") return "low";
+  if (roof === "flat" && wealth > 0.65 && wall === "stone") return "dome";
+  if (roof === "flat") return "flat";
+  if (roof === "steep") return "gable";
+  if (wealth > 0.55) return "hip";
+  return "gable";
+}
+
+function sacredFormOf(wealth, station) {
+  if (station !== "fine" || wealth < 0.62) return "none";
+  if (wealth > 0.82) return "spire";
+  if (wealth > 0.70) return "tier";
+  return "mound";
+}
+
+function fortificationOf(c, wealth, plan) {
+  const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
+  if (plan === "camp") return "none";
+  if (wealth > 0.72) return "tower";
+  if (wealth > 0.52 || horses > 0.15) return "curtain";
+  if (wealth > 0.38) return "palisade";
+  return "none";
+}
+
+function windowTypeOf(openings, wall, moist) {
+  if (wall === "felt" || wall === "turf") return "plain";
+  if (openings === "small") return "narrow";
+  if (wall === "mudbrick" || wall === "stone") return moist > 0.45 ? "lattice" : "shutter";
+  return openings === "large" ? "shutter" : "plain";
+}
+
+function interiorOf(plan, wealth, temp) {
+  if (plan === "camp") return "pavilion";
+  if (plan === "courtyard" && wealth > 0.55) return "roomed";
+  if (temp < 0.62 || plan === "compact") return "hall";
+  return wealth > 0.45 ? "roomed" : "hall";
+}
+
+function coverOf(c, roof, wall) {
+  if (roof === "tent") return "felt";
+  if (wall === "turf" || roof === "low") return "turf";
+  if (roof === "flat") return "mud";
+  const rain = roof === "pitched" || roof === "steep";
+  if (rain && !hasTimber(c)) return "thatch";
+  if (rain) return "shingle";
+  return "none";
+}
+
+function openingsOf(temp, moist) {
+  if (aridHeat(temp, moist) || temp > 0.80) return "small";
+  // Polar dry-cold keeps heat in. Temperate cold-wet opens for light.
+  if (temp < 0.58 && moist < 0.40) return "small";
+  if (temp < 0.62 && moist > 0.32) return "large";
+  return "medium";
+}
+
+function bestWall(c) {
+  const trees = ids(c.materials && c.materials.trees);
+  const stone = ids(c.materials && c.materials.stone);
+  const earths = ids(c.materials && c.materials.earths);
+  const flood = !!c.flood;
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  const elev = c.elev != null ? c.elev : 0;
+  if (flood && (trees.includes("reed") || trees.includes("papyrus"))) return "reed";
+  if (aridHeat(temp, moist) && (earths.includes("clay") || earths.includes("sand"))) return "mudbrick";
+  if ((elev > 0.18 || (c.relief || 0) > 0.35) && stone.length) return "stone";
+  if (hasTimber(c)) return "timber";
+  if (trees.includes("bamboo") && temp > 0.76 && moist > 0.42) return "bamboo";
+  if (earths.includes("clay") && moist < 0.42) return "mudbrick";
+  if (flood) return "reed";
+  if (aridHeat(temp, moist)) return "mudbrick";
+  // Rain without mill-timber is wattle/thatch country, not a mudbrick hut
+  // and not a European hall. Palm is fibre and roof, not a framed wall.
+  if (moist > 0.45) return "wattle";
+  if (stone.length) return "stone";
+  return "wattle";
+}
+
+function builtOf(c) {
+  const temp = c.temp != null ? c.temp : 0.70;
+  const moist = c.moist != null ? c.moist : 0.40;
+  const flood = !!c.flood;
+  const wealth = wealthOf(c);
+  let wall = bestWall(c);
+  let roof, pitch, plan, eaves;
+
+  if (flood) {
+    plan = "raised";
+    roof = rainLoad(moist) ? "pitched" : "flat";
+    pitch = rainLoad(moist) ? 0.42 : 0.12;
+    eaves = rainLoad(moist) ? "deep" : "none";
+  } else if (mobileCamp(c, temp, flood)) {
+    wall = "felt";
+    roof = "tent";
+    pitch = 0.22;
+    plan = "camp";
+    eaves = "none";
+  } else if (tundraBare(c, temp, moist)) {
+    wall = "turf";
+    roof = "low";
+    pitch = 0.14;
+    plan = "compact";
+    eaves = "none";
+  } else if (snowLoad(temp, moist)) {
+    roof = "steep";
+    pitch = clamp(0.72 + (0.66 - temp) * 0.8);
+    plan = temp < 0.62 ? "compact" : "open";
+    eaves = rainLoad(moist) ? "deep" : "none";
+  } else if (rainLoad(moist)) {
+    roof = "pitched";
+    pitch = clamp(0.40 + (moist - 0.50) * 0.5);
+    eaves = "deep";
+    plan = (wealth > 0.5 && temp > 0.72) ? "courtyard" : (temp < 0.62 ? "compact" : "open");
+  } else if (aridHeat(temp, moist)) {
+    roof = "flat";
+    pitch = clamp(0.08 + moist * 0.15);
+    plan = "courtyard";
+    eaves = "none";
+  } else {
+    roof = "pitched";
+    pitch = 0.38;
+    eaves = "none";
+    plan = (wealth > 0.5 && temp > 0.72) ? "courtyard" : (temp < 0.62 ? "compact" : "open");
+  }
+
+  const station = stationOf(c);
+  const openings = openingsOf(temp, moist);
+  return {
+    wall,
+    roof,
+    pitch: clamp(pitch),
+    eaves,
+    plan,
+    cover: coverOf(c, roof, wall),
+    openings,
+    scale: scaleOf(c, plan),
+    station,
+    verticality: verticalityOf(c, plan, wealth, wall),
+    roofForm: roofFormOf(roof, wealth, wall),
+    sacredForm: sacredFormOf(wealth, station),
+    fortification: fortificationOf(c, wealth, plan),
+    windowType: windowTypeOf(openings, wall, moist),
+    interior: interiorOf(plan, wealth, temp),
+  };
+}
+
+/** Combined style. `look` is null unless a homeland / ancMix is supplied. */
+function styleOf(c) {
+  return {
+    look: lookOf(c),
+    dress: dressOf(c),
+    built: builtOf(c),
+  };
+}
+
+function formatStyleLine(s) {
+  if (!s) return "";
+  const bits = [];
+  if (s.built) {
+    bits.push(`${s.built.scale || ""} ${s.built.wall} ${s.built.roof} ${s.built.plan}`.trim());
+  }
+  if (s.dress) {
+    bits.push(`${s.dress.station} ${s.dress.weight} ${s.dress.fibre} ${s.dress.cut} ${s.dress.head || ""}`.trim());
+  }
+  return bits.join(" · ");
+}
+
+
+/* ═══ style taste ═══ */
+// ── Style taste — residual fashion within the deterministic envelope ─────────
+//
+// peopleStyle.js decides cut, fibre, wall, roof (climate × materials × wealth).
+// This module decides HOW that envelope is worn and trimmed: haircut, embroidery,
+// palette layout, roof-corner flare — the taste genome two silk courts need to
+// read apart while sharing robe + courtyard.
+//
+// Pure + deterministic. No save fields, no UI, no culture names. Genes bias from
+// abstract axes (ornament, austerity, colour) the way emblemGenome biases from
+// regal/martial/devout — soft windows, every pattern reachable.
+
+function prng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
+const wrap01 = x => ((x % 1) + 1) % 1;
+function bell(rng) { return rng() + rng() + rng() - 1.5; }
+
+const TASTE_GENES = [
+  "hairLength", "hairArrange", "beardWear",
+  "embroidery", "pattern", "paletteField", "paletteTrim", "hueShift", "chroma",
+  "jewelleryForm",
+  "cosmetics", "headdressStyle", "sleeveFashion",
+  "cornerFlare", "eavesForm", "facadeRhythm", "wallWash", "trimContrast",
+];
+const IDX = Object.fromEntries(TASTE_GENES.map((g, i) => [g, i]));
+
+const MICRO_RATE = 0.48;
+const MACRO_RATE = 0.04;
+const STEP = 0.14;
+
+function randomGenes(seed) {
+  const rng = prng(seed >>> 0);
+  return TASTE_GENES.map(() => rng());
+}
+
+const pickEnum = (v, arr) => arr[Math.min(arr.length - 1, Math.floor(clamp01(v) * arr.length))];
+
+/**
+ * foundTasteGenome(seed, axes) — culture / court seed biased by abstract axes (0–1).
+ *   ornament   — embroidery, jewellery, brocade, corner flare
+ *   austerity  — plain hair, clean beard, natural walls, low chroma
+ *   colour     — saturated palette, trim contrast, lime/ochre wash
+ *   pattern    — stripe, check, facade rhythm
+ */
+function foundTasteGenome(seed, axes = {}) {
+  const g = randomGenes(seed);
+  const rng = prng((seed ^ 0x7a3c9e2d) >>> 0);
+  const set = (name, v) => (g[IDX[name]] = clamp01(v));
+  const nudge = (name, v, w) => (g[IDX[name]] = clamp01(g[IDX[name]] * (1 - w) + v * w));
+  const a = axes;
+
+  if (a.ornament != null) {
+    nudge("embroidery", a.ornament, 0.65);
+    nudge("jewelleryForm", a.ornament, 0.55);
+    nudge("pattern", 0.55 + a.ornament * 0.35, 0.45);
+    nudge("cornerFlare", a.ornament * 0.7, 0.4);
+    nudge("eavesForm", a.ornament * 0.65, 0.35);
+  }
+  if (a.austerity != null) {
+    nudge("embroidery", 0.08, a.austerity * 0.75);
+    nudge("beardWear", 0.12, a.austerity * 0.55);
+    nudge("pattern", 0.1, a.austerity * 0.6);
+    nudge("chroma", 0.15, a.austerity * 0.65);
+    nudge("cornerFlare", 0.1, a.austerity * 0.5);
+    nudge("wallWash", 0.2, a.austerity * 0.4);
+    nudge("hairArrange", 0.25, a.austerity * 0.35);
+  }
+  if (a.colour != null) {
+    nudge("chroma", a.colour, 0.7);
+    nudge("paletteTrim", a.colour, 0.55);
+    nudge("trimContrast", a.colour, 0.5);
+    nudge("hueShift", 0.5 + a.colour * 0.2, 0.35);
+    nudge("wallWash", 0.55 + a.colour * 0.25, 0.4);
+    nudge("cosmetics", a.colour * 0.65, 0.45);
+  }
+  if (a.pattern != null) {
+    nudge("pattern", a.pattern, 0.7);
+    nudge("facadeRhythm", a.pattern, 0.45);
+    nudge("paletteField", 0.35 + a.pattern * 0.3, 0.35);
+  }
+  if (a.regal != null) {
+    nudge("embroidery", 0.72, a.regal * 0.55);
+    nudge("jewelleryForm", 0.68, a.regal * 0.5);
+    nudge("facadeRhythm", 0.62, a.regal * 0.4);
+    nudge("hairArrange", 0.7, a.regal * 0.35);
+    nudge("headdressStyle", 0.75, a.regal * 0.5);
+  }
+  if (a.pastoral != null) {
+    nudge("wallWash", 0.35, a.pastoral * 0.5);
+    nudge("chroma", 0.35, a.pastoral * 0.4);
+    nudge("hairLength", 0.45, a.pastoral * 0.3);
+  }
+  if (a.arid != null) {
+    nudge("wallWash", 0.62, a.arid * 0.55);
+    nudge("paletteField", 0.55, a.arid * 0.4);
+    set("hairArrange", clamp01(0.55 + bell(rng) * 0.1));
+  }
+
+  return { genes: g, gen: 0, seed: seed >>> 0 };
+}
+
+function mutateTasteGenome(genome, seed, strength = 1) {
+  const rng = prng(seed >>> 0);
+  const genes = genome.genes.map(v => {
+    let nv = v;
+    if (rng() < MICRO_RATE * strength) nv = wrap01(v + bell(rng) * STEP * strength);
+    if (rng() < MACRO_RATE * strength) nv = rng();
+    return clamp01(nv);
+  });
+  return { genes, gen: (genome.gen || 0) + 1, seed: genome.seed };
+}
+
+/** Weighted blend for culMix / migration (shareB = weight on b). */
+function blendTasteGenome(a, b, shareB) {
+  const w = clamp01(shareB);
+  const genes = TASTE_GENES.map((_, i) => clamp01(a.genes[i] * (1 - w) + b.genes[i] * w));
+  return { genes, gen: Math.max(a.gen || 0, b.gen || 0), seed: a.seed };
+}
+
+function hairStyleOf(G, dress) {
+  if (dress.cut === "bare" && dress.station === "plain") {
+    return pickEnum(G[IDX.hairLength], ["shaved", "cropped", "cropped"]);
+  }
+  const len = G[IDX.hairLength];
+  const arr = G[IDX.hairArrange];
+  if (len < 0.22) return "cropped";
+  if (arr > 0.72) return pickEnum(arr, ["plait", "bun", "topknot"]);
+  if (len < 0.45) return "shoulder";
+  return pickEnum(len, ["long", "shoulder", "long"]);
+}
+
+function beardStyleOf(G, look, dress) {
+  if (!canGrowBeard(look)) return "none";
+  const wear = G[IDX.beardWear];
+  if (dress.station === "fine" && wear < 0.28) return "none";
+  if (wear < 0.22) return "none";
+  if (wear < 0.48) return "stubble";
+  if (wear > 0.82 && G[IDX.hairArrange] > 0.65) return "plait";
+  return "full";
+}
+
+function embroideryOf(G, dress) {
+  if (dress.cut === "bare" || dress.weight === "bare") return "none";
+  if (dress.station !== "fine" && dress.fibre !== "silk" && G[IDX.embroidery] < 0.55) return "none";
+  return pickEnum(G[IDX.embroidery], ["none", "border", "cuff", "allover"]);
+}
+
+function patternOf(G, dress) {
+  if (dress.cut === "bare" || dress.fibre === "fur" || dress.fibre === "leather") return "plain";
+  return pickEnum(G[IDX.pattern], ["plain", "stripe", "check", "brocade"]);
+}
+
+function paletteOf(G, dress) {
+  const layout = pickEnum(G[IDX.paletteField], ["field", "trim", "border"]);
+  return {
+    layout,
+    hueShift: wrap01(G[IDX.hueShift]),
+    saturation: clamp01(0.12 + G[IDX.chroma] * 0.82),
+    trim: clamp01(G[IDX.paletteTrim]),
+    dye: dress.dye || null,
+  };
+}
+
+function jewelleryOf(G, dress) {
+  if (!dress.ornament && dress.station !== "fine") return "none";
+  if (G[IDX.jewelleryForm] < 0.18 && !dress.ornament) return "none";
+  return pickEnum(G[IDX.jewelleryForm], ["bead", "filigree", "plate", "torque"]);
+}
+
+function cosmeticsOf(G, dress) {
+  if (dress.cut === "bare" || dress.weight === "bare") return "none";
+  if (dress.bodyArt && dress.bodyArt !== "none" && G[IDX.cosmetics] < 0.55) return dress.bodyArt;
+  return pickEnum(G[IDX.cosmetics], ["none", "kohl", "rouge", "stain"]);
+}
+
+function headdressStyleOf(G, dress) {
+  if (!dress.headdress || dress.headdress === "none") return "none";
+  if (dress.headdress === "crown") return pickEnum(G[IDX.headdressStyle], ["crown", "fillet", "plume"]);
+  if (dress.headdress === "turban") return pickEnum(G[IDX.headdressStyle], ["turban", "wrapped", "tall"]);
+  return pickEnum(G[IDX.headdressStyle], ["plain", "folded", "pinned"]);
+}
+
+function sleeveFashionOf(G, dress) {
+  if (dress.sleeve === "bare") return "none";
+  return pickEnum(G[IDX.sleeveFashion], ["plain", "flared", "layered", "cuffed"]);
+}
+
+function cornerFlareOf(G, built) {
+  if (built.roof === "tent" || built.roof === "low" || built.roof === "flat") return "none";
+  return pickEnum(G[IDX.cornerFlare], ["none", "mild", "upturned", "horn"]);
+}
+
+function eavesFormOf(G, built) {
+  if (built.eaves !== "deep" && G[IDX.eavesForm] < 0.55) return "plain";
+  return pickEnum(G[IDX.eavesForm], ["plain", "bracket", "corbel"]);
+}
+
+function facadeOf(G, built) {
+  if (built.plan === "camp") return "open";
+  return pickEnum(G[IDX.facadeRhythm], ["symmetric", "stepped", "arcade"]);
+}
+
+function wallWashOf(G, built) {
+  if (built.wall === "felt" || built.wall === "turf") return "natural";
+  return pickEnum(G[IDX.wallWash], ["natural", "whitewash", "ochre", "lime"]);
+}
+
+function trimOf(G, built) {
+  return pickEnum(G[IDX.trimContrast], ["none", "contrast", "dark", "light"]);
+}
+
+/** Taste phenotype within the envelope. Cannot override cut, fibre, or wall. */
+function expressTaste(envelope, genome) {
+  if (!envelope || !genome || !genome.genes) return { dress: {}, built: {} };
+  const G = genome.genes;
+  const dress = envelope.dress || {};
+  const built = envelope.built || {};
+  const look = envelope.look || {};
+  return {
+    dress: {
+      hair: hairStyleOf(G, dress),
+      beard: beardStyleOf(G, look, dress),
+      embroidery: embroideryOf(G, dress),
+      pattern: patternOf(G, dress),
+      palette: paletteOf(G, dress),
+      jewellery: jewelleryOf(G, dress),
+      cosmetics: cosmeticsOf(G, dress),
+      headdressStyle: headdressStyleOf(G, dress),
+      sleeveFashion: sleeveFashionOf(G, dress),
+    },
+    built: {
+      cornerFlare: cornerFlareOf(G, built),
+      eavesForm: eavesFormOf(G, built),
+      facade: facadeOf(G, built),
+      wallWash: wallWashOf(G, built),
+      trim: trimOf(G, built),
+    },
+  };
+}
+
+/** Envelope + taste in one call. No sim wiring — pass genome explicitly. */
+function styleWithTaste(c, genome) {
+  const base = styleOf(c);
+  return { ...base, taste: expressTaste(base, genome) };
+}
+
+function tasteFingerprint(taste) {
+  if (!taste) return "";
+  const d = taste.dress || {}, b = taste.built || {};
+  return [
+    d.hair, d.beard, d.embroidery, d.pattern, d.jewellery,
+    d.cosmetics, d.headdressStyle, d.sleeveFashion,
+    d.palette && d.palette.layout, b.cornerFlare, b.eavesForm, b.facade, b.wallWash, b.trim,
+  ].join("|");
+}
+
+function formatTasteLine(taste) {
+  if (!taste) return "";
+  const bits = [];
+  const d = taste.dress;
+  const b = taste.built;
+  if (d) bits.push(`${d.hair || ""} ${d.beard || ""} ${d.embroidery || ""} ${d.pattern || ""}`.trim());
+  if (b) bits.push(`${b.cornerFlare || ""} ${b.eavesForm || ""} ${b.wallWash || ""}`.trim());
+  return bits.join(" · ");
+}
+
+
+/* ═══ aesthetic identity ═══ */
+// ── Aesthetic identity — one people's look + taste bundle ───────────────────
+//
+// Unifies the three aesthetic layers for a creator or culture:
+//   look   — carried via ancMix / optional lookOverride (Rail A + Rail B)
+//   dress  — local envelope (climate × materials × wealth)
+//   built  — local envelope
+//   taste  — culture genome expressing WITHIN the envelopes
+//
+// Pure + deterministic. No save fields, no UI, no sim wiring.
+  foundTasteGenome, mutateTasteGenome, blendTasteGenome,
+  expressTaste, tasteFingerprint, formatTasteLine,
+} from "./styleTaste.js";
+
+/** Abstract founding axes — bias taste genome at culture genesis. */
+const AESTHETIC_AXES = [
+  "ornament", "austerity", "colour", "pattern", "regal", "pastoral", "arid",
+];
+
+/**
+ * foundAestheticIdentity(seed, axes) — seed a culture's aesthetic genome.
+ * Look still resolves from ancestry when ctx carries ancMix; taste is always here.
+ */
+function foundAestheticIdentity(seed, axes = {}) {
+  const bias = {};
+  for (const k of AESTHETIC_AXES) if (axes[k] != null) bias[k] = axes[k];
+  return {
+    seed: seed >>> 0,
+    axes: bias,
+    taste: foundTasteGenome(seed, bias),
+    lookOverride: null,
+  };
+}
+
+function mutateAestheticIdentity(identity, seed, strength = 1) {
+  return {
+    ...identity,
+    taste: mutateTasteGenome(identity.taste, seed, strength),
+  };
+}
+
+/** Weighted blend for culMix (shareB = weight on b). */
+function blendAestheticIdentity(a, b, shareB) {
+  const w = shareB < 0 ? 0 : shareB > 1 ? 1 : shareB;
+  return {
+    seed: a.seed,
+    axes: a.axes,
+    taste: blendTasteGenome(a.taste, b.taste, w),
+    lookOverride: a.lookOverride,
+  };
+}
+
+/**
+ * Resolve look for an identity + context.
+ * lookOverride wins; else ancMix/world; else ctx.homeland; else null.
+ */
+function lookForIdentity(ctx, identity) {
+  if (identity && identity.lookOverride) return identity.lookOverride;
+  return lookOf(ctx);
+}
+
+/**
+ * expressAesthetic(ctx, identity) → full aesthetic phenotype.
+ * ctx: tile climate, materials, wealth, ancMix, world, homeland, …
+ * identity: from foundAestheticIdentity (taste genome required).
+ */
+function expressAesthetic(ctx, identity) {
+  const look = lookForIdentity(ctx, identity);
+  const dress = dressOf(ctx);
+  const built = builtOf(ctx);
+  const envelope = { look, dress, built };
+  const taste = identity && identity.taste
+    ? expressTaste(envelope, identity.taste)
+    : { dress: {}, built: {} };
+  return { look, dress, built, taste };
+}
+
+/** Envelope + taste in one call (alias for creator previews). */
+function aestheticOf(ctx, identity) {
+  return expressAesthetic(ctx, identity);
+}
+
+function aestheticFingerprint(aesthetic) {
+  if (!aesthetic) return "";
+  const l = aesthetic.look;
+  const lookBits = l
+    ? [
+      l.skin?.toFixed(2), l.hairHue?.toFixed(2), l.epicanthic?.toFixed(2),
+      l.noseBridge?.toFixed(2), l.jawWidth?.toFixed(2),
+    ].join(",")
+    : "none";
+  const d = aesthetic.dress;
+  const dressBits = d
+    ? [d.fibre, d.cut, d.layers, d.sleeve, d.lower, d.headdress, d.bodyArt].join(",")
+    : "";
+  const b = aesthetic.built;
+  const builtBits = b
+    ? [b.wall, b.roofForm, b.verticality, b.sacredForm, b.fortification, b.interior].join(",")
+    : "";
+  const tasteBits = tasteFingerprint({ dress: aesthetic.taste?.dress, built: aesthetic.taste?.built });
+  return [lookBits, dressBits, builtBits, tasteBits].join("|");
+}
+
+function formatAestheticLine(aesthetic) {
+  if (!aesthetic) return "";
+  const style = formatStyleLine({ dress: aesthetic.dress, built: aesthetic.built });
+  const taste = formatTasteLine(aesthetic.taste);
+  const look = aesthetic.look
+    ? `look skin=${aesthetic.look.skin?.toFixed(2)} hue=${aesthetic.look.hairHue?.toFixed(2)}`
+    : "";
+  return [look, style, taste].filter(Boolean).join(" · ");
+}
+
+
+/* ═══ aesthetic render ═══ */
+// ── Aesthetic renderer — phenotype → flat SVG (v0) ─────────────────────────
+//
+// expressAesthetic() (aestheticIdentity.js) resolves look + dress + built + taste;
+// this module draws them as layered procedural SVG — parametric primitives, no
+// sprite sheets. Same architecture as emblemRender.js: pure strings, deterministic.
+//
+// Public API:
+//   aestheticSVG(aesthetic, W, H)  → complete <svg> string
+//   drawAesthetic(aesthetic, x, y, cw, ch) → <g> for a grid cell
+
+const F = n => (+n).toFixed(1);
+const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function skinRgb(skin) {
+  const t = clamp01(skin ?? 0.5);
+  return [
+    Math.round(lerp(255, 72, t)),
+    Math.round(lerp(220, 48, t)),
+    Math.round(lerp(190, 38, t)),
+  ];
+}
+
+function hairRgb(look) {
+  const dark = clamp01(look?.hairDark ?? 0.6);
+  const hue = clamp01(look?.hairHue ?? 0.15);
+  const base = [
+    Math.round(lerp(210, 24, dark) + hue * lerp(40, 90, 1 - dark)),
+    Math.round(lerp(170, 18, dark) + hue * lerp(20, 50, 1 - dark) * 0.4),
+    Math.round(lerp(120, 12, dark)),
+  ];
+  return base.map(v => Math.max(0, Math.min(255, v)));
+}
+
+function dyeRgb(dye, palette) {
+  const table = {
+    tyrian: [88, 18, 72], indigo: [36, 44, 110], cochineal: [168, 32, 48],
+    saffron: [220, 168, 28], ochre: [186, 128, 44], woad: [32, 56, 108],
+    henna: [150, 62, 38], weld: [210, 188, 36], madder: [148, 38, 52],
+  };
+  if (dye && table[dye]) return table[dye];
+  const h = (palette?.hueShift ?? 0) * 360;
+  const s = clamp01(palette?.saturation ?? 0.4);
+  const c = s * 0.55;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  let r = 0, g = 0, b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const m = 0.35 + 0.25 * (1 - s);
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function shade(c, f) { return rgb(c.map(v => Math.max(0, Math.min(255, Math.round(v * f))))); }
+
+function patternDefs(id, pattern, field, trim) {
+  if (!pattern || pattern === "plain") return "";
+  const fc = rgb(field), tc = rgb(trim);
+  if (pattern === "stripe") {
+    return `<pattern id="${id}" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(18)">
+      <rect width="8" height="8" fill="${fc}"/><rect x="0" y="0" width="4" height="8" fill="${tc}"/></pattern>`;
+  }
+  if (pattern === "check") {
+    return `<pattern id="${id}" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="${fc}"/><rect x="0" y="0" width="5" height="5" fill="${tc}"/>
+      <rect x="5" y="5" width="5" height="5" fill="${tc}"/></pattern>`;
+  }
+  if (pattern === "brocade") {
+    return `<pattern id="${id}" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="${fc}"/><circle cx="6" cy="6" r="2.2" fill="${tc}" opacity="0.55"/>
+      <circle cx="0" cy="0" r="1.4" fill="${tc}" opacity="0.35"/><circle cx="12" cy="12" r="1.4" fill="${tc}" opacity="0.35"/></pattern>`;
+  }
+  return "";
+}
+
+/** Face + hair + beard from look + taste.dress grooming. */
+function faceSVG(look, tasteDress, cx, cy, scale = 1) {
+  if (!look) {
+    return `<circle cx="${F(cx)}" cy="${F(cy)}" r="${F(18 * scale)}" fill="#bbb" opacity="0.35"/>`;
+  }
+  const s = scale;
+  const skin = skinRgb(look.skin);
+  const hair = hairRgb(look);
+  const jaw = clamp01(look.jawWidth ?? 0.5);
+  const breadth = clamp01(look.headBreadth ?? 0.5);
+  const ep = clamp01(look.epicanthic ?? 0.2);
+  const eye = clamp01(look.eyeAperture ?? 0.5);
+  const bridge = clamp01(look.noseBridge ?? 0.5);
+  const nw = clamp01(look.noseWidth ?? 0.5);
+  const lip = clamp01(look.lipFullness ?? 0.5);
+  const brow = clamp01(look.browRidge ?? 0.4);
+  const rx = (14 + jaw * 6 + breadth * 4) * s;
+  const ry = (17 + breadth * 3) * s;
+  const hairStyle = tasteDress?.hair || "shoulder";
+  const beardStyle = tasteDress?.beard || "none";
+  const parts = [];
+
+  // hair back
+  if (hairStyle !== "shaved" && hairStyle !== "cropped") {
+    const hw = rx * (hairStyle === "long" ? 1.15 : 1.05);
+    const hh = (hairStyle === "long" ? 26 : hairStyle === "plait" || hairStyle === "topknot" ? 20 : 16) * s;
+    parts.push(`<ellipse cx="${F(cx)}" cy="${F(cy - ry * 0.55)}" rx="${F(hw)}" ry="${F(hh)}" fill="${rgb(hair)}"/>`);
+  }
+
+  // neck
+  parts.push(`<rect x="${F(cx - rx * 0.35)}" y="${F(cy + ry * 0.55)}" width="${F(rx * 0.7)}" height="${F(10 * s)}" fill="${rgb(skin)}" rx="${F(2 * s)}"/>`);
+
+  // head
+  parts.push(`<ellipse cx="${F(cx)}" cy="${F(cy)}" rx="${F(rx)}" ry="${F(ry)}" fill="${rgb(skin)}"/>`);
+
+  // eyes
+  const eyeY = cy - ry * 0.08;
+  const eyeDx = rx * (0.38 - ep * 0.08);
+  const ew = (3.5 + eye * 2.5 - ep * 1.2) * s;
+  const eh = (2.2 + eye * 1.8 - ep * 0.8) * s;
+  for (const side of [-1, 1]) {
+    const ex = cx + side * eyeDx;
+    parts.push(`<ellipse cx="${F(ex)}" cy="${F(eyeY)}" rx="${F(ew)}" ry="${F(eh)}" fill="#f8f8f8"/>`);
+    parts.push(`<ellipse cx="${F(ex)}" cy="${F(eyeY)}" rx="${F(ew * 0.45)}" ry="${F(eh * 0.9)}" fill="#2a2018"/>`);
+    if (ep > 0.45) {
+      parts.push(`<path d="M${F(ex - ew)} ${F(eyeY)} Q${F(ex)} ${F(eyeY - eh * 0.9)} ${F(ex + ew)} ${F(eyeY)}" fill="none" stroke="${shade(skin, 0.75)}" stroke-width="${F(0.8 * s)}"/>`);
+    }
+  }
+
+  // brows
+  const browY = eyeY - eh - (1 + brow * 2) * s;
+  for (const side of [-1, 1]) {
+    const bx = cx + side * eyeDx;
+    parts.push(`<path d="M${F(bx - ew)} ${F(browY)} Q${F(bx)} ${F(browY - brow * 2 * s)} ${F(bx + ew)} ${F(browY)}" fill="none" stroke="${shade(hair, 0.7)}" stroke-width="${F((1.2 + brow * 1.5) * s)}" stroke-linecap="round"/>`);
+  }
+
+  // nose
+  const noseY = cy + ry * 0.12;
+  const nwPx = (2 + nw * 4) * s;
+  const nh = (4 + bridge * 6) * s;
+  parts.push(`<path d="M${F(cx)} ${F(noseY - nh)} L${F(cx - nwPx)} ${F(noseY + nh * 0.35)} L${F(cx + nwPx)} ${F(noseY + nh * 0.35)} Z" fill="${shade(skin, 0.88)}"/>`);
+
+  // mouth
+  const mouthY = cy + ry * 0.42;
+  const mw = (4 + lip * 5) * s;
+  parts.push(`<path d="M${F(cx - mw)} ${F(mouthY)} Q${F(cx)} ${F(mouthY + lip * 2.5 * s)} ${F(cx + mw)} ${F(mouthY)}" fill="none" stroke="${shade(skin, 0.55)}" stroke-width="${F(1.1 * s)}" stroke-linecap="round"/>`);
+
+  // hair front / topknot / plait
+  if (hairStyle === "cropped" || hairStyle === "shaved") {
+    parts.push(`<ellipse cx="${F(cx)}" cy="${F(cy - ry * 0.75)}" rx="${F(rx * 0.95)}" ry="${F(5 * s)}" fill="${rgb(hair)}"/>`);
+  } else if (hairStyle === "topknot") {
+    parts.push(`<circle cx="${F(cx)}" cy="${F(cy - ry - 8 * s)}" r="${F(5 * s)}" fill="${rgb(hair)}"/>`);
+  } else if (hairStyle === "plait" || hairStyle === "bun") {
+    parts.push(`<ellipse cx="${F(cx)}" cy="${F(cy - ry - 4 * s)}" rx="${F(6 * s)}" ry="${F(5 * s)}" fill="${rgb(hair)}"/>`);
+  }
+
+  // beard
+  if (beardStyle !== "none") {
+    const bh = beardStyle === "full" ? 14 : beardStyle === "plait" ? 16 : 6;
+    const bw = rx * (beardStyle === "stubble" ? 0.75 : 0.95);
+    parts.push(`<ellipse cx="${F(cx)}" cy="${F(cy + ry * 0.55)}" rx="${F(bw)}" ry="${F(bh * s)}" fill="${rgb(hair)}" opacity="${beardStyle === "stubble" ? 0.45 : 0.92}"/>`);
+  }
+
+  return parts.join("");
+}
+
+/** Torso garment from dress envelope + taste trim. */
+function dressSVG(dress, tasteDress, cx, cy, scale = 1) {
+  if (!dress) return "";
+  const s = scale;
+  const palette = tasteDress?.palette;
+  const field = dyeRgb(dress.dye, palette);
+  const trim = dyeRgb(dress.dye, { ...palette, hueShift: ((palette?.hueShift ?? 0) + 0.18) % 1, saturation: clamp01((palette?.saturation ?? 0.4) + 0.15) });
+  const pattern = tasteDress?.pattern || "plain";
+  const pid = `dp${Math.abs((dress.fibre || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) + (pattern.length * 17)) % 99999}`;
+  const fill = pattern === "plain" ? rgb(field) : `url(#${pid})`;
+  const parts = [];
+  const topY = cy + 8 * s;
+  const bare = dress.cut === "bare" || dress.weight === "bare";
+
+  if (bare) {
+    parts.push(`<ellipse cx="${F(cx)}" cy="${F(topY + 22 * s)}" rx="${F(16 * s)}" ry="${F(20 * s)}" fill="${rgb(skinRgb(0.55))}" opacity="0.15"/>`);
+    return { defs: "", svg: parts.join(""), pid };
+  }
+
+  const w = (dress.cut === "robe" || dress.cut === "drape" ? 28 : 22) * s;
+  const h = (dress.cut === "robe" ? 48 : 38) * s;
+  const x = cx - w / 2;
+  const y = topY;
+
+  if (dress.cloak && dress.cloak !== "none") {
+    const cw = w * (dress.cloak === "long" ? 1.35 : 1.15);
+    parts.push(`<path d="M${F(cx - cw / 2)} ${F(y + 4 * s)} Q${F(cx)} ${F(y - 6 * s)} ${F(cx + cw / 2)} ${F(y + 4 * s)} L${F(cx + cw / 2 - 4 * s)} ${F(y + h)} L${F(cx - cw / 2 + 4 * s)} ${F(y + h)} Z" fill="${shade(field, 0.75)}" opacity="0.85"/>`);
+  }
+
+  if (dress.cut === "robe" || dress.cut === "drape") {
+    parts.push(`<path d="M${F(cx)} ${F(y)} L${F(cx - w / 2)} ${F(y + h)} L${F(cx + w / 2)} ${F(y + h)} Z" fill="${fill}"/>`);
+  } else if (dress.cut === "trousers") {
+    parts.push(`<rect x="${F(x)}" y="${F(y)}" width="${F(w)}" height="${F(h * 0.42)}" fill="${fill}" rx="${F(2 * s)}"/>`);
+    parts.push(`<rect x="${F(cx - w * 0.42)}" y="${F(y + h * 0.4)}" width="${F(w * 0.36)}" height="${F(h * 0.55)}" fill="${fill}" rx="${F(2 * s)}"/>`);
+    parts.push(`<rect x="${F(cx + w * 0.06)}" y="${F(y + h * 0.4)}" width="${F(w * 0.36)}" height="${F(h * 0.55)}" fill="${fill}" rx="${F(2 * s)}"/>`);
+  } else {
+    parts.push(`<rect x="${F(x)}" y="${F(y)}" width="${F(w)}" height="${F(h)}" fill="${fill}" rx="${F(3 * s)}"/>`);
+  }
+
+  // sleeves
+  if (dress.sleeve === "wide") {
+    parts.push(`<ellipse cx="${F(cx - w * 0.55)}" cy="${F(y + 12 * s)}" rx="${F(8 * s)}" ry="${F(5 * s)}" fill="${fill}"/>`);
+    parts.push(`<ellipse cx="${F(cx + w * 0.55)}" cy="${F(y + 12 * s)}" rx="${F(8 * s)}" ry="${F(5 * s)}" fill="${fill}"/>`);
+  } else if (dress.sleeve === "full" || dress.sleeve === "wrist") {
+    const sl = dress.sleeve === "full" ? 18 : 12;
+    parts.push(`<rect x="${F(cx - w / 2 - 5 * s)}" y="${F(y + 4 * s)}" width="${F(6 * s)}" height="${F(sl * s)}" fill="${fill}" rx="${F(2 * s)}"/>`);
+    parts.push(`<rect x="${F(cx + w / 2 - 1 * s)}" y="${F(y + 4 * s)}" width="${F(6 * s)}" height="${F(sl * s)}" fill="${fill}" rx="${F(2 * s)}"/>`);
+  }
+
+  // embroidery border
+  if (tasteDress?.embroidery && tasteDress.embroidery !== "none") {
+    parts.push(`<rect x="${F(x + 2 * s)}" y="${F(y + 2 * s)}" width="${F(w - 4 * s)}" height="${F(h - 4 * s)}" fill="none" stroke="${rgb(trim)}" stroke-width="${F(1.4 * s)}" rx="${F(2 * s)}"/>`);
+  }
+
+  // belt
+  if (dress.belt && dress.belt !== "none") {
+    parts.push(`<rect x="${F(x)}" y="${F(y + h * 0.35)}" width="${F(w)}" height="${F(3 * s)}" fill="${rgb(trim)}"/>`);
+  }
+
+  // headdress
+  const hs = tasteDress?.headdressStyle;
+  if (dress.headdress === "crown" || hs === "crown" || hs === "fillet") {
+    parts.push(`<path d="M${F(cx - w * 0.35)} ${F(y - 2 * s)} L${F(cx - w * 0.2)} ${F(y - 10 * s)} L${F(cx)} ${F(y - 6 * s)} L${F(cx + w * 0.2)} ${F(y - 10 * s)} L${F(cx + w * 0.35)} ${F(y - 2 * s)} Z" fill="${rgb(trim)}"/>`);
+  } else if (dress.headdress === "turban" || hs === "turban" || hs === "wrapped") {
+    parts.push(`<ellipse cx="${F(cx)}" cy="${F(y - 4 * s)}" rx="${F(w * 0.38)}" ry="${F(6 * s)}" fill="${rgb(trim)}"/>`);
+  }
+
+  return { defs: patternDefs(pid, pattern, field, trim), svg: parts.join(""), pid };
+}
+
+/** Building silhouette from built envelope + taste trim. */
+function builtSVG(built, tasteBuilt, x, y, w, h) {
+  if (!built) return { defs: "", svg: "" };
+  const wallRgb = {
+    timber: [142, 98, 58], stone: [148, 142, 132], mudbrick: [168, 118, 72],
+    wattle: [128, 108, 68], bamboo: [118, 148, 72], reed: [136, 128, 74],
+    felt: [120, 108, 88], turf: [88, 118, 62],
+  };
+  const base = wallRgb[built.wall] || [130, 120, 100];
+  const wash = tasteBuilt?.wallWash || "natural";
+  if (wash === "whitewash") base.splice(0, 3, 232, 228, 214);
+  else if (wash === "ochre") base.splice(0, 3, 196, 148, 72);
+  else if (wash === "lime") base.splice(0, 3, 210, 214, 168);
+
+  const parts = [];
+  const bodyH = h * (built.verticality === "high" ? 0.72 : built.verticality === "mid" ? 0.62 : 0.52);
+  const bodyY = y + h - bodyH - h * 0.08;
+  const bodyW = w * 0.78;
+  const bodyX = x + (w - bodyW) / 2;
+
+  // fortification
+  if (built.fortification === "palisade") {
+    for (let i = 0; i < 9; i++) {
+      const px = bodyX + (i / 8) * bodyW;
+      parts.push(`<rect x="${F(px)}" y="${F(bodyY - 8)}" width="3" height="10" fill="${shade(base, 0.7)}"/>`);
+    }
+  } else if (built.fortification === "curtain" || built.fortification === "tower") {
+    parts.push(`<rect x="${F(bodyX - 6)}" y="${F(bodyY)}" width="${F(bodyW + 12)}" height="${F(bodyH)}" fill="none" stroke="${shade(base, 0.55)}" stroke-width="3"/>`);
+    if (built.fortification === "tower") {
+      parts.push(`<rect x="${F(bodyX + bodyW - 14)}" y="${F(bodyY - 18)}" width="14" height="22" fill="${shade(base, 0.85)}"/>`);
+    }
+  }
+
+  // wall body
+  parts.push(`<rect x="${F(bodyX)}" y="${F(bodyY)}" width="${F(bodyW)}" height="${F(bodyH)}" fill="${rgb(base)}" rx="1"/>`);
+
+  // windows
+  const wt = built.windowType || "plain";
+  if (wt !== "plain" && built.wall !== "felt" && built.wall !== "turf") {
+    const cols = built.verticality === "high" ? 3 : 2;
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < cols; c++) {
+        const wx = bodyX + bodyW * (0.2 + c * 0.3);
+        const wy = bodyY + bodyH * (0.25 + r * 0.35);
+        if (wt === "lattice") {
+          parts.push(`<rect x="${F(wx)}" y="${F(wy)}" width="8" height="10" fill="#2a2820" opacity="0.35"/>`);
+          parts.push(`<path d="M${F(wx)} ${F(wy)} H${F(wx + 8)} M${F(wx)} ${F(wy + 5)} H${F(wx + 8)} M${F(wx + 4)} ${F(wy)} V${F(wy + 10)}" stroke="#ddd" stroke-width="0.6"/>`);
+        } else {
+          parts.push(`<rect x="${F(wx)}" y="${F(wy)}" width="8" height="10" fill="#3a3830" opacity="0.5" rx="1"/>`);
+        }
+      }
+    }
+  }
+
+  // roof
+  const rf = built.roofForm || "gable";
+  const roofY = bodyY;
+  if (built.roof === "tent" || rf === "conical") {
+    parts.push(`<path d="M${F(bodyX - 6)} ${F(roofY)} L${F(bodyX + bodyW / 2)} ${F(y + 8)} L${F(bodyX + bodyW + 6)} ${F(roofY)} Z" fill="${shade(base, 0.82)}"/>`);
+  } else if (rf === "dome" || built.roof === "flat") {
+    parts.push(`<ellipse cx="${F(bodyX + bodyW / 2)}" cy="${F(roofY)}" rx="${F(bodyW / 2)}" ry="${F(bodyW * 0.22)}" fill="${shade(base, 0.82)}"/>`);
+  } else {
+    const peak = y + h * (built.roof === "steep" ? 0.06 : 0.12);
+    parts.push(`<path d="M${F(bodyX - 4)} ${F(roofY)} L${F(bodyX + bodyW / 2)} ${F(peak)} L${F(bodyX + bodyW + 4)} ${F(roofY)} Z" fill="${shade(base, 0.88)}"/>`);
+    if (rf === "hip") {
+      parts.push(`<path d="M${F(bodyX + bodyW / 2)} ${F(peak)} L${F(bodyX + bodyW + 8)} ${F(roofY + 6)} L${F(bodyX + bodyW + 4)} ${F(roofY)} Z" fill="${shade(base, 0.72)}"/>`);
+    }
+  }
+
+  // corner flare (taste)
+  const flare = tasteBuilt?.cornerFlare;
+  if (flare && flare !== "none" && built.roof !== "tent") {
+    const lift = flare === "horn" ? 10 : flare === "upturned" ? 7 : 4;
+    parts.push(`<path d="M${F(bodyX - 2)} ${F(roofY)} Q${F(bodyX - 8)} ${F(roofY - lift)} ${F(bodyX + 6)} ${F(roofY - 2)} Z" fill="${shade(base, 0.95)}"/>`);
+    parts.push(`<path d="M${F(bodyX + bodyW + 2)} ${F(roofY)} Q${F(bodyX + bodyW + 8)} ${F(roofY - lift)} ${F(bodyX + bodyW - 6)} ${F(roofY - 2)} Z" fill="${shade(base, 0.95)}"/>`);
+  }
+
+  // sacred silhouette
+  const sacred = built.sacredForm;
+  if (sacred === "spire") {
+    parts.push(`<path d="M${F(bodyX + bodyW / 2 - 3)} ${F(y + 14)} L${F(bodyX + bodyW / 2)} ${F(y + 2)} L${F(bodyX + bodyW / 2 + 3)} ${F(y + 14)} Z" fill="${rgb(trimAccent(tasteBuilt))}"/>`);
+  } else if (sacred === "tier") {
+    for (let i = 0; i < 3; i++) {
+      const tw = 12 - i * 3;
+      parts.push(`<rect x="${F(bodyX + bodyW / 2 - tw / 2)}" y="${F(y + 6 + i * 5)}" width="${tw}" height="4" fill="${rgb(trimAccent(tasteBuilt))}"/>`);
+    }
+  } else if (sacred === "minaret") {
+    parts.push(`<rect x="${F(bodyX + bodyW - 10)}" y="${F(y + 4)}" width="6" height="18" fill="${rgb(trimAccent(tasteBuilt))}"/>`);
+    parts.push(`<circle cx="${F(bodyX + bodyW - 7)}" cy="${F(y + 3)}" r="3" fill="${rgb(trimAccent(tasteBuilt))}"/>`);
+  }
+
+  // trim contrast
+  if (tasteBuilt?.trim && tasteBuilt.trim !== "none") {
+    parts.push(`<rect x="${F(bodyX)}" y="${F(bodyY + bodyH - 4)}" width="${F(bodyW)}" height="4" fill="${rgb(trimAccent(tasteBuilt))}"/>`);
+  }
+
+  return { defs: "", svg: parts.join("") };
+}
+
+function trimAccent(tasteBuilt) {
+  const t = tasteBuilt?.trim;
+  if (t === "dark") return [48, 42, 38];
+  if (t === "light") return [228, 220, 200];
+  if (t === "contrast") return [168, 58, 42];
+  return [108, 88, 52];
+}
+
+/** Place one aesthetic card in a grid cell. */
+function drawAesthetic(aesthetic, x, y, cw, ch, label = "") {
+  const inner = aestheticCardSVG(aesthetic, cw, ch);
+  const cap = label ? `<text x="${F(x + cw / 2)}" y="${F(y + 12)}" text-anchor="middle" font-size="9" fill="#555" font-family="system-ui,sans-serif">${label.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>` : "";
+  return `<g transform="translate(${F(x)},${F(y)})">${cap}${inner}</g>`;
+}
+
+function aestheticCardSVG(aesthetic, w, h) {
+  const look = aesthetic?.look;
+  const dress = aesthetic?.dress;
+  const built = aesthetic?.built;
+  const taste = aesthetic?.taste || {};
+  const faceCx = w * 0.28;
+  const faceCy = h * 0.22;
+  const scale = Math.min(w, h) / 120;
+  const dressOut = dressSVG(dress, taste.dress, faceCx, faceCy + 18 * scale, scale);
+  const builtOut = builtSVG(built, taste.built, w * 0.52, h * 0.12, w * 0.44, h * 0.82);
+  const defs = [dressOut.defs, builtOut.defs].filter(Boolean).join("");
+  const ground = `<rect x="0" y="0" width="${F(w)}" height="${F(h)}" fill="#f6f3ec" rx="6"/>`;
+  const divider = `<line x1="${F(w * 0.5)}" y1="${F(16)}" x2="${F(w * 0.5)}" y2="${F(h - 8)}" stroke="#ddd" stroke-width="1"/>`;
+  return `${defs ? `<defs>${defs}</defs>` : ""}${ground}${divider}${faceSVG(look, taste.dress, faceCx, faceCy, scale)}${dressOut.svg}${builtOut.svg}`;
+}
+
+/** Complete SVG document for one aesthetic phenotype. */
+function aestheticSVG(aesthetic, W = 160, H = 200) {
+  const body = aestheticCardSVG(aesthetic, W, H);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${body}</svg>`;
+}
+
+
+/* ─────────── app ─────────── */
+const TASTE_AXES = [
+  ["ornament","Ornament","embroidery, jewellery, flare"],
+  ["austerity","Austerity","plain hair, low chroma"],
+  ["colour","Colour","saturated palette &amp; trim"],
+  ["pattern","Pattern","stripe, check, facade rhythm"],
+  ["regal","Regal","crown, brocade, court hair"],
+  ["pastoral","Pastoral","earthy wash, modest chroma"],
+  ["arid","Arid","ochre wash, warm field"],
+];
+const LOOK_AXES = [
+  ["skin","Skin tone","UV / melanin"],
+  ["hairHue","Hair hue","blond ← → dark"],
+  ["hairDark","Hair darkness",""],
+  ["epicanthic","Eye fold",""],
+  ["jawWidth","Jaw width",""],
+  ["noseBridge","Nose bridge",""],
+  ["noseWidth","Nose width","Rail A — climate nose"],
+];
+
+const PLACES = [
+  {
+    name: "hot-humid",
+    homeland: { temp: 0.86, moist: 0.70, lat: 4, elev: 0.02 },
+    ctx: { temp: 0.86, moist: 0.62, wealth: 0.15, materials: { fibres: [{ id: "cotton" }], trees: [{ id: "palm" }] } },
+    axes: { austerity: 0.65, pastoral: 0.5 },
+  },
+  {
+    name: "hot-dry court",
+    homeland: { temp: 0.88, moist: 0.12, lat: 24, elev: 0.04 },
+    ctx: { temp: 0.86, moist: 0.12, wealth: 0.65, materials: { fibres: [{ id: "flax" }], earths: [{ id: "clay" }], dyes: [{ id: "tyrian" }] } },
+    axes: { arid: 0.8, regal: 0.75, colour: 0.7 },
+  },
+  {
+    name: "cold hall",
+    homeland: { temp: 0.56, moist: 0.48, lat: 58, elev: 0.04 },
+    ctx: { temp: 0.56, moist: 0.50, wealth: 0.78, elev: 0.12, materials: { fibres: [{ id: "wool" }], trees: [{ id: "oak" }], stone: [{ id: "granite" }] } },
+    axes: { austerity: 0.5, pastoral: 0.55 },
+  },
+  {
+    name: "silk courtyard",
+    homeland: { temp: 0.76, moist: 0.55, lat: 32, elev: 0.06 },
+    ctx: { temp: 0.76, moist: 0.55, wealth: 0.70, materials: { fibres: [{ id: "silk" }], trees: [{ id: "oak" }], dyes: [{ id: "indigo" }] } },
+    axes: { ornament: 0.85, regal: 0.8, colour: 0.75, pattern: 0.7 },
+  },
+  {
+    name: "steppe tent",
+    homeland: { temp: 0.64, moist: 0.28, lat: 46, elev: 0.08 },
+    ctx: { temp: 0.62, moist: 0.28, wealth: 0.25, horses: 0.4, open: true, materials: { fibres: [{ id: "wool" }] } },
+    axes: { pastoral: 0.85, austerity: 0.35 },
+  },
+];
+
+const $ = s => document.querySelector(s);
+let state = {
+  seed: (Math.random() * 2e9) >>> 0,
+  place: 0,
+  tasteAxes: {},
+  look: {},
+  lookTouched: false,
+  identity: null,
+};
+
+function homelandLook() {
+  const h = PLACES[state.place].homeland;
+  const base = lookFromHomeland(h);
+  for (const g of RAIL_B_GENES) {
+    if (h[g] == null) h[g] = base[g] != null ? base[g] : 0.5;
+  }
+  return lookFromHomeland(h);
+}
+
+function mergedLook() {
+  const base = homelandLook();
+  if (!state.lookTouched) return base;
+  return { ...base, ...state.look };
+}
+
+function buildIdentity() {
+  const p = PLACES[state.place];
+  const axes = { ...p.axes, ...state.tasteAxes };
+  const id = foundAestheticIdentity(state.seed, axes);
+  id.lookOverride = state.lookTouched ? mergedLook() : null;
+  state.identity = id;
+  return id;
+}
+
+function paint() {
+  const p = PLACES[state.place];
+  const ctx = { ...p.ctx, homeland: p.homeland };
+  const id = buildIdentity();
+  const aesthetic = expressAesthetic(ctx, id);
+  $("#preview").innerHTML = aestheticSVG(aesthetic, 280, 340);
+  $("#caption").textContent = formatAestheticLine(aesthetic);
+  $("#seedbox").value = state.seed;
+  try {
+    const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
+      seed: state.seed, place: state.place, tasteAxes: state.tasteAxes,
+      look: state.look, lookTouched: state.lookTouched,
+    })))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    history.replaceState(null, "", "#s=" + payload);
+  } catch (e) { /* file:// */ }
+}
+
+function buildTasteSliders() {
+  $("#taste-sliders").innerHTML = TASTE_AXES.map(([k, label]) =>
+    `<div class="ctrl"><label><b>${label}</b><span class="val" id="tv_${k}">auto</span></label>
+     <input type="range" min="0" max="100" value="50" id="ts_${k}" aria-label="${label}"></div>`).join("");
+  TASTE_AXES.forEach(([k]) => {
+    const s = $("#ts_" + k);
+    s.addEventListener("input", () => {
+      state.tasteAxes[k] = s.value / 100;
+      $("#tv_" + k).textContent = state.tasteAxes[k].toFixed(2);
+      paint();
+    });
+  });
+}
+
+function buildLookSliders() {
+  const look = mergedLook();
+  $("#look-sliders").innerHTML = LOOK_AXES.map(([k, label]) =>
+    `<div class="ctrl"><label><b>${label}</b><span class="val" id="lv_${k}">${(look[k] ?? 0.5).toFixed(2)}</span></label>
+     <input type="range" min="0" max="100" value="${Math.round((look[k] ?? 0.5) * 100)}" id="ls_${k}" aria-label="${label}"></div>`).join("");
+  LOOK_AXES.forEach(([k]) => {
+    $("#ls_" + k).addEventListener("input", () => {
+      state.lookTouched = true;
+      state.look[k] = $("#ls_" + k).value / 100;
+      $("#lv_" + k).textContent = state.look[k].toFixed(2);
+      paint();
+    });
+  });
+}
+
+function buildPlaces() {
+  $("#places").innerHTML = PLACES.map((p, i) =>
+    `<button type="button" class="chip${i === state.place ? " on" : ""}" data-i="${i}">${p.name}</button>`).join("");
+  $("#places").querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    state.place = +c.dataset.i;
+    if (!state.lookTouched) buildLookSliders();
+    buildPlaces();
+    paint();
+  }));
+}
+
+function loadHash() {
+  if (!location.hash.startsWith("#s=")) return false;
+  try {
+    const raw = atob(location.hash.slice(3).replace(/-/g, "+").replace(/_/g, "/"));
+    const s = JSON.parse(decodeURIComponent(escape(raw)));
+    if (s.seed != null) state.seed = s.seed >>> 0;
+    if (s.place != null) state.place = s.place;
+    if (s.tasteAxes) state.tasteAxes = s.tasteAxes;
+    if (s.look) state.look = s.look;
+    if (s.lookTouched) state.lookTouched = s.lookTouched;
+    TASTE_AXES.forEach(([k]) => {
+      if (k in state.tasteAxes) {
+        $("#ts_" + k).value = Math.round(state.tasteAxes[k] * 100);
+        $("#tv_" + k).textContent = state.tasteAxes[k].toFixed(2);
+      }
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+$("#reroll").addEventListener("click", () => { state.seed = (Math.random() * 2e9) >>> 0; paint(); });
+$("#mutate").addEventListener("click", () => {
+  state.identity = buildIdentity();
+  state.identity = mutateAestheticIdentity(state.identity, (Math.random() * 2e9) >>> 0, 1);
+  state.seed = state.identity.taste.seed;
+  paint();
+});
+$("#loadseed").addEventListener("click", () => {
+  const v = parseInt($("#seedbox").value, 10);
+  if (!Number.isFinite(v)) return alert("Seed must be a number.");
+  state.seed = v >>> 0;
+  paint();
+});
+$("#resetface").addEventListener("click", () => {
+  state.lookTouched = false;
+  state.look = {};
+  buildLookSliders();
+  paint();
+});
+$("#dlsvg").addEventListener("click", () => {
+  const p = PLACES[state.place];
+  const aesthetic = expressAesthetic({ ...p.ctx, homeland: p.homeland }, buildIdentity());
+  const blob = new Blob([aestheticSVG(aesthetic, 560, 680)], { type: "image/svg+xml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "aesthetic-" + state.seed + ".svg";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$("#copylink").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(location.href); }
+  catch (e) { prompt("Copy:", location.href); }
+});
+
+buildTasteSliders();
+buildLookSliders();
+buildPlaces();
+if (!loadHash()) {
+  const ax = PLACES[0].axes;
+  for (const k of Object.keys(ax)) {
+    state.tasteAxes[k] = ax[k];
+    if ($("#ts_" + k)) { $("#ts_" + k).value = Math.round(ax[k] * 100); $("#tv_" + k).textContent = ax[k].toFixed(2); }
+  }
+}
+paint();
+</script>
+</body>
+</html>
