@@ -21,7 +21,8 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { landSurplusFrac } from "./landSurplus.js";
+import { landSurplusFrac, tradeableFoodFromGross, FOOD_PER_PERSON } from "./landSurplus.js";
+import { foodHaulArrivePos, haulSpoilRangeTiles } from "./foodHierarchy.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -125,6 +126,86 @@ function _ensureTerrScratch(world, N) {
   return { cost2, tcost2, clm2 };
 }
 
+/** Persistent Int32 scratch of length N — replaces per-flood `owner.slice()` (allocation-wall). */
+function _ensureTerrOwnerCopy(world, key, N) {
+  let a = world[key];
+  if (!a || a.length !== N) a = world[key] = new Int32Array(N);
+  return a;
+}
+
+function _ensureTerrFloatSnap(world, key, N) {
+  let a = world[key];
+  if (!a || a.length !== N) a = world[key] = new Float32Array(N);
+  return a;
+}
+
+// Spare coin the grain market will actually spend — getWealthReserve inlined
+// so this file does not import settlement.js (settlement → territory cycle).
+function _spareCoin(s) {
+  const reserve = 30 + Math.max(0, s.people || 0) * 0.3;
+  return Math.max(0, (s.wealth || 0) - reserve);
+}
+
+function _foodDemandOf(s) {
+  return s._foodDemand > 0 ? s._foodDemand
+    : Math.max(1e-6, (s.people || 0) * FOOD_PER_PERSON);
+}
+
+// ── MARKET_PULL offer: min(willingness, ability) ─────────────────────
+// Farmers sell to whoever leaves them the most after freight. Hunger is
+// demand — it is not cash. The offer a field sees is the reservation price
+// the city will AND can fund:
+//   willing  = _scarcity (demand vs harvest, 0.5–3)
+//   able     = spare coin per unit of demand (the same purse grainMarketPass
+//              spends — city wealth over the subsistence hoard, not tile
+//              coin, which is already the farmer's receipt)
+//   offer    = min(willing / mean willing, able / mean able)
+//
+// Calibration falls out of those two existing quantities, no new constant:
+//   rich + fed     willing 0.5, able high → offer 0.5 (won't overpay for
+//                  bread it does not need, but it CAN take the grain)
+//   poor + hungry  willing 3,   able ~0  → offer ~0 (cannot pay, however
+//                  badly it wants the food)
+//   rich + hungry  willing 3,   able high → offer high (wants it AND can)
+// A coinless dawn (mean spare ≈ 0) is temple/levy: ability does not bind,
+// willingness ranks alone. Abar then keeps an average market at the edict
+// haul. Tile money is not the buyer's purse — GRAIN_MARKET already debits
+// s.wealth; counting farm-gate receipts as urban purchasing power would let
+// a broke city keep bidding on the coin it already paid out.
+export function marketPullOfferMap(world, byId) {
+  let sumW = 0, sumA = 0, n = 0;
+  const wtpOf = new Map();
+  const atpOf = new Map();
+  for (const s of byId.values()) {
+    const wtp = s._scarcity > 0 ? s._scarcity : 1;
+    const demand = _foodDemandOf(s);
+    const atp = _spareCoin(s) / demand;
+    wtpOf.set(s.id, wtp);
+    atpOf.set(s.id, atp);
+    sumW += wtp;
+    sumA += atp;
+    n++;
+  }
+  const wBar = n > 0 ? sumW / n : 1;
+  const aBar = n > 0 ? sumA / n : 0;
+  const payBinds = T.MARKET_PAY > 0 && aBar >= 1e-12;
+  const out = new Map();
+  for (const s of byId.values()) {
+    const wRel = (wtpOf.get(s.id) || 1e-6) / Math.max(1e-12, wBar);
+    // GRAIN_MARKET's own institution gate: commercial payment needs coined
+    // money. Before that, the temple/levy assigns the belt on willingness
+    // alone. A cash-poor coined city still cannot pay (min with ~0).
+    const coined = !!(s._techEff && s._techEff.market);
+    if (!payBinds || !coined) {
+      out.set(s.id, Math.max(1e-6, wRel * wBar));
+      continue;
+    }
+    const aRel = (atpOf.get(s.id) || 0) / aBar;
+    out.set(s.id, Math.max(1e-6, Math.min(wRel, aRel)));
+  }
+  return out;
+}
+
 // After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
 // better on the SAME pass's effort metric (second-best slot). Marketing habit —
 // standing farm-gate relationships do not flip on float dust.
@@ -224,9 +305,35 @@ export function hinterlandRadiusFor(s, world) {
 }
 
 class MinHeap {
-  constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
-  _grow() { const c = this.cap * 2; const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d); this.ti = t; this.d = d; this.cap = c; }
-  push(ti, d) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; const tt = this.ti[p], td = this.d[p]; this.ti[p] = this.ti[i]; this.d[p] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = p; } }
+  constructor(cap = 4096) {
+    this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap;
+    this._maxCap = Math.max(cap * 4, 1 << 20);
+  }
+  _grow() {
+    const c = this.cap * 2;
+    // Soft ceiling — same posture as transport.js (mint-ready Max canary).
+    if (c > this._maxCap) return false;
+    try {
+      const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d);
+      this.ti = t; this.d = d; this.cap = c;
+      return true;
+    } catch (err) {
+      console.error(`[terrHeap] grow ${this.cap}→${c} failed:`, err && err.message);
+      return false;
+    }
+  }
+  push(ti, d) {
+    if (this.n >= this.cap && !this._grow()) return false;
+    let i = this.n++; this.ti[i] = ti; this.d[i] = d;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.d[p] <= this.d[i]) break;
+      const tt = this.ti[p], td = this.d[p];
+      this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
+      this.ti[i] = tt; this.d[i] = td; i = p;
+    }
+    return true;
+  }
   popMin() { const ti = this.ti[0], d = this.d[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; const tt = this.ti[b], td = this.d[b]; this.ti[b] = this.ti[i]; this.d[b] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = b; } } return { ti, d }; }
 }
 
@@ -305,14 +412,15 @@ export function computeTerritory(world) {
   // the OUTCOME of a bid: delivered value falls with carriage, so in logs the
   // race is additive and this is the SAME Dijkstra with a different starting
   // potential. A market that bids more starts lower and reaches further.
-  //   BID = hunger x ability to pay. Hunger is _scarcity (demand/supply, the
-  // emergent signal) and NOT _grainPrice, which carries GRAIN_PRICE_BY_TIER and
-  // would let a metropolis outbid a town 11x on its label — promoting the
-  // ratchet from a side-grant to the thing that assigns land. Ability to pay is
-  // wealth, which is EARNED. The owner's crowding-out argument survives intact;
-  // only its source changes from granted to earned.
-  //   NORMALISED BY THE WORLD MEAN, which is what keeps this constant-free: the
-  // seed is -haulTiles*ln(A_i / Abar), so an average market seeds at exactly 0
+  //   BID = min(willingness, ability to pay). Willingness is _scarcity
+  // (demand vs harvest — flow + hinterland, not the granary — and NOT
+  // _grainPrice, which carries GRAIN_PRICE_BY_TIER). Ability is spare city
+  // coin per unit of demand, the same purse grainMarketPass spends. Hunger
+  // is not cash: a poor hungry city cannot pay, and a richer less-hungry
+  // city takes the grain if it wants it. marketPullOfferMap. Abar keeps an
+  // average market at the edict haul.
+  //   NORMALISED BY THE WORLD MEAN, which is what keeps this constant-free:
+  // seed is -haulTiles*(A_i / Abar), so an average market seeds at exactly 0
   // and only RELATIVE standing moves anyone. haulTiles is HAUL_LAND_KM/(km per
   // tile) — the same edict-derived figure foodHierarchy already hauls grain on.
   const mktPull = T.MARKET_PULL > 0;
@@ -321,9 +429,8 @@ export function computeTerritory(world) {
   if (mktPull) {
     _rebuildMarketKn(byId);
     let sum = 0, n = 0;
-    for (const s of byId.values()) {
-      const a = Math.max(1e-6, (s._scarcity || 1));
-      seedOf.set(s.id, a); sum += a; n++;
+    for (const [id, a] of marketPullOfferMap(world, byId)) {
+      seedOf.set(id, a); sum += a; n++;
     }
     const abar = n > 0 ? sum / n : 1;
     // HAUL_LAND_KM = 340 km is an E-FOLDING distance, not a zero point: under the
@@ -449,16 +556,52 @@ export function computeTerritory(world) {
   // stable settlement order, the same one always wins, so no flicker.
   // Under MARKET_PULL_CACHE a clean fingerprint skips this whole flood and
   // keeps the stored partition for the tally below.
+  // T.MARKET_FARM_HOLD — worked tiles keep their haul path until a rival wins
+  // the bid (granary-death chain, 2026-08-31). When MARKET_PULL's bid shrinks
+  // the flood frontier, cost resets to Infinity on tiles the sweep no longer
+  // reaches; tally then marks them unreachable, landFood cliffs to 0, supply
+  // reads off while the granary still holds tens of tonnes, and ONE_POP drains
+  // the census. Carry last pass's haul costs on incumbent-owned tiles the flood
+  // skipped — peasants do not stop farming because the partition math ran short
+  // this cadence. Owner change, siege, or a fresh reach from the flood releases.
+  let farmSnapOwner = null, farmSnapCost = null, farmSnapTcost = null;
+  const farmHold = mktPull && T.MARKET_FARM_HOLD > 0;
+  if (mktFlood && farmHold) {
+    farmSnapOwner = _ensureTerrOwnerCopy(world, "_terrFarmSnapOwner", N);
+    farmSnapOwner.set(owner);
+    farmSnapCost = _ensureTerrFloatSnap(world, "_terrFarmSnapCost", N);
+    farmSnapCost.set(cost);
+    farmSnapTcost = _ensureTerrFloatSnap(world, "_terrFarmSnapTcost", N);
+    farmSnapTcost.set(tcost);
+  }
   if (mktFlood) {
   // Reset COST every flood (roads / budgets / bids shift the falloff) but keep
   // OWNER — ownership is persistent, that's what stabilises the borders.
   cost.fill(Infinity);
   tcost.fill(Infinity);
-  const heap = world._terrHeap || (world._terrHeap = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
+  // Pre-size like transport.js — avoid grow cascades under invent-jump memory pressure.
+  const wantTerr = (() => {
+    const need = Math.max(4096, N);
+    return need <= 1 ? 1 : 1 << (32 - Math.clz32(need - 1));
+  })();
+  let heap = world._terrHeap;
+  if (!heap || heap.cap < wantTerr) {
+    heap = world._terrHeap = new MinHeap(wantTerr);
+    heap._maxCap = Math.max(wantTerr * 4, 1 << 20);
+  }
+  heap.n = 0;
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
-  const prevOwner = mktPull && T.MARKET_PULL_HYST > 1 ? owner.slice() : null;
+  // MARKET_PULL_HYST needs the pre-flood owner map — copy into a reused lane
+  // (owner.slice() allocated ~N×4 bytes every territory flood; under Max +
+  // first-city mint that was a steady ArrayBuffer stream into the allocation
+  // wall — docs/allocation-wall-2026-08-20.md).
+  let prevOwner = null;
+  if (mktPull && T.MARKET_PULL_HYST > 1) {
+    prevOwner = _ensureTerrOwnerCopy(world, "_terrPrevOwner", N);
+    prevOwner.set(owner);
+  }
   const { cost2, tcost2, clm2 } = mktPull && T.MARKET_PULL_HYST > 1
     ? _ensureTerrScratch(world, N)
     : { cost2: null, tcost2: null, clm2: null };
@@ -537,7 +680,9 @@ export function computeTerritory(world) {
   // a locked tile owned by someone else is a wall; only tiles that are
   // wilderness in the snapshot are contestable — and they go to whoever
   // reaches them cheapest (true multi-source Voronoi over the free land).
-  const base = owner.slice();
+  // Reuse lane — same allocation-wall reason as _terrPrevOwner above.
+  const base = _ensureTerrOwnerCopy(world, "_terrBaseOwner", N);
+  base.set(owner);
   // Claimant carrier: water tiles propagate the cost frontier but are never
   // OWNED, so re-deriving the claimant from owner[ti] at pop time lost it the
   // moment the frontier stepped offshore (budget/knowledge read as nobody's →
@@ -656,6 +801,19 @@ export function computeTerritory(world) {
   }
 
   if (prevOwner) _applyMarketHysteresis(owner, cost, tcost, clm, prevOwner, cost2, tcost2, clm2, byId, N, T.MARKET_PULL_HYST);
+  if (farmSnapOwner && farmSnapCost && farmSnapTcost) {
+    const siegeFresh = (T.POLITY_INTERVAL || 150) * 1.5;
+    for (let ti = 0; ti < N; ti++) {
+      const o = owner[ti];
+      if (o < 0 || o !== farmSnapOwner[ti] || !byId.has(o)) continue;
+      const st = byId.get(o);
+      if (T.SIEGE_STARVE && st._besiegedAt !== undefined && world.step - st._besiegedAt < siegeFresh) continue;
+      if (cost[ti] < Infinity) continue;
+      if (farmSnapTcost[ti] >= Infinity) continue;
+      cost[ti] = farmSnapCost[ti];
+      tcost[ti] = farmSnapTcost[ti];
+    }
+  }
   if (mktPull) { world._mktFloodSig = mktSig; world._mktFloodReady = true; world._mktFloodAge = 0; }
   } else if (mktPull) {
     // Tally-only: partition reused. Debug counter for probes / HUD.
@@ -716,6 +874,21 @@ function tallyTerritory(world, owner, cost, byId) {
   // (cost/rn). One normalisation point — every downstream consumer then sees
   // reference-scale numbers automatically. Off ⇒ rn=1, invA=1: byte-identical.
   const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  // Goods overlay: grainL = surplus walking from the FIELD to its city, not
+  // the old child→liege tree. Cap per owner so a fine grid does not emit a
+  // stream per tile (render CAPD is 9000 dots). Keep the strongest surplus
+  // tiles — those are the levy the city actually lives on.
+  const LEVY_PER_CITY = 12;
+  const levyBest = new Map();
+  const noteLevy = (sid, ti, mag) => {
+    if (!(mag > 1e-9)) return;
+    let b = levyBest.get(sid);
+    if (!b) { levyBest.set(sid, b = []); }
+    if (b.length < LEVY_PER_CITY) { b.push({ ti, mag }); return; }
+    let j = 0;
+    for (let i = 1; i < b.length; i++) if (b[i].mag < b[j].mag) j = i;
+    if (mag > b[j].mag) b[j] = { ti, mag };
+  };
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0) continue;
@@ -735,6 +908,7 @@ function tallyTerritory(world, owner, cost, byId) {
       const w = foodFalloff(cost[ti] / _rn);
       const gross = f * w * _invA;
       const surplus = landSurplusFrac(world, ti, gross, s);
+      noteLevy(oid, ti, gross * surplus);
       s._terrFertSum += gross * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
@@ -818,7 +992,62 @@ function tallyTerritory(world, owner, cost, byId) {
     // this so herds face the same countryside-eats-first gate as grain.
     s._terrMeanSurplus = s._terrPlantWt > 1e-9 ? s._terrSurplusAcc / s._terrPlantWt : 1;
   }
+  const levy = [];
+  for (const [sid, tiles] of levyBest) {
+    const s = byId.get(sid);
+    if (!s) continue;
+    const dest = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    for (const { ti, mag } of tiles) {
+      if (ti === dest) continue;
+      levy.push({ pts: [ti, dest], mag, toEnd: true, kind: "grainL" });
+    }
+  }
+  world._goodsFlowsLevy = levy;
   world._borders = borders;
+}
+
+// If this settlement claimed every tradeable surplus tile within spoilage-limited
+// haul range, how much grain would arrive per tick after distance falloff, haul
+// decay (tech + climate), and implied-countryside eat? Hypothetical pool — not
+// what the bid partition assigned this tick.
+export function haulDeliverableFoodPool(world, market) {
+  if (!market || market.mode !== "settled") return 0;
+  const { N, tw, th, fert, elev } = world;
+  if (!fert || !elev) return 0;
+  const cm = world.climMod;
+  const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  const mx = market.pos.x | 0, my = market.pos.y | 0;
+  const tcost = world._territoryTrueCost;
+  const owner = world._territoryOwner;
+  const byId = world._byId;
+  const minFert = MIN_PLANTABLE_FERT_BASE
+    - MIN_PLANTABLE_FERT_SLOPE * ((market.knowledge && market.knowledge.agriculture) || 0);
+  const maxD = haulSpoilRangeTiles(world, market) * 4;   // ~2% survive floor on the exponential
+  let total = 0;
+  for (let ti = 0; ti < N; ti++) {
+    if (elev[ti] <= 0) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    let dx = Math.abs(tx - mx);
+    if (dx > tw / 2) dx = tw - dx;
+    const dy = Math.abs(ty - my);
+    const dEuclid = Math.sqrt(dx * dx + dy * dy);
+    if (dEuclid > maxD) continue;
+    const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
+    if (f < minFert) continue;
+    const tc = tcost && tcost[ti] < Infinity ? tcost[ti] : dEuclid;
+    const w = foodFalloff(tc / _rn);
+    const grossFertWt = f * w * _invA;
+    const oid = owner ? owner[ti] : -1;
+    let farmer = market;
+    if (oid >= 0) {
+      if (byId && byId.has(oid)) farmer = byId.get(oid);
+      else for (const ss of world.settlements) if (ss.id === oid) { farmer = ss; break; }
+    }
+    const food = tradeableFoodFromGross(world, ti, grossFertWt, farmer);
+    if (food <= 0) continue;
+    total += food * foodHaulArrivePos(world, tx, ty, market, farmer);
+  }
+  return total;
 }
 
 // Cheap local fallback so a freshly-founded settlement has food + resource
