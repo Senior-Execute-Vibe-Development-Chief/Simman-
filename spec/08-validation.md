@@ -31,7 +31,9 @@ means** with n reported, soft-warning budget semantics as in v1. Two modes:
 - **Mechanism-level**: the subsystem's output distributions sit in its
   table's bands (03 travel times; 04 population/famine/yields; 05 polity
   sizes/lifespans/extraction; 06 city sizes/hauls/prices; 07 identity
-  structure).
+  structure; 11 technique sequences/diffusion; 13 armies/sieges/war
+  sizes; 14 colonial patterns; 15 the agro-pastoral frontier; 16 disease
+  thresholds/mortality/spread).
 - **Ensemble-level** (the alternate-Earth criterion, R6): across N seeds,
   real history's statistics sit inside the ensemble envelope — empire-size
   trajectories (Taagepera), population curve (HYDE), first-city/state

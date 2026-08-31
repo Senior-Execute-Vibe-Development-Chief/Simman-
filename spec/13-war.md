@@ -42,8 +42,8 @@ water-hugging campaigns, winter quarters, and the besieger's clock (13.3).
 The v1-validated core (sieges end by starvation; the granary is the
 clock) upgraded to the honest form: **defender's granary clock vs the
 besieger's own supply clock** (the camp is an army foraging an emptying
-neighborhood; once plagues exist, camp disease drains it too — historically
-the besieger broke first about as often). Assault is a costly option
+neighborhood; once plagues exist (16), camp disease drains it too —
+historically the besieger broke first about as often). Assault is a costly option
 against the fortification stock. **Negotiated surrender** scales with
 relief prospects and the attacker's **reputation stock** (10d): honored
 terms open the next gates early; a massacre closes every gate after —

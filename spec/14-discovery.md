@@ -30,9 +30,9 @@ Post-glacial isolation persists by ocean cost alone (the prehistoric
 peopling crossed by land — the ancestry wavefront covers it). Contact is
 the collision of divergent branches: crop packages jump oceans (maize and
 potatoes reshaping Old World capacity — a first-order demographic event),
-techniques transfer with carriers (11), and the disease asymmetry (15,
-plagues) does the tragic work — pool depth ∝ historic density + livestock
-+ connectivity; virgin-soil mortality ∝ pool difference; the malaria wall
+techniques transfer with carriers (11), and the disease asymmetry (16)
+does the tragic work — pool depth ∝ historic density + livestock +
+connectivity; virgin-soil mortality ∝ pool difference; the malaria wall
 runs the other way. Timing, direction, and discoverer vary by seed.
 
 ## 14.3 Colonies as outcomes (11b)

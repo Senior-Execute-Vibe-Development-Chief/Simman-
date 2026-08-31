@@ -69,8 +69,12 @@ Roads as pure per-tile quality/flow stocks: trodden by use, paved by
 technique, decaying idle — feeding back into the travel field (the one
 loop that improves it). Sea lanes from port floods, capability-gated
 ranges, wind/season-aligned costs (03). Trade volumes emerge from the
-market layers above; tolls/tariffs accrue to whoever holds authority over
-chokepoints — revenue that feeds 05's centers.
+market layers above and read **effective** cost — physical plus the
+danger premium (03/DECISIONS 12d), so imperial security opens routes and
+fragmentation closes them; tolls/tariffs accrue to whoever holds authority
+over chokepoints — revenue that feeds 05's centers. Mercenaries: violence
+as a purchasable good in this market where coin and war demand coincide
+(DECISIONS 10d; 13.1).
 
 ## 6.6 The energy seam (Phase-2 protection)
 

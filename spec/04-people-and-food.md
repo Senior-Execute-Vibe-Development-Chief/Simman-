@@ -14,7 +14,8 @@ census copy, no bridge scalar, no second food book (R4).
 - **Growth**: logistic toward local carrying capacity; intrinsic rate
   ≈ 0.28%/yr (v1's re-grounded historical band), modulated by development
   regime (forager × ~0.35 → advanced × ~1.65 — the differential that drove
-  the Neolithic expansion), disease burden (tropical belts), and the urban
+  the Neolithic expansion), disease burden (static tropical belt here;
+  dynamic pools per 16), and the urban
   graveyard (density-graded excess mortality — cities grow only by
   in-migration; v1's URBAN_GAMMA law, ported).
 - **Migration**: capacity-gradient diffusion, double-buffered, sub-stepped,
@@ -38,7 +39,9 @@ census copy, no bridge scalar, no second food book (R4).
 
 ## 4.2 Food
 
-- **Conserved mass** (tonnes; 1 unit = 1 t). Sources: harvest, pasture.
+- **Conserved mass** (tonnes; 1 unit = 1 t). Sources: harvest, pasture —
+  pastoral calories flow through herd stocks per 15 (grass seasonal and
+  locally depletable; fodder and grain as the other feeding strategies).
   Sinks: eating (ration 3 kg/person/day-equivalent — v1's 0.003/tick per
   sim-person, re-derived in real units at v2's tick), spoilage
   (climate-scaled: hot-wet ~2.5×, hot-dry ~0.5×), seed corn, and losses in

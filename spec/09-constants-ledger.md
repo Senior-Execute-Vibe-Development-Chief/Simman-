@@ -96,6 +96,18 @@ recycling fraction — research/03 §1.8). Ungrounded shape dials stay in the
 worldgen param registry, outside this ledger, because they define the
 *procedural* presets, not the Phase-1 Earth.
 
+## Later-chapter seeds (11–16) — all `[DERIVE]` unless noted
+
+| Constant | Value | Grounding |
+|---|---|---|
+| TECH_COMPLEXITY per catalog entry | `[DERIVE]` | Henrich population-complexity relation (11) |
+| PASTURE_REGROWTH / HERD_CONVERT | `[DERIVE]` | rangeland ecology (15) |
+| DANGER_PREMIUM scale | `[DERIVE]` | caravan-guard/insurance cost shares (03/12d) |
+| POOL_GROWTH (density×livestock×connectivity) | `[DERIVE]` | epidemiological transition literature (16) |
+| PERSIST_HOSTS | ~¼–½ M connected hosts (crowd class) | measles epidemiology (16) |
+| OUTBREAK_SPEED | overland km/day band | Black Death mapping (16) |
+| CONFED_CASCADE | hazard ∝ adjacent extortable wealth | Barfield-pattern (15) `[CALIBRATED shape]` |
+
 ## Rules
 
 1. No constant outside this file. CI greps for numeric literals in

@@ -27,6 +27,7 @@ Nothing is staged or propped up.
 | `13-war.md` | War in the concrete: armies as supplied columns, devastation, two-clock sieges, assessment-convergence endings |
 | `14-discovery.md` | Discovery & colonization: the known world, the mappa mundi lens, first contact, colonies as outcomes |
 | `15-pastoral.md` | Herds and the emergent steppe: grass physics, the feeding continuum, mirror-empires, the dismount dilemma |
+| `16-plagues.md` | Plagues: disease pools, immunity gaps, emergence from density × livestock, quarantine |
 | `research/` | The distilled v1 learnings corpus (five dossiers) — the evidence base these specs cite |
 
 ## Spec depth rule

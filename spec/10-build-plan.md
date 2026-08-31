@@ -82,20 +82,31 @@ Build: gravity condensation of market/temple towns; bid-to-eat market
 lenses; language (ported) begins naming everything.
 Gate: 06's table — city sizes, haul sheds, urban share, price behavior.
 
-## M8 — The tools of rule
+## M8 — The tools of rule and war in the concrete
 
-Build: the institution catalog; EXTEND vs DEEPEN flows; war economics
-with rising capital intensity; sieges/storms (v1's validated forms);
-collapse (scars, dark ages, restorations on land memory).
-Gate: 05.8 + Seshat administrative-depth checks; first-state timing;
-empire rings visible; ensemble-level checks begin.
+Build: the technique/institution system proper (11 — carriers from M2's
+labor shares, the catalog, transmission, loss, blocking); EXTEND vs
+DEEPEN flows; armies as entities with the full 13 design (campaigns,
+devastation, two-clock sieges, assessment-convergence endings, mercenary
+market, reputation); the danger premium arms (03/12d — it needs M5+
+authority to read); collapse (carrier-loss dark ages, restorations on
+land memory).
+Gate: 05.8 + 11.5 + 13.5 tables; Seshat administrative-depth checks;
+first-state timing; empire rings visible; ensemble-level checks begin.
+
+Note on chapter→milestone mapping: herds/grass (15) are food physics and
+land in **M2–M3**; steppe confederation/dismount dynamics ride M5–M6;
+geographic knowledge and the mappa mundi lens (14) enter with M7's trade
+world; plagues (16) arm when density/livestock/connectivity exist —
+mechanically alongside M7–M8.
 
 ## M9+ `[SKETCH]`
 
-Sea exploration and the colonial arc (v1-validated designs), epidemics on
-the travel field, full identity dynamics, faith networks (P6 decision),
-the early-modern sharpening (borders crisp, Phase 1 complete), then the
-Phase-2 seam opens (fossil energy into the standing books).
+Ocean exploration and the colonial arc (14 on the v1-validated designs),
+first contact and the exchange, full identity dynamics, faith networks
+(P6 decision), quarantine-era institutions, the early-modern sharpening
+(borders crisp, Phase 1 complete), then the Phase-2 seam opens (fossil
+energy into the standing books).
 
 ## Standing rules
 

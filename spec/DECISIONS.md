@@ -160,6 +160,23 @@ lawyered.
        re-prices the sea route (14's exploration trigger).
     Spec: `15-pastoral.md` + 03 amendment.
 
+## 2026-08-31 — Plagues round
+
+13. **Disease pools.** (All ratified.)
+    a. Regional disease pools per pathogen class (crowd, zoonotic,
+       water-borne, parasitic) with per-population immunity portfolios;
+       outbreak severity = immunity gap × density; endemicization after
+       each wave. Individual outbreaks get generated names for the
+       chronicles; mechanics stay class-based.
+    b. New pathogen classes emerge from density × livestock × time — the
+       first cities breed the first plagues, at emergent dates, every
+       seed.
+    c. Quarantine is an administration-domain technique in the 11 catalog
+       (the Venice pattern: trade wealth × administrative capacity).
+    d. Next moves ratified: write `16-plagues.md`, run a full-suite
+       coherence pass, then M0 scaffolding on the owner's word.
+    Spec: `16-plagues.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 These are in the specs as the working design; the owner has not explicitly
@@ -182,10 +199,8 @@ ruled on them. Veto or amend freely; specs will follow.
   is: solid at cores, fading through sworn lands, blank where no one rules —
   hard crisp borders emerge only with late-Phase-1 state capacity. A
   simplified "dominant authority" lens exists for quick reading.
-- **P5. Institution portfolio.** A catalog of ~10–15 named institutions
-  (tallies, writing, law, coinage, roads/posts, agent recruitment, census,
-  the impersonal crown, …), each condition-emergent, upkeep-costing,
-  decaying, and mortal — replacing any scalar "organisation" stat.
+- **P5. Institution portfolio.** ~~Proposed~~ **RATIFIED via DECISIONS 8b**
+  (institutions are administration-domain techniques; see 11).
 - **P6. Non-territorial authority networks** (organized religion; later,
   leagues like the Hanse) are first-class actors in the obligation graph.
   Scope question open: full actor class in Phase 1, or v1-style faith

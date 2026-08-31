@@ -42,6 +42,7 @@
    - `memory` — allegiance/homeland/grievance (v1's loyalty field family,
      ported land-anchored as designed).
    - slow environmental stocks: soil fatigue, deforestation.
+   - seasonal pasture productivity and grazing depletion (15).
    - **`authority` — per-tile top-K (K=4) slots of (centerId, weight)**,
      recomputed from centers over the travel-cost field. A derived view,
      never authored; there is no `_countryOwner`. (05-politics.)
@@ -52,6 +53,14 @@
 4. **The register** (bounded, condensed objects — R8):
    - **Communities**: village-scale aggregates condensed from `people`;
      the atom of compliance, unrest, legitimacy, and food books (P2).
+     Books include herd stocks (15) and disease pools/immunity (16);
+     the standing rule: communities drift toward their food source
+     (DECISIONS 12a).
+   - **Armies**: moving, supplied columns on the travel field
+     (DECISIONS 10a; 13) — position, composition, supply state,
+     commander.
+   - **Known-world frontiers**: coarse per-tradition geographic-knowledge
+     state (DECISIONS 11a; 14).
    - **Centers**: courts/lords/temples/markets past the salience bar (P3);
      hold retinue, stores, treasury, institution portfolio, dynasty ref.
    - **Obligation edges**: directed (from, to, kind, strength, binding:
