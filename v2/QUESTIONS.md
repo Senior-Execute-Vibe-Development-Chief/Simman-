@@ -17,7 +17,6 @@ simulation assumptions.
    hardcoded test graph but does not specify the graph topology or expected
    distances. M0 uses a five-node graph with distances `[0, 2, 3, 4, 6]`;
    this is a toolchain fixture only and must not become routing physics.
-
 ---
 
 ## Review answers (2026-08-31, spec-session review)
