@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/granary-spoil-15e6",
+      "sha": "e57902b3e95e4c40b379fbdc7907aa37dcd11738",
+      "slug": "cursor-granary-spoil-15e6",
+      "builtAt": "2026-08-31T03:54:16.198Z",
+      "channel": "preview",
+      "saveVersion": 66,
+      "path": "/b/cursor-granary-spoil-15e6/"
+    },
+    {
       "branch": "cursor/people-style-642a",
       "sha": "31a26d7b708b50771cda216e1cfd4ea1a32da3ef",
       "slug": "cursor-people-style-642a",
@@ -9,15 +18,6 @@
       "channel": "preview",
       "saveVersion": 64,
       "path": "/b/cursor-people-style-642a/"
-    },
-    {
-      "branch": "cursor/granary-spoil-15e6",
-      "sha": "ccc8265dd9442148e14c6edb1efa81650c9f1e53",
-      "slug": "cursor-granary-spoil-15e6",
-      "builtAt": "2026-08-31T03:27:40.439Z",
-      "channel": "preview",
-      "saveVersion": 66,
-      "path": "/b/cursor-granary-spoil-15e6/"
     },
     {
       "branch": "cursor/market-profit-bid-15e6",
