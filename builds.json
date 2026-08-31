@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/food-bridge-fix-15e6",
+      "sha": "e70a7715b8797739cf3fc5a4f9a303777d12a923",
+      "slug": "cursor-food-bridge-fix-15e6",
+      "builtAt": "2026-08-31T05:19:48.041Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-food-bridge-fix-15e6/"
+    },
+    {
       "branch": "cursor/aesthetic-spec-642a",
       "sha": "edd2064bb83e72b44d7d6c3a47d97d57e8fa53a8",
       "slug": "cursor-aesthetic-spec-642a",
