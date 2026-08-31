@@ -20,7 +20,7 @@ function sumField(field: NumericField): number {
 
 function totalChannels(channels: Record<string, number>): number {
   let total = 0;
-  for (const value of Object.values(channels)) total += value;
+  for (const key in channels) total += channels[key] ?? 0;
   return total;
 }
 
@@ -45,8 +45,8 @@ export class ConservationLedger {
     sheet.opening = sumField(field);
     sheet.closing = sheet.opening;
     sheet.observedDelta = 0;
-    sheet.sources = {};
-    sheet.sinks = {};
+    for (const key in sheet.sources) sheet.sources[key] = 0;
+    for (const key in sheet.sinks) sheet.sinks[key] = 0;
     sheet.unexplained = 0;
     this.sheets.set(quantity, sheet);
   }
