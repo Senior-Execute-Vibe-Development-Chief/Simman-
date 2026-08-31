@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/granary-spoil-15e6",
+      "sha": "ccc8265dd9442148e14c6edb1efa81650c9f1e53",
+      "slug": "cursor-granary-spoil-15e6",
+      "builtAt": "2026-08-31T03:27:40.439Z",
+      "channel": "preview",
+      "saveVersion": 66,
+      "path": "/b/cursor-granary-spoil-15e6/"
+    },
+    {
       "branch": "cursor/people-style-642a",
       "sha": "7618296f1482b1d2c09027a7ca51ff40a98debea",
       "slug": "cursor-people-style-642a",
