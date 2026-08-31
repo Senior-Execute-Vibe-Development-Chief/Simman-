@@ -110,6 +110,9 @@ worldgen param registry, outside this ledger, because they define the
 | PERSIST_HOSTS | ~¼–½ M connected hosts (crowd class) | measles epidemiology (16) |
 | OUTBREAK_SPEED | overland km/day band | Black Death mapping (16) |
 | CONFED_CASCADE | hazard ∝ adjacent extortable wealth | Barfield-pattern (15) `[CALIBRATED shape]` |
+| DOMAR_LAW | binding demand ∝ land abundance × labor scarcity × coercive capacity | Domar hypothesis (06.4) |
+| DEBT_BOND / MANUMIT rates | `[DERIVE]` | debt-crisis and freedman literature (06.4) |
+| VALUE_EMA | generational lag on culture value vectors | path-dependence literature (07.6) `[DERIVE]` |
 
 ## Rules
 

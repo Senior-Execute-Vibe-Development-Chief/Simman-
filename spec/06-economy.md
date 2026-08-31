@@ -53,15 +53,58 @@ ore→metal chains; endowments as grade × substantiality. Ships as one
 system (the complements lesson: scarcity + relative advantage together).
 Grain stays on the food system; the goods layer carries the rest.
 
-## 6.4 Labor and coercion `(v1-validated design; DESIGN at the edges)`
+## 6.4 Labor and coercion `(DESIGN DETAIL — ratified DECISIONS 16)`
 
 Working-age rural people farm; urbanized people don't (output scales with
-the rural share — no constant). Coerced labor as a stock doing what free
-labor structurally cannot (plantations, mines, gang estates), demand-driven
-(conquest-income estates), price-elastic supply, aging into serfdom when
-expansion stops — the whole v1 complex ports as design, re-founded on
-communities and the obligation graph (a slave flow is a people flow — R5's
-demographic conservation applies).
+the rural share — no constant). Unfree labor is treated at full weight:
+most people who lived before the industrial era stood somewhere on the
+spectrum of unfreedom, and an honest sim carries that.
+
+- **The spectrum (16a)**: coercion as dimensions on the labor books —
+  mobility denial × output share taken × saleability of the person.
+  Chattel slavery, helotry, serfdom, debt bondage, corvée, and indenture
+  are points on the continuum; societies drift through it (Roman gang
+  slavery aging into the colonate into serfdom — v1 measured the
+  transition emerging with no era gate; kept).
+- **Demand — the Domar triangle (16b)**: unfreedom demand ∝ land
+  abundance × labor scarcity × elite coercive capacity. When any worker
+  can walk off to free land (cheap exit, primitive 3), estates can't hire
+  — so elites with coercion bind labor instead. Derives: the **plague
+  fork** (post-plague scarcity → wages rise where lords are weak, second
+  serfdom where coercion holds — v1-validated, now from first
+  principles), **frontier serfdom** (Russia's deepening as its frontier
+  opened), and **conquest-estate slavery** (windfall land + captives —
+  v1's latifundia engine; the Atlantic system is the same triangle at
+  oceanic scale with 14's colonial inputs).
+- **Supply**: war captives (13 — the largest ancient source); raiding
+  *for* people where price gradients point (the danger premium's dark
+  sibling — slave frontiers form); **debt bondage (16c)** in coined
+  economies (bad year + debt → bonded family; Solon-class crises
+  emerge); hereditary status (chattel systems that don't self-reproduce
+  need constant import — shaping the trade; serfdom self-reproduces).
+  **Manumission (16d)** is a standing outflow (Rome's freedmen mattered
+  demographically and culturally).
+- **Integration** (existing books): unfree people are people — R5
+  demographic conservation, cohorts, identity mixes carried; the trade
+  prices freight/friction like every flow; helot-scale internal-security
+  pressure feeds militarized values (07.6 — the Sparta chain complete);
+  coercion suppresses innovation through 11 (unfree carriers don't
+  capture improvement gains; cheap bound labor reverses induced
+  innovation — the classical stagnation puzzle, derived); revolts are
+  the unrest/coordination machinery at its extreme (rare, explosive);
+  decline via density (Domar reverses), machinery (Phase 2), and the
+  values layer (abolitionism as history's first mass moral movement —
+  late Phase 1 / Phase 2).
+- **Presentation rule (16e)**: recorded and measured with full
+  historiographic honesty — chronicles name it, the almanac plots
+  coerced share against the reality tables — and never aesthetically
+  rewarded.
+
+Reality table: Rome's core ~30–40% coerced where conquest economies ran;
+serfdom covering the majority of medieval Europe's population; the plague
+fork in both directions on the same shock; the Domar correlation (binding
+tracks labor scarcity × land abundance × elite power) across the
+ensemble; revolt frequency rare-but-explosive.
 
 ## 6.5 Trade, roads, sea `(FULL for roads/sea substrate; DESIGN for merchants)`
 

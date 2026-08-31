@@ -227,9 +227,30 @@ lawyered.
        under similar conditions.
     Spec: 07 values section; 08.3 gate.
 
+## 2026-08-31 — Unfree labor round
+
+16. **Coercion as a spectrum, driven by the Domar triangle.** (All five
+    ratified.)
+    a. Coercion is dimensions on the labor books (mobility denial ×
+       output share × saleability of the person) — chattel, helotry,
+       serfdom, debt bondage, corvée, indenture as points on a continuum,
+       never a binary category.
+    b. **The Domar triangle** is the demand law: unfreedom demand ∝ land
+       abundance × labor scarcity × elite coercive capacity — deriving
+       the plague fork (wages vs second serfdom), frontier serfdom, and
+       conquest-estate slavery instead of asserting them.
+    c. **Debt bondage** is a supply channel in coined economies
+       (Solon-class debt crises emergent).
+    d. **Manumission** is a standing flow.
+    e. **Presentation rule**: unfree labor is recorded and measured with
+       full historiographic honesty (chronicles name it; the almanac
+       plots it against the reality tables) and never aesthetically
+       rewarded.
+    Spec: 06.4 expanded.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 15)*
+*(empty — all proposals ratified as of round 16)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.
