@@ -315,6 +315,8 @@ lawyered.
        laptop, so 20-seed batteries run overnight.
     Spec: 02 substrate section; 10 M0 expanded.
     Implementation begins: M0 handed off (spec/handoffs/M0.md).
+    M0 merged and gate-passed 2026-08-31 (tri-engine CI green on
+    4a416a3e); M1 handed off (spec/handoffs/M1.md).
 
 ## Proposed — working design, awaiting explicit ratification
 

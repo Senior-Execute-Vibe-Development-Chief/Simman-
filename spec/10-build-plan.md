@@ -39,7 +39,7 @@ Build: v1 worldgen consumed as input (adapter in `ported/`); the
 travel-time field (03) with modes, seasons, capability gates; the map
 shell (terrain lens, click-two-points travel query).
 Gate: 03's reality table (ORBIS-class checks, freight ratios, cross-grid
-real-km parity).
+real-km parity). Handoff: spec/handoffs/M1.md.
 
 ## M2 — People
 
