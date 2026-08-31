@@ -12,8 +12,10 @@
 //   { type:'select', id }                       — selected settlement (gets full detail)
 //   { type:'view', view }                       — current view (gates per-view extras)
 //   { type:'tune', values, reset }              — live tuning levers
+//   { type:'settTrace', cmd:'start'|'stop'|'clear'|'copy'|'once', id, every }
 // Messages OUT:
 //   { type:'snapshot', ... }                    — see buildSnapshot() (stats embedded)
+//   { type:'settTraceData', json, n, name }     — inspect-card copy of a settlement log
 //   { type:'error', message, stack }            — init/step failure
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -37,7 +39,9 @@ import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
 import { TRAITS, labelFor } from "./sim/peopleSim/personality.js";
 import { estimateCountryRange } from "./sim/peopleSim/conquest.js";
+import { haulDeliverableFoodPool } from "./sim/peopleSim/territory.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
+import { makeTrace, sampleTrace, traceStatus, traceEnvelope } from "./sim/peopleSim/settlementTrace.js";
 
 // Country editor: drop a FULLY-FORMED realm — a capital plus the cities and towns
 // filling the territory its tech allows it to hold (estimateCountryRange), then a
@@ -110,6 +114,7 @@ let fastEpochNow = false;
 let quietAgesNow = false;   // the pre-nation condition itself (chip shows whenever it holds; gold = accelerating, dim = user opted out)
 let speed = 30;        // TARGET ticks-per-second (see scheduleTick); 30 = ~1 step per snapshot
 let selId = -1;
+let settTrace = null;            // inspect-card recorder: one settlement, every N ticks
 let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
 let dynastyOpen = false;      // the family-tree overlay is open — ship the ruling house graph
 let viewMode = "terrain";    // main thread tells us the view so we only ship
@@ -187,6 +192,12 @@ function journalTick() {
 let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
 let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
+// Max / quiet-ages: the UI cannot usefully paint 30Hz of history while the
+// worker burns unbounded steps — and that stream was the allocation-wall
+// killer (docs/allocation-wall-2026-08-20.md). Drop to ~2Hz under fastEpoch
+// so buffer-return + GC keep up through the mint-ready → first-cities burst
+// (browser repro still OOMed at 4Hz + partial MessageChannel wakes).
+const SNAP_MS_FAST = 500;
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
 
 // ── The snapshot buffer pool (the 26.6k allocation wall, 2026-08-20) ─────────
@@ -315,7 +326,17 @@ function handleMessage(m) {
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};
-      world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
+      world = initPeopleSim(m.w, {
+        seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes,
+        deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh,
+        ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival,
+        onGenesisProgress: (info) => {
+          // Mint-ready gather blocks this worker for a long wall-clock at the
+          // app grid — without these, the page looks paused (play does nothing
+          // until a sudden jump to ~20-30k).
+          try { self.postMessage({ type: "genesisProgress", ...info }); } catch { /* ignore */ }
+        },
+      });
       worldSeed = m.seed; runJournal.length = 0; _journalNext = 0; _funnelNext = 0; _jDeaths = 0; _jEvSeen = -1;
       telEnable(world);   // the journal's funnel windows — the probes' own channels, live in the app
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
@@ -326,6 +347,7 @@ function handleMessage(m) {
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      settTrace = null;
       _bufPool.clear();           // a new world can change N — stale-size buffers would never be hit again
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
@@ -389,6 +411,52 @@ function handleMessage(m) {
       try { self.postMessage({ type: "historyData", json: JSON.stringify(exportHistory(world)), step: world.step }); }
       catch (err) { self.postMessage({ type: "error", message: "export failed: " + (err && err.message), stack: err && err.stack }); }
     }
+  } else if (m.type === "settTrace") {
+    const cmd = m.cmd;
+    if (cmd === "start") {
+      const id = m.id | 0;
+      const every = Math.max(1, m.every | 0);
+      const live = world && world._byId ? world._byId.get(id) : null;
+      if (settTrace && settTrace.id === id && !settTrace.recording) {
+        settTrace.recording = true;
+        settTrace.every = every;
+        settTrace.nextAt = -1;
+        if (world) sampleTrace(world, settTrace);
+      } else {
+        settTrace = makeTrace(id, every, live ? live.name : "");
+        if (world) sampleTrace(world, settTrace);
+      }
+      if (!playing && world) buildSnapshot();
+    } else if (cmd === "stop") {
+      if (settTrace) settTrace.recording = false;
+      if (!playing && world) buildSnapshot();
+    } else if (cmd === "clear") {
+      settTrace = null;
+      if (!playing && world) buildSnapshot();
+    } else if (cmd === "copy" || cmd === "once") {
+      try {
+        let payload;
+        if (cmd === "once") {
+          const id = m.id | 0;
+          const live = world && world._byId ? world._byId.get(id) : null;
+          const rec = makeTrace(id, 1, live ? live.name : "");
+          if (world) sampleTrace(world, rec);
+          payload = traceEnvelope(world, rec);
+        } else {
+          if (!settTrace) {
+            self.postMessage({ type: "settTraceData", json: "", n: 0, name: "", empty: true });
+          } else {
+            payload = traceEnvelope(world, settTrace);
+          }
+        }
+        if (payload) {
+          const json = JSON.stringify(payload);
+          self.postMessage({ type: "settTraceData", json, n: payload.samples.length, name: payload.name || "" });
+        }
+      } catch (err) {
+        self.postMessage({ type: "error", message: "settlement trace failed: " + (err && err.message), stack: err && err.stack });
+      }
+    }
   } else if (m.type === "save") {
     if (world) {
       try { self.postMessage({ type: "saveData", json: serializeWorld(world, genMeta), step: world.step }); }
@@ -403,6 +471,7 @@ function handleMessage(m) {
       world._wantMoneyFlows = (viewMode === "money");
       world._wantGoodsFlows = (viewMode === "goodsflow");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      settTrace = null;
       _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
       buildSnapshot();
       if (playing) scheduleTick();
@@ -517,10 +586,15 @@ _tickChan.port1.onmessage = () => tick();
 function scheduleTick() {
   if (scheduled || !playing) return;
   scheduled = true;
-  // Unbounded / quiet-ages: re-enter immediately. Background with step debt:
-  // same — don't wait on a throttled timer to burn catch-up. Paced + visible
-  // (or background with nothing earned yet): wake on a timer.
-  if (speed >= UNBOUNDED_TPS || fastEpochNow || (pageHidden && tickAccum >= 1)) {
+  // Unbounded / quiet-ages: MUST idle between slices. A MessageChannel-only
+  // wake never returns to the event loop long enough for GC + bufret, and
+  // mint-ready Max play then dies in MinHeap._grow with
+  // "Array buffer allocation failed" (~500 steps after first cities —
+  // docs/allocation-wall-2026-08-20.md; browser repro 2026-08-29).
+  // setTimeout(1) keeps the unbounded burn but lets the heap breathe.
+  if (speed >= UNBOUNDED_TPS || fastEpochNow) {
+    _tickTimer = setTimeout(tick, 1);
+  } else if (pageHidden && tickAccum >= 1) {
     _tickChan.port2.postMessage(0);
   } else {
     _tickTimer = setTimeout(tick, SNAP_MS);
@@ -537,12 +611,12 @@ function tick() {
   // spiking step from blocking the snapshot cadence — and that spike stays off the
   // main (render) thread, which is the whole point of the worker.
   const now = performance.now();
-  // Quiet ages = nothing on the map yet: no realm AND no settled settlement.
-  // Under T.LAND_KNOW prehistory is entity-free until the tallies bar, so the
-  // fast-forward carries the whole empty span and stands down the moment the
-  // FIRST CITY lands (the first visible beat), a little before the first state.
-  quietAgesNow = !!world && (!world.countries || world.countries.size === 0)
-    && !(world.settlements && world.settlements.some((s) => s.mode === "settled"));
+  // Quiet ages = nothing on the POLITICAL map yet (no realm). Under
+  // CITY_AT_BIRTH the first cities mint before the first nation — keep Max
+  // through that birth so the dial doesn't cliff from unbounded → 1× the
+  // instant the first city lands (app-grid ticks are heavy under the farm-tile
+  // stack; that cliff read as "dead frozen"). Stand down when a realm forms.
+  quietAgesNow = !!world && (!world.countries || world.countries.size === 0);
   fastEpochNow = autoEpoch && quietAgesNow;
   let steps;
   if (speed >= UNBOUNDED_TPS || fastEpochNow) {
@@ -564,6 +638,7 @@ function tick() {
   for (; ran < steps; ran++) {
     try {
       stepPeopleSim(world, 1);
+      if (settTrace) sampleTrace(world, settTrace);
       journalTick();
       if (world.step - lastKeyStep >= CAPTURE_IVL) { lastKeyStep = world.step; captureFrame(timeline, world); }
     }
@@ -599,7 +674,9 @@ function tick() {
     lastNationLogStep = world.step;
   }
   const t = performance.now();
-  const snapEvery = pageHidden ? SNAP_MS_HIDDEN : SNAP_MS;
+  const snapEvery = pageHidden ? SNAP_MS_HIDDEN
+    : (fastEpochNow || speed >= UNBOUNDED_TPS) ? SNAP_MS_FAST
+    : SNAP_MS;
   if (t - lastSnap >= snapEvery) { buildSnapshot(); lastSnap = t; }
   // Still behind after a budgeted slice → channel-chain immediately (especially
   // important while hidden, where the next setTimeout may be seconds away).
@@ -613,7 +690,8 @@ function packSettlement(s) {
   return {
     id: s.id, name: s.name, mode: s.mode,
     pos: { x: s.pos.x, y: s.pos.y },
-    people: s.people, tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
+    people: s.people, _urbanPop: s._urbanPop, _ruralPop: s._ruralPop,
+    tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
     faithId: s.faithMix && s.faithMix.length ? s.faithMix[0][0] : -1,
     langId: s.langMix && s.langMix.length ? s.langMix[0][0] : -1,   // SPOKEN tongue (separate layer from the people)
     ancId: dominantAnc(s),   // dominant deep-ancestry stock (the slow genetic bedrock)
@@ -649,11 +727,14 @@ function packSelected(s) {
     knowledge: s.knowledge, localRes: s.localRes,
     _minedRate: s._minedRate, _terrTiles: s._terrTiles, _terrFertSum: s._terrFertSum,
     waterAccess: s.waterAccess, _fishYield: s._fishYield, _pastoral: s._pastoral,
-    _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _urbanFactor: s._urbanFactor,
+    _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _foodNet: s._foodNet,
+    _landFood: s._landFood, _coreNeed: s._coreNeed, _fedM: s._fedM,
+    _urbanFactor: s._urbanFactor, _besiegedNow: !!s._besiegedNow,
     // CITY CORE vs whole PROVINCE: s.people bundles the rural hinterland (it's the
     // sum over the settlement's entire catchment). _urbanPop is the people in the
     // urban core itself — the number the card should headline as "the city".
     _urbanPop: s._urbanPop, _ruralPop: s._ruralPop,
+    _coreMeasured: s._coreMeasured,
     _techEnv: s._techEnv || null,   // T.TECH_USE — the tree shows known-vs-used per site
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
@@ -664,7 +745,7 @@ function packSelected(s) {
     _attach: s._attach,
     _homelandName: (s._homeland ?? -1) >= 0 ? realmName(world, s._homeland) : null,
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
-    _houseK: s._houseK, _foodK: s._foodK,
+    _houseK: s._houseK, _foodK: s._foodK, _k: s._k,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
     _specKey: s._specKey, _specStr: s._specStr,                          // agglomeration: locked-in craft specialty
     _gPrice: s._gPrice || null, _gShare: s._gShare || null, _gNet: s._gNet || null,   // goods vector (T.GOODS_PRICES+): local market prices, craft labour, net flows
@@ -675,6 +756,7 @@ function packSelected(s) {
     _tradeProfile: getTradeProfile(s, world),
     _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
     culMix: s.culMix || null, faithMix: s.faithMix || null, langMix: s.langMix || null,
+    _haulFoodPool: haulDeliverableFoodPool(world, s),
   };
 }
 
@@ -806,7 +888,11 @@ function buildSnapshotUnsafe() {
     for (let i = 0; i < owner.length; i++) { const o = owner[i]; if (o >= 0 && !settled.has(o)) owner[i] = -1; }
   }
   const roadQuality = sendStatic && world.roadQuality ? pooledCopy(world.roadQuality) : null;
-  const roadFlow = world.roadFlow ? pooledCopy(world.roadFlow) : null;
+  // Under Max/fastEpoch, roadFlow is animation-only — ship with the static
+  // cadence so we are not allocating a fresh Float32Array(N) every snap while
+  // the tick loop never idles (allocation-wall / mint-ready OOM).
+  const wantFlow = !fastEpochNow && speed < UNBOUNDED_TPS;
+  const roadFlow = world.roadFlow && (wantFlow || sendStatic) ? pooledCopy(world.roadFlow) : null;
 
   // Per-tile identity field (identityField.js): for the active Peoples / Faiths /
   // Languages lens, ship the dominant id (+ a significant secondary, ≥20%, for
@@ -898,17 +984,21 @@ function buildSnapshotUnsafe() {
 
   // Coin-field view: farm-gate coin on worked tiles (_tileWealth). Absolute
   // log ruler 0.01..10k coin/tile — same colour means the same pile in every era.
+  // tileCoinMax is computed whenever TILE_MONEY is on (not only while the lens
+  // is open) so the Coin field sub-lens can unlock once coin exists on the land.
   let tileCoinDens = null, tileCoinMax = 0;
-  if (viewMode === "tilecoin" && sendStatic && T.TILE_MONEY > 0 && world._tileWealth) {
+  if (T.TILE_MONEY > 0 && world._tileWealth) {
     const tw = world._tileWealth, N = world.N;
     for (let ti = 0; ti < N; ti++) if (tw[ti] > tileCoinMax) tileCoinMax = tw[ti];
-    const LO = -2, SPAN = 4;   // log10(0.01) .. log10(10000)
-    tileCoinDens = pooledArr(Uint8Array, N);
-    tileCoinDens.fill(0);
-    for (let ti = 0; ti < N; ti++) {
-      const c = tw[ti];
-      if (c <= 0.01) continue;
-      tileCoinDens[ti] = Math.min(250, Math.round((Math.log10(c) - LO) / SPAN * 250));
+    if (viewMode === "tilecoin" && sendStatic) {
+      const LO = -2, SPAN = 4;   // log10(0.01) .. log10(10000)
+      tileCoinDens = pooledArr(Uint8Array, N);
+      tileCoinDens.fill(0);
+      for (let ti = 0; ti < N; ti++) {
+        const c = tw[ti];
+        if (c <= 0.01) continue;
+        tileCoinDens[ti] = Math.min(250, Math.round((Math.log10(c) - LO) / SPAN * 250));
+      }
     }
   }
 
@@ -918,8 +1008,8 @@ function buildSnapshotUnsafe() {
   const moneyFlows = (viewMode === "money" && world._moneyFlows) ? world._moneyFlows : null;
   // Goods view: grain entries rebuild per tick (foodHierarchy), goods-vector
   // entries per trade sweep (roads) — concatenate for the renderer.
-  const goodsFlows = (viewMode === "goodsflow" && (world._goodsFlowsGrain || world._goodsFlowsTrade))
-    ? [...(world._goodsFlowsGrain || []), ...(world._goodsFlowsTrade || [])] : null;
+  const goodsFlows = (viewMode === "goodsflow" && (world._goodsFlowsLevy || world._goodsFlowsGrain || world._goodsFlowsTrade))
+    ? [...(world._goodsFlowsLevy || []), ...(world._goodsFlowsGrain || []), ...(world._goodsFlowsTrade || [])] : null;
   let tileComp = null;
   if (viewMode === "roads" && sendStatic && world._tileComp && world._tileCompSeen) {
     const tc = world._tileComp, seen = world._tileCompSeen, stamp = world._tileCompStampVal, N = world.N;
@@ -1108,7 +1198,7 @@ function buildSnapshotUnsafe() {
     // × bridge × rNormPop² at pack time); the legend then ×POP_SCALE via fmtPeople.
     popDens, popMax: popDens ? popMax : undefined,   // population lens: absolute-ruler people-on-land
     devDens,                          // technique lens: the idea field, absolute 0..1 ruler ×250
-    tileCoinDens, tileCoinMax: tileCoinDens ? tileCoinMax : undefined,   // coin field: farm-gate coin per tile
+    tileCoinDens, tileCoinMax: tileCoinMax > 0 ? tileCoinMax : undefined,   // coin field: farm-gate coin per tile (max always when TILE_MONEY)
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
@@ -1125,6 +1215,7 @@ function buildSnapshotUnsafe() {
     })() : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
+    settTrace: traceStatus(settTrace),
     chronicle,
     dynasty,
     feed,

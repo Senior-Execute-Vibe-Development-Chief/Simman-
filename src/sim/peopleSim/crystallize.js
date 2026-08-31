@@ -1551,7 +1551,7 @@ function maybeSiteCities(world) {
         const dy = ty2 - st.y;
         if (dx * dx + dy * dy <= coreR * coreR) continue;
         const mv = pf[t] * rate * scale;
-        pf[t] -= mv;
+        if (!(T.URBAN_PRINT > 0)) pf[t] -= mv;
         gain += mv;
       }
       pf[st.ti] += gain;
@@ -1625,7 +1625,9 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
   // first mint never lets the next derive re-calibrate the unit from its
   // own founding party, which measured as a 0.35 bridge, an 11,000-census
   // first city and a 600-step famine crash before the declaration existed.)
-  fieldShift(world, { pos: { x, y } }, -coreCensus);
+  // T.URBAN_PRINT: the founding take stays on the land (the census is a
+  // read of the field). Conservation debit would ring-drain the basin at birth.
+  if (!(T.URBAN_PRINT > 0)) fieldShift(world, { pos: { x, y } }, -coreCensus);
   const inherited = inheritKnowledgeAt(world, ti, world.transportDist ? world.transportDist[ti] : 0);
     // T.LAND_KNOW: the basin's own learning is the newborn's birthright — the
     // ledger floors every track (a nearby court can still lift it higher).
@@ -1712,31 +1714,11 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
         }
       }
     }
-    // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
-    // before this city existed, its basin's people fed themselves through
-    // the field's own capacity — for thousands of steps. The tick after,
-    // the derive censuses them through THIS ledger, whose supply machinery
-    // (worked farmland, technique, granary) starts cold and ramps over many
-    // passes — and the shortfall STARVED the field people the land had been
-    // feeding (owner-observed: "a city with a large population that rapidly
-    // drops"; under ONE_POP starvation debits the field — the lens killing
-    // its substrate). Creating a lens must not change the physics of the
-    // people it observes: the city is born holding its basin's standing
-    // subsistence stores — the cell's people × their own per-tick demand ×
-    // the ledger's ramp horizon. An initial condition of the annexed
-    // countryside, not a subsidy; no clock, no gate.
-    // The countryside whose granaries ride in is the SUPPORT BASIN — the
-    // ground whose people this city gathered from (cached take) — not the
-    // whole Euclidean cell, whose disk-scale census over-provisioned birth
-    // stores in site-sparse country (the same phantom-domain class the
-    // tribute right-sizing measured; docs/state-birth-2026-08.md).
-    {
-      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, barOf(k)).take;
-      let bMass = 0;
-      for (let n = 0; n < bTake.length; n++) bMass += pf[bTake[n]];
-      const basinCensus = bMass * bridge;
-      born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
-    }
+    // Birth stores: makeSettlement already set household grain from
+    // coreCensus (a few ticks of the city's own mouths). Do not dump 500
+    // ticks of the whole basin into the warehouse — that filled every new
+    // city to the ~480 t cap and looked like a default gift.
+
     // T.CORE_HOLD — the spike HANDOFF (2026-08-07, the birth-crater killer):
     // until this line the gathered core was held by the SITE spike above
     // (min(coreNow, coreBarF×1.2)); from the next derive it is held by the
@@ -1897,7 +1879,7 @@ function maybePeerSeats(world, env) {
           const dy = ty2 - pc.y;
           if (dx * dx + dy * dy <= coreR * coreR) continue;
           const mv = pf[t] * rate * scale;
-          pf[t] -= mv;
+          if (!(T.URBAN_PRINT > 0)) pf[t] -= mv;
           gain += mv;
         }
         pf[pc.ti] += gain;
@@ -2410,9 +2392,16 @@ export function maybeDawnGather(world) {
  * Lives HERE (not dawnJump.js) so the gather call is same-module — a
  * dawnJump→crystallize→state→dawnJump cycle left maybeDawnGather undefined
  * in some bundles and silently opened at invent-only (~step 3k).
+ *
+ * App-grid note: a per-tick gather at tw=960 is minutes of blocked worker
+ * init (UI live, play appears to do nothing, then a sudden jump to ~20-30k).
+ * Stride by SITE_CITY_IVL (drift/mint cadence) with popField sub-steps — same
+ * bars, far less wall-clock. Progress callbacks keep the chrome honest.
  */
-export function jumpToCivReady(world) {
+export function jumpToCivReady(world, opts = {}) {
   if (!(T.INVENT_JUMP > 0) || !T.DAWN_LIVE) return false;
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress
+    : (typeof world._onGenesisProgress === "function" ? world._onGenesisProgress : null);
   const invented = jumpToFirstInvent(world);
   if (!invented && !(world._hearthSeeds && world._hearthSeeds.length)) {
     world._openKind = "dawn";
@@ -2426,15 +2415,30 @@ export function jumpToCivReady(world) {
   const maxStep = inventStep + 80_000;
   const t0 = performance.now();
   let lastLog = inventStep;
+  // Match the site drift/mint cadence: one gather pass per IVL, field advances
+  // in the same chunk (dt capped inside stepPopField at 8 — so chunk as 8s).
+  const CHUNK = Math.min(8, SITE_CITY_IVL);
 
   try {
+    if (onProgress) onProgress({ phase: "mint-ready", step: world.step, inventStep, maxStep });
     while (world.step < maxStep && !world._dawnMintReady) {
-      world.step++;
-      stepPopField(world, 1);
+      // Land exactly on SITE_CITY_IVL boundaries so drift/mint fire (a fixed
+      // +8 stride from invent@3700 never hit step%25===0 and starved drift).
+      const mod = world.step % SITE_CITY_IVL;
+      const target = Math.min(
+        world.step + (mod === 0 ? SITE_CITY_IVL : SITE_CITY_IVL - mod),
+        maxStep,
+      );
+      while (world.step < target) {
+        const n = Math.min(CHUNK, target - world.step);
+        world.step += n;
+        stepPopField(world, n);
+      }
       maybeDawnGather(world);
       if (world.step - lastLog >= 2000) {
         lastLog = world.step;
         console.log(`[peopleSim] invent-jump: gathering… step ${world.step} (+${world.step - inventStep} since invent)`);
+        if (onProgress) onProgress({ phase: "mint-ready", step: world.step, inventStep, maxStep });
       }
     }
   } catch (err) {
@@ -2445,14 +2449,25 @@ export function jumpToCivReady(world) {
   }
 
   delete world._dawnHoldMint;
+  // Invent-jump gather is ~15-30k sync field steps with no GC window. Drop the
+  // popField worker pool (and any frontier heaps) so play's first transport /
+  // territory flood is not the canary that OOMs the worker
+  // ("Array buffer allocation failed" in MinHeap._grow @ ~first crystallize).
+  try {
+    if (world._pfPool) { world._pfPool.dispose(); world._pfPool = null; }
+  } catch { /* pool already dead */ }
+  delete world._transHeap;
+  delete world._terrHeap;
   const ms = (performance.now() - t0).toFixed(0);
   if (world._dawnMintReady) {
     world._openKind = "mint-ready";
     console.log(`[peopleSim] invent-jump: mint-ready at step ${world.step} (invent @ ${inventStep}, +${world.step - inventStep} steps) in ${ms}ms — first city will mint on play`);
+    if (onProgress) onProgress({ phase: "done", step: world.step, inventStep, maxStep });
     return true;
   }
   world._openKind = "invent";
   console.warn(`[peopleSim] invent-jump: no mint-ready site by step ${world.step} (${ms}ms) — opening with farming; live mint continues`);
+  if (onProgress) onProgress({ phase: "done", step: world.step, inventStep, maxStep });
   return false;
 }
 
