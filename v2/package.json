@@ -12,7 +12,7 @@
     "build": "npm run wasm:build && tsc --noEmit && vite build",
     "lint": "eslint . && tsx tools/ledger-lint.ts",
     "test": "npm run smoke && tsx tools/unit.test.ts",
-    "pre-smoke": "npm run wasm:build",
+    "presmoke": "npm run wasm:build",
     "smoke": "tsx tools/smoke.ts",
     "bench": "tsx tools/bench.ts",
     "browser": "npm run wasm:build && tsx tools/browser-smoke.ts"
