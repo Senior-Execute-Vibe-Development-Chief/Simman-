@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/city-register-bench-15e6",
+      "sha": "f14f6dd315985d0a7680570fb0d5fc08e8ba6f6f",
+      "slug": "cursor-city-register-bench-15e6",
+      "builtAt": "2026-08-31T06:46:57.161Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-city-register-bench-15e6/"
+    },
+    {
       "branch": "cursor/food-bridge-fix-15e6",
       "sha": "e70a7715b8797739cf3fc5a4f9a303777d12a923",
       "slug": "cursor-food-bridge-fix-15e6",
