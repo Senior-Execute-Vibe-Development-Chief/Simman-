@@ -1,4 +1,8 @@
 // Aesthetic renderer (`src/sim/aestheticRender.js`).
+import { execSync } from "node:child_process";
+import { readFileSync, unlinkSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { aestheticSVG, drawAesthetic, faceSVG, builtSVG } from "../src/sim/aestheticRender.js";
 import { foundAestheticIdentity, expressAesthetic } from "../src/sim/aestheticIdentity.js";
 import { buildWorld as pipelineBuild } from "../src/sim/pipeline.js";
@@ -65,6 +69,17 @@ const aesthetic = expressAesthetic(ctx, id);
   }, foundAestheticIdentity(5, { pastoral: 0.8 }));
   ok(tent.built.roof === "tent", `steppe ctx is tent (${tent.built.roof})`);
   ok(builtSVG(tent.built, tent.taste.built, 0, 0, 80, 100).svg.includes("path"), "tent roof is a path");
+}
+
+{
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const out = "/tmp/aesthetic-lab-build-test.html";
+  execSync(`node tools/build_aesthetic_lab.mjs ${out}`, { cwd: root });
+  const html = readFileSync(out, "utf8");
+  ok(html.includes("function aestheticSVG"), "lab build inlines aestheticSVG");
+  ok(html.includes("function expressAesthetic"), "lab build inlines expressAesthetic");
+  ok(!html.includes("__PEOPLE_STYLE__"), "lab build fills all placeholders");
+  try { unlinkSync(out); } catch (e) { /* */ }
 }
 
 if (fails) {

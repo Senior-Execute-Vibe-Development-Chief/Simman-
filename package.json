@@ -15,6 +15,7 @@
     "spread": "node tools/spread.mjs",
     "monotone": "node tools/trace.mjs --monotone --steps=12000 --every=1000",
     "observe": "node tools/observe.mjs",
+    "aesthetic-lab": "node tools/build_aesthetic_lab.mjs",
     "abtest": "node tools/abtest.mjs",
     "bisect": "node tools/bisect.mjs",
     "trace": "node tools/trace.mjs",

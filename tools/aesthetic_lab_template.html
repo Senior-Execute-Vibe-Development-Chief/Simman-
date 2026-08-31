@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aesthetic Identity — people look, dress &amp; built lab</title>
+<style>
+  :root{
+    --ground:#e8e4da; --surface:#f3efe6; --raised:#faf7f0; --ink:#262a31; --muted:#6b6559;
+    --accent:#8b5a2b; --accent-2:#3d6b8c; --rule:#cec5af; --plate:#1e2228;
+    --serif:"Iowan Old Style",Palatino,Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.5; }
+  .wrap{ max-width:1100px; margin:0 auto; padding:clamp(16px,3vw,32px); }
+  .eyebrow{ font-size:.68rem; text-transform:uppercase; letter-spacing:.18em; font-weight:700; color:var(--accent); margin:0 0 6px; }
+  h1{ font-family:var(--serif); font-weight:500; font-size:clamp(1.6rem,3vw,2.2rem); margin:0 0 8px; }
+  .sub{ color:var(--muted); max-width:62ch; margin:0 0 20px; font-size:.94rem; }
+  .workbench{ display:grid; grid-template-columns:240px minmax(0,1fr) 200px; gap:14px; align-items:start; }
+  @media (max-width:860px){ .workbench{ grid-template-columns:1fr; } }
+  .rail{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:14px; }
+  .rail h2{ font-size:.68rem; text-transform:uppercase; letter-spacing:.14em; color:var(--accent); margin:0 0 4px; font-weight:700; }
+  .rail p.hint{ font-size:.72rem; color:var(--muted); margin:0 0 12px; }
+  .ctrl{ margin-bottom:11px; }
+  .ctrl label{ display:flex; justify-content:space-between; font-size:.76rem; margin-bottom:3px; }
+  .ctrl label .val{ color:var(--muted); font-family:var(--mono); font-size:.7rem; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .stage{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:18px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .plate{ background:var(--plate); border:1px solid var(--accent); border-radius:6px; padding:12px; }
+  .plate svg{ display:block; width:min(320px,80vw); height:auto; }
+  .caption{ font-size:.78rem; color:var(--muted); text-align:center; max-width:52ch; font-family:var(--mono); line-height:1.45; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .chip{ font:inherit; font-size:.72rem; padding:6px 10px; border:1px solid var(--rule); border-radius:999px; background:var(--raised); cursor:pointer; }
+  .chip.on{ border-color:var(--accent); background:#efe4d4; font-weight:600; }
+  .btn{ display:block; width:100%; background:var(--raised); border:1px solid var(--rule); border-radius:6px; padding:8px 10px; font:inherit; font-size:.8rem; cursor:pointer; margin-bottom:7px; text-align:left; }
+  .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  .btn small{ display:block; color:var(--muted); font-size:.65rem; margin-top:1px; }
+  .btn.primary small{ color:#f0e6d8; }
+  .seedrow{ display:flex; gap:6px; margin-bottom:10px; }
+  .seedrow input{ flex:1; font:inherit; font-size:.74rem; font-family:var(--mono); background:var(--raised); border:1px solid var(--rule); border-radius:6px; padding:6px 8px; }
+  .toolrow{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .mini{ background:var(--raised); border:1px solid var(--rule); border-radius:6px; font:inherit; font-size:.72rem; padding:5px 9px; cursor:pointer; }
+  .divider{ height:1px; background:var(--rule); margin:12px 0; }
+  footer{ margin-top:18px; font-size:.72rem; color:var(--muted); border-top:1px solid var(--rule); padding-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Simman · aesthetic genetics</p>
+    <h1>People Look, Dress &amp; Built</h1>
+    <p class="sub">One aesthetic identity — carried look, local dress envelope, local built envelope, culture taste genome. Pick a climate context, bias the taste axes, morph the face. Everything renders as procedural SVG.</p>
+  </header>
+
+  <div class="workbench">
+    <aside class="rail">
+      <h2>Place</h2>
+      <p class="hint">Climate × materials × wealth sets dress &amp; built. Look follows the homeland profile unless you edit face sliders.</p>
+      <div class="chips" id="places"></div>
+
+      <h2>Taste axes</h2>
+      <p class="hint">Bias the culture genome at founding — ornament, austerity, colour…</p>
+      <div id="taste-sliders"></div>
+
+      <h2>Face (creator)</h2>
+      <p class="hint">Override ancestry look for the Mii Maker path.</p>
+      <div id="look-sliders"></div>
+    </aside>
+
+    <section class="stage">
+      <div class="plate"><div id="preview"></div></div>
+      <p class="caption" id="caption">—</p>
+      <div class="toolrow">
+        <button class="mini" id="dlsvg">Download SVG</button>
+        <button class="mini" id="copylink">Copy link</button>
+      </div>
+    </section>
+
+    <aside class="rail">
+      <h2>Seed</h2>
+      <div class="seedrow">
+        <input id="seedbox" type="text" inputmode="numeric" aria-label="seed">
+        <button class="mini" id="loadseed">Load</button>
+      </div>
+      <button class="btn primary" id="reroll">Reroll <small>new taste seed, same axes</small></button>
+      <button class="btn" id="mutate">Mutate taste <small>one generation of drift</small></button>
+      <div class="divider"></div>
+      <button class="btn" id="resetface">Reset face <small>homeland look from place</small></button>
+    </aside>
+  </div>
+
+  <footer>From <b>Simman</b> — pure decider modules inlined at build time (<code>build_aesthetic_lab.mjs</code>). No sim wiring; this is the creator preview path.</footer>
+</div>
+
+<script>
+/* ═══ hash32 ═══ */
+__HASH32__
+
+/* ═══ lineage genetics ═══ */
+__LINEAGE_GENETICS__
+
+/* ═══ people style ═══ */
+__PEOPLE_STYLE__
+
+/* ═══ style taste ═══ */
+__STYLE_TASTE__
+
+/* ═══ aesthetic identity ═══ */
+__AESTHETIC_IDENTITY__
+
+/* ═══ aesthetic render ═══ */
+__AESTHETIC_RENDER__
+
+/* ─────────── app ─────────── */
+const TASTE_AXES = [
+  ["ornament","Ornament","embroidery, jewellery, flare"],
+  ["austerity","Austerity","plain hair, low chroma"],
+  ["colour","Colour","saturated palette &amp; trim"],
+  ["pattern","Pattern","stripe, check, facade rhythm"],
+  ["regal","Regal","crown, brocade, court hair"],
+  ["pastoral","Pastoral","earthy wash, modest chroma"],
+  ["arid","Arid","ochre wash, warm field"],
+];
+const LOOK_AXES = [
+  ["skin","Skin tone","UV / melanin"],
+  ["hairHue","Hair hue","blond ← → dark"],
+  ["hairDark","Hair darkness",""],
+  ["epicanthic","Eye fold",""],
+  ["jawWidth","Jaw width",""],
+  ["noseBridge","Nose bridge",""],
+  ["noseWidth","Nose width","Rail A — climate nose"],
+];
+
+const PLACES = [
+  {
+    name: "hot-humid",
+    homeland: { temp: 0.86, moist: 0.70, lat: 4, elev: 0.02 },
+    ctx: { temp: 0.86, moist: 0.62, wealth: 0.15, materials: { fibres: [{ id: "cotton" }], trees: [{ id: "palm" }] } },
+    axes: { austerity: 0.65, pastoral: 0.5 },
+  },
+  {
+    name: "hot-dry court",
+    homeland: { temp: 0.88, moist: 0.12, lat: 24, elev: 0.04 },
+    ctx: { temp: 0.86, moist: 0.12, wealth: 0.65, materials: { fibres: [{ id: "flax" }], earths: [{ id: "clay" }], dyes: [{ id: "tyrian" }] } },
+    axes: { arid: 0.8, regal: 0.75, colour: 0.7 },
+  },
+  {
+    name: "cold hall",
+    homeland: { temp: 0.56, moist: 0.48, lat: 58, elev: 0.04 },
+    ctx: { temp: 0.56, moist: 0.50, wealth: 0.78, elev: 0.12, materials: { fibres: [{ id: "wool" }], trees: [{ id: "oak" }], stone: [{ id: "granite" }] } },
+    axes: { austerity: 0.5, pastoral: 0.55 },
+  },
+  {
+    name: "silk courtyard",
+    homeland: { temp: 0.76, moist: 0.55, lat: 32, elev: 0.06 },
+    ctx: { temp: 0.76, moist: 0.55, wealth: 0.70, materials: { fibres: [{ id: "silk" }], trees: [{ id: "oak" }], dyes: [{ id: "indigo" }] } },
+    axes: { ornament: 0.85, regal: 0.8, colour: 0.75, pattern: 0.7 },
+  },
+  {
+    name: "steppe tent",
+    homeland: { temp: 0.64, moist: 0.28, lat: 46, elev: 0.08 },
+    ctx: { temp: 0.62, moist: 0.28, wealth: 0.25, horses: 0.4, open: true, materials: { fibres: [{ id: "wool" }] } },
+    axes: { pastoral: 0.85, austerity: 0.35 },
+  },
+];
+
+const $ = s => document.querySelector(s);
+let state = {
+  seed: (Math.random() * 2e9) >>> 0,
+  place: 0,
+  tasteAxes: {},
+  look: {},
+  lookTouched: false,
+  identity: null,
+};
+
+function homelandLook() {
+  const h = PLACES[state.place].homeland;
+  const base = lookFromHomeland(h);
+  for (const g of RAIL_B_GENES) {
+    if (h[g] == null) h[g] = base[g] != null ? base[g] : 0.5;
+  }
+  return lookFromHomeland(h);
+}
+
+function mergedLook() {
+  const base = homelandLook();
+  if (!state.lookTouched) return base;
+  return { ...base, ...state.look };
+}
+
+function buildIdentity() {
+  const p = PLACES[state.place];
+  const axes = { ...p.axes, ...state.tasteAxes };
+  const id = foundAestheticIdentity(state.seed, axes);
+  id.lookOverride = state.lookTouched ? mergedLook() : null;
+  state.identity = id;
+  return id;
+}
+
+function paint() {
+  const p = PLACES[state.place];
+  const ctx = { ...p.ctx, homeland: p.homeland };
+  const id = buildIdentity();
+  const aesthetic = expressAesthetic(ctx, id);
+  $("#preview").innerHTML = aestheticSVG(aesthetic, 280, 340);
+  $("#caption").textContent = formatAestheticLine(aesthetic);
+  $("#seedbox").value = state.seed;
+  try {
+    const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
+      seed: state.seed, place: state.place, tasteAxes: state.tasteAxes,
+      look: state.look, lookTouched: state.lookTouched,
+    })))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    history.replaceState(null, "", "#s=" + payload);
+  } catch (e) { /* file:// */ }
+}
+
+function buildTasteSliders() {
+  $("#taste-sliders").innerHTML = TASTE_AXES.map(([k, label]) =>
+    `<div class="ctrl"><label><b>${label}</b><span class="val" id="tv_${k}">auto</span></label>
+     <input type="range" min="0" max="100" value="50" id="ts_${k}" aria-label="${label}"></div>`).join("");
+  TASTE_AXES.forEach(([k]) => {
+    const s = $("#ts_" + k);
+    s.addEventListener("input", () => {
+      state.tasteAxes[k] = s.value / 100;
+      $("#tv_" + k).textContent = state.tasteAxes[k].toFixed(2);
+      paint();
+    });
+  });
+}
+
+function buildLookSliders() {
+  const look = mergedLook();
+  $("#look-sliders").innerHTML = LOOK_AXES.map(([k, label]) =>
+    `<div class="ctrl"><label><b>${label}</b><span class="val" id="lv_${k}">${(look[k] ?? 0.5).toFixed(2)}</span></label>
+     <input type="range" min="0" max="100" value="${Math.round((look[k] ?? 0.5) * 100)}" id="ls_${k}" aria-label="${label}"></div>`).join("");
+  LOOK_AXES.forEach(([k]) => {
+    $("#ls_" + k).addEventListener("input", () => {
+      state.lookTouched = true;
+      state.look[k] = $("#ls_" + k).value / 100;
+      $("#lv_" + k).textContent = state.look[k].toFixed(2);
+      paint();
+    });
+  });
+}
+
+function buildPlaces() {
+  $("#places").innerHTML = PLACES.map((p, i) =>
+    `<button type="button" class="chip${i === state.place ? " on" : ""}" data-i="${i}">${p.name}</button>`).join("");
+  $("#places").querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    state.place = +c.dataset.i;
+    if (!state.lookTouched) buildLookSliders();
+    buildPlaces();
+    paint();
+  }));
+}
+
+function loadHash() {
+  if (!location.hash.startsWith("#s=")) return false;
+  try {
+    const raw = atob(location.hash.slice(3).replace(/-/g, "+").replace(/_/g, "/"));
+    const s = JSON.parse(decodeURIComponent(escape(raw)));
+    if (s.seed != null) state.seed = s.seed >>> 0;
+    if (s.place != null) state.place = s.place;
+    if (s.tasteAxes) state.tasteAxes = s.tasteAxes;
+    if (s.look) state.look = s.look;
+    if (s.lookTouched) state.lookTouched = s.lookTouched;
+    TASTE_AXES.forEach(([k]) => {
+      if (k in state.tasteAxes) {
+        $("#ts_" + k).value = Math.round(state.tasteAxes[k] * 100);
+        $("#tv_" + k).textContent = state.tasteAxes[k].toFixed(2);
+      }
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+$("#reroll").addEventListener("click", () => { state.seed = (Math.random() * 2e9) >>> 0; paint(); });
+$("#mutate").addEventListener("click", () => {
+  state.identity = buildIdentity();
+  state.identity = mutateAestheticIdentity(state.identity, (Math.random() * 2e9) >>> 0, 1);
+  state.seed = state.identity.taste.seed;
+  paint();
+});
+$("#loadseed").addEventListener("click", () => {
+  const v = parseInt($("#seedbox").value, 10);
+  if (!Number.isFinite(v)) return alert("Seed must be a number.");
+  state.seed = v >>> 0;
+  paint();
+});
+$("#resetface").addEventListener("click", () => {
+  state.lookTouched = false;
+  state.look = {};
+  buildLookSliders();
+  paint();
+});
+$("#dlsvg").addEventListener("click", () => {
+  const p = PLACES[state.place];
+  const aesthetic = expressAesthetic({ ...p.ctx, homeland: p.homeland }, buildIdentity());
+  const blob = new Blob([aestheticSVG(aesthetic, 560, 680)], { type: "image/svg+xml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "aesthetic-" + state.seed + ".svg";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$("#copylink").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(location.href); }
+  catch (e) { prompt("Copy:", location.href); }
+});
+
+buildTasteSliders();
+buildLookSliders();
+buildPlaces();
+if (!loadHash()) {
+  const ax = PLACES[0].axes;
+  for (const k of Object.keys(ax)) {
+    state.tasteAxes[k] = ax[k];
+    if ($("#ts_" + k)) { $("#ts_" + k).value = Math.round(ax[k] * 100); $("#tv_" + k).textContent = ax[k].toFixed(2); }
+  }
+}
+paint();
+</script>
+</body>
+</html>
