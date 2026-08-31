@@ -1,0 +1,17 @@
+[package]
+name = "router"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+
+# M0 review: the fixture needs no optimizer, and wasm-opt is a network
+# download of an external binary — one less moving part, one less way for
+# the build to differ by environment.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

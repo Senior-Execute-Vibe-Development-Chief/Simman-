@@ -1,0 +1,30 @@
+{
+  "name": "simman-v2-m0",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "wasm:build": "wasm-pack build rust/router --target web --out-dir ../../src/wasm --release",
+    "build": "npm run wasm:build && tsc --noEmit && vite build",
+    "lint": "eslint . && tsx tools/ledger-lint.ts",
+    "test": "npm run smoke && tsx tools/unit.test.ts",
+    "presmoke": "npm run wasm:build",
+    "smoke": "tsx tools/smoke.ts",
+    "bench": "tsx tools/bench.ts",
+    "browser": "npm run wasm:build && tsx tools/browser-smoke.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/node": "latest",
+    "eslint": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vite": "latest",
+    "wasm-pack": "latest"
+  }
+}
