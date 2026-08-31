@@ -24,6 +24,8 @@
 // Classification, not a fitted culture. No time gates, no place names.
 // Pure + deterministic. No save fields, no UI wiring.
 
+import { RAIL_B_GENES } from "./lineageGenetics.js";
+
 function clamp(x, a = 0, b = 1) {
   return x < a ? a : x > b ? b : x;
 }
@@ -76,12 +78,14 @@ export function lookFromHomeland(h) {
     hairDark: clamp(0.22 + 0.72 * skin),
     noseWidth: clamp(0.16 + 0.70 * warm * Math.max(wet, 0.25)),
   };
-  if (h.facialHair != null) look.facialHair = clamp(h.facialHair);
+  for (const k of RAIL_B_GENES) {
+    if (h[k] != null) look[k] = clamp(h[k]);
+  }
   return look;
 }
 
 export function mixLook(parts) {
-  const keys = ["skin", "stature", "build", "limbs", "hairCurl", "hairDark", "noseWidth", "facialHair"];
+  const keys = [...LOOK_RAIL_A, ...RAIL_B_GENES];
   const acc = Object.fromEntries(keys.map(k => [k, 0]));
   let w = 0;
   for (const p of parts || []) {
@@ -106,7 +110,11 @@ export function homelandsFrom(world) {
   return arr;
 }
 
-export { BEARD_VISIBLE, canGrowBeard } from "./lineageGenetics.js";
+export { BEARD_VISIBLE, canGrowBeard, RAIL_B_GENES } from "./lineageGenetics.js";
+
+export const LOOK_RAIL_A = [
+  "skin", "stature", "build", "limbs", "hairCurl", "hairDark", "noseWidth",
+];
 
 /**
  * Carried look. Needs `homeland`, or `ancMix` + `homelands` / `world.ancHomelands`.
@@ -241,6 +249,59 @@ function ornamentOf(c) {
   return null;
 }
 
+function layersOf(cut, weight, station) {
+  if (weight === "bare" || cut === "bare") return "none";
+  if (station === "fine" && cut !== "bare") return "double";
+  if (weight === "heavy") return "double";
+  if (cut === "robe" || cut === "drape") return "mantle";
+  return "single";
+}
+
+function sleeveOf(cut, weight, coverage) {
+  if (weight === "bare" || cut === "bare") return "bare";
+  if (coverage > 0.55) return "full";
+  if (cut === "robe" || cut === "drape") return "wide";
+  if (cut === "trousers") return "wrist";
+  return coverage < 0.35 ? "short" : "wrist";
+}
+
+function lowerOf(cut, mounted) {
+  if (cut === "bare") return "bare";
+  if (cut === "trousers" || mounted) return "trousers";
+  if (cut === "robe" || cut === "drape") return "wrap";
+  return "skirt";
+}
+
+function cloakOf(coverage, weight, temp) {
+  if (weight === "bare") return "none";
+  if (coverage > 0.62 && temp < 0.64) return "long";
+  if (coverage > 0.48 && temp < 0.70) return "short";
+  return "none";
+}
+
+function beltOf(station, cut) {
+  if (cut === "bare") return "none";
+  if (station === "fine") return "chain";
+  if (cut === "robe" || cut === "drape") return "sash";
+  return "girdle";
+}
+
+function bodyArtOf(c, station) {
+  const dyeIds = ids(c.materials && c.materials.dyes);
+  if (dyeIds.includes("henna")) return station === "fine" ? "henna" : "henna";
+  if (dyeIds.includes("ochre")) return "ochre";
+  if (dyeIds.includes("woad")) return "woad";
+  return "none";
+}
+
+function headdressOf(c, head, station) {
+  if (head === "hood") return "none";
+  if (station === "fine" && head === "wrap") return "turban";
+  if (station === "fine") return "crown";
+  if (head === "wrap") return "wrap";
+  return "none";
+}
+
 export function dressOf(c) {
   const temp = c.temp != null ? c.temp : 0.70;
   const moist = c.moist != null ? c.moist : 0.40;
@@ -272,6 +333,7 @@ export function dressOf(c) {
   if (fibre === "fur" || (coverage > 0.55 && ids(c.materials && c.materials.furs).length)) {
     if (weight !== "bare") weight = "heavy";
   }
+  const head = headOf(c, coverage, weight);
   return {
     coverage,
     weight,
@@ -279,10 +341,17 @@ export function dressOf(c) {
     silhouette: silhouetteOf(cut),
     fibre,
     dye: bestDye(c),
-    head: headOf(c, coverage, weight),
+    head,
     foot: footOf(c, coverage, weight),
     ornament: ornamentOf(c),
     station,
+    layers: layersOf(cut, weight, station),
+    sleeve: sleeveOf(cut, weight, coverage),
+    lower: lowerOf(cut, mounted),
+    cloak: cloakOf(coverage, weight, temp),
+    belt: beltOf(station, cut),
+    bodyArt: bodyArtOf(c, station),
+    headdress: headdressOf(c, head, station),
   };
 }
 
@@ -311,6 +380,53 @@ function scaleOf(c, plan) {
   if (w > 0.75) return "hall";
   if (w > 0.5) return "house";
   return "hut";
+}
+
+function verticalityOf(c, plan, wealth, wall) {
+  if (plan === "camp") return "low";
+  if (wealth > 0.72 && wall === "stone") return "high";
+  if (wealth > 0.55 && wall !== "wattle" && wall !== "reed") return "mid";
+  return "low";
+}
+
+function roofFormOf(roof, wealth, wall) {
+  if (roof === "tent") return "conical";
+  if (roof === "low") return "low";
+  if (roof === "flat" && wealth > 0.65 && wall === "stone") return "dome";
+  if (roof === "flat") return "flat";
+  if (roof === "steep") return "gable";
+  if (wealth > 0.55) return "hip";
+  return "gable";
+}
+
+function sacredFormOf(wealth, station) {
+  if (station !== "fine" || wealth < 0.62) return "none";
+  if (wealth > 0.82) return "spire";
+  if (wealth > 0.70) return "tier";
+  return "mound";
+}
+
+function fortificationOf(c, wealth, plan) {
+  const horses = c.horses != null ? c.horses : (c.dep && c.dep.horses) || 0;
+  if (plan === "camp") return "none";
+  if (wealth > 0.72) return "tower";
+  if (wealth > 0.52 || horses > 0.15) return "curtain";
+  if (wealth > 0.38) return "palisade";
+  return "none";
+}
+
+function windowTypeOf(openings, wall, moist) {
+  if (wall === "felt" || wall === "turf") return "plain";
+  if (openings === "small") return "narrow";
+  if (wall === "mudbrick" || wall === "stone") return moist > 0.45 ? "lattice" : "shutter";
+  return openings === "large" ? "shutter" : "plain";
+}
+
+function interiorOf(plan, wealth, temp) {
+  if (plan === "camp") return "pavilion";
+  if (plan === "courtyard" && wealth > 0.55) return "roomed";
+  if (temp < 0.62 || plan === "compact") return "hall";
+  return wealth > 0.45 ? "roomed" : "hall";
 }
 
 function coverOf(c, roof, wall) {
@@ -401,6 +517,8 @@ export function builtOf(c) {
     plan = (wealth > 0.5 && temp > 0.72) ? "courtyard" : (temp < 0.62 ? "compact" : "open");
   }
 
+  const station = stationOf(c);
+  const openings = openingsOf(temp, moist);
   return {
     wall,
     roof,
@@ -408,9 +526,15 @@ export function builtOf(c) {
     eaves,
     plan,
     cover: coverOf(c, roof, wall),
-    openings: openingsOf(temp, moist),
+    openings,
     scale: scaleOf(c, plan),
-    station: stationOf(c),
+    station,
+    verticality: verticalityOf(c, plan, wealth, wall),
+    roofForm: roofFormOf(roof, wealth, wall),
+    sacredForm: sacredFormOf(wealth, station),
+    fortification: fortificationOf(c, wealth, plan),
+    windowType: windowTypeOf(openings, wall, moist),
+    interior: interiorOf(plan, wealth, temp),
   };
 }
 

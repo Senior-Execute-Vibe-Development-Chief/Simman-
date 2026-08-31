@@ -19,7 +19,7 @@ const silkCtx = {
 
 {
   const g = foundTasteGenome(4242, { ornament: 0.8, colour: 0.7 });
-  ok(g.genes.length === 15, `genome has ${g.genes.length} taste genes`);
+  ok(g.genes.length === 18, `genome has ${g.genes.length} taste genes`);
   const a = foundTasteGenome(4242, { ornament: 0.8, colour: 0.7 });
   ok(JSON.stringify(g) === JSON.stringify(a), "foundTasteGenome is deterministic");
   const austere = foundTasteGenome(4242, { austerity: 0.9 });

@@ -30,6 +30,7 @@ export const TASTE_GENES = [
   "hairLength", "hairArrange", "beardWear",
   "embroidery", "pattern", "paletteField", "paletteTrim", "hueShift", "chroma",
   "jewelleryForm",
+  "cosmetics", "headdressStyle", "sleeveFashion",
   "cornerFlare", "eavesForm", "facadeRhythm", "wallWash", "trimContrast",
 ];
 const IDX = Object.fromEntries(TASTE_GENES.map((g, i) => [g, i]));
@@ -81,6 +82,7 @@ export function foundTasteGenome(seed, axes = {}) {
     nudge("trimContrast", a.colour, 0.5);
     nudge("hueShift", 0.5 + a.colour * 0.2, 0.35);
     nudge("wallWash", 0.55 + a.colour * 0.25, 0.4);
+    nudge("cosmetics", a.colour * 0.65, 0.45);
   }
   if (a.pattern != null) {
     nudge("pattern", a.pattern, 0.7);
@@ -92,6 +94,7 @@ export function foundTasteGenome(seed, axes = {}) {
     nudge("jewelleryForm", 0.68, a.regal * 0.5);
     nudge("facadeRhythm", 0.62, a.regal * 0.4);
     nudge("hairArrange", 0.7, a.regal * 0.35);
+    nudge("headdressStyle", 0.75, a.regal * 0.5);
   }
   if (a.pastoral != null) {
     nudge("wallWash", 0.35, a.pastoral * 0.5);
@@ -175,6 +178,24 @@ function jewelleryOf(G, dress) {
   return pickEnum(G[IDX.jewelleryForm], ["bead", "filigree", "plate", "torque"]);
 }
 
+function cosmeticsOf(G, dress) {
+  if (dress.cut === "bare" || dress.weight === "bare") return "none";
+  if (dress.bodyArt && dress.bodyArt !== "none" && G[IDX.cosmetics] < 0.55) return dress.bodyArt;
+  return pickEnum(G[IDX.cosmetics], ["none", "kohl", "rouge", "stain"]);
+}
+
+function headdressStyleOf(G, dress) {
+  if (!dress.headdress || dress.headdress === "none") return "none";
+  if (dress.headdress === "crown") return pickEnum(G[IDX.headdressStyle], ["crown", "fillet", "plume"]);
+  if (dress.headdress === "turban") return pickEnum(G[IDX.headdressStyle], ["turban", "wrapped", "tall"]);
+  return pickEnum(G[IDX.headdressStyle], ["plain", "folded", "pinned"]);
+}
+
+function sleeveFashionOf(G, dress) {
+  if (dress.sleeve === "bare") return "none";
+  return pickEnum(G[IDX.sleeveFashion], ["plain", "flared", "layered", "cuffed"]);
+}
+
 function cornerFlareOf(G, built) {
   if (built.roof === "tent" || built.roof === "low" || built.roof === "flat") return "none";
   return pickEnum(G[IDX.cornerFlare], ["none", "mild", "upturned", "horn"]);
@@ -214,6 +235,9 @@ export function expressTaste(envelope, genome) {
       pattern: patternOf(G, dress),
       palette: paletteOf(G, dress),
       jewellery: jewelleryOf(G, dress),
+      cosmetics: cosmeticsOf(G, dress),
+      headdressStyle: headdressStyleOf(G, dress),
+      sleeveFashion: sleeveFashionOf(G, dress),
     },
     built: {
       cornerFlare: cornerFlareOf(G, built),
@@ -236,6 +260,7 @@ export function tasteFingerprint(taste) {
   const d = taste.dress || {}, b = taste.built || {};
   return [
     d.hair, d.beard, d.embroidery, d.pattern, d.jewellery,
+    d.cosmetics, d.headdressStyle, d.sleeveFashion,
     d.palette && d.palette.layout, b.cornerFlare, b.eavesForm, b.facade, b.wallWash, b.trim,
   ].join("|");
 }

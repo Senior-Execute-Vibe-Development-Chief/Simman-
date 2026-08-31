@@ -308,8 +308,10 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
   ok(!canGrowBeard({ facialHair: BEARD_VISIBLE - 0.05 }), "low capacity is below beard threshold");
   const { ter } = pipelineBuild({ W: 240, H: 120, seed: 7, preset: "earth_sim" });
   for (let a = 0; a < ter.ancestryCount; a++) {
-    const fh = ter.ancHomelands[a].facialHair;
-    ok(fh >= 0 && fh <= 1, `lineage #${a} facialHair stamped (${fh.toFixed(2)})`);
+    for (const gene of ["facialHair", "hairHue", "epicanthic", "jawWidth"]) {
+      const v = ter.ancHomelands[a][gene];
+      ok(v >= 0 && v <= 1, `lineage #${a} ${gene} stamped (${v.toFixed(2)})`);
+    }
   }
   const beardLook = lookOf({ ancMix: [[0, 1]], world: { ancHomelands: ter.ancHomelands } });
   ok(beardLook && beardLook.facialHair != null,
