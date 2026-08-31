@@ -3758,6 +3758,7 @@ const renderInspect=()=>{
   // Food balance — shared helper mirrors the famine physics' rulers.
   const fl=foodLedgerInfo(s);
   const {supply,demand,importRate,landFood,surplus,ticksLeft,coreNeed,fedM,status,statusColor}=fl;
+  const haulPool = s._haulFoodPool || 0;
 
   // Treasury + trade.
   const wealth=Math.round(s.wealth||0);
@@ -4096,6 +4097,9 @@ const renderInspect=()=>{
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
           {demand>0&&isFinite(ticksLeft)&&<><span className="au-fade">Store runway</span><span>{ticksLeft>=500?"500+":Math.round(ticksLeft)} tick{Math.round(ticksLeft)===1?"":"s"}</span></>}
           <span className="au-fade">Supply /tick</span><span title="Harvest + trade this tick — the city GROWS to this. Stores hold the core through a dip (Core fed avg); they do not grow it.">{fmtFood(supply)}</span>
+          {haulPool > 0.001 && haulPool > supply * 1.05 && (
+            <><span className="au-fade">Haul reach pool</span>
+            <span title="If this market claimed every tradeable surplus tile within spoilage-limited haul range, how much grain would arrive per tick after transport falloff, haul decay (distance, tech, climate), and countryside eat-first — not what competitors bid away this tick.">{fmtFood(haulPool)}</span></>)}
           {landFood>0.001&&landFood!==supply&&<><span className="au-fade">· local harvest</span><span className="au-fade">{fmtFood(landFood)}</span></>}
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}

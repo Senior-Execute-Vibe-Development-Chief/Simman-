@@ -198,6 +198,34 @@ export function foodHaulArrive(world, child, parent) {
   }
   return Math.exp(-d * spoilMult / Math.max(1e-3, range));
 }
+
+// Haul e-folding distance in tiles (land curve; water bonus excluded — conservative bound).
+export function haulSpoilRangeTiles(world, parent) {
+  const tw = world.tw;
+  const baseTiles = T.HAUL_PHYS > 0 ? HAUL_LAND_KM / (EARTH_KM / tw) : T.FOOD_HAUL_RANGE * rNormPop(world);
+  const tierMul = T.HAUL_PAID > 0 ? 1 : FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];
+  let range = baseTiles * tierMul;
+  const k = parent.knowledge || {};
+  range *= 1 + ((k.construction || 0) * 0.6 + (k.mobility || 0) * 0.4
+    + Math.max(0, (k.construction || 0) - 0.85) * 5) * T.FOOD_HAUL_TECH;
+  return range;
+}
+
+// Fraction surviving haul from a map tile (or farm-gate) to a market settlement.
+export function foodHaulArrivePos(world, x, y, parent, srcSettlement = null) {
+  const tw = world.tw, th = world.th;
+  const ty = Math.min(th - 1, Math.max(0, y | 0));
+  const tx = ((x | 0) % tw + tw) % tw;
+  const ci = ty * tw + tx;
+  const child = {
+    pos: { x: tx, y: ty },
+    _climTemp: world.temp?.[ci] ?? 0.5,
+    _climMoist: world.moist?.[ci] ?? 0.5,
+    knowledge: srcSettlement?.knowledge || {},
+    _seaReach: srcSettlement?._seaReach || null,
+  };
+  return foodHaulArrive(world, child, parent);
+}
 // Fraction of its grain POOL a settlement ships up to its market centre, by tier
 // (village → town → city → metropolis). A village is a farm: it sends most of
 // its grain to market and stays small; a metropolis keeps nearly all that flows

@@ -37,6 +37,7 @@ import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
 import { TRAITS, labelFor } from "./sim/peopleSim/personality.js";
 import { estimateCountryRange } from "./sim/peopleSim/conquest.js";
+import { haulDeliverableFoodPool } from "./sim/peopleSim/territory.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 
 // Country editor: drop a FULLY-FORMED realm — a capital plus the cities and towns
@@ -702,6 +703,7 @@ function packSelected(s) {
     _tradeProfile: getTradeProfile(s, world),
     _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
     culMix: s.culMix || null, faithMix: s.faithMix || null, langMix: s.langMix || null,
+    _haulFoodPool: haulDeliverableFoodPool(world, s),
   };
 }
 
