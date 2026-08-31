@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "cursor/v2-m0-420c",
-      "sha": "abcb0c21727b68595958536546ba13b34851c158",
+      "sha": "50b6986d41426a0660752e799a89e1c0343af84e",
       "slug": "cursor-v2-m0-420c",
-      "builtAt": "2026-08-31T13:06:49.257Z",
+      "builtAt": "2026-08-31T13:09:55.706Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-v2-m0-420c/"
