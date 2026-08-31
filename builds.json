@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "claude/world-sim-rebuild-decision-1umpax",
-      "sha": "caf7d4cc6ce3217b400a7eb754e96e2e9581dc79",
+      "sha": "b261044cd2cb1344f1017726666f1eba9d664475",
       "slug": "claude-world-sim-rebuild-decision-1umpax",
-      "builtAt": "2026-08-31T10:42:57.615Z",
+      "builtAt": "2026-08-31T10:57:08.098Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/claude-world-sim-rebuild-decision-1umpax/"
