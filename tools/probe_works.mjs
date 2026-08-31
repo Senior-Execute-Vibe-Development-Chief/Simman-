@@ -20,7 +20,7 @@ const EVERY = +(process.argv[5] || 3000);
 const world = buildSim({ W, H, seed: SEED });
 let landN = 0; for (let i = 0; i < world.N; i++) if (world.elev[i] > 0) landN++;
 const km2PerTile = (510e6 * 0.29) / landN;
-console.log(`[works] W=${W} (tw=${world.tw}) seed=${SEED} steps=${STEPS} STATE_WORKS=${T.STATE_WORKS} CEIL=${T.WORKS_CEIL}`);
+console.log(`[works] W=${W} (tw=${world.tw}) seed=${SEED} steps=${STEPS} APPARATUS=${T.APPARATUS} CEIL=${T.WORKS_CEIL}`);
 
 const peak = new Map();      // countryId → highest works ever held
 let everBuilt = 0;

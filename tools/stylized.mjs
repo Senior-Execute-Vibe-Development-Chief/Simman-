@@ -36,7 +36,15 @@ const SEED = +(process.argv[2] || 8817);
 // predates the cities-only register and the honest-domain corrections — the
 // 2026-08 re-baseline measured 17-22 cities >10k urban core on the canon
 // seeds, the right order for the late-Bronze world 21k now reaches.)
-const STEPS = +(process.argv[3] || 21000);
+// 21000 → 24000 with the v49 CAGE_FILL flip (the genesis lap, 2026-08-26):
+// the Neolithic clock delays solver-dawn cities ~2-3k steps by DESIGN — a
+// fixed wall-clock horizon then measures a world younger in urban age, and
+// 777's alive floor (20) read 18 at 21k while every shape gate stayed green.
+// Gates compare history's SHAPE at matched urban age, not matched wall-clock
+// (the same cardinal rule that bans time-gating mechanics): +3k restores the
+// urban age the bands were calibrated on (777 at 24k: 24 alive, 16 polities,
+// all hard gates green).
+const STEPS = +(process.argv[3] || 24000);
 const W = +(process.argv[4] || 480), H = W >> 1;
 
 // Multi-seed mode: STYLIZED_SEEDS="8817,4242,777" runs the whole suite once

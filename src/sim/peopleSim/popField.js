@@ -1703,6 +1703,35 @@ function depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, amount) {
   spreadExact(pf, _spreadTiles, _spreadW, n, sumW, amount);
 }
 
+// T.URBAN_FOOD_GATE — agrarian arithmetic on the agglomeration pull: a farmer
+// may not be drawn into the core if losing them would leave the city's food
+// flow short of its urban mouths. Uses the same rural-share → harvest scaling
+// as T.URBAN_LABOR and credits unchanged import flow (supply − landFood).
+function capAgglomByFood(s, catchmentF, coreF, delta, scale) {
+  if (!(delta > 0) || !(catchmentF > 0) || !(scale > 0)) return delta;
+  const landFood = s._landFood || 0;
+  const supply = s._foodSupply || 0;
+  const coreNeed = s._coreNeed || 0;
+  if (landFood <= 0 && coreNeed <= 0) return delta;
+  const perCap = 0.003 * (s._urbanFactor || 1);
+  const useLabor = T.URBAN_LABOR > 0;
+  const coreShare = Math.min(1, coreF / catchmentF);
+  const ruralLabor = useLabor ? Math.max(0, 1 - coreShare) : 1;
+  if (supply <= coreNeed && ruralLabor <= 1e-6) return 0;
+  let lo = 0, hi = delta;
+  for (let i = 0; i < 24; i++) {
+    const take = (lo + hi) * 0.5;
+    const cs = Math.min(1, (coreF + take) / catchmentF);
+    const rl = useLabor ? Math.max(0, 1 - cs) : 1;
+    const landDrop = useLabor && ruralLabor > 1e-9 ? landFood * (1 - rl / ruralLabor) : 0;
+    const supplyP = supply - landDrop;
+    const coreNeedP = coreNeed + take * scale * perCap;
+    if (supplyP + 1e-9 >= coreNeedP) lo = take;
+    else hi = take;
+  }
+  return lo;
+}
+
 /** Move `delta` field-people between the urban CORE and its OWN countryside
  *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out.
  *  R<=0: the core is the single tile coreTi (byte-identical to the pre-footprint
@@ -1715,6 +1744,34 @@ function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac, R) 
   const pf = world.popField, tw = world.tw, th = world.th;
   const x0 = cx - URBAN_CONC_R, x1 = cx + URBAN_CONC_R;
   const y0 = Math.max(0, cy - URBAN_CONC_R), y1 = Math.min(th - 1, cy + URBAN_CONC_R);
+  // T.URBAN_PRINT: grow/shrink the core in place. Hinterland is not a reservoir.
+  if (T.URBAN_PRINT > 0) {
+    if (delta > 1e-6) {
+      if (!(R > 0)) pf[coreTi] += delta;
+      else depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, delta);
+    } else if (delta < -1e-6) {
+      if (!(R > 0)) pf[coreTi] = Math.max(0, pf[coreTi] + delta);
+      else {
+        const dy0 = Math.max(0, cy - R), dy1 = Math.min(th - 1, cy + R);
+        let diskPop = 0;
+        for (let y = dy0; y <= dy1; y++) for (let dx = -R; dx <= R; dx++) {
+          const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+          if (owner[ti] !== sid || pf[ti] <= 0) continue;
+          diskPop += pf[ti];
+        }
+        const push = Math.min(-delta, diskPop);
+        if (push > 0 && diskPop > 0) {
+          const frac = push / diskPop;
+          for (let y = dy0; y <= dy1; y++) for (let dx = -R; dx <= R; dx++) {
+            const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+            if (owner[ti] !== sid || pf[ti] <= 0) continue;
+            pf[ti] -= pf[ti] * frac;
+          }
+        }
+      }
+    }
+    return;
+  }
   if (!(R > 0)) {
     // ── single-tile core: EXACTLY the pre-footprint code (byte-identical) ──
     if (delta > 0) {
@@ -1856,8 +1913,13 @@ export function deriveOnePop(world) {
   // (A/B: Σcap 7.51M/3.38M with FOOD_K on, 5.89M/4.44M off — the ledger RAISES capacity
   // at the reference and LOWERS it at the app grid, the signature of a per-entity
   // quantity spread over a resolution-dependent tile count).
-  // Default OFF: this changes the calibrated bridge magnitude at every grid, so it needs
-  // the full multi-seed gate before it can be the default.
+  // DEFAULT ON since 2026-08-03 (tuning.js BRIDGE_GLOBAL def: 1) — this comment still
+  // read "Default OFF" long after that flip, and the catchment audit (2026-08-27) caught
+  // it while proving the bridge is immune to catchment geometry: BOTH sides of the global
+  // form are whole-world people-totals (Sigma census over settled, Sigma field over all
+  // land), frozen once and persisted, so no catchment radius, overlap or partition change
+  // can move it. The per-catchment MEDIAN form below is the fallback and is the one that
+  // would have carried geometry into the scalar.
   if (!(world._onePopScale > 0) && T.BRIDGE_GLOBAL) {
     let csTot = 0, fsTot = 0;
     for (const s of world.settlements) if (s.mode === "settled" && s.people > 0) csTot += s.people;
@@ -1935,7 +1997,20 @@ export function deriveOnePop(world) {
       if (s.mode !== "settled") continue;
       const isr = Math.max(0, Math.min(1,
         ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
-      const kb = ((s._k || 0) * isr) / scale;
+      // T.AGGLOM_LOCAL — the basis is the WHOLE economy, not the imported slice.
+      // The comment above states the design intent exactly: "the TOTAL urban
+      // population is set by the ECONOMY … how many non-farmers the food surplus
+      // can support". `isr` narrows that to food from BEYOND the city's own land —
+      // a distinction about DISTANCE, not about whether the food is surplus. A
+      // city eating its own hinterland's surplus supports non-farmers on it just
+      // as a city eating shipped grain does. Under the lever the pull is s._k
+      // itself, which is exactly kLocal + kBeyond — the same partition CORE_LOCAL
+      // uses on the size read, summed back to one.
+      // SIDE EFFECT, named: coreDens below collects the pull-bearing cores, so
+      // medDens (the graveyard's density reference) becomes the median of ALL
+      // cores rather than of importing cores. That follows the basis — under a
+      // whole-economy pull "importing core" stops being the meaningful subset.
+      const kb = ((s._k || 0) * (T.AGGLOM_LOCAL ? 1 : isr)) / scale;
       if (kb > 0) {
         sumK += kb; sumKb += Math.pow(kb, betaEff);
         if (coreDens) {
@@ -1958,6 +2033,13 @@ export function deriveOnePop(world) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (ti < 0 || ti >= world.N) continue;
+    // THE ARMING FLAGS (urban-claim-memo-2026-08-27.md §5.4) — cleared here so
+    // they can never go stale across ticks. See their write site under
+    // T.CORE_LOCAL below for why an instrument that cannot tell "no effect"
+    // from "no execution" is not an instrument.
+    s._coreBlockRan = 0;
+    s._coreLocalBind = 0;
+    s._coreDiskBound = 0;
     const f = accP.get(s.id) || 0;
     // The IMPORT-FED share of the settlement's carrying capacity, in field
     // units — what its market feeds from BEYOND its own land (hierarchy grain:
@@ -1967,19 +2049,30 @@ export function deriveOnePop(world) {
     const importShare = Math.max(0, Math.min(1,
       ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
     const kBeyond = ((s._k || 0) * importShare) / scale;
+    // The agglomeration PULL (T.AGGLOM_LOCAL) — see the pre-pass for the argument.
+    // s._k / scale === kLocal + kBeyond identically, so this is the undivided
+    // economy and needs no second partition.
+    const pull = T.AGGLOM_LOCAL ? ((s._k || 0) / scale) : kBeyond;
     // AGGLOMERATION↔CONGESTION (T.URBAN_AGGLOM): relax the core tile toward an
     // agglomeration target that is SUBLINEAR in the economic pull (β<1, the
     // congestion compression), conservatively concentrating the region's own
     // countryside into (or back out of) its city. Runs BEFORE the core read so
-    // s._urbanPop sees the concentrated field. Non-importers (kBeyond=0) have
-    // no target — they stay rural, as the ontology says.
+    // s._urbanPop sees the concentrated field. Off T.AGGLOM_LOCAL, non-importers
+    // (kBeyond=0) have no target — they stay rural, as that ontology said. ON it,
+    // the pull is the whole economy and a self-fed city gathers its own
+    // countryside, which is what makes the CORE_HOLD stamp retirable.
     let uTarget = 0;
-    if (agglom && kBeyond > 0 && sumKb > 0) {
+    if (agglom && pull > 0 && sumKb > 0) {
       // This city's β-compressed share of the economy's total urban capacity
       // (βeff=1 under γ: the target is the RAW economy — the density graveyard,
       // not this exponent, does the compressing).
-      const share = Math.pow(kBeyond, betaEff) / sumKb;
-      uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core; ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
+      const share = Math.pow(pull, betaEff) / sumKb;
+      uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of the pull that concentrates in the core — of IMPORT-fed capacity off T.AGGLOM_LOCAL, of the region's WHOLE capacity on it (there it reads as an urbanisation rate, and 0.13 sits in history's 5-15% agrarian band); ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
+      // The city GROWS toward harvest supply. Stored grain must not raise
+      // this target (a birth warehouse must not pull in a metropolis). A
+      // lean flow sheds only as the pot empties (_fedM hold below) — that
+      // is the granary's job as a buffer, not as a size gift.
+      //
       // A city lives WITHIN its hinterland: cap the target at a share of the
       // region's own people. Under β-share this is the binding limiter (and, for
       // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to
@@ -1992,7 +2085,20 @@ export function deriveOnePop(world) {
         // Relax the whole urban FOOTPRINT (disk of radius coreR) toward the target,
         // not just the centre tile — so the concentration target is a real area, not
         // one tile whose people shrink ∝1/rn². coreR=0 ⇒ diskSum === pf[ti] exactly.
-        const delta = URBAN_CONC_LAMBDA * (uTarget - diskSum(pf, tw, world.th, cx, cy, coreR));
+        const coreNow = diskSum(pf, tw, world.th, cx, cy, coreR);
+        // Stores buffer a FLOW dip. Harvest still caps GROWTH (this never
+        // raises the target above the people already on the disk, so a
+        // warehouse cannot pull in a metropolis). A one-tick supply crash
+        // used to set uTarget ≈ 0 and dump ~20% of the core per tick — the
+        // city became a village while the granary was still full. Hold at
+        // core × fed-ness (_fedM: flow + store vs core need). An empty pot
+        // melts toward harvest at the existing λ.
+        if (T.STARVE_SHED > 0 && coreNow > uTarget) {
+          const hold = s._fedM !== undefined ? coreNow * s._fedM : coreNow;
+          if (hold > uTarget) uTarget = hold;
+        }
+        let delta = URBAN_CONC_LAMBDA * (uTarget - coreNow);
+        if (delta > 1e-6 && T.URBAN_FOOD_GATE > 0) delta = capAgglomByFood(s, f, coreNow, delta, scale);
         if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta, useGamma ? URBAN_CONC_MAXFRAC_G : URBAN_CONC_MAXFRAC, coreR);
       }
     }
@@ -2049,8 +2155,107 @@ export function deriveOnePop(world) {
         // ORGANIZATION, not the standing crowd; entities without a founding
         // hold stamp — legacy towns, colonies — keep the tile read as their
         // base so nothing pre-wave demotes.)
+        // T.CORE_LOCAL — A CITY MAY EAT ITS OWN HINTERLAND'S SURPLUS.
+        // The read above claims urbanites ONLY against kBeyond, the
+        // IMPORT-fed share of capacity, and the comment at :1969 states the
+        // design outright: "A self-fed farm town concentrates nothing."
+        // MEASURED consequence (tw=480, shipped genesis arm, 28k, n=273):
+        // 186 of 273 cores sit at EXACTLY 12.00 — the founding stamp
+        // (crystallize.js:1751, = TIER_CORE[2]/bridge x 1.2) — and
+        // importShare > 0 for TEN. Because settlement.js:3903 quantises TIER
+        // off this read, a self-fed city is pinned at tier 2 forever and
+        // never reaches metropolis (TIER_CORE[3] = 40), which freezes
+        // FOOD_RANGE_BY_TIER (2.2 vs 3.6), GRAIN_PRICE_BY_TIER (14 vs 22),
+        // granaryCap and hinterlandRadiusFor: you need imports to grow the
+        // core, the tier to reach and outbid for imports, and the core for
+        // the tier. A self-fed city can never enter the loop.
+        // History says the opposite: 80% farming supports a 20% urban
+        // minority ENTIRELY LOCALLY — Uruk, Thebes and Norwich did not
+        // import their bread. Imports are how a city passes its hinterland's
+        // ceiling (Rome at a million), not the only door to being a town.
+        // THE FIX USES BOTH HALVES OF A PARTITION THE CODE ALREADY OWNS:
+        // popField.js:921-2 already spreads s._k * landShare over the
+        // countryside while kBeyond (:1974) is its exact complement, and the
+        // comment at :897-903 promises "catchment + spike sum to the
+        // economy's own number". The core simply received none of the local
+        // half. (1 - importShare) IS landShare.
+        // MAX, not +, and that is load-bearing: the form is strictly
+        // monotone, so no core can FALL, no tier can demote, and this cannot
+        // cause a single DISSOLVE_CORE dissolution (crystallize.js:1293).
+        // The stamp survives as a birth ENDOWMENT (the pile the basin
+        // gathered before the entity existed) rather than as a size target —
+        // which is what the refuters' "the stamp is the register's survival
+        // margin" objection requires, and what SEED_EXCLUSIVE failed to
+        // respect earlier the same day.
+        // NO extraction rate: the supply side already credits the whole
+        // catchment harvest with no institution between field and ledger
+        // (territory.js:465-482), ONE_BOOK already feeds the core from the
+        // whole hinterland (settlement.js:3086), and foodReach + FARM_RENT
+        // already price the institution twice elsewhere. Measured, a
+        // foodReach gate is also INERT: p50 0.095, max 0.188, 115 of 273 at
+        // exactly 0. Zero new constants.
+        const kLocal = T.CORE_LOCAL ? ((s._k || 0) * (1 - importShare)) / scale : 0;
         const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
-        coreEff = Math.min(_coreF, holdF + kBeyond);
+        // T.STAMP_RETIRE — NO MINIMUM. The owner's design: a city is born holding
+        // whatever its site actually gathered, sustains itself from there, and
+        // falls apart when it cannot. The stamp stops being a FLOOR under the
+        // size read; what a city IS becomes what its economy holds, full stop.
+        // Only legitimate once T.AGGLOM_LOCAL gives a self-fed city a real
+        // concentration target (§21) — without that the 2026-08-07 birth crater
+        // reopens, which is why this lever must never be read as independent of
+        // that one. Zero new constants: the birth SEED is untouched (the site law
+        // still gathers the pile before the mint), it simply stops being floored
+        // forever after.
+        // STAMP_RETIRE drops the 12k birth floor so a city can fail: what a
+        // city GROWS to is what its harvest (and imports) can feed. The
+        // granary is the buffer when that flow dips — not a growth gift.
+        // Spot foodK used to be the size READ as well, so one empty-book
+        // tick demoted a stocked city to a village (tier follows this
+        // read). Hold the live core while _fedM says the pot still covers
+        // mouths; melt with fedM when it does not. Never above the disk,
+        // never above a fed core that harvest cannot yet claim.
+        const econF = kLocal + kBeyond;
+        if (T.STAMP_RETIRE) {
+          const hold = (T.STARVE_SHED > 0)
+            ? _coreF * (s._fedM !== undefined ? s._fedM : 1)
+            : 0;
+          coreEff = Math.min(_coreF, Math.max(econF, hold));
+        } else {
+          coreEff = Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);
+        }
+        // THE ARMING CHECK — the instrument this repo keeps needing and keeps
+        // not having. TWO mechanisms were "validated" in regimes where their
+        // edited line never ran (SUCCESSOR_STATES at tw=240, where an orphan
+        // patch holds one settlement; deffdce, whose 10% at the reference grid
+        // was a 10x cut at the shipped one), and CORE_LOCAL's OWN kill-shot was
+        // first run with LAND_KNOW pinned 0 by the harness — so this whole
+        // block was skipped, the edited line never executed, and both arms came
+        // back byte-identical. That was caught by ACCIDENT (the hashes matched),
+        // which is not a method. So the two facts a reader needs travel out
+        // through collect() with every arm, and a null result now has to say
+        // WHICH null it is:
+        //   _coreBlockRan   — the block executed at all, i.e. the REGIME is
+        //                     right (LAND_KNOW on, coreR > 0). 0 here and the
+        //                     arm measured nothing, whatever else it printed.
+        //   _coreLocalBind  — kLocal actually beat holdF, i.e. the MECHANISM
+        //                     bit. With the lever off this is 0 by
+        //                     construction; with it on and the regime right,
+        //                     the memo measured 101 of 273 (37%) at the shipped
+        //                     arm against 6 of 39 (15%) at the gate arm.
+        // Cost when the lever is off: two integer stores per settled entity.
+        s._coreBlockRan = 1;
+        s._coreLocalBind = kLocal > holdF ? 1 : 0;
+        // THE DISK CEILING, measured rather than assumed (memo §5.3). The
+        // min(_coreF, ·) above is the brake that keeps urbanisation under
+        // history's agrarian ceiling: an economy cannot claim urbanites the
+        // ground does not hold. But _coreF is a disk of radius coreR, and coreR
+        // GROWS WITH THE GRID — 0 at tw=240 (the block is skipped entirely), 1
+        // at tw=480 (a 3x3), 3 at tw=960 (a 7x7, ~292 km across). So the same
+        // code brakes hard at one shipping grid and barely at another, and
+        // whether it still holds at tw=960 is a question no metric could answer.
+        // Now it can: this is the share of the register the ceiling actually
+        // binds for.
+        s._coreDiskBound = _coreF < (T.STAMP_RETIRE ? (kLocal + kBeyond) : (Math.max(holdF, kLocal) + kBeyond)) ? 1 : 0;
       }
       s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
@@ -2094,17 +2299,27 @@ export function deriveOnePop(world) {
     // one law — and the import economy takes over the moment it grows past
     // it. Existing constants only; cities minted by other paths (colonies,
     // plantations) carry no stash and are untouched.
-    if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0) {
-      // T.STARVE_SHED: the floor yields to SUSTAINED starvation — "hold what
-      // arrived" was food-blind, so a chronically unfed core kept its full
-      // capacity and the field logistic kept growing it through famine. The
-      // floor now carries the settlement's fed-ness average (s._fedM, a
-      // granary-decade memory stamped by the food pass): a fed core holds
-      // exactly as before (fedM ≈ 1 — birth-crater behaviour unchanged; new
-      // mints start at 1), a starving one melts at generational pace and
-      // hunger finally empties the CITY, not just the land around it.
+    // T.STAMP_RETIRE also lifts the stamp off the CAPACITY spike — "no minimum"
+    // has to mean both sites (§11 named them), or the floor simply moves.
+    // Stamp floor: hold the gathered birth pile until a CATCHMENT exists to
+    // measure harvest. STAMP_RETIRE lifts it the moment the city has land
+    // (f > 0) so size follows supply, not a warehouse — but NOT before, or
+    // the mint-window crater returns (capacity spike 0 while the ledger is
+    // still cold). Stores still gate famine via _fedM; they do not size the
+    // city. Off STAMP_RETIRE the stamp stays for the whole life of the city.
+    if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0 && (!T.STAMP_RETIRE || !(f > 0))) {
       const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
       const hold = Math.min(_coreF, s._coreHoldCapF) * fedY;
+      if (hold > kCap) kCap = hold;
+    }
+    // Conservation while shedding: agglomeration aims at harvest, then the
+    // STARVE_SHED hold above floors uTarget at core × fed-ness so a stocked
+    // city does not dump. Dropping the spike to this tick's flow would still
+    // kill people left on the disk in the logistic — floor the spike the
+    // same way. An empty pot still melts.
+    if (agglom && _coreF > kCap) {
+      const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
+      const hold = _coreF * fedY;
       if (hold > kCap) kCap = hold;
     }
     // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess

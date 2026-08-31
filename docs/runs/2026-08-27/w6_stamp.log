@@ -1,0 +1,155 @@
+[harness] tree 2e2b17d
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"POP_FIELD_WORKERS":0,"CORE_LOCAL":1,"AGGLOM_LOCAL":1,"STAMP_RETIRE":1}
+[peopleSim] hearth pin Nile picked at tile (277,80) (27.7E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (277,80) (27.7E 30.0N) score 6.74 pkg=wheat(suit 0.94) — ARMED: ~962y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (298,76) (43.5E 33.0N) score 6.51 pkg=wheat(suit 1.00) — ARMED: ~903y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,81) (69.8E 29.2N) score 7.79 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) score 3.54 pkg=millet(suit 0.54) — ARMED: ~2754y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (230,99) (-7.5E 15.8N) score 3.07 pkg=sorghum(suit 0.65) — ARMED: ~3077y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.97 pkg=maize(suit 0.86) — ARMED: ~5245y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,140) (-75.0E -15.0N) score 1.05 pkg=tubers(suit 0.75) — ARMED: ~3996y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) score 0.81 pkg=tubers(suit 0.39) — ARMED: ~7649y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[milbalance] W=960 seed=8817 steps=40000 every=4000
+[milbalance] MACHINE columns: lo hi realms claimed% founded ended seceded shattered warBegan captured urbanSU ruralSU blockRan% bind% diskBound%
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== window 0->4000  realms=0  claimed=0.0%  settled=0
+    FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
+    FLOWS per realm   founded=0.0000 ended=0.0000 seceded=0.0000 shattered=0.0000   (meanRealms=1)
+    WAR in-window     began=0 ended=0 captured=0 sacked=0
+    WAR per realm     began=0.0000 captured=0.0000
+    CORES p10=0.0 p50=0.0 p90=0.0 max=0.0su  |  MODE 0su held by 0/0 (0.0%)  <- the pin
+    URBSHARE/sett p50=0.000 p90=0.000 max=0.000  |  >=0.30 (graveyard saturated): 0/0 (0.0%)
+    MASS  urban=0su rural=0su urbanShare=0.00%
+    ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
+    MACHINE 0 4000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+    [31s]
+[peopleSim] AGRICULTURE INVENTED at (333,81) (69.8E 29.2N) — the basin farms; a city will rise when its market gathers one (score 7.79)
+[peopleSim] AGRICULTURE INVENTED at (277,80) (27.7E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.74)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.51)
+
+=== window 4000->8000  realms=0  claimed=0.0%  settled=0
+    FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
+    FLOWS per realm   founded=0.0000 ended=0.0000 seceded=0.0000 shattered=0.0000   (meanRealms=1)
+    WAR in-window     began=0 ended=0 captured=0 sacked=0
+    WAR per realm     began=0.0000 captured=0.0000
+    CORES p10=0.0 p50=0.0 p90=0.0 max=0.0su  |  MODE 0su held by 0/0 (0.0%)  <- the pin
+    URBSHARE/sett p50=0.000 p90=0.000 max=0.000  |  >=0.30 (graveyard saturated): 0/0 (0.0%)
+    MASS  urban=0su rural=0su urbanShare=0.00%
+    ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
+    MACHINE 4000 8000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+    [63s]
+
+=== window 8000->12000  realms=0  claimed=0.0%  settled=0
+    FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
+    FLOWS per realm   founded=0.0000 ended=0.0000 seceded=0.0000 shattered=0.0000   (meanRealms=1)
+    WAR in-window     began=0 ended=0 captured=0 sacked=0
+    WAR per realm     began=0.0000 captured=0.0000
+    CORES p10=0.0 p50=0.0 p90=0.0 max=0.0su  |  MODE 0su held by 0/0 (0.0%)  <- the pin
+    URBSHARE/sett p50=0.000 p90=0.000 max=0.000  |  >=0.30 (graveyard saturated): 0/0 (0.0%)
+    MASS  urban=0su rural=0su urbanShare=0.00%
+    ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
+    MACHINE 8000 12000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+    [95s]
+
+=== window 12000->16000  realms=0  claimed=0.0%  settled=0
+    FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
+    FLOWS per realm   founded=0.0000 ended=0.0000 seceded=0.0000 shattered=0.0000   (meanRealms=1)
+    WAR in-window     began=0 ended=0 captured=0 sacked=0
+    WAR per realm     began=0.0000 captured=0.0000
+    CORES p10=0.0 p50=0.0 p90=0.0 max=0.0su  |  MODE 0su held by 0/0 (0.0%)  <- the pin
+    URBSHARE/sett p50=0.000 p90=0.000 max=0.000  |  >=0.30 (graveyard saturated): 0/0 (0.0%)
+    MASS  urban=0su rural=0su urbanShare=0.00%
+    ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
+    MACHINE 12000 16000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+    [126s]
+[peopleSim] AGRICULTURE INVENTED at (387,72) (110.3E 36.0N) — the basin farms; a city will rise when its market gathers one (score 3.54)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.07)
+
+=== window 16000->20000  realms=0  claimed=0.0%  settled=0
+    FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
+    FLOWS per realm   founded=0.0000 ended=0.0000 seceded=0.0000 shattered=0.0000   (meanRealms=1)
+    WAR in-window     began=0 ended=0 captured=0 sacked=0
+    WAR per realm     began=0.0000 captured=0.0000
+    CORES p10=0.0 p50=0.0 p90=0.0 max=0.0su  |  MODE 0su held by 0/0 (0.0%)  <- the pin
+    URBSHARE/sett p50=0.000 p90=0.000 max=0.000  |  >=0.30 (graveyard saturated): 0/0 (0.0%)
+    MASS  urban=0su rural=0su urbanShare=0.00%
+    ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
+    MACHINE 16000 20000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+    [158s]
+[transHeap] step=21192 cap=2048 peakN=1641 pushes=25687 (0.0MB backing)
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.05)
+[transHeap] step=23712 cap=65536 peakN=39083 pushes=137279 (0.5MB backing)
+
+=== window 20000->24000  realms=19  claimed=1.7%  settled=89
+    FLOWS in-window   founded=8 ended=1 seceded=0 shattered=0
+    FLOWS per realm   founded=0.8421 ended=0.1053 seceded=0.0000 shattered=0.0000   (meanRealms=10)
+    WAR in-window     began=11 ended=4 captured=0 sacked=1
+    WAR per realm     began=1.1579 captured=0.0000
+    CORES p10=1.5 p50=8.0 p90=134.2 max=682.9su  |  MODE 8.00su held by 31/85 (36.5%)  <- the pin
+    URBSHARE/sett p50=0.071 p90=0.278 max=1.000  |  >=0.30 (graveyard saturated): 8/89 (9.0%)
+    MASS  urban=4182su rural=79635su urbanShare=4.99%
+    ARMING  blockRan=76.4%  bind=38.2%  diskBound=28.1%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 20000 24000 19 1.667 8 1 0 0 11 0 4182 79635 76.40 38.20 28.09
+    [237s]
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+
+=== window 24000->28000  realms=243  claimed=9.7%  settled=406
+    FLOWS in-window   founded=45 ended=96 seceded=85 shattered=16
+    FLOWS per realm   founded=0.3435 ended=0.7328 seceded=0.6489 shattered=0.1221   (meanRealms=131)
+    WAR in-window     began=2829 ended=2602 captured=0 sacked=19
+    WAR per realm     began=21.5954 captured=0.0000
+    CORES p10=1.7 p50=8.0 p90=86.6 max=386.5su  |  MODE 8.00su held by 134/402 (33.3%)  <- the pin
+    URBSHARE/sett p50=0.070 p90=0.309 max=1.000  |  >=0.30 (graveyard saturated): 41/406 (10.1%)
+    MASS  urban=13916su rural=183398su urbanShare=7.05%
+    ARMING  blockRan=85.5%  bind=43.1%  diskBound=27.6%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 24000 28000 243 9.667 45 96 85 16 2829 0 13916 183398 85.47 43.10 27.59
+    [483s]
+
+=== window 28000->32000  realms=485  claimed=20.0%  settled=717
+    FLOWS in-window   founded=67 ended=395 seceded=179 shattered=26
+    FLOWS per realm   founded=0.1841 ended=1.0852 seceded=0.4918 shattered=0.0714   (meanRealms=364)
+    WAR in-window     began=9273 ended=9199 captured=0 sacked=42
+    WAR per realm     began=25.4753 captured=0.0000
+    CORES p10=2.4 p50=8.0 p90=76.0 max=555.7su  |  MODE 8.00su held by 292/715 (40.8%)  <- the pin
+    URBSHARE/sett p50=0.071 p90=0.319 max=1.007  |  >=0.30 (graveyard saturated): 80/717 (11.2%)
+    MASS  urban=22502su rural=250235su urbanShare=8.25%
+    ARMING  blockRan=88.6%  bind=42.3%  diskBound=21.6%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 28000 32000 485 19.958 67 395 179 26 9273 0 22502 250235 88.56 42.26 21.62
+    [994s]
+
+=== window 32000->36000  realms=578  claimed=29.5%  settled=827
+    FLOWS in-window   founded=73 ended=535 seceded=277 shattered=41
+    FLOWS per realm   founded=0.1373 ended=1.0066 seceded=0.5212 shattered=0.0771   (meanRealms=532)
+    WAR in-window     began=11022 ended=10597 captured=0 sacked=36
+    WAR per realm     began=20.7375 captured=0.0000
+    CORES p10=6.2 p50=17.2 p90=127.6 max=687.5su  |  MODE 8.00su held by 240/818 (29.3%)  <- the pin
+    URBSHARE/sett p50=0.100 p90=0.523 max=1.008  |  >=0.30 (graveyard saturated): 152/827 (18.4%)
+    MASS  urban=38357su rural=267249su urbanShare=12.55%
+    ARMING  blockRan=88.1%  bind=49.0%  diskBound=30.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 32000 36000 578 29.540 73 535 277 41 11022 0 38357 267249 88.15 48.97 29.99
+    [1803s]
+
+=== window 36000->40000  realms=599  claimed=38.4%  settled=897
+    FLOWS in-window   founded=62 ended=573 seceded=350 shattered=20
+    FLOWS per realm   founded=0.1054 ended=0.9737 seceded=0.5947 shattered=0.0340   (meanRealms=589)
+    WAR in-window     began=12707 ended=12562 captured=0 sacked=20
+    WAR per realm     began=21.5922 captured=0.0000
+    CORES p10=3.8 p50=15.6 p90=119.5 max=695.5su  |  MODE 8.00su held by 263/895 (29.4%)  <- the pin
+    URBSHARE/sett p50=0.100 p90=0.511 max=1.000  |  >=0.30 (graveyard saturated): 151/897 (16.8%)
+    MASS  urban=41424su rural=268918su urbanShare=13.35%
+    ARMING  blockRan=86.8%  bind=49.7%  diskBound=26.1%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 36000 40000 599 38.383 62 573 350 20 12707 0 41424 268918 86.85 49.72 26.09
+    [2963s]

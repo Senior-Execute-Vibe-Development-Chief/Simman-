@@ -1,0 +1,132 @@
+
+> world-sim@1.0.0 monotone
+> node tools/trace.mjs --monotone --steps=12000 --every=1000
+
+[harness] tree 7852e12
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — matured 1151y into prehistory (wave age 4849y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — matured 900y into prehistory (wave age 5100y)
+[peopleSim] hearth Pomponsom at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — matured 929y into prehistory (wave age 5071y)
+[peopleSim] hearth Fevvon at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — matured 3173y into prehistory (wave age 2827y)
+[peopleSim] hearth Nawaxexi at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — matured 5373y into prehistory (wave age 627y)
+[peopleSim] hearth Sasfesu at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — matured 3251y into prehistory (wave age 2749y)
+[peopleSim] hearth Wityim at (136,72) (24.0E -18.0N) score 1.13 pkg=sorghum(suit 0.56) — matured 3544y into prehistory (wave age 2456y)
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.18) — ARMED: ~18458y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.12) — ARMED: ~7000y of peopled-basin time from maturity
+[trace] seed=8817 W=480 (tw=240) steps=12000 every=1000
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=1021 pushes=8177 (0.0MB backing)
+  1000/12000     2000/12000     3000/12000     4000/12000     5000/12000     6000/12000     7000/12000   [peopleSim] AGRICULTURE INVENTED at (77,72) (-64.5E -18.0N) — the basin farms; a city will rise when its market gathers one (score 0.68)
+  8000/12000     9000/12000     10000/12000     11000/12000     12000/12000   
+  commit d0b955f  levers: {"SETT_STRIDE":1,"TRADE_STRIDE":3,"TRIBUTE_UP":0,"DAWN_LIVE":0,"DISSOLVE_CORE":0,"FEAR_REACH":0,"ENGULF":0,"ABSORB_ORG_ERA":0,"WAR_FINISH":0,"SMALL_WAR":0,"RELIEF_REACH":0,"VASSAL_LEVY":0,"STATE_RECORDS":0,"LAND_KNOW":0,"EXCH_WAVE":0,"FOUND_DRIFT":0,"PEER_SEATS":0,"TECH_USE":0}
+
+  WATCHED TRAJECTORIES
+
+    realm.count  [flat, settled]  swing 1.4×  peak 7.0 @1000 (5100BC)
+      5100BC:7.0  4600BC:5.0  4100BC:5.0  3600BC:5.0  3100BC:5.0  2600BC:5.0  2100BC:6.0  1600BC:7.0  1100BC:7.0  600BC:7.0  100BC:7.0  400AD:7.0
+
+    realm.areaKm2.p50  [rising, still moving]  swing 13.8×  peak 1.06e+6 @12000 (400AD)
+      5100BC:76903.1  4600BC:2.61e+5  4100BC:2.92e+5  3600BC:4.15e+5  3100BC:4.77e+5  2600BC:5.23e+5  2100BC:7.69e+5  1600BC:7.08e+5  1100BC:8.15e+5  600BC:9.07e+5  100BC:9.69e+5  400AD:1.06e+6
+
+    realm.claimedPct  [rising, still moving]  swing 7.6×  peak 5.4 @12000 (400AD)
+      5100BC:0.7072  4600BC:0.9775  4100BC:1.3  3600BC:1.6  3100BC:2.1  2600BC:2.3  2100BC:3.0  1600BC:3.5  1100BC:3.8  600BC:4.2  100BC:4.9  400AD:5.4
+
+    pop.field  [flat, settled]  swing 1.0×  peak 0.0000 @1000 (5100BC)
+      5100BC:0.0000  4600BC:0.0000  4100BC:0.0000  3600BC:0.0000  3100BC:0.0000  2600BC:0.0000  2100BC:0.0000  1600BC:0.0000  1100BC:0.0000  600BC:0.0000  100BC:0.0000  400AD:0.0000
+
+    pop.census  [flat, settled]  swing 1.0×  peak 0.0000 @1000 (5100BC)
+      5100BC:0.0000  4600BC:0.0000  4100BC:0.0000  3600BC:0.0000  3100BC:0.0000  2600BC:0.0000  2100BC:0.0000  1600BC:0.0000  1100BC:0.0000  600BC:0.0000  100BC:0.0000  400AD:0.0000
+
+    entity.settled  [rising, settled]  swing 1.6×  peak 8.0 @9000 (1100BC)
+      5100BC:7.0  4600BC:5.0  4100BC:5.0  3600BC:5.0  3100BC:6.0  2600BC:7.0  2100BC:7.0  1600BC:7.0  1100BC:8.0  600BC:8.0  100BC:8.0  400AD:8.0
+
+    shape.isolatedPct  [falling, still moving]  swing 2.3×  peak 100.0 @1000 (5100BC)
+      5100BC:100.0  4600BC:100.0  4100BC:100.0  3600BC:100.0  3100BC:100.0  2600BC:100.0  2100BC:66.7  1600BC:57.1  1100BC:57.1  600BC:57.1  100BC:57.1  400AD:42.9
+
+    shape.compact.p50  [oscillating, still moving]  swing 2.6×  peak 0.6283 @1000 (5100BC)
+      5100BC:0.6283  4600BC:0.5890  4100BC:0.6206  3600BC:0.4090  3100BC:0.4007  2600BC:0.4172  2100BC:0.4351  1600BC:0.4061  1100BC:0.3895  600BC:0.3394  100BC:0.2520  400AD:0.2463
+
+    drawn.claimedPct  [rising, still moving]  swing 4.9×  peak 7.5 @12000 (400AD)
+      5100BC:1.5  4600BC:2.0  4100BC:2.2  3600BC:2.7  3100BC:3.3  2600BC:3.6  2100BC:4.5  1600BC:5.0  1100BC:5.6  600BC:6.0  100BC:6.8  400AD:7.5
+
+    nation._dominance.max  [oscillating, still moving]  swing 1.2×  peak 1.2 @7000 (2100BC)
+      5100BC:0.0000  4600BC:0.0000  4100BC:0.0000  3600BC:0.0000  3100BC:1.0  2600BC:1.1  2100BC:1.2  1600BC:0.0000  1100BC:1.0  600BC:0.0000  100BC:0.0000  400AD:0.0000
+
+  MONOTONICITY — a count of things that have happened cannot decrease
+  ✓ no metric that names a cumulative history ever decreased
+
+  ⚠ 78 metric(s) rose, then fell back to their own baseline — reset-shaped, review:
+      field._gapQ.sum                          7↑   4↓   1.90e+6 → 1.45e+6 at 4000
+      sett._terrWorkTiles.max                  7↑   3↓   49.0 → 44.0 at 7000
+      sett._terrWorkTiles.p90                  7↑   3↓   49.0 → 44.0 at 7000
+      field._fpPrev.sum                        5↑   6↓   1.10e+7 → 1.10e+7 at 5000
+      nation._govStab.n                        5↑   3↓   5.0 → 0.0000 at 5000
+      nation._govStab.sum                      5↑   3↓   2.0 → 0.0000 at 5000
+      nation._rulerRelief.n                    5↑   3↓   5.0 → 0.0000 at 5000
+      nation._rulerWar.n                       5↑   3↓   5.0 → 0.0000 at 5000
+      nation._rulerWit.n                       5↑   3↓   5.0 → 0.0000 at 5000
+      count._succClaims                        4↑   1↓   1.0 → 0.0000 at 9000
+      drawn.holes.sum                          4↑   5↓   7.0 → 6.0 at 5000
+      dynasty.inlaws.len.p50                   4↑   5↓   5.0 → 0.0000 at 12000
+      dynasty.members.len.p50                  4↑   5↓   5.0 → 0.0000 at 12000
+      nation._armyCon.n                        4↑   3↓   5.0 → 0.0000 at 4000
+      nation._armyPro.n                        4↑   3↓   5.0 → 0.0000 at 4000
+      nation._govStab.max                      4↑   3↓   1.0 → 0.0000 at 5000
+      nation._govStab.p90                      4↑   3↓   1.0 → 0.0000 at 5000
+      nation._manpower.n                       4↑   3↓   5.0 → 0.0000 at 4000
+      nation._manpowerCap.n                    4↑   3↓   5.0 → 0.0000 at 4000
+      field._fpRel.max                         3↑   2↓   3.0 → -1.0 at 6000
+      field._fpRel.sum                         3↑   2↓   -9612.0 → -9616.0 at 6000
+      nation._capPeace.n                       3↑   2↓   6.0 → 0.0000 at 8000
+      nation._capThrottle.n                    3↑   2↓   6.0 → 0.0000 at 8000
+      nation._capacity.n                       3↑   2↓   6.0 → 0.0000 at 8000
+      nation._conqShare.n                      3↑   2↓   6.0 → 0.0000 at 8000
+      … 53 more
+    (Not a failure — a real stock can be spent back to nothing. The arm exists
+     because the death bug's NAME promised nothing; only its shape gave it away.)
+
+  ARCS — 7 realms with ≥2 checkpoints
+    peakFraction (final ÷ peak area):  p50 1.0   min 1.0
+    rise 11000.0 steps p50   ·   fall 0.0000 steps p50
+    realms that EVER declined (kept <90% of peak): 0 of 7   ◄── every realm is at or near its largest extent: no falls, only rises
+
+    realm              peak km²   peak@  final km² final/peak   rise   fall
+    Ňěňnílěā        2.05e+6   12000    2.05e+6      1.000  11000      0
+    Fevvonfax           1.65e+6   12000    1.65e+6      1.000  11000      0
+    Wityim              1.14e+6   12000    1.14e+6      1.000  11000      0
+    Ňěňnílǐ          1.06e+6   12000    1.06e+6      1.000   5000      0
+    Pephamdo            8.15e+5   12000    8.15e+5      1.000  11000      0
+    Pomponsomsyus       8.00e+5   11000    8.00e+5      1.000  10000   1000
+    Sǎfǎlǐā         4.92e+5   12000    4.92e+5      1.000   4000      0
+
+    coverage: 9 realms observed vs 244 ever founded  — 235 lived and died inside one 1000-step interval (invisible here; lower --every to catch them)
+
+  EVENTS BY WINDOW (when, not just how many) — 23 kinds with ≥3 occurrences
+  kind                       5100BC 4600BC 4100BC 3600BC 3100BC 2600BC 2100BC 1600BC 1100BC  600BC  100BC  400AD
+  cradle                          7      ·      ·      ·      ·      ·      ·      ·      ·      ·      ·      ·
+  crystallized                    ·      ·      ·      ·      1      1      ·      1      ·      ·      ·      ·
+  culture.born                   11      5      5      1      ·      ·      1      1      ·      ·      1      2
+  dynasty.founded                 ·      ·      ·      2      ·      4      2      1      ·      ·      ·      3
+  dynasty.union                   ·      ·      ·      ·      1      5      9     10     25     18     10     15
+  era.reached                     ·      ·      ·      ·      ·      ·      1      2      ·      2      3      1
+  famine.struck                  33     23     22     21      9     33     22     38     35     27     37     39
+  gov.changed                     ·      ·      ·      ·      ·      2      2      ·      ·      ·      ·      ·
+  growth.cities                   ·      1      ·      1      2      1      2      1      ·      ·      ·      ·
+  industry.specialty              5      ·      ·      ·      ·      1      1      1      ·      ·      ·      ·
+  language.shift                  ·      ·      5      ·      ·      5      ·      ·      5      ·      5      ·
+  plague.outbreak                 ·      1      ·      ·      ·      ·      ·      ·      ·      ·      2      2
+  polity.adoptedFaith             ·      ·      ·      ·      1      ·      2      ·      1      1      1      ·
+  polity.founded                 17     27     26     20     23     17     25     14     15     17     23     18
+  polity.seceded                  ·      ·      ·      1      1      5      6      5      2      9      4      4
+  ruler.crowned                   ·      ·      ·      2      ·      1      2      1      ·      ·      1      5
+  ruler.died                      ·      ·      ·      3      4      5      4      9     11     12     14      9
+  ruler.elected                   ·      ·      ·      ·      ·      3      ·      ·      ·      ·      ·      ·
+  settlement.founded              ·      ·      ·      ·      1      1      ·      1      ·      ·      ·      ·
+  settlement.tier                 6      1      ·      1      2      1      2      1      ·      ·      ·      ·
+  war.began                       ·      ·      ·      ·      ·      ·      1      2      1      ·      ·      ·
+  war.ended                       ·      ·      ·      ·      ·      ·      ·      1      2      1      ·      ·
+  wealth.milestone                ·      ·      ·      ·      ·      ·      ·      2      1      1      3      2

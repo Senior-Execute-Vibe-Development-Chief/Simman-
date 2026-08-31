@@ -58,6 +58,19 @@ export function aridSignal(temp, moist, riverAcc = 0) {
   return dry * heat * (1 - river);
 }
 
+// Multiplier on grain spoilage rates (stored grain, in-transit haul, mart shelf).
+// 1 = cool-temperate reference. Hot+wet tropics rot fast; hot+dry semi-arid keeps
+// grain (Egypt, Mediterranean granaries — seasonalSelect's dry-summer lobe).
+export function grainSpoilClimate(temp, moist) {
+  const t = temp ?? 0.5, m = moist ?? 0.5;
+  const em = effMoist(t, m);
+  const heat = c01((t - 0.55) / 0.30);
+  const wetRot = c01((em - 0.35) / 0.35);
+  const dryKeep = c01((0.22 - em) / 0.15) * heat;
+  const rot = heat * (0.25 + 0.75 * wetRot);
+  return Math.max(0.45, Math.min(2.8, 0.75 + rot * 1.6 - dryKeep * 0.55));
+}
+
 // Coverage hostility for the SPACING lever (crystallisation + colonisation): how
 // strongly the land resists settlements APPEARING (not merely how few people they
 // hold). The max of the brakes — a tile is hostile if disease OR aridity OR (to a

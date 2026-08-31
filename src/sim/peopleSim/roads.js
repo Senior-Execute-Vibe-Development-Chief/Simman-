@@ -52,6 +52,7 @@ import { T, rNormPop } from "./tuning.js";
 import { getPolity } from "./entities.js";
 import { TECH_IDX } from "./tech.js";
 import { exportValueOf, getWealthReserve, techEff } from "./settlement.js";
+import { grainSpoilClimate } from "./habitability.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
@@ -1208,6 +1209,10 @@ function runTradePass(world, rf, flowTiles, stride) {
   const usage = USAGE_PER_TRADE * stride;
   const invStride = 1 / stride;
   const moneyFlows = [];
+  // Goods-flow overlay collector — rebuilt each sweep (kept between sweeps,
+  // ≤ stride−1 ticks stale, the _linkMoney convention); null while the view
+  // is closed so the per-consignment pushes cost nothing.
+  world._goodsFlowsTrade = (goodsTrade && world._wantGoodsFlows) ? [] : null;
   const linkMoney = new Map();   // "loId:hiId" -> net /tick that reached the higher-id settlement
   // The animated money-flow overlay (moneyFlows) is render-only and consumed ONLY
   // in the money view; skip the per-pair object churn unless that view is active
@@ -1277,7 +1282,10 @@ function runTradePass(world, rf, flowTiles, stride) {
       const st = s._gStock, e = s._gExpLeft, im = s._gImpLeft;
       const es = entrepotShare(s);
       const room = STOCK_CAP_W * es * Math.sqrt(Math.max(1, s.people || 0));
-      const spoil = Math.pow(1 - STOCK_SPOIL, stride);
+      const spoilRate = T.CLIMATE_SPOIL > 0
+        ? STOCK_SPOIL * grainSpoilClimate(s._climTemp ?? 0.5, s._climMoist ?? 0.5)
+        : STOCK_SPOIL;
+      const spoil = Math.pow(1 - spoilRate, stride);
       for (const g of TRADABLE) {
         const baseE = Math.max(0, ((s._gProd && s._gProd[g]) || 0) - ((s._gDem && s._gDem[g]) || 0)) * stride;
         const baseIm = Math.max(0, ((s._gDem && s._gDem[g]) || 0) - ((s._gProd && s._gProd[g]) || 0)) * GT_OVERBUY * stride;
@@ -1372,6 +1380,8 @@ const GT_BOOK_OUT = { [G_MATERIALS]: OUT_MATERIALS, [G_LUXURY]: OUT_LUXURY };
 // bulk trades while letting the light-and-dear run far — trade range per
 // good becomes an OUTPUT of value density × route cost, never a rule.
 const GT_BULK = { [G_MATERIALS]: 2.5, [G_ORE]: 3.0, [G_METAL]: 1.0, [G_CLOTH]: 0.5, [G_WARES]: 1.0, [G_LUXURY]: 0.15 };
+// Goods-flow overlay kind tags (render-only; see world._goodsFlowsTrade below).
+const GT_KIND = { [G_MATERIALS]: "materials", [G_ORE]: "ore", [G_METAL]: "metal", [G_CLOTH]: "cloth", [G_WARES]: "wares", [G_LUXURY]: "luxury" };
 function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, intermediates, numInter) {
   // Pair carrying capacity in VALUE — the scalar model's own gravity volume
   // (√pop × rate × sea/river carrier terms), so gross trade magnitude stays
@@ -1430,6 +1440,16 @@ function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, interme
       GT_BOOK_OUT[g] !== undefined ? GT_BOOK_OUT[g] : OUT_GOODS) || 0;
     if (scale <= 0) continue;
     const moved = qty * scale;
+    // Goods-flow overlay (render-only, rebuilt each sweep while the view is
+    // open): one entry per consignment, colored by kind at the renderer.
+    const gflows = world._goodsFlowsTrade;
+    if (gflows && moved > 1e-6) {
+      if (link.tiles && link.tiles.length > 1) gflows.push({ pts: link.tiles, mag: moved / stride, toEnd: aSells, kind: GT_KIND[g] || "wares" });
+      else {
+        const tw = world.tw;
+        gflows.push({ pts: [(seller.pos.y | 0) * tw + (seller.pos.x | 0), (buyer.pos.y | 0) * tw + (buyer.pos.x | 0)], mag: moved / stride, toEnd: true, kind: GT_KIND[g] || "wares" });
+      }
+    }
     exp[g] -= moved; imp[g] -= moved;
     valueLeft -= value * scale;
     // Per-tick net-goods bookkeeping → next tick's local prices (goods.js).
@@ -1656,7 +1676,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     if (freightPaid > 0) bookI(seller, IN_GOODS, freightPaid);
     bookO(buyer, bookOut, paid);
   } else {
-    const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
+    const sellerFarm = (seller.tier | 0) <= (T.DISSOLVE_FARMS ? 3 : 0)
                      || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
     const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
     const foodFrac = (buyerShort || sellerFarm) ? (seller._exportFoodFrac || 0) : 0;

@@ -1,0 +1,51 @@
+[harness] tree 3ceb938
+[SIM_TUNE] {"GRAIN_PROVISION":1}
+[stylized] seed 4242 · 480x240 · 21000 steps
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (148,37) (42.0E 34.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Viizubuụda at (138,40) (27.0E 30.0N) score 6.78 pkg=wheat(suit 0.98) — matured 915y into prehistory (wave age 5085y)
+[peopleSim] hearth Pịgatfaa at (148,37) (42.0E 34.5N) score 6.05 pkg=wheat(suit 0.99) — matured 908y into prehistory (wave age 5092y)
+[peopleSim] hearth Qòbég at (167,41) (70.5E 28.5N) score 6.32 pkg=wheat(suit 0.98) — matured 923y into prehistory (wave age 5077y)
+[peopleSim] hearth Kalsaffo at (197,38) (115.5E 33.0N) score 6.24 pkg=rice(suit 0.97) — matured 2579y into prehistory (wave age 3421y)
+[peopleSim] hearth Chlurthiryi at (114,52) (-9.0E 12.0N) score 3.63 pkg=sorghum(suit 0.66) — matured 3031y into prehistory (wave age 2969y)
+[peopleSim] hearth candidate at (54,39) (-99.0E 31.5N) score 3.13 pkg=maize(suit 0.64) — ARMED: ~1009y of peopled-basin time from maturity
+[peopleSim] hearth Ọththet at (81,74) (-58.5E -21.0N) score 1.39 pkg=tubers(suit 0.59) — matured 5042y into prehistory (wave age 958y)
+[peopleSim] hearth Kyoekhin at (137,73) (25.5E -19.5N) score 1.29 pkg=tubers(suit 0.62) — matured 4832y into prehistory (wave age 1168y)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.09) — ARMED: ~7000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 pkg=maize(suit 0.27) — ARMED: ~10877y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1197 pushes=6938 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (54,39) (-99.0E 31.5N) — the basin farms; a city will rise when its market gathers one (score 3.13)
+[stylized] simulated in 150s
+
+  ok    Zipf rank-size slope (urban cores, G-I): -0.83   (21 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 11%   (19 polities on 2206 tiles)
+  warn  empire area tail (largest/median): 2.4
+        (realm AREA, unscored: largest 3768k km² · median 1600k km² · reference: Bronze hegemon ~0.5-1M, Rome ~5M, Han ~6.5M)
+        (empire mortality, unscored: back-half top-3 union 8 realms · 189 secessions — deep check: node tools/probe_empires.mjs)
+  ok    state lifespan median (incl. living, censored): 6700 steps (~1675y)   (25 fallen + 701 living)
+        (fallen-only median 900 steps ~225y; 1/25 fallen within 100 steps — the revolt-churn mode, mechanism item)
+  ok    lifespan heavy tail incl. living (max/median): 23.3   (oldest living 21000 steps)
+  ok    wars per 1000 steps per polity: 0.11   (2.3/1k across 20 realms)
+  ok    wars amid succession crises: 1/48   (human causes visible)
+        (2 across state-faith lines)
+  ok    tech ~ cradle-distance correlation: -0.22   (knowledge should not lead OUTWARD (earned-span re-baseline 2026-07))
+  ok    urbanization vs development: 4.9%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 0.98   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price level bounded: 1.05   (people-weighted raw M/T÷baseline (sim-clamped mean 0.93, 0 components pegged at cap))
+  ok    market integration narrows prices (Δ): +0.0030 over 3 knit window(s)   (mean dispersion Δ where components drop, vs noise floor 0.0104 = median |Δ| (Pearson -0.07, unscored — probe_market.mjs))
+  ok    trade intensity vs transport: 1.3   (flow×1000/wealth; median nav+mob 0.62 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 5.6   (20 wars reckoned; top3mean/med 4.9)
+        (greatest war's share of all war dead: 17% across 20 wars — count-sensitive, unscored)
+  ok    culture count ~ area^k, k<1: 0.28   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.36   (100% on water vs same-footprint null 74% (raw per-tile null gave 1.69; NN-CV 0.38))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 32 settlements, pop 19101
+  ok    wealth finite: 435793
+  ok    polities exist: 20
+        (registries: 36 cultures · 12 faiths · 141 dynasties · 4861 persons · 3812 events)
+
+[stylized] all hard gates passed · 1 soft warning(s) (budget 2)

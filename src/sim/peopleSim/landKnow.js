@@ -43,7 +43,7 @@
 import { T, rNormPop } from "./tuning.js";
 import { URBAN_ORG, orgEraCapOf, techState } from "./tech.js";
 import { oreTier, seasonalSelect, computeWaterAccess, birthOrgAt, TIER_CORE, techEff } from "./settlement.js";
-import { cageAt } from "./cageField.js";
+import { cageAt, cageFillAt } from "./cageField.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { labelSiteLedger, labelBasinMass, siteClaims, URBAN_SHARE_REF } from "./crystallize.js";
@@ -371,7 +371,7 @@ export function stepLandKnow(world) {
       const aptLearn = T.ORG_APTITUDE > 0 ? Math.max(0.05, 1 + T.ORG_APT_LEARN * (2 * winterness - 1)) : 1;
       let contactMul = 1;
       if (T.ORG_CONTACT > 0) {
-        const cageDrv = T.STATE_CAGE ? cageAt(world, rec.ti) * rec.ceil : 0;
+        const cageDrv = T.STATE_CAGE ? cageAt(world, rec.ti) * rec.ceil * cageFillAt(world, rec.ti) : 0;   // T.CAGE_FILL: ×basin fill — pressure, the triad's third leg (×1 at lever 0)
         let near = contact && contact.has(rec.cell) ? 1 : 0;
         if (!near && cities) {
           for (const c of cities) {

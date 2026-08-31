@@ -23,7 +23,7 @@ import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (
 import { tel, telPass } from "./telemetry.js";
 import { FAMINE_SEVERITY } from "./shocks.js";   // T.LEAN_YEAR: the flat-margin fallback (the per-basin form reads the variance map)
 import { ensureYieldCv } from "./harvest.js";    // T.LEAN_YEAR per-basin: each basin's own bad-year statistic
-import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
+import { fieldShift, devWaveIvl, urbanCoreR, diskSum, stepPopField } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { hash32 } from "./rng.js";
 import { cageAt } from "./cageField.js";
@@ -40,9 +40,11 @@ import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { reachBudget } from "./territory.js";   // T.MINT_REACH: the newborn's day-one reach (functions only — same ESM-cycle pattern as landKnow.js)
+import { unservedTileCoinPull } from "./tileMoney.js";
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
+import { igniteHearth, jumpToFirstInvent, NEOLITHIC_AGRI } from "./hearthInvent.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
 const _geoStr = (world, x, y) => `(${(x / world.tw * 360 - 180).toFixed(1)}E ${(90 - y / world.th * 180).toFixed(1)}N)`;
 
@@ -164,9 +166,7 @@ function capacitySpacingMul(fertTile, hostility) {
 }
 // The countryside a prospective site stands in: the population-field mass over
 // the market basin around it. This is the sim's own measure of "are there people
-// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN, and
-// T.INVENT_FIELD reads it for independent invention (see the floor note below).
-// Extracted verbatim from the urban-floor check so both ask one question.
+// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN.
 function townBasinMass(world, tx, ty, rB) {
   const pf = world.popField, tw = world.tw, th = world.th;
   let basin = 0;
@@ -362,11 +362,29 @@ const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold
                                          // is the lever T.LABEL_BAR (default = this same 360 anchor) and the read
                                          // becomes basin-EXCLUSIVE — see the sweep.
 const CROWD_CAP                 = 6;     // T.CROWD_FOUND saturation: the densest basin founds at most this multiple of a bar-sized one
-const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment).
-                                         // Under T.LABEL_BIRTH this same real distance is the market HORIZON of the
-                                         // site-ledger law below (the cell's activation-mass radius AND the reach of a
-                                         // site's cell) — one constant, one physical meaning: the day's walk that binds
-                                         // a countryside to one market.
+const TOWN_BASIN_R              = 10;    // REFERENCE-tiles (×rn at the use site). NOT a market catchment and NOT a
+                                         // day's walk: at 167 km per reference tile this is a 1,670 km RADIUS disk of
+                                         // ~8.8M km² — roughly Australia, ~25-55× too large in radius and ~700-3,100×
+                                         // in area for a city's provisioning shed (history's is 20-50 km, hard ceiling
+                                         // ~100-150 km overland). The old comment here claimed "one constant, one
+                                         // physical meaning: the day's walk that binds a countryside to one market",
+                                         // which was wrong by ~50× and, worse, wrong in KIND — the catchment audit
+                                         // (2026-08-27, docs/catchment-audit-2026-08-27.md) found this ONE constant
+                                         // serving SIX unrelated physical questions: the mint bar, the dissolve bar,
+                                         // CROWD_FOUND's reference, the hearth stand-down/ignition basin, the harbour
+                                         // shelter test, and (via cageField.js CAGE_HORIZON_REF) a fleeing household's
+                                         // exit horizon. No single number can be all six. What it honestly IS today is
+                                         // a bar-SAMPLING WINDOW — and because it is huge it is PERMISSIVE, which is
+                                         // why every attempt to make it bind measured inert (TOWN_BASIN_MIN ×5
+                                         // byte-identical; MINT_RESIDUAL near-inert; MINT_REACH structurally inert).
+                                         // MEASURED overlap of the disk it defines (probe_overlap, 24k/8817): 65.3% of
+                                         // covered tiles sit under >1 disk, up to 8 cities share one tile, and Σ basin
+                                         // mass is 3.58× the people actually standing there. The economy is NOT
+                                         // affected — census and harvest both reduce over the exclusive
+                                         // _territoryOwner partition — but city FOUNDING and DISSOLUTION are priced on
+                                         // this triple-counted read. Splitting it per question, each grounded in a real
+                                         // distance converted at the world's own km-per-tile (the HAUL_LAND_KM pattern
+                                         // in foodHierarchy.js), is the named next lap.
 // ── T.LABEL_BIRTH v3: the MARKET-SITE LEDGER (Tier C phase 1, third cut) ──
 // docs/design-c-siting-ledger.md — the measured foundation and the law. The
 // two dead geometries before it, both refuted ON THIS BRANCH (kept for the
@@ -1141,7 +1159,7 @@ const COVERAGE_FLOOR = 0.22;   // pre-agricultural (forager-margin) spread rate,
 // The neolithic package a fresh independent village invents on its own —
 // shared with inheritKnowledgeAt's baseline so the tempo and the inherited
 // knowledge describe the same starting point.
-const NEOLITHIC_AGRI = 0.45;
+// NEOLITHIC_AGRI — imported from hearthInvent.js (one farming-floor definition)
 // Wave-of-advance pioneering tempo (replaces the old COVERAGE_RAMP step
 // clock, a cardinal-rule-1 violation: it let the wilderness recede because
 // of WHEN it was, not what the world had become). The real cause of slow
@@ -1396,7 +1414,7 @@ function maybeSiteCities(world) {
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
   const basinBar1 = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell at 1× margin, field units
   const barOf = (k) => basinBar1 * leanAt(world, L.sites[k].ti); // T.LEAN_YEAR: × the SITE's own bad-year margin (per-basin)
-  const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
+  const coreBarF = TIER_CORE[2] / bridge;     // the mint's core bar, field units
   const coreR = urbanCoreR(world);
   // Eligibility is cached between cadence firings; the spike re-stamp runs
   // every tick from the cache so the field pass always holds the cores.
@@ -1533,7 +1551,7 @@ function maybeSiteCities(world) {
         const dy = ty2 - st.y;
         if (dx * dx + dy * dy <= coreR * coreR) continue;
         const mv = pf[t] * rate * scale;
-        pf[t] -= mv;
+        if (!(T.URBAN_PRINT > 0)) pf[t] -= mv;
         gain += mv;
       }
       pf[st.ti] += gain;
@@ -1564,6 +1582,9 @@ function maybeSiteCities(world) {
       lkRec = ensureLedgerAt(world, st.ti);
       if (!lkRec || (lkRec.k.organization || 0) < URBAN_ORG) { tel(world, "siteCity", "tallyBar"); continue; }
     }
+    // T.INVENT_JUMP dawn foresight: gather to mint-ready but do not mint — play
+    // starts one cadence early so the first city rises on camera.
+    if (world._dawnHoldMint) { world._dawnMintReady = true; continue; }
     mintCityAt(world, k, st.x, st.y, st.ti, coreF, lkRec,
       { pf, bridge, coreBarF, barOf, spikes },
       () => { elig[k] = 0; if (world._siteBasin) world._siteBasin.delete(k); });
@@ -1604,7 +1625,9 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
   // first mint never lets the next derive re-calibrate the unit from its
   // own founding party, which measured as a 0.35 bridge, an 11,000-census
   // first city and a 600-step famine crash before the declaration existed.)
-  fieldShift(world, { pos: { x, y } }, -coreCensus);
+  // T.URBAN_PRINT: the founding take stays on the land (the census is a
+  // read of the field). Conservation debit would ring-drain the basin at birth.
+  if (!(T.URBAN_PRINT > 0)) fieldShift(world, { pos: { x, y } }, -coreCensus);
   const inherited = inheritKnowledgeAt(world, ti, world.transportDist ? world.transportDist[ti] : 0);
     // T.LAND_KNOW: the basin's own learning is the newborn's birthright — the
     // ledger floors every track (a nearby court can still lift it higher).
@@ -1691,31 +1714,11 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
         }
       }
     }
-    // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
-    // before this city existed, its basin's people fed themselves through
-    // the field's own capacity — for thousands of steps. The tick after,
-    // the derive censuses them through THIS ledger, whose supply machinery
-    // (worked farmland, technique, granary) starts cold and ramps over many
-    // passes — and the shortfall STARVED the field people the land had been
-    // feeding (owner-observed: "a city with a large population that rapidly
-    // drops"; under ONE_POP starvation debits the field — the lens killing
-    // its substrate). Creating a lens must not change the physics of the
-    // people it observes: the city is born holding its basin's standing
-    // subsistence stores — the cell's people × their own per-tick demand ×
-    // the ledger's ramp horizon. An initial condition of the annexed
-    // countryside, not a subsidy; no clock, no gate.
-    // The countryside whose granaries ride in is the SUPPORT BASIN — the
-    // ground whose people this city gathered from (cached take) — not the
-    // whole Euclidean cell, whose disk-scale census over-provisioned birth
-    // stores in site-sparse country (the same phantom-domain class the
-    // tribute right-sizing measured; docs/state-birth-2026-08.md).
-    {
-      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, barOf(k)).take;
-      let bMass = 0;
-      for (let n = 0; n < bTake.length; n++) bMass += pf[bTake[n]];
-      const basinCensus = bMass * bridge;
-      born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
-    }
+    // Birth stores: makeSettlement already set household grain from
+    // coreCensus (a few ticks of the city's own mouths). Do not dump 500
+    // ticks of the whole basin into the warehouse — that filled every new
+    // city to the ~480 t cap and looked like a default gift.
+
     // T.CORE_HOLD — the spike HANDOFF (2026-08-07, the birth-crater killer):
     // until this line the gathered core was held by the SITE spike above
     // (min(coreNow, coreBarF×1.2)); from the next derive it is held by the
@@ -1876,7 +1879,7 @@ function maybePeerSeats(world, env) {
           const dy = ty2 - pc.y;
           if (dx * dx + dy * dy <= coreR * coreR) continue;
           const mv = pf[t] * rate * scale;
-          pf[t] -= mv;
+          if (!(T.URBAN_PRINT > 0)) pf[t] -= mv;
           gain += mv;
         }
         pf[pc.ti] += gain;
@@ -1894,6 +1897,7 @@ function maybePeerSeats(world, env) {
         || ((courtOrg && courtOrg.get(k) || 0) >= URBAN_ORG);
       if (!proven) { tel(world, "peerSeat", "tallyBar"); continue; }
     }
+    if (world._dawnHoldMint) { world._dawnMintReady = true; continue; }
     mintCityAt(world, k, pc.x, pc.y, pc.ti, coreNow, cellRec, env, () => {
       claims.count[k] = (claims.count[k] || 0) + 1;
       let a = claims.labels.get(k); if (!a) claims.labels.set(k, a = []);
@@ -2098,13 +2102,7 @@ function maybeLandNations(world) {
       // pressure forms almost at once (the cradle belts saturate at the old
       // drive=1, near-byte-similar there), an open or unstorable one stays
       // tribal however long it is pressed — the Chichimeca, Australia.
-      if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
-        const cg = cageAt(world, st.ti);
-        const sp = cg > 0 ? basinStorablePeople(world, take, world.popField) : 0;
-        const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
-        const pr = cg * stor;
-        drive = drive >= 1 ? Math.min(1, pr * (1 + T.STATE_OPEN)) : pr;
-      } else if (drive < 1 && T.STATE_CAGE) {
+      if (drive < 1 && T.STATE_CAGE) {
         const cg = cageAt(world, st.ti);
         if (cg > 0) {
           const sp = basinStorablePeople(world, take, world.popField);
@@ -2197,14 +2195,7 @@ function maybeLandNations(world) {
           }
           if (drive2 >= 1) break;
         }
-        // T.STATE_OPEN lap 2: identical to the primary lane — contact
-        // multiplies the Carneiro drive, never overrides it (header above).
-        if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
-          const cg2 = cageAt(world, cand.ti);
-          const sp2 = cg2 > 0 ? basinStorablePeople(world, basin2.take, pf2) : 0;
-          const pr2 = cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0);
-          drive2 = drive2 >= 1 ? Math.min(1, pr2 * (1 + T.STATE_OPEN)) : pr2;
-        } else if (drive2 < 1 && T.STATE_CAGE) {
+        if (drive2 < 1 && T.STATE_CAGE) {
           const cg2 = cageAt(world, cand.ti);
           if (cg2 > 0) {
             const sp2 = basinStorablePeople(world, basin2.take, pf2);
@@ -2334,6 +2325,152 @@ function maybeLandNations(world) {
   }
 }
 
+// ── T.INVENT_STAGGER: armed hearths mature on PEOPLED-BASIN TIME ──────────
+// A candidate whose maturity ran past prehistory (state.js seatOrArmHearths)
+// ignites HERE, mid-game, when its remaining years are served — and a year
+// only counts in proportion to how full the basin actually is (effYears +=
+// dt × basinMass/basinCapacity): an empty basin never matures, a rich
+// forager basin serves time at full rate. Colonisation stands a candidate
+// down — if settlement reached the basin first, the package arrived before
+// it was invented (the Australia case), which is the mechanism-true outcome,
+// not a failure. Emergent throughout: the calendar never enters; dt is
+// derived from the technique wave's own physical calibration (devWaveIvl ↔
+// one tile-hop ↔ tileKm/DEV_WAVE_KMPY years), the same real-time unit the
+// pre-run epoch uses.
+function maybeInventStagger(world) {
+  if (!(T.INVENT_STAGGER && world._armedHearths && world._armedHearths.length && world.popField && world.capField)) return;
+  const rB = Math.max(1, Math.round(TOWN_BASIN_R * rNormFor(world)));
+  const lastAt = world._hearthArmAt ?? world.step;
+  const dtSteps = world.step - lastAt;
+  world._hearthArmAt = world.step;
+  if (!(dtSteps > 0)) return;
+  // steps × (years per wave-hop ÷ steps per wave-hop): derived from the
+  // wave's own calibration (one hop = EARTH_KM/tw km at DEV_WAVE_KMPY=1
+  // km/y over devWaveIvl steps), so the unit is consistent at any grid
+  // and granularity without a second time constant.
+  const dtYears = dtSteps * (40075 / world.tw) / devWaveIvl(world);
+  const keep = [];
+  for (const h of world._armedHearths) {
+    // Colonised basin → stand down (diffusion won the race to this valley).
+    let settledNear = false;
+    forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
+    if (settledNear) {
+      console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} stood down — the farming package arrived before it was invented`);
+      continue;
+    }
+    const basin = townBasinMass(world, h.tx, h.ty, rB);
+    let capMass = 0;
+    const cap = world.capField, tw = world.tw, th = world.th;
+    for (let dy = -rB; dy <= rB; dy++) {
+      const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
+      for (let dx = -rB; dx <= rB; dx++) {
+        if (dx * dx + dy * dy > rB * rB) continue;
+        capMass += cap[yy * tw + (((h.tx + dx) % tw) + tw) % tw];
+      }
+    }
+    h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
+    if (h.effY >= h.needY) {
+      igniteHearth(world, h, rB);
+    } else keep.push(h);
+  }
+  world._armedHearths = keep;
+  if (!keep.length) delete world._armedHearths;
+}
+
+/**
+ * T.INVENT_JUMP mint-ready foresight: land-know + site gather + invent stagger
+ * only — skips transport / colonies / spontaneous crystallize (no cities yet).
+ */
+export function maybeDawnGather(world) {
+  stepLandKnow(world);
+  maybeSiteCities(world);
+  if (world.step % CRYSTAL_INTERVAL === 0) maybeInventStagger(world);
+}
+
+/**
+ * Open at first CITY-ready moment (mint-ready, not yet minted).
+ * Lives HERE (not dawnJump.js) so the gather call is same-module — a
+ * dawnJump→crystallize→state→dawnJump cycle left maybeDawnGather undefined
+ * in some bundles and silently opened at invent-only (~step 3k).
+ *
+ * App-grid note: a per-tick gather at tw=960 is minutes of blocked worker
+ * init (UI live, play appears to do nothing, then a sudden jump to ~20-30k).
+ * Stride by SITE_CITY_IVL (drift/mint cadence) with popField sub-steps — same
+ * bars, far less wall-clock. Progress callbacks keep the chrome honest.
+ */
+export function jumpToCivReady(world, opts = {}) {
+  if (!(T.INVENT_JUMP > 0) || !T.DAWN_LIVE) return false;
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress
+    : (typeof world._onGenesisProgress === "function" ? world._onGenesisProgress : null);
+  const invented = jumpToFirstInvent(world);
+  if (!invented && !(world._hearthSeeds && world._hearthSeeds.length)) {
+    world._openKind = "dawn";
+    return false;
+  }
+
+  world._dawnHoldMint = true;
+  world._dawnMintReady = false;
+  world._dt = 1 / Math.max(1, T.SIM_GRANULARITY || 1);
+  const inventStep = world.step;
+  const maxStep = inventStep + 80_000;
+  const t0 = performance.now();
+  let lastLog = inventStep;
+  // Match the site drift/mint cadence: one gather pass per IVL, field advances
+  // in the same chunk (dt capped inside stepPopField at 8 — so chunk as 8s).
+  const CHUNK = Math.min(8, SITE_CITY_IVL);
+
+  try {
+    if (onProgress) onProgress({ phase: "mint-ready", step: world.step, inventStep, maxStep });
+    while (world.step < maxStep && !world._dawnMintReady) {
+      // Land exactly on SITE_CITY_IVL boundaries so drift/mint fire (a fixed
+      // +8 stride from invent@3700 never hit step%25===0 and starved drift).
+      const mod = world.step % SITE_CITY_IVL;
+      const target = Math.min(
+        world.step + (mod === 0 ? SITE_CITY_IVL : SITE_CITY_IVL - mod),
+        maxStep,
+      );
+      while (world.step < target) {
+        const n = Math.min(CHUNK, target - world.step);
+        world.step += n;
+        stepPopField(world, n);
+      }
+      maybeDawnGather(world);
+      if (world.step - lastLog >= 2000) {
+        lastLog = world.step;
+        console.log(`[peopleSim] invent-jump: gathering… step ${world.step} (+${world.step - inventStep} since invent)`);
+        if (onProgress) onProgress({ phase: "mint-ready", step: world.step, inventStep, maxStep });
+      }
+    }
+  } catch (err) {
+    delete world._dawnHoldMint;
+    world._openKind = "invent";
+    console.error("[peopleSim] invent-jump: mint-ready gather failed — opening at invent", err);
+    return false;
+  }
+
+  delete world._dawnHoldMint;
+  // Invent-jump gather is ~15-30k sync field steps with no GC window. Drop the
+  // popField worker pool (and any frontier heaps) so play's first transport /
+  // territory flood is not the canary that OOMs the worker
+  // ("Array buffer allocation failed" in MinHeap._grow @ ~first crystallize).
+  try {
+    if (world._pfPool) { world._pfPool.dispose(); world._pfPool = null; }
+  } catch { /* pool already dead */ }
+  delete world._transHeap;
+  delete world._terrHeap;
+  const ms = (performance.now() - t0).toFixed(0);
+  if (world._dawnMintReady) {
+    world._openKind = "mint-ready";
+    console.log(`[peopleSim] invent-jump: mint-ready at step ${world.step} (invent @ ${inventStep}, +${world.step - inventStep} steps) in ${ms}ms — first city will mint on play`);
+    if (onProgress) onProgress({ phase: "done", step: world.step, inventStep, maxStep });
+    return true;
+  }
+  world._openKind = "invent";
+  console.warn(`[peopleSim] invent-jump: no mint-ready site by step ${world.step} (${ms}ms) — opening with farming; live mint continues`);
+  if (onProgress) onProgress({ phase: "done", step: world.step, inventStep, maxStep });
+  return false;
+}
+
 export function maybeCrystallize(world) {
   maybeDissolveTowns(world);
   stepLandKnow(world);        // T.LAND_KNOW: the countryside learns (before the doors read the ledger)
@@ -2347,97 +2484,7 @@ export function maybeCrystallize(world) {
     world._transportStep = world.step;
   }
 
-  // ── T.INVENT_STAGGER: armed hearths mature on PEOPLED-BASIN TIME ──────────
-  // A candidate whose maturity ran past prehistory (state.js seatOrArmHearths)
-  // ignites HERE, mid-game, when its remaining years are served — and a year
-  // only counts in proportion to how full the basin actually is (effYears +=
-  // dt × basinMass/basinCapacity): an empty basin never matures, a rich
-  // forager basin serves time at full rate. Colonisation stands a candidate
-  // down — if settlement reached the basin first, the package arrived before
-  // it was invented (the Australia case), which is the mechanism-true outcome,
-  // not a failure. Emergent throughout: the calendar never enters; dt is
-  // derived from the technique wave's own physical calibration (devWaveIvl ↔
-  // one tile-hop ↔ tileKm/DEV_WAVE_KMPY years), the same real-time unit the
-  // pre-run epoch uses.
-  if (T.INVENT_STAGGER && world._armedHearths && world._armedHearths.length && world.popField && world.capField) {
-    const rB = Math.max(1, Math.round(TOWN_BASIN_R * rNormFor(world)));
-    const lastAt = world._hearthArmAt ?? world.step;
-    const dtSteps = world.step - lastAt;
-    world._hearthArmAt = world.step;
-    if (dtSteps > 0) {
-      // steps × (years per wave-hop ÷ steps per wave-hop): derived from the
-      // wave's own calibration (one hop = EARTH_KM/tw km at DEV_WAVE_KMPY=1
-      // km/y over devWaveIvl steps), so the unit is consistent at any grid
-      // and granularity without a second time constant.
-      const dtYears = dtSteps * (40075 / world.tw) / devWaveIvl(world);
-      const keep = [];
-      for (const h of world._armedHearths) {
-        // Colonised basin → stand down (diffusion won the race to this valley).
-        let settledNear = false;
-        forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
-        if (settledNear) {
-          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} stood down — the farming package arrived before it was invented`);
-          continue;
-        }
-        const basin = townBasinMass(world, h.tx, h.ty, rB);
-        let capMass = 0;
-        const cap = world.capField, tw = world.tw, th = world.th;
-        for (let dy = -rB; dy <= rB; dy++) {
-          const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
-          for (let dx = -rB; dx <= rB; dx++) {
-            if (dx * dx + dy * dy > rB * rB) continue;
-            capMass += cap[yy * tw + (((h.tx + dx) % tw) + tw) % tw];
-          }
-        }
-        h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
-        if (h.effY >= h.needY) {
-          if (T.CITY_AT_BIRTH) {
-            // The invention is the INVENTION — not a town. The basin is
-            // peopled and farming; the site pass concentrates it and the
-            // city is born when a real core exists. The hearth stands down —
-            // but the practice must RADIATE: with no settlement to carry the
-            // technique wave's source, the ground itself does
-            // (world._hearthSeeds → stampDevSources; persisted). Without
-            // this, a seedless dawn could never leave the forager age.
-            // T.BASIN_IGNITE (2026-08-11, docs §7): the invention belongs to
-            // the BASIN that served its clock. effY accrued as dtYears ×
-            // basin/capMass over THIS very disk — its people collectively
-            // domesticated — yet the practice used to seed ONE tile and the
-            // wave then crawled across the basin's own farmers (measured at
-            // tw=960: the N-China plain's site basins sat at devP 0.34 vs
-            // the 0.45 farming gate ~3,500 steps AFTER the pin invented,
-            // with the cores already gathered past the city bar — ~5k steps
-            // of pure intra-basin diffusion before any nation could exist;
-            // probe_chinamint). Every peopled tile of the clock's own disk
-            // seeds at the invention level; the wave still carries the
-            // technique OUTWARD (inter-regional speed untouched, the
-            // DIFF_CLIM axis physics untouched). Same disk, same level,
-            // no new constant.
-            const seeds = (world._hearthSeeds || (world._hearthSeeds = []));
-            if (T.BASIN_IGNITE && world.popField) {
-              const pfI = world.popField;
-              for (let dy = -rB; dy <= rB; dy++) {
-                const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
-                for (let dx = -rB; dx <= rB; dx++) {
-                  if (dx * dx + dy * dy > rB * rB) continue;
-                  const t2 = yy * tw + (((h.tx + dx) % tw) + tw) % tw;
-                  if (pfI[t2] > 0) seeds.push({ ti: t2, agri: NEOLITHIC_AGRI });
-                }
-              }
-            } else seeds.push({ ti: h.ti, agri: NEOLITHIC_AGRI });
-            logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
-          } else {
-            const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
-            logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
-          }
-        } else keep.push(h);
-      }
-      world._armedHearths = keep;
-      if (!keep.length) delete world._armedHearths;
-    }
-  }
+  maybeInventStagger(world);
 
   // Alive-settlement count — shared by the colony saturation damper and the
   // crystallisation saturation damper below (one scan instead of two).
@@ -2697,56 +2744,17 @@ export function maybeCrystallize(world) {
     // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
-    let independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    // INDEPENDENT INVENTION IS A PROPERTY OF A PEOPLE, NOT OF A TILE (T.INVENT_FIELD).
-    // As a flat per-tile floor it says that being five thousand km from the nearest
-    // farmer makes you no less likely to invent farming than being 130 tiles away —
-    // and because it is ADDED to the distance decay, beyond td ≈ 130 it dominates
-    // and CANCELS the decay entirely. Measured consequence (probe_wheretowns, 480/
-    // 8817): at step 200 the world holds settlements in NINE regions, the Central
-    // Asian steppe the most-settled of them; Siberia has a town at 67°N by step 264;
-    // Europe has ten towns before Mesopotamia has five. Every good valley on Earth
-    // invents urbanism at once, which is exactly what its own comment ("low so empty
-    // regions stay empty until colonised") was trying to prevent.
-    //
-    // The opportunity for invention is PEOPLE-TIME: farming and town-building are
-    // invented where many people have lived on workable land for a long time, which
-    // is why there were a handful of neolithic origins rather than one per valley.
-    // So the floor is scaled by the basin's own people, measured against the bar the
-    // sim ALREADY uses for "enough countryside to carry a town" — no new constant is
-    // introduced. A basin exactly at the bar keeps INDEPENDENT_RATE unchanged; ten
-    // times the people invents ten times as readily; empty land effectively never.
-    // The cradles invent first because that is where the people are, and secondary
-    // centres emerge as the field thickens — the shape of the real record, arrived at
-    // by mechanism rather than by tuning a rate until seven centres appear.
-    if (T.INVENT_FIELD > 0 && world.popField) {
-      independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
-    }
+    const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
     // T.INDEP_TECH — a town can only crystallize where the PACKAGE HAS ARRIVED.
-    // Three measured failures aimed this at the right variable and the right
-    // channel: INVENT_FIELD scaled the floor by basin PEOPLE → worse (every
-    // fireable site has people); INVENT_STAGGER's handout repair fixed what a
-    // newborn KNOWS → the dawn map did not move (the founding still happened);
-    // and gating the INDEPENDENT floor alone → byte-identical outcomes at 6k,
-    // which proved the floor NEVER BINDS under multi-hearth defaults — with
-    // seven hearths every fireable site sits within diffusion reach of some
-    // network, and the anachronisms (a steppe town at step 24, 61°N by step
-    // 144) ride the DIFFUSION term. That term is exp(−td/·): a probability
-    // GRADIENT, not a FRONT — a site 3 000 km from the Indus can found the
-    // moment the sim starts, with no waiting for the package to arrive. But
-    // the sim HAS a front: devField, the technique wave, at its measured
-    // 1 km/year. So the lever scales the WHOLE channel sum by the package's
-    // local arrival, devField/NEOLITHIC_AGRI (clamped 0..1): fully-taught
-    // ground founds at the unchanged rate (the ratio saturates — mature
-    // worlds identical), the wave's edge founds at the edge's fraction, and
-    // untaught land founds NOTHING — towns trail the green stain on the
-    // Technique lens, which is the wave-of-advance picture the pioneering
-    // tempo below already gestures at (it paces by the nearest DONOR's tempo;
-    // this paces by the field's actual arrival). Daughter colonies, sea
-    // landings and plantations are untouched — those are real settler parties
-    // that carry the package with them. No new constant: NEOLITHIC_AGRI is
-    // the package's own definition of "full farming". 0 = ungated
-    // (byte-identical, and the default).
+    // Prior attempt (deleted INVENT_FIELD) scaled only the independent floor by
+    // basin people and made dawn worse. Gating the independent floor alone was
+    // byte-identical: under multi-hearth defaults the floor never binds, and
+    // anachronisms ride the DIFFUSION term — exp(−td/·), a probability GRADIENT
+    // not a FRONT. The sim's front is devField (≈1 km/year). This lever scales
+    // the WHOLE channel sum by package arrival, devField/NEOLITHIC_AGRI
+    // (clamped 0..1): fully-taught ground at the unchanged rate, the wave edge
+    // at its fraction, untaught land nothing. Daughters/sea/plantations
+    // untouched (they carry the package). No new constant.
     const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
     // ── T.CROWD_FOUND: towns appear where the PEOPLE are ────────────────────
     // Owner, 2026-08: "do cities appear where populations are dense?" Measured:
@@ -2790,7 +2798,13 @@ export function maybeCrystallize(world) {
         : townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
       crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
     }
-    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // T.TILE_MONEY — unserved farm-gate coin pulls a market where surplus piles
+    // outside existing catchments (docs/money-field-2026-08-28.md Phase D).
+    let tileCoinMul = 1;
+    if (T.TILE_MONEY > 0) {
+      tileCoinMul += unservedTileCoinPull(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+    }
+    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * tileCoinMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance

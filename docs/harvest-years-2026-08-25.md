@@ -444,3 +444,142 @@ lever-off A/B — that twin costs hours; this is the standing
 third-cardinal-rule arm.) lnσ now sits slightly ABOVE the historical band —
 driven by mem=0 relic micro-states (1-6k km²) coexisting with the hegemon —
 a note for the consolidation wave, not this one.
+
+## THE PROVISIONING LAP (2026-08-26, SAVE_VERSION 48) — the annona
+
+The owner's Renaissance report closed the loop: "all cities have currency,
+income, bank credit, kilos of gold — most still sit at 12k buying almost no
+food, but the only 3 metropolises ARE importing LOTS." THE SELF-SUFFICIENCY
+TRAP: the v46 founding law births every city locally fed → deficit ≈ 0 → the
+v47 deficit-only market buys nothing → no import fuel → pinned at the
+founding minimum with a full treasury; only cores that outgrew their land
+(the metropolises) ever enter the import→grow loop. A world where every
+region exactly feeds itself has zero food trade — history broke the symmetry
+with DEMAND AHEAD OF NEED (the annona bought to fill warehouses).
+
+**T.GRAIN_PROVISION (def 1, v<48 guard)**: a coined city's market need =
+deficit + min(granary space, demand) — refill at the pace of its own mouths
+(standing flow over ~cap/demand ticks, never a coin-powered one-tick spike).
+The refill integrates into s.food through the existing granary line and
+lifts foodK while it flows: capacity rises, the field migrates people in,
+demand grows into the new supply — the bootstrap, bounded by coin, seed-corn
+residuals, haul physics and storageCap. Zero new constants.
+
+Battery: smoke; stylized 777/8817/4242 at 0/0/1 warnings (777 at 20 alive —
+its no-mechanism epsilon band); resgate all bands (identical numbers to
+v47's run); hashbase pair unchanged (coinage-gate transparency). REFERENDUM
+(obs-240 30k A/B vs v47): **peer-buyers 272 of 482** (over half the register
+vs the whale pattern), **top3 share 0.16 — crowding-out refuted**, peer
+grain 12.3→20.8/tick, fedNOW p50 0.99, Egypt box fed 0.24→0.58 with half
+its cities importing. Core sizes unchanged at that horizon — the capacity
+bootstrap is generational; the owner's deep world is its referee.
+
+Same lap, the observability half: **the Goods-flow overlay** (Economy →
+"Goods") — animated per-kind cargo streams (grain split levy vs market,
+materials/ore/metal/cloth/wares/luxury), per-kind normalization,
+resource-style toggle chips; recorders render-only behind
+world._wantGoodsFlows.
+
+## THE ERA-SKEW LAP (2026-08-26, measurement complete — the fix is parked for ratification)
+
+Owner's report: iron working / crop rotation / galleys "sit on the verge of
+full discovery but never get it (or far too late)" while the HUD reads
+Renaissance. Instruments: techverge census + probe_eraskew (throttle
+decomposition, obs regime; the _kDbg hooks in settlement.js are the pattern).
+
+**Measured, in order of elimination:**
+1. Nothing is permanently stuck — the frontier crosses every stuck gate
+   (iron ~step 32-33k; galleys/crop-rotation ~30k at p50).
+2. The ore-cap catch-22 (metallurgy growth stops at oreTier — 0.65 without
+   reachable iron vs the 0.70 gate) is real physics but NOT binding here:
+   71% of settlements hold iron in reach; the frontier is uncapped.
+3. No throttle is dead: sciMul 3.3-3.8 (the compound curve roaring), hegF 0
+   (atomized worlds have no hegemons), needSea 1.2, needMetal 1.1, and the
+   SEA_PRACTICE fleet term works where geography allows (131/479
+   water-access settlements carry sea trade; carrying ports read fleet up to
+   1.99). needAgri decays to exactly 1.00 as the v45-48 economy feeds the
+   world — honest physics (a fed world does not push agronomy).
+4. **THE REAL SKEW — the institutions sprint, the materials are ~on pace.**
+   Re-anchored on the journal's own era stamps at 0.25y/tick: from first
+   farming villages, metallurgy reaches iron in ~5.4 kyr (history ~7.8 —
+   1.4× fast), while organization/construction reach writing/masonry in
+   ~0.7-0.9 kyr (history ~5.8 — **6-8× fast**). The era label = max era of
+   ANY discovered tech, so it rides the fast pair: Bronze announced at step
+   13k with ZERO cities (one village masonry gate), Medieval/Renaissance
+   labels over pre-iron worlds. The birth vector is the visible half
+   (landKnow births villages at agriculture=devField wave / construction
+   0.18 / org 0.1-with-pressure-compounding vs metallurgy/navigation/
+   mobility at literal 0); the pre-urban org/con RATES are the other half.
+5. **ERA_ATTAIN refuted at sanity and reverted unshipped**: a half-quorum
+   era label is near-inert against this tree's composition (an org-only
+   sprint profile still reads Renaissance — 45 techs unlock without metal;
+   the later era rows are institution-heavy). The label self-corrects if
+   pace is fixed; a tree-prereq interlock (universities need the material
+   base) is the deeper content-design alternative.
+
+**THE PARKED FIX (needs owner ratification — it re-times genesis):** a
+pre-urban pace audit of org/construction in landKnow (birth seeds, the
+ORG_CONTACT/cage pressure compounding, the village construction ramp)
+against the farming→writing historical span. INTERLOCK WARNING: the
+consolidation wave experiences statehood as politically LATE (Egypt's
+atomized singletons) while org KNOWLEDGE is fast — slowing pre-urban org
+without re-basing the statehood bars (RECORDS_ORG, URBAN_ORG, tallies)
+would worsen exactly what the consolidation wave must fix. The two must
+move as ONE measured lap.
+
+## THE CONSOLIDATION LAP (2026-08-26): the peer integration bar — T.ABSORB_PEER
+
+The combined lap's political half, measured end to end (probe_consol — the
+pipeline instrument: org pack vs the bar, submit/integrate/storm flows via
+telemetry, and the armies.js world._warDbg storm decomposition).
+
+**The conviction:** under ABSORB_ORG_ERA the integrate/absorb bar is the
+capitals' 67th percentile — but knowledge diffusion CONVERGES the pack
+(obs-240 30k: p50/p67/p90 = 0.83/0.84/0.84, spread 0.001), so the
+percentile is a float-dust lottery: 838 of 1823 integration candidates
+vetoed per window, integrate PASSED 12/3k world-wide, the absorption-pace
+orgFactor zeroed even on passes, singletons pinned 67-88% while bonds
+accumulate unconverted. The bar's own premise ("a minority of courts are
+institutionally ahead") is false in a converged world.
+
+**The storm finding (recorded for the next lap):** assaults fail on
+ATTACKER CONCENTRATION, not walls — med committed attack 3-10 vs home
+garrison 27-55, walls multiplier literally 1.00, relief ~0. In an atomized
+world of equals the 1.6× storm bar is unreachable by construction; and
+siegeLifts >> breaches (the camp clock breaks before a city that now EATS —
+the v45-48 granaries made fed cities out-eat every camp, historically
+right). Force-consolidation is a separate, deeper lap.
+
+**The mechanism (T.ABSORB_PEER, def 0):** the seat-grade philosophy applied
+to statecraft — a court can province a seat whose court does not
+OUT-ORGANIZE its own, over the writing floor every state holds by
+construction (stateOrgBar; never a time-gate for states). One helper
+(absorbOrgBarFor), three call sites: considerIntegrations,
+absorbWeakNeighbors (+ its orgFactor pace re-based on the floor), and the
+sack-into-tribute fork (at equal statecraft a sacked capital is annexed —
+Akkad, not just hegemony). Equals can province equals — early unification
+WAS peer absorption. Zero new constants.
+
+**The referendum (obs-240 30k A/B):** integration throughput **3.1×**
+(12→37/3k), orgBelowMin 838→272 (the residue = genuine peer-law
+rejections), bonds CONVERT instead of accumulating (103→72 stock at higher
+flow), singletons 71→66% at this horizon (integration compounds beyond
+it), and the funnel surfaces the next honest bottleneck by name:
+**beyondDirectRule** (administrative reach — the satrapy law's territory).
+
+**The battery:** smoke defaults green (byte-identical off); 8817 all-hard
+0-warn; 4242 all-hard 1-warn (in budget); resgate all bands; **777 =
+19/19/20 across the lever-on chaos draws** vs the no-mechanism band
+20/21/22 — a ~1-settlement band-edge depression straddling the floor of
+20, on the gate the chaos ensemble (this doc, the grain-market lap) showed
+cannot resolve ±1 on this seed.
+
+**Disposition: ships def 0** (the ARID_SECURE precedent — a hard fail is a
+hard fail under the standing discipline, even a coin-flip one). Playable
+NOW in the live arm by adding `ABSORB_PEER=1` to SIM_TUNE. The flip
+decision is the owner's, with three named paths: (a) accept the documented
+777 straddle and flip; (b) first re-ground the 777 alive-gate on ensemble
+scoring (a gates lap — the chaos evidence is on record); (c) revisit after
+the direct-rule-reach lap, which may move 777's dynamics anyway. The
+institutional-pace half of the combined lap remains parked as documented
+in the era-skew section (the org/statehood interlock).

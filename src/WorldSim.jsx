@@ -26,7 +26,7 @@ import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
 import { TechTreeOverlay, ChronicleOverlay, DynastyOverlay, CHRON_COL, ERA_BG } from "./ui/documents.jsx";
-import { fmtPeople, fmtFood, fmtGoldKg, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
+import { fmtPeople, fmtFood, fmtGoldKg, fmtUrbanCatchment, foodLedgerInfo, foodShockLabel, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
 import { resetEmblems, realmEmblemImg, realmEmblemURL } from "./ui/emblems.jsx";
 import { realmLabelAnchors, drawMapLabels } from "./ui/labels.js";
 import { TopBarBell, ToastHost, HelpOverlay, evMeta, evCatColor, EV_CATS } from "./ui/events.jsx";
@@ -67,7 +67,11 @@ const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","re
 // step bucket: rebuild every STEP_CACHE_REGEN sim-steps, blit between (the same
 // trick the political overlay uses). When paused the step is constant, so they
 // blit every frame and cost nothing.
-const STEP_CACHE_VIEWS = new Set(["money","roads"]);
+const STEP_CACHE_VIEWS = new Set(["money","goodsflow","roads"]);
+// Goods-flow overlay: per-kind cargo colors + legend labels (grain split by
+// channel: levy = fields→city; market = grain bought between cities).
+const GOODS_FLOW_KINDS={grainL:[110,205,90],grainM:[190,255,80],materials:[176,148,109],ore:[151,151,166],metal:[121,166,209],cloth:[186,121,222],wares:[235,164,84],luxury:[240,95,190]};
+const GOODS_FLOW_LABELS=[["grainL","Levy — fields \u2192 city"],["grainM","Market — city \u2194 city"],["materials","Materials"],["ore","Ore"],["metal","Metal"],["cloth","Cloth"],["wares","Wares"],["luxury","Luxury"]];
 const STEP_CACHE_REGEN = 8;
 let _mercator = false; // module-level flag for projection functions
 
@@ -195,7 +199,7 @@ const LENSES=[
   {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
   {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["tilecoin","Coin field"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
   ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 // Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
@@ -205,6 +209,14 @@ function subLockReason(sub,psw,stats){
   if(!psw)return null;
   if(sub==="money"&&!((stats&&stats.totalWealth)>0))
     return "No coin has been struck yet — the world still barters.";
+  if(sub==="tilecoin"){
+    if(!(SIM_T.TILE_MONEY>0)) return "Per-tile coin is off — enable TILE_MONEY in levers.";
+    // Open even at 0: an empty field is the finding (cities eat levy, not purchases).
+  }
+  if(sub==="goodsflow"){
+    if(!(psw.settlements&&psw.settlements.some(s=>s&&s.mode!=="abandoned")))
+      return "No cities yet — the land's harvest has nowhere to flow.";
+  }
   if(sub==="prices"&&!(psw.settlements&&psw.settlements.some(s=>s&&s._gPrice)))
     return "No market prices yet — towns must first meet in trade.";
   if(sub==="society"&&!(psw.settlements&&psw.settlements.some(s=>s&&(s._coerce||0)>0.02)))
@@ -330,6 +342,7 @@ const canvasRef=useRef(null);
 const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[genBusy,setGenBusy]=useState(false);   // a world is being forged — show it (regens keep the old map up for ~a minute, which read as a dead control)
+const[genesisProg,setGenesisProg]=useState(null); // mint-ready gather progress from the sim worker {phase,step,inventStep}
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 // A sim/worker failure the user must SEE: {where:'step'|'snapshot'|'message'|'worker', step, message}.
 // Before this, a worker error was console-only — a thrown step left the game silently frozen at its
@@ -350,26 +363,35 @@ const[quietAges,setQuietAges]=useState(false);
 // the one baked into this tab (__BUILD_SHA__, vite define). Local dev has
 // neither — silent.
 const[staleBuild,setStaleBuild]=useState(false);
+const[buildInfo,setBuildInfo]=useState(null); // version.json {sha,branch,channel,…} when deployed
 // Boot diagnostic (one console line): the build this tab runs + the live
 // physics defaults. When "the update didn't take", F12 → this line IS the
 // ground truth — paste it, compare shas/values, done. Printed once per boot.
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
-  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} STATE_RECORDS=${SIM_T.STATE_RECORDS} LAND_KNOW=${SIM_T.LAND_KNOW} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
+  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} INVENT_JUMP=${SIM_T.INVENT_JUMP} STATE_RECORDS=${SIM_T.STATE_RECORDS} LAND_KNOW=${SIM_T.LAND_KNOW} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
 },[]);
+// Bundle identity for the header chip — always available (unlike version.json,
+// which only exists on deployed Pages builds). Local vite → "dev".
+const buildSha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
+const buildShort=buildSha==="dev"?"dev":buildSha.slice(0,8);
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
   if(sha==="dev")return;
   let stop=false;
   const check=()=>fetch(import.meta.env.BASE_URL+"version.json",{cache:"no-store"})
     .then(r=>r.ok?r.json():null)
-    .then(v=>{if(!stop&&v&&v.sha&&v.sha!==sha)setStaleBuild(true);})
+    .then(v=>{
+      if(stop||!v)return;
+      setBuildInfo(v);
+      if(v.sha&&v.sha!==sha)setStaleBuild(true);
+    })
     .catch(()=>{});
-  const t0=setTimeout(check,30e3);
+  check();   // immediate — populate the channel chip; also catch a just-landed deploy
   const iv=setInterval(check,5*60e3);
   const onVis=()=>{if(document.visibilityState==="visible")check();};
   document.addEventListener("visibilitychange",onVis);
-  return()=>{stop=true;clearTimeout(t0);clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
+  return()=>{stop=true;clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
 },[]);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
@@ -403,6 +425,9 @@ useEffect(()=>{
 const[codexOpen,setCodexOpen]=useState(false);   // narrow only: the codex drawer
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
+const[settTraceEvery,setSettTraceEvery]=useState(10);
+const[settTrace,setSettTrace]=useState({recording:false,id:-1,n:0,every:10,name:"",max:600});
+const[settTraceCopied,setSettTraceCopied]=useState(false);
 // ── Floating surfaces: ALL popovers/drawers/documents live on ONE external
 // stack (src/ui/surfaces.js) — exclusive popovers & drawers, stacking
 // documents, Esc pops the top, z from stack order. The derived consts +
@@ -547,6 +572,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const[activeGoods,setActiveGoods]=useState(()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
   // On mouse-up, clear any in-flight pan that ended outside the canvas —
@@ -557,6 +583,7 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
+const activeGoodsRef=useRef(null);activeGoodsRef.current=activeGoods;
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(30),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
 // All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
@@ -694,11 +721,17 @@ try{
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
   if(_pendRW)throw new Error('real-wind save — loading on the main thread');
   setSimError(null);   // a fresh worker/world starts with a clean bill
+  setGenesisProg({ phase: "starting", step: 0 });
   const sw=new PeopleSimWorker();
   const sawSnap={current:false};   // has this worker ever delivered a frame? gates the onerror fallback below
   sw.onmessage=(e)=>{
     const d=e.data;
-    if(d.type==='snapshot'){sawSnap.current=true;if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    if(d.type==='snapshot'){sawSnap.current=true;setGenesisProg(null);if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='genesisProgress'){
+      // Worker still inside initPeopleSim's mint-ready gather — ticks won't move
+      // until this finishes; surface it so "play does nothing" isn't a mystery.
+      setGenesisProg(d);
+    }
     else if(d.type==='timelineFrame'){
       // The scrubbed frame rides a RENDER-ONLY override (_scrubClaim) — never
       // the authoritative layer (in fallback mode that array IS the sim's).
@@ -715,6 +748,31 @@ try{
       const a=document.createElement("a");a.href=URL.createObjectURL(blob);
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
+    else if(d.type==='settTraceData'){
+      const json=d.json||"";
+      const n=d.n|0;
+      const name=(d.name||"settlement").replace(/[^\w\-]+/g,"_").slice(0,40);
+      const save=()=>{
+        const blob=new Blob([json||"{}"],{type:"application/json"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+        a.download=`simman-${name}-trace.json`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      };
+      if(!json||d.empty){setSettTraceCopied(false);return;}
+      const tryCopy=async()=>{
+        try{
+          if(navigator.clipboard&&navigator.clipboard.writeText) await navigator.clipboard.writeText(json);
+          else throw new Error("no clipboard");
+          setSettTraceCopied(true);
+          setTimeout(()=>setSettTraceCopied(false),2000);
+        }catch{
+          save();
+        }
+      };
+      // Huge traces miss the clipboard — download so nothing is lost.
+      if(json.length>1_000_000) save();
+      tryCopy();
     }
     else if(d.type==='runLog'){
       // The run journal (worker journalTick): the observation file to hand to
@@ -761,7 +819,7 @@ try{
       // Surface it. A STEP error means the worker paused the sim on a mid-step
       // throw — mirror that here so the play button tells the truth; the world
       // is still alive in the worker, so Save/Export can rescue the run.
-      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error'});
+      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error',stack:d.stack||null});
       if(d.where==='step'){playRef.current=false;setPlaying(false);}
     }
   };
@@ -777,7 +835,7 @@ try{
     //    let the user save.
     if(sawSnap.current){
       console.error('[SimWorker] uncaught worker error mid-run:',err.message);
-      setSimError({where:'worker',message:err.message||'uncaught worker error'});
+      setSimError({where:'worker',message:err.message||'uncaught worker error',stack:err.filename?`${err.filename}:${err.lineno}`:null});
       return;
     }
     console.warn('[SimWorker] error before first frame — falling back to main-thread sim:',err.message);
@@ -812,6 +870,7 @@ try{
   else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
+  sw.postMessage({type:'visibility',hidden:typeof document!=="undefined"&&document.hidden});
   sw.postMessage({type:'view',view:viewRef.current});
   sw.postMessage({type:'mapFilter',minKm2:minKm2Ref.current});
   // A fresh worker starts at default tuning — re-send the user's current levers.
@@ -1362,11 +1421,11 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 // communities each network connects.
 for(let ti=0;ti<N;ti++){const pi4=ti<<2;
 d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
-}else if(vm==="money"){
-// Money-flow overlay — dark slate backdrop so gold sources and the
-// flowing-coin particles glow. Land tiles a touch lighter than sea so
-// coastlines stay legible. Roads + sources + flow drawn in the
-// peopleSim overlay pass below.
+}else if(vm==="money"||vm==="goodsflow"||vm==="tilecoin"){
+// Money/goods-flow/coin-field overlay — dark slate backdrop so gold sources,
+// flowing-coin particles, and per-tile farm-gate coin glow. Land tiles a touch
+// lighter than sea so coastlines stay legible. Roads + sources + flow drawn in
+// the peopleSim overlay pass below.
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),sx=Math.min(W-1,tx*RES),si=sy*W+sx;
 const land=w.elevation[si]>sl;const pi4=ti<<2;
@@ -1619,6 +1678,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmLoyalty = viewRef.current === "loyalty";
   const vmPopulation = viewRef.current === "population";
   const vmTechnique = viewRef.current === "technique";
+  const vmTileCoin = viewRef.current === "tilecoin";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1686,6 +1746,61 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.lineWidth=0.6;
       ctx.strokeStyle="rgba(0,0,0,0.5)";
       ctx.stroke();
+    }
+  }
+  if(psw&&ctx&&viewRef.current==="goodsflow"){
+    // ── Goods-flow overlay ── animated cargo streams colored by KIND.
+    // Levy (grainL): surplus grain from worked TILES into their city.
+    // Market (grainM): grain bought between settlements. Other kinds are
+    // the goods-vector trades. Normalized PER KIND (grain units and goods
+    // units are different scales — one global max would blank the smaller
+    // book). Same particle scheme as the money view; 2-point entries
+    // (field→city, sea hops without a path) draw a straight stream.
+    const TR=psw.tileRes;
+    const gsx=ti=>((ti%psw.tw)+0.5)*TR;
+    const gsy=ti=>dataYtoScreenY(((ti/psw.tw|0)+0.5)*TR,H,CH);
+    if(psw.roadQuality){
+      const rq=psw.roadQuality;
+      ctx.fillStyle="rgba(150,160,180,0.15)";
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        ctx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR,TR);
+      }
+    }
+    const gflows=psw._goodsFlows;
+    if(gflows&&gflows.length){
+      const ag=activeGoodsRef.current||{};
+      const logMax={};
+      for(const f of gflows){const m=logMax[f.kind];if(m===undefined||f.mag>m)logMax[f.kind]=f.mag;}
+      for(const k in logMax)logMax[k]=Math.log1p(logMax[k]);
+      const now=performance.now();
+      const period=2600;
+      let drawn=0;const CAPD=9000;
+      for(const f of gflows){
+        if(ag[f.kind]===false)continue;
+        const col=GOODS_FLOW_KINDS[f.kind];if(!col)continue;
+        const pts=f.pts;const np=pts?pts.length:0;if(np<2)continue;
+        const lm=logMax[f.kind]||0;
+        const busy=lm>0?Math.log1p(f.mag)/lm:0;
+        const spacing=14-9*busy;
+        let span=np;
+        if(np===2){const ax=pts[0]%psw.tw,ay=(pts[0]/psw.tw)|0,bx=pts[1]%psw.tw,by=(pts[1]/psw.tw)|0;let ddx=Math.abs(ax-bx);if(ddx>psw.tw/2)ddx=psw.tw-ddx;span=Math.max(2,Math.hypot(ddx,ay-by));}
+        let dots=Math.round(span/spacing);if(dots<1)dots=1;else if(dots>20)dots=20;
+        const ph=(pts[0]*0.6180339887)%1;
+        ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${(0.45+0.5*busy).toFixed(2)})`;
+        for(let j=0;j<dots;j++){
+          let u=((now/period)+(j/dots)+ph)%1;
+          if(!f.toEnd)u=1-u;
+          const fi=u*(np-1);const i0=fi|0;const i1=Math.min(np-1,i0+1);const fr=fi-i0;
+          const x0=gsx(pts[i0]),x1=gsx(pts[i1]);
+          const y0=gsy(pts[i0]),y1=gsy(pts[i1]);
+          if(Math.abs(x1-x0)>CW*0.5)continue;
+          ctx.fillRect(x0+(x1-x0)*fr-1.2,y0+(y1-y0)*fr-1.2,2.4,2.4);
+          if(++drawn>=CAPD)break;
+        }
+        if(drawn>=CAPD)break;
+      }
     }
   }
   if(psw&&ctx&&vmMoney&&layersRef.current.moneyFlow){
@@ -1788,7 +1903,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmTechnique?16384:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
+    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmTechnique?16384:0)|(vmTileCoin?32768:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -2106,6 +2221,30 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           stctx.fillRect(x,y,1,1);
         }
       }
+      // ── Coin field: farm-gate coin sitting on worked tiles (_tileWealth).
+      // Gold on the dark slate base — bright means more coin piled at the gate;
+      // empty hinterland stays dark. Absolute log ruler (0.01..10k coin/tile)
+      // so the von Thünen gradient reads the same in every era. ──
+      if(vmTileCoin&&psw._tileCoinDens){
+        const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._tileCoinDens.length);
+        const dens=psw._tileCoinDens;let lastFs=null;
+        const fsCache=new Array(251);
+        const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
+          const t=v/250;
+          let r,g,b,a=1;
+          if(t<0.25){a=0.18+t/0.25*0.42;r=88;g=72;b=48;}                                           // trace coin — warm shadow
+          else if(t<0.50){const s2=(t-0.25)/0.25;r=(120+s2*60)|0;g=(90+s2*50)|0;b=(40+s2*10)|0;}  // farm belt — ochre
+          else if(t<0.75){const s2=(t-0.50)/0.25;r=(180+s2*55)|0;g=(140+s2*50)|0;b=(50+s2*10)|0;} // market fringe — amber
+          else{const s2=(t-0.75)/0.25;r=(235+s2*20)|0;g=(205+s2*45)|0;b=(70+s2*120)|0;}            // hot farm gates — gold → white
+          fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
+        for(let ti=0;ti<N2;ti++){
+          const v=dens[ti];if(v<=0)continue;
+          const y=(ti/tw)|0,x=ti-y*tw;
+          const fs=colAt(v);
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(x,y,1,1);
+        }
+      }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
       if(vmAncestry&&ter&&ter.tAncestry){
@@ -2249,7 +2388,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(L.borders){octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.stroke(natPath);}
         emphasizeRealm(claimArr,tw,th);
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders||L.provinces)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin&&(L.tints||L.borders||L.provinces)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         // Two pens, bloc-aware (same convention as the Politics lens): a seam
         // between two members of the SAME suzerainty bloc is a faint province
@@ -2289,7 +2428,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
         emphasizeRealm(claimArr,tw,th);
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2384,7 +2523,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // Live-state only: suppressed while scrubbing the timeline (arrows
       // describe TODAY's wars, not the year under the scrubber).
       if(L.warFronts&&psw._warArrows&&psw._warArrows.length&&!psw._scrubClaim&&
-         (vmCountry||(!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique))){
+         (vmCountry||(!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin))){
         const wa=psw._warArrows,tw=psw.tw;
         octx.lineJoin="round";octx.lineCap="round";
         for(let i=0;i<wa.length;i+=4){
@@ -2663,7 +2802,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // screen-space on the feature canvas so type renders crisp at any map
     // scale. Skipped on the identity/thematic lenses, where political names
     // over a faith/culture/price fill would mislabel what the colours mean.
-    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmPrices){
+    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmTileCoin&&!vmPrices){
       labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
       // Physical floor: on a small display the map-unit sizes drop below
       // legibility at world zoom; floor them at ~7 CSS px and let collision
@@ -2765,6 +2904,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
   if(snap.fastEpoch!==undefined)setFastEpoch(!!snap.fastEpoch);
   if(snap.quietAges!==undefined)setQuietAges(!!snap.quietAges);
+  if(_pulsed&&snap.settTrace)setSettTrace(snap.settTrace);
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   if(snap.wars)psw._wars=snap.wars;                 // active war pairs [att,def,...] (static cadence; [] clears at peace)
   if(snap.warArrows)psw._warArrows=snap.warArrows;  // aggressor→defender border arrows (small — GC'd, not pooled)
@@ -2774,8 +2914,11 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.fieldDom){_drop(psw._fieldDom);_drop(psw._fieldSec);psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
   if(snap.loyal){_drop(psw._loyal);_drop(psw._loyalHome);psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
   if(snap.popDens){_drop(psw._popDens);psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
-  if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
+  if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (absolute 0..1 ruler ×250)
+  if(snap.tileCoinMax!=null)psw._tileCoinMax=snap.tileCoinMax;
+  if(snap.tileCoinDens){_drop(psw._tileCoinDens);psw._tileCoinDens=snap.tileCoinDens;}   // coin field: farm-gate coin on tiles
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
+  psw._goodsFlows=snap.goodsFlows||null;           // animated cargo flows (goods-flow view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
   if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
@@ -2822,6 +2965,14 @@ useEffect(()=>{drawNowRef.current=()=>{if(terRef.current){try{draw(terRef.curren
 
 // Forward play/pause + speed to the sim worker.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed,autoEpoch});},[playing,speed,autoEpoch]);
+// Tell the worker when the tab/window is hidden so it can keep pacing without
+// setTimeout throttling (and skip painting snapshots nobody will see).
+useEffect(()=>{
+  const tell=()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'visibility',hidden:document.hidden});};
+  tell();
+  document.addEventListener('visibilitychange',tell);
+  return()=>document.removeEventListener('visibilitychange',tell);
+},[world]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Close the per-realm overlays when the selection changes, so they don't
@@ -2837,14 +2988,17 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'m
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,layers,priceGood]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,activeGoods,layers,priceGood]);
 
 // Opening the Ancestry lens replays the peopling of the world: the wavefront
 // spreads from the East-African cradle outward over ~10s (animLoop drives it).
 useEffect(()=>{if(viewMode==="ancestry"&&terRef.current&&terRef.current.tArrival)ancRevealRef.current={start:performance.now(),active:true};},[viewMode]);
 
-useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
-const loop=now=>{fid=requestAnimationFrame(loop);
+useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0,iv=null;
+// Drive one sim/draw slice. Used by rAF while the tab is visible, and by a
+// setInterval fallback while hidden (rAF suspends entirely in background tabs,
+// which froze the main-thread-fallback sim whenever the window lost focus).
+const slice=now=>{
 if(!terRef.current||!worldRef.current){last=now;return;}
 // PAUSED, main-thread-fallback mode: the world is still — the UI must not be
 // (owner report: every panel/overlay froze without ticks). Repaint + pulse
@@ -2861,14 +3015,18 @@ if(simWorkerRef.current){last=now;return;}
 // elapsed real time earned, via a fractional accumulator, so the pace matches
 // the chosen speed regardless of frame rate; the Max sentinel just runs a
 // budgeted batch each frame.
-const dt=Math.min(250,now-last);last=now;
+// Hidden tabs: allow several seconds of catch-up (rAF/interval may wake rarely);
+// the per-slice budget still caps work so returning to the tab doesn't freeze.
+const dt=Math.min(document.hidden?5000:250,now-last);last=now;
 const tps=speedRef.current;
 let sub;
 if(tps>=100000){sub=64;}else{acc+=dt/1000*tps;sub=Math.floor(acc);acc-=sub;}
 if(sub>0){
-// Time-budgeted sim: stop stepping if we've used >8ms this frame
+// Time-budgeted sim: stop stepping if we've used the slice budget
 const _simStart=performance.now();
-for(let s=0;s<sub;s++){
+const _budget=document.hidden?50:8;
+let ran=0;
+for(;ran<sub;ran++){
 // Legacy tribe sim DISABLED — peopleSim is the new entity-based model.
 // runTribeStep call removed at user request ("completely erase the tribe system").
 // The `ter` object is still kept around so UI panels that read tribeCenters
@@ -2876,18 +3034,35 @@ for(let s=0;s<sub;s++){
 try{if(peopleRef.current){stepPeopleSim(peopleRef.current,1);
 if(peopleRef.current.step-fbKeyRef.current>=CAPTURE_IVL){fbKeyRef.current=peopleRef.current.step;captureFrame(fbTimelineRef.current,peopleRef.current);}}}
 catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
-if(performance.now()-_simStart>8)break;
+if(performance.now()-_simStart>_budget)break;
 }
+// Keep unspent ticks when the budget cuts short (mirrors the worker).
+if(tps<100000)acc+=sub-ran;
 if(peopleRef.current)setLiveStep(peopleRef.current.step);   // 30Hz step display
 // peopleSim stats — drives the HUD instead of legacy tribe metrics.
 if(peopleRef.current&&peopleRef.current.step%5===0){
   setPsStats(peopleSimStats(peopleRef.current));
 }
 // Only redraw every 3rd sim frame to save 10-30ms/frame on CPU canvas rendering
-drawSkip++;
+// (skip draws entirely while hidden — nobody is watching).
+if(!document.hidden){drawSkip++;
 if(drawSkip>=3){drawSkip=0;
-try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}}};
-fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
+try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}}}
+};
+const loop=now=>{fid=requestAnimationFrame(loop);slice(now);};
+const arm=()=>{
+  if(document.hidden&&!simWorkerRef.current){
+    if(fid){cancelAnimationFrame(fid);fid=null;}
+    if(!iv)iv=setInterval(()=>slice(performance.now()),33);
+  }else{
+    if(iv){clearInterval(iv);iv=null;}
+    if(!fid){last=performance.now();fid=requestAnimationFrame(loop);}
+  }
+};
+arm();
+document.addEventListener('visibilitychange',arm);
+return()=>{cancelAnimationFrame(fid);if(iv)clearInterval(iv);document.removeEventListener('visibilitychange',arm);};
+},[draw]);
 
 // Animation loop for the views with per-frame motion (wind particle streaks,
 // money-flow coins) — one shared rAF instead of one per view; it no-ops on
@@ -2897,7 +3072,7 @@ useEffect(()=>{let afid;
 const animLoop=()=>{afid=requestAnimationFrame(animLoop);
 const v=viewRef.current;if(!worldRef.current||!terRef.current)return;
 const ancA=v==="ancestry"&&ancRevealRef.current.active;   // peopling spread still painting on
-if(v!=="wind"&&v!=="money"&&!ancA)return;
+if(v!=="wind"&&v!=="money"&&v!=="goodsflow"&&!ancA)return;
 draw(terRef.current);};
 afid=requestAnimationFrame(animLoop);
 return()=>cancelAnimationFrame(afid);},[draw]);
@@ -3009,7 +3184,8 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
       let dx=Math.abs(s.pos.x-psTx);if(dx>psw.tw/2)dx=psw.tw-dx;
       const dy=s.pos.y-psTy,d2=dx*dx+dy*dy;
       if(d2<bestD2){bestD2=d2;best=s;}}
-    if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
+    if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,urbanPop:best._urbanPop,
+      isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
  }}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
 },[CW,CH]);
@@ -3216,7 +3392,16 @@ const pickLens=(id)=>{
   const v=subMemRef.current[id]||L.subs[0][0];
   setViewMode(v);viewRef.current=v;
 };
-const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
+// lensId is REQUIRED when the click comes from a flyout: React state updates
+// from pickLens are async, so pickSub(v) alone still saw the PREVIOUS lens and
+// wrote e.g. "money" into politics' memory — after which picking Politics
+// restored Money and the dock felt stuck on Economy.
+const pickSub=(v,lensId)=>{
+  const id=lensId!=null?lensId:lens;
+  subMemRef.current[id]=v;
+  setLens(id);
+  setViewMode(v);viewRef.current=v;
+};
 
 // ── Codex navigation (plan §7.1): one stack over {tab, realm, settlement} so
 // every jump — tab click, chip click, leaderboard row, map click — is
@@ -3354,7 +3539,7 @@ const renderRealmDetail=()=>{
           style={{background:"transparent",border:"none",cursor:"pointer",fontSize:15}}>📜</button>
       </div>
       <div className="au-fade" style={{fontSize:11,marginBottom:8}}>
-        {c.members.length} settlements · {fmtPeople(pop)} souls
+        {c.members.length} settlements · {fmtPeople(pop)} catchment
         {capCul?<> · <Chip hue={capCul.hue} onClick={()=>navigate({tab:"peoples"})} title="Open the Peoples registry">{capCul.name}</Chip> people</>:null}
         {pers?` · ${pers.label}`:""}
       </div>
@@ -3402,7 +3587,7 @@ const renderRealmDetail=()=>{
           {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
           {(m.tier|0)>=3&&<span className="au-fade">· metropolis</span>}
           <div style={{flex:1}}/>
-          <span className="au-fade au-num">{fmtPeople(m.people||0)}</span>
+          <span className="au-fade au-num">{fmtPeople(m.people||0)} catchment</span>
         </div>
       ))}
     </div>
@@ -3436,12 +3621,12 @@ const renderPeoples=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       <div className="au-fade" style={{fontSize:9,marginBottom:8,lineHeight:1.4}}>
-        A <b>people</b> is an ethnic identity — names, descent and culture, carried by population (not genetics). Its <b>language</b> is a SEPARATE, faster-moving layer (the Languages lens): under a foreign crown a people keeps its name long after it adopts the ruler's tongue, so the two maps diverge. Peoples branch from a common <b>family</b> (their cradle stock), assimilate slowly under shared rule, and diverge in isolation.
+        A <b>people</b> is an ethnic identity — names, descent and culture, carried by population (not genetics). Its <b>language</b> is a SEPARATE, faster-moving layer (the Languages lens): under a foreign crown a people keeps its name long after it adopts the ruler's tongue, so the two maps diverge. Peoples branch from a common <b>family</b> (their cradle stock), assimilate slowly under shared rule, and diverge in isolation. Population figures are <b>catchment</b> totals (city + countryside each settlement administers).
       </div>
       {famList.map((f,fi)=>(
         <div key={fi} style={{marginBottom:8}}>
           <div className="au-heading au-sc" style={{fontSize:11,marginBottom:2,color:"var(--au-ink)"}}>
-            {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)}</span>
+            {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)} catchment</span>
           </div>
           {f.rows.map(({c,a})=>(
             <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
@@ -3449,7 +3634,7 @@ const renderPeoples=()=>{
               <span style={{fontWeight:600}}>{c.name}</span>
               {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
               <div style={{flex:1}}/>
-              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>
+              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)} catchment</span>
             </div>
           ))}
         </div>
@@ -3478,11 +3663,11 @@ const renderFaiths=()=>{
           <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
           <span className="au-fade" style={{fontSize:9}}>{f.character||f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
           <div style={{flex:1}}/>
-          <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)}`:"faded"}</span>
+          <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)} catchment`:"faded"}</span>
         </div>
       ))}
       <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
-        Organized faiths spread along trade routes, convert courts, and schism across distance. The Faiths lens maps them.</div>
+        Organized faiths spread along trade routes, convert courts, and schism across distance. The Faiths lens maps them. Population is catchment (city + countryside).</div>
     </div>
   );
 };
@@ -3513,19 +3698,19 @@ const renderLanguages=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       <div className="au-fade" style={{fontSize:9,marginBottom:8,lineHeight:1.4}}>
-        A <b>language</b> is the spoken tongue — a SEPARATE, faster layer than the <i>people</i> who speak it. A conquering crown spreads its standard across subject peoples, so one tongue can blanket many peoples and the map STEPS at political borders, while a people keeps its name long after it changes speech. Tongues branch from a common <b>family</b> and drift apart in isolation.
+        A <b>language</b> is the spoken tongue — a SEPARATE, faster layer than the <i>people</i> who speak it. A conquering crown spreads its standard across subject peoples, so one tongue can blanket many peoples and the map STEPS at political borders, while a people keeps its name long after it changes speech. Tongues branch from a common <b>family</b> and drift apart in isolation. Population is catchment (city + countryside).
       </div>
       {famList.map((f,fi)=>{const ls=live(f);return(
         <div key={fi} style={{marginBottom:8}}>
           <div className="au-heading au-sc" style={{fontSize:11,marginBottom:2,color:"var(--au-ink)"}}>
-            {famName(f)} <span className="au-fade" style={{fontSize:9}}>family · {ls.length} {ls.length===1?"tongue":"tongues"} · {fmtPeople(f.pop)}</span>
+            {famName(f)} <span className="au-fade" style={{fontSize:9}}>family · {ls.length} {ls.length===1?"tongue":"tongues"} · {fmtPeople(f.pop)} catchment</span>
           </div>
           {ls.map(({l,a})=>(
             <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
               <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{l.name||"(tongue)"}</span>
               <div style={{flex:1}}/>
-              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>
+              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)} catchment</span>
             </div>
           ))}
         </div>
@@ -3567,7 +3752,8 @@ const renderInspect=()=>{
   // settlement's entire catchment). For an urban node, headline the CITY CORE
   // (_urbanPop) — the number a reader means by "the city" — and show the province
   // as context. Falls back to the province total if the core isn't serialized yet.
-  const hasCore=!isRegion && s._urbanPop!=null && s._urbanPop>0;
+  const hasCore=!isRegion && ((s._coreMeasured!=null && s._coreMeasured>0) || (s._urbanPop!=null && s._urbanPop>0));
+  const cityPop=s._coreMeasured!=null && s._coreMeasured>0 ? s._coreMeasured : s._urbanPop;
   const k=s.knowledge||{};
   const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
   const techList=TECHS.filter((t,i)=>tech.have[i]===1);
@@ -3598,34 +3784,10 @@ const renderInspect=()=>{
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // Food balance. surplus is the REAL flow balance — supply − consumption,
-  // where _foodSupply already contains hierarchy-delivered grain (via
-  // _foodNet); _foodImportRate is the display-only decomposition of that
-  // delivered share, so adding it here would double-count imports. An
-  // import-fed city sits near 0 (it eats grain as fast as it arrives, so
-  // stored food stays low); that is "balanced", NOT starving. Only a
-  // genuine, uncovered shortfall that is actually draining the granary
-  // counts as starving.
-  const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
-  const surplus=supply-demand;
-  const eps=Math.max(0.02,demand*0.02);
-  const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
-  // "Starving" reads the SAME ruler the famine physics reads (owner report:
-  // "every single city says starving and still grows"): under ONE_POP the
-  // catchment's countryside eats from the LAND (the field feeds them), and
-  // the granary's real customers are the urban CORE (s._coreNeed — the
-  // famine flow-gate's own bar). A city whose total-catchment demand
-  // outruns the granary but whose core is flow-fed is living off its land
-  // ("land-fed"), not starving — and the one that IS starving now also
-  // contracts (STARVE_SHED melts its capacity floor on the same signal).
-  const coreNeed=s._coreNeed!==undefined?s._coreNeed:demand;
-  let status,statusColor;
-  if(surplus>eps){status="surplus";statusColor="#3a7";}
-  else if(surplus<-eps){
-    if((s.food||0)<=0.01&&supply<coreNeed){status="starving";statusColor="#c44";}
-    else if(ticksLeft<50){status="land-fed";statusColor="#a95";}
-    else{status="deficit";statusColor="#c84";}
-  } else {status="balanced";statusColor="#888";}
+  // Food balance — shared helper mirrors the famine physics' rulers.
+  const fl=foodLedgerInfo(s);
+  const {supply,demand,importRate,landFood,surplus,ticksLeft,coreNeed,fedM,status,statusColor}=fl;
+  const haulPool = s._haulFoodPool || 0;
 
   // Treasury + trade.
   const wealth=Math.round(s.wealth||0);
@@ -3680,6 +3842,38 @@ const renderInspect=()=>{
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
       </div>
+      {(()=>{
+        const rec=settTrace;
+        const mine=rec.id===s.id;
+        const live=rec.recording&&mine;
+        const other=rec.recording&&rec.id>=0&&!mine;
+        const n=mine||other?rec.n:0;
+        const post=(cmd)=>simWorkerRef.current&&simWorkerRef.current.postMessage({type:"settTrace",cmd,id:s.id,every:settTraceEvery});
+        return <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:4,marginBottom:8,padding:"5px 6px",
+          background:"rgba(18,13,8,0.35)",border:"1px solid rgba(216,190,150,0.18)",borderRadius:3}}>
+          <span className="au-fade" style={{fontSize:9,letterSpacing:"0.04em",textTransform:"uppercase"}}>Trace</span>
+          <span className="au-fade" style={{fontSize:10}}>every</span>
+          <input type="number" min={1} max={2000} value={settTraceEvery} disabled={!!rec.recording}
+            onChange={e=>setSettTraceEvery(Math.max(1, e.target.value|0))}
+            title="Sample this city's full live state every N ticks (1 tick = 0.5 years)"
+            style={{width:52,padding:"1px 4px",fontSize:11}}/>
+          <span className="au-fade" style={{fontSize:10}}>ticks</span>
+          {!rec.recording
+            ? <button className="au-btn au-flat" style={{fontSize:10,padding:"1px 7px"}}
+                onClick={()=>post("start")} title="Record this settlement's exact data every N ticks">Record</button>
+            : <button className="au-btn au-wax" style={{fontSize:10,padding:"1px 7px"}}
+                onClick={()=>post("stop")} title="Stop recording (keep samples)">Stop</button>}
+          <button className="au-btn au-flat" style={{fontSize:10,padding:"1px 7px"}}
+            onClick={()=>post(n>0?"copy":"once")}
+            title={n>0?"Copy the recorded log to the clipboard (download if too large)":"Copy this settlement's current state, exactly"}>
+            {settTraceCopied?"Copied":(n>0?`Copy ${n}`:"Copy now")}</button>
+          {n>0&&<button className="au-btn au-flat" style={{fontSize:10,padding:"1px 7px"}}
+            onClick={()=>post("clear")} title="Discard recorded samples">Clear</button>}
+          <span className="au-fade" style={{fontSize:10,marginLeft:"auto"}}>
+            {live?`recording · ${n} sample${n===1?"":"s"}`:(other?`recording ${rec.name||"#"+rec.id} · ${n}`:(n?`${n} saved`:""))}
+          </span>
+        </div>;
+      })()}
       {/* ── The three identity layers, each a row of chips into its registry:
             who they ARE (people), what they SPEAK, what they BELIEVE — three
             separate, differently-paced layers, cross-linked (plan §7.3). ── */}
@@ -3887,15 +4081,14 @@ const renderInspect=()=>{
         );
       })()}
 
-      {/* ── Active shock (plague / famine) ── */}
+      {/* ── Active shock (plague / famine / siege) ── */}
       {(()=>{
-        const sh=s._shock||0;
-        if(!sh)return null;
-        const plague=sh===2;
+        const shock=foodShockLabel(s);
+        if(!shock)return null;
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:plague?"hsl(280,55%,52%)":"hsl(30,80%,48%)",flexShrink:0}}/>
-            <span className="au-fade">{plague?"struck by plague":"famine — harvest failing"}</span>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${shock.hue},${shock.hue===280?55:80}%,${shock.hue===280?52:48}%)`,flexShrink:0}}/>
+            <span className="au-fade">{shock.text}</span>
           </div>
         );
       })()}
@@ -3937,13 +4130,13 @@ const renderInspect=()=>{
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
         <div>
           {hasCore?(<>
-            <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s._urbanPop)}</span>
+            <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(cityPop)}</span>
             <span className="au-fade" style={{fontSize:9,marginLeft:3}}>in the city</span>
             <span className="au-fade" style={{fontSize:10,marginLeft:6}}>· {fmtPeople(s.people)} province</span>
           </>):(<>
             <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s.people)}</span>
             {K?<span className="au-fade" style={{fontSize:10}}> / {fmtPeople(K)}</span>:null}
-            <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
+            <span className="au-fade" style={{fontSize:9,marginLeft:3}}>catchment</span>
           </>)}
         </div>
         <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
@@ -3963,13 +4156,20 @@ const renderInspect=()=>{
         right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)}</span>}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
-          <span className="au-fade">Produced /tick</span><span>{fmtFood(supply)}</span>
+          {demand>0&&isFinite(ticksLeft)&&<><span className="au-fade">Store runway</span><span>{ticksLeft>=500?"500+":Math.round(ticksLeft)} tick{Math.round(ticksLeft)===1?"":"s"}</span></>}
+          <span className="au-fade">Supply /tick</span><span title="Harvest + trade this tick — the city GROWS to this. Stores hold the core through a dip (Core fed avg); they do not grow it.">{fmtFood(supply)}</span>
+          {haulPool > 0.001 && haulPool > supply * 1.05 && (
+            <><span className="au-fade">Haul reach pool</span>
+            <span title="If this market claimed every tradeable surplus tile within spoilage-limited haul range, how much grain would arrive per tick after transport falloff, haul decay (distance, tech, climate), and countryside eat-first — not what competitors bid away this tick.">{fmtFood(haulPool)}</span></>)}
+          {landFood>0.001&&landFood!==supply&&<><span className="au-fade">· local harvest</span><span className="au-fade">{fmtFood(landFood)}</span></>}
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
           {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
-          <span className="au-fade">Consumed /tick</span><span>{fmtFood(demand)}</span>
-          <span style={{color:statusColor}}>Balance</span>
-          <span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
+          <span className="au-fade">Consumed /tick</span><span title="What the city itself eats this tick (urban core + garrison), not the whole province">{fmtFood(demand)}</span>
+          {coreNeed>0&&coreNeed<demand*0.98&&<><span className="au-fade">· urban core</span><span className="au-fade">{fmtFood(coreNeed)}</span></>}
+          {fedM!=null&&<><span className="au-fade">Core fed (avg)</span><span>{Math.round(fedM*100)}%</span></>}
+          <span style={{color:statusColor}}>Flow balance</span>
+          <span style={{color:statusColor}} title="Supply − city requirement this tick. The granary holds the core through a dip (it does not grow the city).">{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
           <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
           <span>{fmtPeople(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
@@ -3978,10 +4178,10 @@ const renderInspect=()=>{
             ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{fmtPeople(s._developRate||0)}/tk</span></>
             :<><span className="au-fade">· can't grow</span><span style={{color:"#c84"}}>{s._devReason==="space"?"no room (built out)":s._devReason==="materials"?"no timber/stone":s._devReason==="coin"?"can't afford materials":"—"}</span></>)}
           {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{fmtPeople(houseK)} if fed</span></>)}
-          {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(s.people)}/{fmtPeople(nextThr)}</span></>}
+          {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(cityPop??s.people)}/{fmtPeople(nextThr)}</span></>}
           {(s.army||0)>0.5&&(<>
             <span className="au-fade">Garrison</span>
-            <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
+            <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of catchment · fed from food ledger)</span></span>
           </>)}
         </div>
       </PsSection>
@@ -4240,7 +4440,7 @@ const renderBoard=()=>{
 
   // Sort keys per mode. Functions return a number (descending sort).
   const SETT_SORTS={
-    population:[s=>s.people,"Population",fmtPeople],
+    population:[s=>s.people,"Catchment pop",fmtPeople],
     wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
     army:[s=>s.army||0,"Garrison",fmtPeople],
     mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
@@ -4249,7 +4449,7 @@ const renderBoard=()=>{
   };
   const CNT_SORTS={
     size:[c=>c.members?c.members.length:0,"Size (settlements)"],
-    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Catchment pop",fmtPeople],
     wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
     treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
     army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
@@ -4398,7 +4598,7 @@ const renderCharts=()=>{
             </div>))}
           {rows.length===0&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>Nothing in these categories yet.</div>}
         </div>;})()}
-      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
+      <MiniChart data={H} get={d=>d.pop}            label="Catchment population (Σ settlement catchments)" color="#c98a3a" fmtY={fmtPeople}/>
       <MiniChart data={H} get={d=>d.gold}           label="Gold by weight (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
       <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
       <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
@@ -4447,7 +4647,7 @@ return(
     style={{fontSize:11,whiteSpace:"nowrap"}}>⚑{Math.round(psStats.beltShare*100)}%</span>}
   {/* Quiet-ages chip: the sim is fast-forwarding the pre-nation ages. */}
   {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
-    title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
+    title={fastEpoch?"The ages before the first NATION fly by — Max speed until a realm rises (first cities still mint on camera). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
     style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
@@ -4513,6 +4713,12 @@ return(
     })()}
   </>}
   <div style={{flex:1,minWidth:0}}/>
+  {/* Build identity — RIGHT of the chrome, always visible (was mid-bar and easy
+      to miss / clip). Bundle truth: SAVE_VERSION + __BUILD_SHA__. Click → builds picker. */}
+  <a className="au-num" href="/Simman-/builds/"
+    title={`This tab runs physics v${SAVE_VERSION}, bundle ${buildSha}${buildInfo&&buildInfo.branch?` · ${buildInfo.channel==="live"?"LIVE":"preview"} of ${buildInfo.branch}`:""}. Click for the builds picker. Mint-ready open needs v63+; invent-only foresight was v62.`}
+    style={{fontSize:11,fontWeight:700,color:"var(--au-ch-gold)",border:"1px solid rgba(216,177,58,0.45)",borderRadius:3,padding:"2px 8px",cursor:"pointer",whiteSpace:"nowrap",textDecoration:"none",flexShrink:0,fontVariantNumeric:"tabular-nums",letterSpacing:0.2}}
+    >build v{SAVE_VERSION} · {buildShort}</a>
   <TopBarBell feedRef={peopleRef} onOpenFeed={()=>{setPanelTab("world");setRealmSel(-1);if(narrowRef.current)setCodexOpen(true);}}/>
   {narrow&&<button onClick={()=>setCodexOpen(v=>!v)} className={"au-btn au-flat"+(codexOpen?" au-active":"")}
     style={{fontSize:13,padding:"3px 8px"}} title="The codex — realms, peoples, events">📖</button>}
@@ -4570,6 +4776,11 @@ return(
     className={"au-dock-btn"+(helpOpen?" au-active":"")} title="Keys & help — ?">
     <span className="au-dock-ico">✳</span><span className="au-dock-lbl">Help</span></button>
   <div style={{flex:1}}/>
+  <a href="/Simman-/builds/" title={`build v${SAVE_VERSION} · ${buildSha} — click for builds picker`}
+    style={{display:"block",textAlign:"center",textDecoration:"none",color:"var(--au-ch-gold)",fontSize:9,fontWeight:700,lineHeight:1.2,padding:"4px 2px",flexShrink:0}}>
+    <span className="au-num" style={{display:"block"}}>v{SAVE_VERSION}</span>
+    <span className="au-num" style={{display:"block",opacity:0.75,fontWeight:600}}>{buildShort}</span>
+  </a>
   <span className="au-cfade au-num" style={{fontSize:9,textAlign:"center"}} title="World seed">{seed}</span>
 
   {/* flyout: the active-hovered lens's sub-lenses */}
@@ -4584,7 +4795,7 @@ return(
         {L.subs.map(([v,l])=>{
           const lock=subLockReason(v,psw,psStats);
           return(
-          <button key={v} onClick={()=>{if(lock)return;pickLens(L.id);pickSub(v);}}
+          <button key={v} onClick={()=>{if(lock)return;pickSub(v,L.id);}}
             className={"au-rail-tab"+(viewMode===v?" au-active":"")}
             style={{fontSize:12,opacity:lock?0.42:1,cursor:lock?"default":"pointer"}}
             title={lock||undefined}>{l}{lock?" ·🔒":""}</button>);
@@ -4666,7 +4877,7 @@ return(
         {hoverInfo.sett&&<div className="au-pico-title" style={{textTransform:"capitalize"}}>
           {hoverInfo.sett.name}{hoverInfo.sett.isCap?" ★":""}</div>}
         {hoverInfo.sett&&<div className="au-fade" style={{fontSize:11,textTransform:"capitalize"}}>
-          {tierName} · {fmtPeople(hoverInfo.sett.people)} souls</div>}
+          {tierName} · {fmtUrbanCatchment(hoverInfo.sett.urbanPop, hoverInfo.sett.people)}</div>}
         {ctry&&<div style={{fontSize:hoverInfo.sett?11:12.5,fontWeight:hoverInfo.sett?400:700}}>
           {!hoverInfo.sett&&<span className="au-fade" style={{fontWeight:400}}>realm of </span>}
           <span style={{textTransform:"capitalize"}}>{hoverInfo.realm}</span></div>}
@@ -4679,7 +4890,11 @@ return(
   </div>
   <div className="au-fade" style={{fontSize:11}}>
     {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
+    {hoverInfo.fert>0.05&&<> · {(hoverInfo.fert*100|0)}% fertile</>}
   </div>
+  {hoverInfo.resources&&hoverInfo.resources.length>0&&<div className="au-fade" style={{fontSize:10}}>
+    {hoverInfo.resources.join(" · ")}
+  </div>}
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
   </div>}
@@ -4693,7 +4908,7 @@ return(
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
-{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources")&&
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="goodsflow")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
@@ -4728,6 +4943,24 @@ return(
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}>None</span>
     </div>
   </div>}
+  {viewMode==="goodsflow"&&<div>
+    {GOODS_FLOW_LABELS.map(([id,label])=>{const on=activeGoods[id]!==false;return(
+      <div key={id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:0.4}}
+        onClick={()=>setActiveGoods(prev=>({...prev,[id]:prev[id]===false}))}>
+        <span className="au-key-swatch" style={{background:on?`rgb(${GOODS_FLOW_KINDS[id].join(",")})`:"#888"}} />
+        <span>{label}</span>
+      </div>);})}
+    <div className="au-rule" style={{margin:"4px 0"}} />
+    <div style={{display:"flex",gap:8,fontSize:10}}>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;setActiveGoods(s);}}>All</span>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=false;setActiveGoods(s);}}>None</span>
+    </div>
+    <div className="au-fade" style={{fontSize:10,fontStyle:"italic",marginTop:5,lineHeight:1.45}}>
+      Levy is grain the countryside sends to its city. Market is grain cities buy from each other. Coin on tiles (Coin field) is only the paid slice.
+    </div>
+  </div>}
 </div>}
 </div>}
 
@@ -4755,6 +4988,19 @@ return(
   {viewMode==="population"&&peopleRef.current&&peopleRef.current._popMax
     ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest region ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
     :null}
+  {viewMode==="tilecoin"&&peopleRef.current&&(()=>{
+    const psw=peopleRef.current;
+    const max=psw._tileCoinMax;
+    const tot=psStats.tileWealth;
+    if(!max&&!tot)return <div className="au-fade" style={{fontSize:10,marginTop:3,lineHeight:1.45}}>
+      Empty — no city is BUYING grain. Food arrives as in-kind levy (fields→city) and local harvest; those moves create no coin on the tile. Watch Goods → Levy for that flow, Money for city treasuries.
+    </div>;
+    return <div className="au-fade" style={{fontSize:10,marginTop:3,lineHeight:1.45}}>
+      {max>0&&<>richest farm tile ≈ {max.toFixed(1)} coin<br/></>}
+      {tot>0&&<>≈ {fmtGoldKg(tot)} on farm tiles · ≈ {fmtGoldKg(psStats.totalWealth||0)} in city & state purses</>}
+      {!(tot>0)&&max>0&&<>trace coin only — most wealth sits in city treasuries (Money lens)</>}
+    </div>;
+  })()}
 </LegendCard>}
 
 {/* ─── World-forging indicator: regeneration keeps the old map on screen,
@@ -4764,6 +5010,20 @@ return(
   <span style={{display:"inline-block",width:11,height:11,border:"2px solid var(--au-ch-gold)",borderTopColor:"transparent",
     borderRadius:"50%",animation:"au-spin 0.9s linear infinite"}}/>
   <span className="au-era" style={{fontSize:12,color:"var(--au-ch-gold)"}}>Forging a new world…</span>
+</div>}
+
+{/* Mint-ready genesis: sim worker is blocked gathering to the first city.
+    Play/UI stay live but ticks won't advance until this completes (then a
+    sudden jump to ~20-30k). */}
+{!genBusy&&genesisProg&&genesisProg.phase!=="done"&&<div className="au-chrome au-glass" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
+  zIndex:25,padding:"7px 16px",fontSize:13,display:"flex",gap:9,alignItems:"center",whiteSpace:"nowrap"}}>
+  <span style={{display:"inline-block",width:11,height:11,border:"2px solid var(--au-ch-gold)",borderTopColor:"transparent",
+    borderRadius:"50%",animation:"au-spin 0.9s linear infinite"}}/>
+  <span className="au-era" style={{fontSize:12,color:"var(--au-ch-gold)"}}>
+    {genesisProg.phase==="mint-ready"
+      ?`Gathering to first city… step ${(genesisProg.step||0).toLocaleString()}${genesisProg.inventStep!=null?` (farming @ ${genesisProg.inventStep.toLocaleString()})`:""}`
+      :"Starting civilization…"}
+  </span>
 </div>}
 
 {/* ─── Epochal-event toasts (plan §8) ─── */}
@@ -4777,17 +5037,24 @@ return(
     still running, a step error means it paused itself. */}
 {simError&&(
   <div className="au-parchment" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
-    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"center",padding:"8px 12px",
-    maxWidth:"min(560px,80%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
-    <span style={{fontSize:16,flexShrink:0}}>⚠</span>
-    <span style={{fontSize:12.5,lineHeight:1.4}}>
+    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"flex-start",padding:"8px 12px",
+    maxWidth:"min(640px,90%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
+    <span style={{fontSize:16,flexShrink:0,lineHeight:1.4}}>⚠</span>
+    <span style={{fontSize:12.5,lineHeight:1.4,minWidth:0}}>
       {simError.where==='step'
         ?`The simulation hit an internal error at step ${simError.step??'?'} and paused itself. The world is intact — use Save to keep it, then report seed ${world&&world.seed!=null?world.seed:seed}.`
         :simError.where==='snapshot'
         ?`The map view failed to refresh at step ${simError.step??'?'} — the simulation itself is still running. Save works; the view may recover on its own.`
         :`The simulation worker reported an error${simError.step!=null?` at step ${simError.step}`:''}. The world is intact — use Save to keep it.`}
-      <span style={{opacity:0.75}}> ({simError.message})</span>
+      <div style={{opacity:0.85,marginTop:4,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:11,wordBreak:"break-word"}}>
+        {simError.message}
+      </div>
     </span>
+    <button onClick={()=>{
+      const text=`where=${simError.where} step=${simError.step} seed=${world&&world.seed!=null?world.seed:seed}\n${simError.message}${simError.stack?"\n"+simError.stack:""}`;
+      try{navigator.clipboard.writeText(text);}catch{/* ignore */}
+    }} title="Copy error details"
+      style={{background:"transparent",border:"1px solid rgba(180,60,40,0.45)",cursor:"pointer",color:"var(--au-ink)",fontSize:11,padding:"2px 6px",flexShrink:0,borderRadius:3}}>Copy</button>
     <button onClick={()=>setSimError(null)} title="Dismiss"
       style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:16,padding:"0 2px",flexShrink:0}}>×</button>
   </div>

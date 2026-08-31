@@ -20,7 +20,7 @@ import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBar, SUBMIT_REACH } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBarFor, SUBMIT_REACH } from "./conquest.js";
 import { ridgeHoldAt, refugeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -1364,7 +1364,7 @@ export function advanceFronts(world) {
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
     const ddy = ty - dhy;
     const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
-    const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;   // scales with the city's size
+    const assaultDist = coreRadiusFor(D, world) + ASSAULT_MARGIN;   // scales with the city's size
     const key = bestA + ":" + d;
     let pc = pairs.get(key);
     if (!pc) { pc = { att: A, def: D, tiles: [], canStorm: false, _pjA: 0, _pjD: 0, _pjN: 0 }; pairs.set(key, pc); }
@@ -1484,7 +1484,7 @@ export function advanceFronts(world) {
         let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = ty - dhy;
         const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
-        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        const assaultDist = coreRadiusFor(D, world) + ASSAULT_MARGIN;
         for (const pc of cands) {
           // Deferred per-beach bar (T.WAR_REACH; lane-level at lever 0, see step 2):
           // each side projects to THIS shore.
@@ -1549,7 +1549,7 @@ export function advanceFronts(world) {
         let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = ty - dhy;
         const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
-        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        const assaultDist = coreRadiusFor(D, world) + ASSAULT_MARGIN;
         for (const pc of cands) {
           if (distHome <= assaultDist) pc.canStorm = true;   // the port city fronts the water — stormable from the sea
           else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
@@ -1766,29 +1766,7 @@ export function advanceFronts(world) {
       } else {
         tradeW = Math.min(1, trade / tradeRef);
       }
-      // The peace lasts as long as the war HURT (T.TRUCE_TOLL): duration also
-      // scales with the war's own toll — its reckoned dead over the
-      // belligerents' combined people. A war that bled the pair ~TOLL_GREAT
-      // (a GREAT war) buys a generation-plus treaty; a bloodless border
-      // skirmish buys only the base paper, so the marches stay restless
-      // (intended) while great rivalries become episodic instead of
-      // flickering on the flat truce clock. Measured need (war+slavery
-      // breakdown, 2026-07): ~50-60% of late declarations are the SAME pairs
-      // re-flaring the moment the flat truce lapses, ~70% of them
-      // non-trading, so the trade term alone cannot pace them — the toll is
-      // the pair-specific state that should. 0 = flat duration (byte-identical).
-      let tollW = 0;
-      if (T.TRUCE_TOLL > 0) {
-        const dead = world._warDead ? (world._warDead.get(key) || 0) : 0;
-        if (dead > 0) {
-          let pop = 0;
-          const ca = world.countries && world.countries.get(a), cb = world.countries && world.countries.get(b);
-          if (ca) for (const m of ca.members) pop += Math.max(0, m.people || 0);
-          if (cb) for (const m of cb.members) pop += Math.max(0, m.people || 0);
-          tollW = Math.min(1, dead / (Math.max(1, pop) * TOLL_GREAT));
-        }
-      }
-      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW + T.TRUCE_TOLL * tollW)) / (world._dt || 1);
+      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
       if (WDBG) WDBG.signed.push({ how, dur: Math.round(dur * (world._dt || 1)), age: world.step - (warBorn.get(key) ?? world.step),
         exhHi: Math.max(exh.get(a) || 0, exh.get(b) || 0), exhLo: Math.min(exh.get(a) || 0, exh.get(b) || 0) });
@@ -2174,6 +2152,11 @@ export function advanceFronts(world) {
       // T.ALLY_FRONT: the coalition's relief army stands with the defender at the
       // walls (already theatre-projected; +0 exactly at lever 0).
       const advCity = (attForce0 * pjCap * proF) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
+      // Probe-only storm decomposition (tools/probe_consol.mjs installs
+      // world._warDbg; the sim never does): the advantage and its components
+      // at every heartland front, so "assaultTooWeak" can be attributed —
+      // attacker concentration vs relief vs home garrison vs the walls (em).
+      if (world._warDbg) world._warDbg.push({ adv: advCity, att: attForce0 * pjCap * proF, defF: defForce0, assist: pc._assistDef || 0, defH: defHome, em });
       tel(world, "storm", "frontAtHeartland");   // FUNNEL (variance arc): why does no capital fall?
       // T.WAR_FINISH — the CAMP'S clock runs out (header at SIEGE_ENDURE):
       // past its logistics-stretched endurance, a camp before a city that
@@ -2267,7 +2250,7 @@ export function advanceFronts(world) {
           // lever 0 (no bar read, no submission — byte-identical).
           const _vOrg = attCrec && attCrec.capital ? (techEff(attCrec.capital).reachLevel || 0) : 0;
           const _tribute = T.WAR_FINISH && defWasCapital && oldId >= 0
-            && _vOrg < absorbOrgBar(world, world.countries)
+            && _vOrg < absorbOrgBarFor(world, world.countries, dS)
             && bendTheKnee(world, oldId, acc, "sackedIntoTribute");
           if (_tribute) {
             tel(world, "storm", "sackYieldsTribute");

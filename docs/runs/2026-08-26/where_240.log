@@ -1,0 +1,53 @@
+[harness] tree d3a028e
+Earth (Sim): using real NCEP/NCAR precipitation + air temperature
+[peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (166,41) (69.0E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,41) (27.0E 28.5N) score 7.22 pkg=wheat(suit 0.98) — matured 920y into prehistory (wave age 5080y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 6.30 pkg=wheat(suit 0.99) — matured 906y into prehistory (wave age 5094y)
+[peopleSim] hearth Pomponsom at (166,41) (69.0E 28.5N) score 5.81 pkg=wheat(suit 0.82) — matured 1093y into prehistory (wave age 4907y)
+[peopleSim] hearth Fevvon at (197,38) (115.5E 33.0N) score 6.45 pkg=rice(suit 1.04) — matured 2412y into prehistory (wave age 3588y)
+[peopleSim] hearth Nawaxexi at (52,35) (-102.0E 37.5N) score 4.47 pkg=maize(suit 0.87) — matured 5163y into prehistory (wave age 837y)
+[peopleSim] hearth Sasfesu at (112,50) (-12.0E 15.0N) score 3.39 pkg=sorghum(suit 0.64) — matured 3149y into prehistory (wave age 2851y)
+[peopleSim] hearth Wityim at (137,74) (25.5E -21.0N) score 1.69 pkg=tubers(suit 0.86) — matured 3487y into prehistory (wave age 2513y)
+[peopleSim] hearth Ninuvy at (72,71) (-72.0E -16.5N) score 1.34 pkg=tubers(suit 0.70) — matured 4270y into prehistory (wave age 1730y)
+[peopleSim] hearth Bofvu at (124,21) (6.0E 58.5N) score 0.50 pkg=wheat(suit 0.19) — matured 4837y into prehistory (wave age 1163y)
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
+[transHeap] step=27240 cap=4096 peakN=2099 pushes=9977 (0.0MB backing)
+
+=== WHERE IS CIVILIZATION  480x240 (tw=240)  seed 8817  30000 steps ===
+  75 settled · 35 realms
+
+  ── 1. THE ATLAS (urban people by region) ──
+  region             cities   urban ppl   largest realms
+  E Europe/Russia         3        490k      369k      3
+  Egypt/Nile              2         63k       37k      2
+  Ethiopia/E Africa       3         46k       37k      1
+  Indus/NW India          2         42k       26k      1
+  W Sahel                 2         15k       12k      2
+  N China                 2         15k       10k      2
+  Andes                   2          7k        6k      1
+  SE Asia                 1          4k        4k      0
+  W Europe                1          2k        2k      0
+  Mesoamerica             1          2k        2k      1
+  Anatolia/Levant         1          1k        1k      0
+  Mesopotamia             0          0k        0k      0
+  Greece/Italy            0          0k        0k      0
+
+  ── 2. THE URBAN LADDER (city cores, real people) ──
+  ≤15k (the minting floor)     44  ████████████████████████████████████████████
+  15-30k                       14  ██████████████
+  30-60k                        9  █████████
+  60-120k                       3  ███
+  120-300k                      2  ██
+  >300k                         3  ███
+  urban core p50/p90/max: 8k / 66k / 763k
+
+  ── 3. THE GRAIN SHED (market hauls, great-circle km) ──
+  hauls 211 · km p50 965 · p90 1867 · max 4126
+  (history: overland grain ~20-100 km; riverine/coastal to ~1,500 km — Egypt→Rome)
+  importers 40 · top-3 take 42% of all landed grain · top-10 73%
+  (a handful of importers taking most of the grain = the owner's "shipped globally to few points")

@@ -15,7 +15,7 @@
 import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost, tileOpenness, refugeHoldAt } from "./transport.js";
-import { TECHS } from "./tech.js";
+import { TECHS, stateOrgBar } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor, successorStatesOn } from "./countryTerritory.js";
@@ -24,6 +24,7 @@ import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.R
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, updateTribute, SIZE_REF } from "./entities.js";
+import { updateTileFiscalSinks } from "./tileMoney.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -775,7 +776,7 @@ export function rebuildCountries(world) {
   // nobody gains — extraordinary reach is always extraordinary FOR ITS TIME,
   // never a clock. No coin moves: this models what a fisc can SUSTAIN, not a
   // new money sink (the closed-supply conservation invariant is untouched).
-  if (T.STATE_WORKS > 0 || T.APPARATUS > 0) {
+  if (T.APPARATUS > 0) {
     const sus = [];
     const susOf = new Map();
     for (const c of countries.values()) {
@@ -825,15 +826,7 @@ export function rebuildCountries(world) {
         : WORKS_DECAY;
       const next = have + (target - have) * rate;
       g._works = Number.isFinite(next) ? Math.max(0, Math.min(T.WORKS_CEIL, next)) : 0;
-      // The stock extends the writ, and the grip is re-derived from it: a state
-      // that out-collects its era and spends the difference on roads, relays and
-      // waystations governs further per unit of statecraft — and loses that reach
-      // when the network is no longer maintained. 0 stock ⇒ x1, byte-identical to
-      // the tech-only radius. (Runs after the capital/range pass because the build
-      // rate is gated on the CAPITAL's construction — before it, every capital is
-      // still null and the rate would silently be zero. Hierarchy and provinces
-      // read neither range nor holdReach, so nothing upstream sees the change.)
-      if (g._works > 0) { c.range *= 1 + T.STATE_WORKS * g._works; c.holdReach = c.range * resScale; }
+      // APPARATUS stock extends capacity; reach stays tech-only.
     }
   }
   world.countries = countries;
@@ -2321,6 +2314,7 @@ export function updatePolities(world) {
   // every polity (realm or nation of the land) skims the field people under
   // its borders in kind; realm overflow monetises at the capital's market.
   updateTribute(world, T.POLITY_INTERVAL | 0);
+  if (T.TILE_MONEY > 0) updateTileFiscalSinks(world, T.POLITY_INTERVAL | 0);
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
@@ -3522,7 +3516,7 @@ export function updatePolities(world) {
       // cash — and that over-extraction feeds the over-tax grievance into revolt
       // (the "raise taxes for the war → the provinces rise up" loop). 1× at the base
       // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
-      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
+      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0 && !(T.TILE_MONEY > 0)) {
         const taxMul = (gov._taxRate ?? T.TAX_BASE) / T.TAX_BASE;
         // Serfdom skims a HEAVIER share of the harvest — bound peasants kept at subsistence,
         // their surplus extracted as labour-rent up to the lord/state (the serf breadbasket).
@@ -4136,7 +4130,7 @@ function considerIntegrations(world, countries) {
     const pol = getPolity(world, sid);
     if (!pol || pol._depKind !== "vassal") { tel(world, "integrate", "notAVassalBond"); continue; }
     const fOrg = techEff(H.capital).reachLevel;
-    if (fOrg < absorbOrgBar(world, countries)) { tel(world, "integrate", "orgBelowMin"); continue; }   // the era's bar (T.ABSORB_ORG_ERA; header at absorbOrgBar)
+    if (fOrg < absorbOrgBarFor(world, countries, S.capital)) { tel(world, "integrate", "orgBelowMin"); continue; }   // T.ABSORB_PEER: the client court's own bar; percentile at lever 0 (header at absorbOrgBarFor)
     // T.WAR_FINISH — SEAT GRADE IS RELATIVE, NOT AN ORG LADDER. tierCapForOrg's
     // absolute rungs (org 0.72 to govern a tier-2 seat) predate CITY_AT_BIRTH,
     // under which EVERY entity is born tier 2 — so integration structurally
@@ -4436,6 +4430,31 @@ export function absorbOrgBar(world, countries) {
   world._eraOrgBarStep = world.step; world._eraOrgBar = bar;
   return bar;
 }
+
+// T.ABSORB_PEER — the integration bar is the CLIENT'S OWN COURT, not the
+// era's percentile (2026-08-26, the consolidation lap; probe_consol). Under
+// ABSORB_ORG_ERA the bar is the capitals' 67th percentile — but knowledge
+// diffusion CONVERGES the pack (measured, obs-240 30k: p50/p67/p90 =
+// 0.83/0.84/0.84, spread 0.001), and a percentile over an identical pack is
+// a float-dust lottery: it vetoes two-thirds of integrations forever
+// (orgBelowMin 838 of 1823 candidates per window) and zeroes the
+// absorption-rate orgFactor even when it passes. Its own premise ("a
+// minority of courts are institutionally ahead") is false in a converged
+// world. THE HONEST BAR is the law already shipped for seat GRADE
+// (WAR_FINISH: a court governs a client seat whose grade does not exceed
+// its own capital's), applied to statecraft: you can province a seat whose
+// court does not OUT-ORGANIZE yours — over the writing floor every state
+// already holds by construction (stateOrgBar: no records, no province, and
+// never a time-gate for states because statehood itself requires it).
+// Equals can province equals — early unification WAS peer absorption
+// (Upper and Lower Egypt, Uruk among its rivals); a backward court still
+// cannot govern an advanced one. Zero new constants. 0 = the percentile
+// bar (byte-identical).
+export function absorbOrgBarFor(world, countries, clientSeat) {
+  if (!(T.ABSORB_PEER > 0)) return absorbOrgBar(world, countries);
+  const cOrg = clientSeat ? (techEff(clientSeat).reachLevel || 0) : 0;
+  return Math.max(stateOrgBar(), cOrg);
+}
 function absorbWeakNeighbors(world, countries) {
   const owner = world._territoryOwner, byId = world._byId;
   if (!owner || !byId) return;
@@ -4495,7 +4514,7 @@ function absorbWeakNeighbors(world, countries) {
       }
       const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
-      if (fOrg < absorbOrgBar(world, countries)) continue;   // the era's bar (T.ABSORB_ORG_ERA; header above) — the absolute floor at 0
+      if (fOrg < absorbOrgBarFor(world, countries, m)) continue;   // T.ABSORB_PEER: the absorbed seat's own bar; percentile/absolute at lever 0
       // T.WAR_FINISH: the same relative seat-grade law as considerIntegrations
       // (see the note there) — the absorber governs seats up to its own
       // capital's grade; the absolute org ladder stays at lever 0.
@@ -4507,7 +4526,7 @@ function absorbWeakNeighbors(world, countries) {
         if ((countryPower.get(ncc) || 1) < myCountryPow * T.ABSORB_FORCE) continue;
       }
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
-      const _orgBar0 = absorbOrgBar(world, countries);
+      const _orgBar0 = T.ABSORB_PEER > 0 ? stateOrgBar() : absorbOrgBar(world, countries);   // T.ABSORB_PEER: pace scales with statecraft beyond the writing floor (the percentile base zeroed it in a converged pack)
       const orgFactor = Math.min(1, (fOrg - _orgBar0) / Math.max(0.05, 1 - _orgBar0));
       // Resource hunger (T.RESOURCE_WARS): the empire leans HARDER on the
       // neighbour holding what it lacks — each shippable good the border

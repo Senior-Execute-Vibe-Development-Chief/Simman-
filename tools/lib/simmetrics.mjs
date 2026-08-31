@@ -680,6 +680,31 @@ export function collect(world) {
   m["pop.perKm2"] = (censusSim * POP_SCALE) / Math.max(1, land.length * km2);
   m["pop.largestCity"] = settled.reduce((a, s) => Math.max(a, s.people || 0), 0) * POP_SCALE;
   m["pop.urbanPeople"] = settled.reduce((a, s) => a + (s._urbanPop || 0), 0) * POP_SCALE;
+  // ── THE ARMING CHECK (urban-claim-memo-2026-08-27.md §5.4) ────────────────
+  // Not a fact about the world — a fact about the MEASUREMENT, and it is here
+  // because its absence has cost this repo three waves. A mechanism can be
+  // inert at one grid and dominant at another (deffdce: 10% at tw=240, a 10x
+  // cut at tw=480), and a harness pin can stop an edited line executing at all
+  // (CORE_LOCAL's first kill-shot ran with LAND_KNOW=0, so both arms returned
+  // byte-identical worlds and only the matching hashes gave it away). Both
+  // failures look exactly like "no effect" in every metric we had. These two
+  // separate them, for any arm, at the cost of one pass over the register:
+  //   coreBlockRanPct  — the urban-core block executed at all (REGIME right).
+  //                      0 means the arm measured nothing whatever it printed.
+  //   coreLocalBindPct — T.CORE_LOCAL's local claim actually beat the founding
+  //                      hold (MECHANISM bit). 0 by construction with the lever
+  //                      off; the memo measured 37% at the shipped arm and 15%
+  //                      at the gate arm with it on.
+  // Instantaneous shares — neither name claims a cumulative history, so neither
+  // is a monotone candidate (docs/observability.md).
+  m["urban.coreBlockRanPct"] = 100 * settled.filter(s => s._coreBlockRan).length / Math.max(1, settled.length);
+  m["urban.coreLocalBindPct"] = 100 * settled.filter(s => s._coreLocalBind).length / Math.max(1, settled.length);
+  // coreDiskBoundPct — how often the raw-disk ceiling min(_coreF, ·) is the
+  // binding constraint on a city's urban core. It is the brake holding
+  // urbanisation under history's agrarian ceiling, and its radius grows with the
+  // grid (coreR: 0 at tw=240, 1 at tw=480, 3 at tw=960), so "does the brake
+  // still hold at the grid that ships" is a real question with a real answer.
+  m["urban.coreDiskBoundPct"] = 100 * settled.filter(s => s._coreDiskBound).length / Math.max(1, settled.length);
   m["pop.censusSimUnits"] = censusSim;                            // raw, NOT people
   m["pop.fieldUnits"] = pf;                                       // a third scale, NOT people
   m["pop.fieldPerKm2Units"] = pf / Math.max(1, land.length * km2);

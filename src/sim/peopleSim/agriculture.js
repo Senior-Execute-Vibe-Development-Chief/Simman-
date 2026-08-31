@@ -253,7 +253,7 @@ export function bestPackageAt(world, ti) {
     // can only be domesticated where its range has actually arrived — what
     // keeps maize out of China, rice out of Australia, wheat out of the
     // southern hemisphere at the dawn (the from-0 report, 2026-08-07).
-    if ((T.CROP_BIOGEO || T.CROP_HOMELAND) && !packagePresent(world, ti, pkg)) continue;
+    if ((T.CROP_BIOGEO) && !packagePresent(world, ti, pkg)) continue;
     // ADAPTATION (full T.CROP_BIOGEO only): a package arrives as a lesser
     // version of itself the farther it has come (packageAdaptMul) — so the
     // LOCAL package wins its own band. Measured to thin domesticated-crop

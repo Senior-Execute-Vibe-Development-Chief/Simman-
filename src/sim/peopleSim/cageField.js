@@ -148,9 +148,9 @@ export function ensureCageField(world) {
   // zero-init, so a reused slot is explicitly zeroed; rowS and the six box
   // outputs are fully overwritten by boxMean.
   let scr = world._cageScr;
-  if (!scr || scr.landI.length !== N) {
+  if (!scr || scr.landI.length !== N || scr.o.length < 7) {
     scr = world._cageScr = { rowS: new Float64Array(N), landI: new Float32Array(N), fcap: new Float32Array(N), capSq: new Float32Array(N),
-      o: [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)] };
+      o: [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)] };
   } else { scr.landI.fill(0); scr.fcap.fill(0); scr.capSq.fill(0); }
   const { rowS, landI, fcap, capSq } = scr;
   for (let i = 0; i < N; i++) {
@@ -162,6 +162,23 @@ export function ensureCageField(world) {
   const landW = boxMean(landI, tw, th, rExit, rowS, scr.o[0]), landH = boxMean(landI, tw, th, rHome, rowS, scr.o[1]);
   const fcW = boxMean(fcap, tw, th, rExit, rowS, scr.o[2]), fcH = boxMean(fcap, tw, th, rHome, rowS, scr.o[3]);
   const capH = boxMean(cap, tw, th, rHome, rowS, scr.o[4]), capSqH = boxMean(capSq, tw, th, rHome, rowS, scr.o[5]);
+  // T.CAGE_FILL — Carneiro's THIRD leg, the one the header names and the drive
+  // lacked: POPULATION PRESSURE. The cage is geometry (exit priced), storable
+  // is surplus; pressure is the basin actually FILLING — circumscription only
+  // binds when the land runs out, and that demographic fill time IS the
+  // Neolithic's clock (measured: without it the org drive fires full-strength
+  // at the first caged village and farming→writing compresses to 1,688y vs
+  // history's 5,800 — probe_genesis, the genesis lap 2026-08-26; the ablation
+  // proved the cage drive is the ENTIRE pre-urban org engine, so its timing
+  // is genesis timing). fill = home-box people / home-box capacity — both
+  // fields the pass already reads; zero new constants.
+  const popF = world.popField;
+  let fillArr = null;
+  if (T.CAGE_FILL > 0 && popF && popF.length === N) {
+    const popH = boxMean(popF, tw, th, rHome, rowS, scr.o[6]);   // dedicated slot — o[0..5] hold the six box means the cage loop below still reads
+    fillArr = world._cageFill && world._cageFill.length === N ? world._cageFill : (world._cageFill = new Float32Array(N));
+    for (let i = 0; i < N; i++) fillArr[i] = capH[i] > 0 ? Math.min(1, popH[i] / capH[i]) : 0;
+  }
   const cage = world._cageField && world._cageField.length === N ? world._cageField : (world._cageField = new Float32Array(N));
   // Ring sums from the two box means (areas are the means' weights).
   const aH = (2 * rHome + 1) ** 2, aW = (2 * rExit + 1) ** 2;
@@ -182,4 +199,40 @@ export function ensureCageField(world) {
 export function cageAt(world, ti) {
   const f = ensureCageField(world);
   return f ? f[ti] : 0;
+}
+
+// Carneiro's threshold, not a slope: while free land remains, a DEFEATED
+// village flees and re-sows — no subjugation, no supra-village organization.
+// Only when the basin nears exhaustion does defeat mean submission. Measured
+// (probe_fillclock + the 40k A/B, 2026-08-26): with pressure LINEAR in fill,
+// the basins' honest ~8-11k-tick refill after farming's capacity jump only
+// stretched farming→writing 1.43× (mean fill ≈ 0.45 → half-rate org the whole
+// way up) — writing 15000 → 17250 of the ~26000 the YD anchor needs. The knee
+// zeroes the drive while flight still beats submission.
+//
+// CAGE_FLIGHT_FREE — the free-capacity share at which flight stops working.
+// Theory brackets it: Carneiro's own statement is near-EXHAUSTION ("all the
+// readily arable land was occupied" — knee ~0.8+ pointwise), while the
+// village-fissioning/shifting-cultivation land-stress literature bites
+// earlier (~a third of plots free — knee ~0.6); the box-mean fill smooths
+// sub-basin pockets (a 0.75 mean holds saturated cores), arguing below the
+// pointwise reading. Within that [0.6, 0.8] bracket the value is set by the
+// measured Neolithic span itself (knee 0.6 → writing 20500 = YD 4575 BC;
+// knee 0.7 → 21750 — diminishing returns because the basins PLATEAU at fill
+// ~0.75-0.85 where all knees converge as fill creeps): 0.8, the bracket's
+// top and Carneiro's own reading. One constant, bracketed by theory, placed
+// by measurement.
+const CAGE_FLIGHT_FREE = 0.2;      // flight viable while > this share of basin capacity is free
+
+/** Carneiro's PRESSURE at a tile — the third leg of the caging drive
+ *  (T.CAGE_FILL; raw fill = home-box people / capacity, built with the cage
+ *  field, then kneed: 0 until fill reaches 1−CAGE_FLIGHT_FREE, rising to 1 at
+ *  saturation). 1 when the lever is off so drives multiply unchanged. */
+export function cageFillAt(world, ti) {
+  if (!(T.CAGE_FILL > 0)) return 1;
+  ensureCageField(world);
+  const f = world._cageFill;
+  if (!f || f.length !== world.N) return 1;
+  const knee = 1 - CAGE_FLIGHT_FREE;
+  return Math.max(0, (f[ti] - knee) / CAGE_FLIGHT_FREE);
 }

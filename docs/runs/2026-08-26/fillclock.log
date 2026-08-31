@@ -1,0 +1,73 @@
+[harness] tree 057eab9
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"CAGE_FILL":1}
+Earth (Sim): using real NCEP/NCAR precipitation + air temperature
+[peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (166,41) (69.0E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,41) (27.0E 28.5N) score 7.22 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.30 pkg=wheat(suit 0.99) — ARMED: ~906y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (166,41) (69.0E 28.5N) score 5.81 pkg=wheat(suit 0.82) — ARMED: ~1093y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,38) (115.5E 33.0N) score 6.45 pkg=rice(suit 1.04) — ARMED: ~2412y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) score 4.47 pkg=maize(suit 0.87) — ARMED: ~5163y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (112,50) (-12.0E 15.0N) score 3.39 pkg=sorghum(suit 0.64) — ARMED: ~3149y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (137,74) (25.5E -21.0N) score 1.69 pkg=tubers(suit 0.86) — ARMED: ~3487y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) score 1.34 pkg=tubers(suit 0.70) — ARMED: ~4270y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== BASIN FILL CLOCK  480x240 (tw=240)  seed 8817  OBSERVED + arm  20000 steps ===
+    step    Nile fill/cage   Mesop fill/cage   Indus fill/cage  Yellow fill/cage    org   agr  cities
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+     500           — /0.71         0.35/0.42         0.34/0.63         0.28/0.59   0.00  0.00  0
+    1000         0.35/0.71         0.40/0.42         0.38/0.63         0.31/0.59   0.00  0.00  0
+    1500         0.39/0.71         0.43/0.42         0.41/0.63         0.34/0.59   0.00  0.00  0
+    2000         0.42/0.71         0.46/0.42         0.45/0.63         0.37/0.59   0.00  0.00  0
+    2500         0.46/0.71         0.49/0.42         0.48/0.63         0.39/0.59   0.00  0.00  0
+    3000         0.50/0.71         0.52/0.42         0.51/0.63         0.42/0.59   0.00  0.00  0
+    3500         0.53/0.71         0.54/0.42         0.54/0.63         0.44/0.59   0.00  0.00  0
+    4000         0.57/0.71         0.57/0.42         0.57/0.63         0.46/0.59   0.00  0.00  0
+    4500         0.60/0.71         0.59/0.42         0.60/0.63         0.49/0.59   0.00  0.00  0
+    5000         0.63/0.71         0.62/0.42         0.63/0.63         0.51/0.59   0.00  0.00  0
+    5500         0.66/0.71         0.64/0.42         0.66/0.63         0.53/0.59   0.00  0.00  0
+    6000         0.69/0.71         0.66/0.42         0.69/0.63         0.55/0.59   0.00  0.00  0
+    6500         0.72/0.71         0.69/0.42         0.71/0.63         0.57/0.59   0.00  0.00  0
+    7000         0.74/0.71         0.71/0.42         0.73/0.63         0.59/0.59   0.00  0.00  0
+[peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.22)
+    7500         0.77/0.92         0.35/0.51         0.76/0.63         0.60/0.59   0.00  0.00  0
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+    8000         0.05/0.92         0.44/0.51         0.78/0.63         0.62/0.59   0.00  0.00  0
+    8500         0.11/0.91         0.16/0.79         0.80/0.51         0.64/0.59   0.13  0.46  0
+[peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.81)
+    9000         0.15/0.91         0.22/0.78         0.07/0.85         0.65/0.59   0.15  0.47  0
+    9500         0.20/0.91         0.29/0.78         0.10/0.84         0.66/0.59   0.15  0.48  0
+   10000         0.27/0.91         0.38/0.78         0.14/0.84         0.68/0.59   0.15  0.48  0
+   10500         0.34/0.91         0.44/0.80         0.19/0.84         0.69/0.59   0.16  0.49  0
+   11000         0.42/0.91         0.50/0.79         0.25/0.84         0.70/0.59   0.16  0.50  0
+   11500         0.51/0.91         0.56/0.79         0.31/0.84         0.71/0.59   0.17  0.51  0
+   12000         0.58/0.91         0.62/0.79         0.39/0.84         0.71/0.59   0.17  0.51  0
+   12500         0.63/0.91         0.66/0.78         0.46/0.84         0.72/0.59   0.18  0.52  0
+   13000         0.66/0.92         0.70/0.77         0.53/0.84         0.72/0.59   0.19  0.53  0
+   13500         0.68/0.92         0.73/0.76         0.59/0.85         0.73/0.59   0.20  0.54  0
+   14000         0.71/0.92         0.76/0.76         0.64/0.85         0.73/0.59   0.22  0.54  0
+   14500         0.72/0.92         0.78/0.76         0.68/0.85         0.73/0.59   0.23  0.55  0
+   15000         0.74/0.93         0.79/0.76         0.70/0.86         0.73/0.59   0.24  0.55  0
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
+   15500         0.75/0.93         0.81/0.76         0.72/0.86         0.06/0.72   0.26  0.55  0
+   16000         0.77/0.93         0.83/0.77         0.74/0.87         0.09/0.72   0.27  0.55  0
+   16500         0.78/0.93         0.84/0.77         0.76/0.87         0.12/0.71   0.29  0.55  11
+   17000         0.79/0.93         0.84/0.77         0.77/0.88         0.16/0.71   0.34  0.56  14
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+   17500         0.84/0.94         0.85/0.80         0.79/0.88         0.20/0.71   0.40  0.57  17
+   18000         0.84/0.94         0.85/0.81         0.80/0.88         0.26/0.71   0.45  0.58  14
+   18500         0.70/0.98         0.81/0.89         0.82/0.88         0.31/0.71   0.48  0.58  42
+   19000         0.82/0.98         0.83/0.89         0.83/0.88         0.36/0.70   0.51  0.59  53
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+   19500         0.76/0.98         0.78/0.90         0.84/0.88         0.42/0.70   0.54  0.59  57
+   20000         0.74/0.98         0.65/0.90         0.85/0.88         0.48/0.70   0.57  0.59  52
+
+READ: fill hitting ~0.9 within ~2-3k ticks of farming ⇒ the ramp is the
+problem (migration/capacity, or the drive needs Carneiro's knee — convex
+near saturation). A slow ramp with org still sprinting ⇒ the drive's other
+factors (cage, ceil) are already saturated and fill is diluted, not binding.

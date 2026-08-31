@@ -1,0 +1,186 @@
+[harness] tree 75a3d421
+[abtest] IDEA_FIELD=1   steps=9000 W=480 (tw=240) seeds=8817,31337,4242,7777
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — ARMED: ~1151y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — ARMED: ~929y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — ARMED: ~3173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — ARMED: ~5373y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — ARMED: ~3251y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (136,72) (24.0E -18.0N) score 1.13 pkg=tubers(suit 0.54) — ARMED: ~5599y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~6790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.29)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — ARMED: ~1151y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — ARMED: ~929y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — ARMED: ~3173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — ARMED: ~5373y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — ARMED: ~3251y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (136,72) (24.0E -18.0N) score 1.13 pkg=tubers(suit 0.54) — ARMED: ~5599y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~6790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.29)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+  seed 8817: baseline realms=0 medianKm2=0  →  variant realms=0 medianKm2=0
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,35) (115.5E 37.5N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.92 pkg=wheat(suit 1.00) — ARMED: ~901y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.37 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,35) (115.5E 37.5N) score 5.67 pkg=rice(suit 0.91) — ARMED: ~2737y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,53) (-4.5E 10.5N) score 2.96 pkg=sorghum(suit 0.63) — ARMED: ~3153y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (56,49) (-96.0E 16.5N) score 1.93 pkg=maize(suit 0.84) — ARMED: ~5349y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.10 pkg=tubers(suit 0.77) — ARMED: ~3905y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (78,63) (-63.0E -4.5N) score 0.58 pkg=tubers(suit 0.28) — ARMED: ~10693y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,22) (-4.5E 57.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[popField] worker pool engaged: 4 bands
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.92)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.37)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.29)
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,35) (115.5E 37.5N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.92 pkg=wheat(suit 1.00) — ARMED: ~901y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.37 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,35) (115.5E 37.5N) score 5.67 pkg=rice(suit 0.91) — ARMED: ~2737y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,53) (-4.5E 10.5N) score 2.96 pkg=sorghum(suit 0.63) — ARMED: ~3153y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (56,49) (-96.0E 16.5N) score 1.93 pkg=maize(suit 0.84) — ARMED: ~5349y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.10 pkg=tubers(suit 0.77) — ARMED: ~3905y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (78,63) (-63.0E -4.5N) score 0.58 pkg=tubers(suit 0.28) — ARMED: ~10693y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,22) (-4.5E 57.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.92)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.37)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.29)
+  seed 31337: baseline realms=0 medianKm2=0  →  variant realms=0 medianKm2=0
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (148,37) (42.0E 34.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.78 pkg=wheat(suit 0.98) — ARMED: ~915y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (148,37) (42.0E 34.5N) score 6.05 pkg=wheat(suit 0.99) — ARMED: ~908y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.32 pkg=wheat(suit 0.98) — ARMED: ~923y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,38) (115.5E 33.0N) score 6.24 pkg=rice(suit 0.97) — ARMED: ~2579y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (114,52) (-9.0E 12.0N) score 3.63 pkg=sorghum(suit 0.66) — ARMED: ~3031y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (54,39) (-99.0E 31.5N) score 3.13 pkg=maize(suit 0.64) — ARMED: ~7009y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (81,74) (-58.5E -21.0N) score 1.39 pkg=tubers(suit 0.59) — ARMED: ~5042y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (137,73) (25.5E -19.5N) score 1.29 pkg=tubers(suit 0.62) — ARMED: ~4832y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[popField] worker pool engaged: 4 bands
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.78)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.32)
+[peopleSim] AGRICULTURE INVENTED at (148,37) (42.0E 34.5N) — the basin farms; a city will rise when its market gathers one (score 6.05)
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (148,37) (42.0E 34.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.78 pkg=wheat(suit 0.98) — ARMED: ~915y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (148,37) (42.0E 34.5N) score 6.05 pkg=wheat(suit 0.99) — ARMED: ~908y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.32 pkg=wheat(suit 0.98) — ARMED: ~923y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,38) (115.5E 33.0N) score 6.24 pkg=rice(suit 0.97) — ARMED: ~2579y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (114,52) (-9.0E 12.0N) score 3.63 pkg=sorghum(suit 0.66) — ARMED: ~3031y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (54,39) (-99.0E 31.5N) score 3.13 pkg=maize(suit 0.64) — ARMED: ~7009y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (81,74) (-58.5E -21.0N) score 1.39 pkg=tubers(suit 0.59) — ARMED: ~5042y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (137,73) (25.5E -19.5N) score 1.29 pkg=tubers(suit 0.62) — ARMED: ~4832y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[popField] worker pool engaged: 4 bands
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.78)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.32)
+[peopleSim] AGRICULTURE INVENTED at (148,37) (42.0E 34.5N) — the basin farms; a city will rise when its market gathers one (score 6.05)
+  seed 4242: baseline realms=0 medianKm2=0  →  variant realms=0 medianKm2=0
+[peopleSim] hearth pin Nile picked at tile (139,40) (28.5E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,37) (114.0E 34.5N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (139,40) (28.5E 30.0N) score 7.10 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.14 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.36 pkg=wheat(suit 0.98) — ARMED: ~921y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,37) (114.0E 34.5N) score 5.76 pkg=rice(suit 0.97) — ARMED: ~2573y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (119,54) (-1.5E 9.0N) score 3.44 pkg=sorghum(suit 0.62) — ARMED: ~3223y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (54,39) (-99.0E 31.5N) score 3.25 pkg=maize(suit 0.67) — ARMED: ~6698y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (71,68) (-73.5E -12.0N) score 1.05 pkg=tubers(suit 0.58) — ARMED: ~5185y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (143,76) (34.5E -24.0N) score 0.73 pkg=tubers(suit 0.46) — ARMED: ~6461y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (95,66) (-37.5E -9.0N) score 0.50 pkg=tubers(suit 0.22) — ARMED: ~13905y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[popField] worker pool engaged: 4 bands
+[peopleSim] AGRICULTURE INVENTED at (139,40) (28.5E 30.0N) — the basin farms; a city will rise when its market gathers one (score 7.10)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.36)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.14)
+[peopleSim] hearth pin Nile picked at tile (139,40) (28.5E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,37) (114.0E 34.5N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (139,40) (28.5E 30.0N) score 7.10 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.14 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.36 pkg=wheat(suit 0.98) — ARMED: ~921y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,37) (114.0E 34.5N) score 5.76 pkg=rice(suit 0.97) — ARMED: ~2573y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (119,54) (-1.5E 9.0N) score 3.44 pkg=sorghum(suit 0.62) — ARMED: ~3223y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (54,39) (-99.0E 31.5N) score 3.25 pkg=maize(suit 0.67) — ARMED: ~6698y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (71,68) (-73.5E -12.0N) score 1.05 pkg=tubers(suit 0.58) — ARMED: ~5185y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (143,76) (34.5E -24.0N) score 0.73 pkg=tubers(suit 0.46) — ARMED: ~6461y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (95,66) (-37.5E -9.0N) score 0.50 pkg=tubers(suit 0.22) — ARMED: ~13905y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[popField] worker pool engaged: 4 bands
+[peopleSim] AGRICULTURE INVENTED at (139,40) (28.5E 30.0N) — the basin farms; a city will rise when its market gathers one (score 7.10)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.36)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.14)
+  seed 7777: baseline realms=0 medianKm2=0  →  variant realms=0 medianKm2=0
+  provenance: commit 75a3d421  non-default levers in variant: {"IDEA_FIELD":1}
+
+75 of 901 collected metrics moved; 21 match --grep=pop,realm,settlement,city,abandon,dev. 10 exceed ±2%.
+
+  ── HEADLINE ──────────────────────────────────────────────────────────
+    realm.count                               0.0000      0.0000       0.0
+    realm.claimedPct                          0.0000      0.0000       0.0
+    entity.settled                            0.0000      0.0000       0.0
+    entity.stateless                          0.0000      0.0000       0.0
+    pop.people                                0.0000      0.0000       0.0
+    pop.largestCity                           0.0000      0.0000       0.0
+    pop.perKm2                                0.0000      0.0000       0.0
+    shape.isolatedPct                         0.0000      0.0000       0.0
+    graph.vassal.blocLandPct                  0.0000      0.0000       0.0
+    graph.vassal.depthMax                     0.0000      0.0000       0.0
+
+  ── LARGEST EFFECTS (bounded effect size, sentinel-safe) ───────────────
+  metric                                    baseline     variant        Δ%  seeds
+  field._devSrc.max                           0.0000      0.4695       new  CONSISTENT
+  field._devSrc.mean                          0.0000      0.0231       new  CONSISTENT
+  field._devSrc.n                             0.0000     9616.00       new  CONSISTENT
+  field._devSrc.sum                           0.0000      222.37       new  CONSISTENT
+  field._devNext.sum                          254.77      217.57     -13.9  CONSISTENT
+  field._devNext.mean                         0.0265      0.0226     -13.9  CONSISTENT
+  field.devField.mean                         0.0293      0.0265      -9.4  CONSISTENT
+  field.devField.sum                          281.27      254.77      -9.4  CONSISTENT
+  field._popNext.max                         3898.86     3145.61      -3.9  mixed
+  field.popField.max                         3899.25     3149.69      -3.9  mixed
+
+[abtest] 8 movers consistent across all 4 seeds; 2 mixed-direction (treat as noise until a third seed agrees).

@@ -1,0 +1,53 @@
+[harness] tree a1d28eb
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (568,173) (33.0E 25.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (595,149) (43.1E 34.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (667,162) (70.1E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (784,145) (114.0E 35.6N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (568,173) (33.0E 25.1N) score 7.61 pkg=wheat(suit 0.99) — ARMED: ~906y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (595,149) (43.1E 34.1N) score 4.81 pkg=wheat(suit 0.75) — ARMED: ~1200y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (667,162) (70.1E 29.2N) score 6.71 pkg=wheat(suit 0.98) — ARMED: ~921y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (784,145) (114.0E 35.6N) score 5.43 pkg=rice(suit 0.91) — ARMED: ~2749y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (203,162) (-103.9E 29.2N) score 4.10 pkg=maize(suit 0.80) — ARMED: ~5604y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (456,195) (-9.0E 16.9N) score 3.75 pkg=sorghum(suit 0.66) — ARMED: ~3042y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (282,265) (-74.3E -9.4N) score 1.62 pkg=tubers(suit 0.80) — ARMED: ~3745y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (537,315) (21.4E -28.1N) score 0.85 pkg=tubers(suit 0.40) — ARMED: ~7512y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (378,264) (-38.3E -9.0N) score 0.50 pkg=tubers(suit 0.28) — ARMED: ~10814y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (494,80) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== step 4000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [89s]
+[peopleSim] AGRICULTURE INVENTED at (568,173) (33.0E 25.1N) — the basin farms; a city will rise when its market gathers one (score 7.61)
+[peopleSim] AGRICULTURE INVENTED at (667,162) (70.1E 29.2N) — the basin farms; a city will rise when its market gathers one (score 6.71)
+
+=== step 8000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [176s]
+[peopleSim] AGRICULTURE INVENTED at (595,149) (43.1E 34.1N) — the basin farms; a city will rise when its market gathers one (score 4.81)
+
+=== step 12000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [261s]
+
+=== step 16000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [347s]
+[peopleSim] AGRICULTURE INVENTED at (784,145) (114.0E 35.6N) — the basin farms; a city will rise when its market gathers one (score 5.43)
+[peopleSim] AGRICULTURE INVENTED at (456,195) (-9.0E 16.9N) — the basin farms; a city will rise when its market gathers one (score 3.75)
+
+=== step 20000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [439s]

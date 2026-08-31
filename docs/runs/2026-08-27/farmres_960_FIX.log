@@ -1,0 +1,20 @@
+
+[farmres] W=960 tw=480 rn=2.00 seed=8817 steps=3000 settled=5
+[farmres] one tile = 3818 km2 (62 km across)
+    core radius   (tiles)              2.0000
+    belt radius   (tiles)              4.0000
+    belt area implied by radius (tiles) 50.2655
+    Dijkstra budget (tile-costs)       5.0000
+    belt tiles        _terrTiles       63.5000
+    worked tiles      _terrWorkTiles   36.0000
+    fertility SUM     _terrFertSum     9.3691
+    farm output       _landFood        0.2191
+    core need         _coreNeed        0.0234
+    catchment census  s.people         167.5727
+    urban core        s._urbanPop      3.1895
+    food supply       _foodSupply      0.2399
+    food demand       _foodDemand      0.0234
+    RATIO _landFood / _coreNeed        10.3078   <- the 81x statistic
+    belt REAL AREA km2                 242421
+    fert per REAL Mkm2                 38.65
+    farm output per REAL Mkm2          0.9039
