@@ -92,6 +92,21 @@ lawyered.
       sim.
    Spec: `12-zoom.md`.
 
+## 2026-08-31 — War round
+
+10. **War in the concrete.** (All four sub-rulings ratified.)
+    a. **Armies are entities** — moving, supplied columns on the travel
+       field (foraging real fields, carrying days of food, following
+       water). Fronts are abolished.
+    b. **Devastation is the default strategic act**, writing into
+       food/works/grievance books; wars can be decided with no territory
+       changing hands.
+    c. **Wars end by assessment convergence** — fighting reveals strength;
+       settlements formalize beliefs as obligation edges (tribute/vassalage
+       the norm, annexation the exception).
+    d. **Mercenary market and siege reputation** both in Phase 1.
+    Spec: `13-war.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 These are in the specs as the working design; the owner has not explicitly
