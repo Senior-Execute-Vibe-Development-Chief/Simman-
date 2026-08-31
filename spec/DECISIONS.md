@@ -75,6 +75,23 @@ lawyered.
       full historical strength in Phase 1.
    Spec: `11-knowledge.md`.
 
+## 2026-08-31 — Zoom experience round
+
+9. **The living zoom.** (All four sub-rulings ratified.)
+   a. **Persistent micro-genealogy**: rendered people/families derive from
+      deterministic per-site streams aged by real local demography —
+      persistent across visits, consistent with recorded history (famines
+      grow graveyards). A pure derived layer; never sim state.
+   b. **The no-lies rule**: every rendered detail traces to sim state; one
+      escape hatch — cosmetic-but-derived (e.g. daily weather elaborated
+      deterministically from monthly truth + harvest-year anomaly); pure
+      invention forbidden; where the sim is silent the renderer is quiet.
+   c. **Day/night cycle included**, flagged cosmetic.
+   d. **Scope**: spec fully now; street-level band builds later, trailing
+      the milestones (valley-level "alive" ships first). Never blocks the
+      sim.
+   Spec: `12-zoom.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 These are in the specs as the working design; the owner has not explicitly

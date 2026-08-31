@@ -23,6 +23,7 @@ Nothing is staged or propped up.
 | `09-constants-ledger.md` | Every free constant: value, unit, citation. The mechanism-budget enforcement point |
 | `10-build-plan.md` | Milestones M0–M8+, porting plan, repo layout |
 | `11-knowledge.md` | Knowledge & technology: techniques as living populations (carriers, practice, transmission, loss, blocking) |
+| `12-zoom.md` | The living zoom: altitude bands, the no-lies rule, persistent micro-genealogy, follow-the-grain |
 | `research/` | The distilled v1 learnings corpus (five dossiers) — the evidence base these specs cite |
 
 ## Spec depth rule
