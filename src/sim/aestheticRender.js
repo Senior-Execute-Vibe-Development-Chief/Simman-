@@ -165,7 +165,7 @@ export function faceSVG(look, tasteDress, cx, cy, scale = 1) {
 
 /** Torso garment from dress envelope + taste trim. */
 export function dressSVG(dress, tasteDress, cx, cy, scale = 1) {
-  if (!dress) return "";
+  if (!dress) return { defs: "", svg: "", pid: "" };
   const s = scale;
   const palette = tasteDress?.palette;
   const field = dyeRgb(dress.dye, palette);

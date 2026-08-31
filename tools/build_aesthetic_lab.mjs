@@ -20,14 +20,29 @@ const stripModule = s => s
   .replace(/^\s*export\s*\{[^}]*\};?\s*$/gm, "")
   .replace(/^export\s+(function|const|let|class|async)\b/gm, "$1");
 
-/** Drop duplicate top-level helpers when concatenating modules into one script. */
-function stripDuplicateDefs(src) {
-  return src
-    .replace(/^function clamp01\([^)]*\)\s*\{[^}]*\}\s*\n/m, "")
-    .replace(/^const clamp01\s*=[^;]+;\s*\n/m, "")
-    .replace(/^function prng\([^)]*\)\s*\{[\s\S]*?^}\s*\n/m, "")
-    .replace(/^const wrap01\s*=[^;]+;\s*\n/m, "")
-    .replace(/^function bell\([^)]*\)\s*\{[^}]*\}\s*\n/m, "");
+/** Helpers that appear in multiple inlined modules — keep the first, drop later copies. */
+const DEDUPE_DEFS = [
+  { name: "clamp01", patterns: [
+    /^function clamp01\([^)]*\)\s*\{[^}]*\}\s*\n/m,
+    /^const clamp01\s*=[^;]+;\s*\n/m,
+  ]},
+  { name: "prng", patterns: [/^function prng\([^)]*\)\s*\{[\s\S]*?^}\s*\n/m] },
+  { name: "wrap01", patterns: [/^const wrap01\s*=[^;]+;\s*\n/m] },
+  { name: "bell", patterns: [/^function bell\([^)]*\)\s*\{[^}]*\}\s*\n/m] },
+];
+
+function stripSeenDefs(src, seen) {
+  let out = src;
+  for (const { name, patterns } of DEDUPE_DEFS) {
+    if (seen.has(name)) {
+      for (const pat of patterns) out = out.replace(pat, "");
+    } else {
+      for (const pat of patterns) {
+        if (pat.test(src)) { seen.add(name); break; }
+      }
+    }
+  }
+  return out;
 }
 
 const hash32Src = read("src/sim/peopleSim/rng.js")
@@ -35,24 +50,24 @@ const hash32Src = read("src/sim/peopleSim/rng.js")
   .replace(/^export /, "");
 
 const rawModules = [
-  ["__HASH32__", hash32Src, false],
-  ["__LINEAGE_GENETICS__", stripModule(read("src/sim/lineageGenetics.js")), false],
-  ["__PEOPLE_STYLE__", stripModule(read("src/sim/peopleStyle.js")), false],
-  ["__STYLE_TASTE__", stripModule(read("src/sim/styleTaste.js")), true],
-  ["__AESTHETIC_IDENTITY__", stripModule(read("src/sim/aestheticIdentity.js")), true],
-  ["__AESTHETIC_RENDER__", stripModule(read("src/sim/aestheticRender.js")), true],
+  ["__HASH32__", hash32Src],
+  ["__LINEAGE_GENETICS__", stripModule(read("src/sim/lineageGenetics.js"))],
+  ["__PEOPLE_STYLE__", stripModule(read("src/sim/peopleStyle.js"))],
+  ["__STYLE_TASTE__", stripModule(read("src/sim/styleTaste.js"))],
+  ["__AESTHETIC_IDENTITY__", stripModule(read("src/sim/aestheticIdentity.js"))],
+  ["__AESTHETIC_RENDER__", stripModule(read("src/sim/aestheticRender.js"))],
 ];
 
+const seen = new Set();
 let html = read("tools/aesthetic_lab_template.html");
-for (const [ph, src, dedupe] of rawModules) {
+for (const [ph, src] of rawModules) {
   if (!html.includes(ph)) throw new Error("placeholder missing: " + ph);
-  html = html.replace(ph, dedupe ? stripDuplicateDefs(src) : src);
+  html = html.replace(ph, stripSeenDefs(src, seen));
 }
 for (const [ph] of rawModules) {
   if (html.includes(ph)) throw new Error("placeholder left unfilled: " + ph);
 }
 
-// Verify the inlined script parses (catches duplicate declarations before ship).
 const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 try { new Function(script); }
 catch (e) {
