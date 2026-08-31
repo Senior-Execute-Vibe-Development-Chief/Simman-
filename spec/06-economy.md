@@ -76,14 +76,29 @@ over chokepoints — revenue that feeds 05's centers. Mercenaries: violence
 as a purchasable good in this market where coin and war demand coincide
 (DECISIONS 10d; 13.1).
 
-## 6.6 The energy seam (Phase-2 protection)
+## 6.6 Megaprojects and prestige spending `(DECISIONS 14c)`
+
+Centers with surplus, labor access, and the requisite techniques can
+undertake works that write into the standing books: **canals** (a works
+stock that edits the travel field — the Grand Canal), **long walls**
+(fortification along emergent frontiers — a China-shaped realm builds its
+wall where 15's physics puts the raiding), **harbors and lighthouses**
+(port capacity, voyage risk), dikes and flood works (03's hazard books),
+and **monuments and frivolous vast-scale prestige projects** — pyramids,
+palaces, follies: legitimacy manufacture and surplus sink at once (owner
+ruling: excess wealth may flow to the magnificently useless; v1's
+monuments→legitimacy channel validated the mechanism). One rule
+throughout: treasury + labor → a stock in an existing book; upkeep or
+decay; no project type exists that doesn't resolve to standing state.
+
+## 6.7 The energy seam (Phase-2 protection)
 
 All Phase-1 energy is land flow (food, fodder, wood, wind, water). The
 balance sheet logs it (04.2). Heat/smelting demands wood (deforestation
 stock); mills capture flow where geography allows. Phase 2's coal is a new
 source into existing books, not a new system.
 
-## 6.7 Reality tables (M7 gate; fuller set in 08)
+## 6.8 Reality tables (M7 gate; fuller set in 08)
 
 | Quantity | Target | Source |
 |---|---|---|

@@ -63,8 +63,12 @@ census copy, no bridge scalar, no second food book (R4).
   as energy flows in the balance sheet from day one. Phase 1 is an organic
   economy — all energy is land flow; the Malthusian ceiling is energy
   conservation, not a mechanism. Coal later plugs into existing books.
-- **Fish**: OFF per owner directive (DECISIONS-era v1 ruling stands until
-  revisited); coasts keep trade/naval meaning only.
+- **Fish**: REINSTATED (DECISIONS 14d — v1's ban was a verdict on its
+  broken flat-cap fishery, not on fish). The designed labor/stock fishery
+  carries: per-coast-tile logistic stocks, catch = fishers × per-capita ×
+  technique × abundance, depletion remembered ("the sea remembers"),
+  labor drawn from the same working population as farming. Constants in
+  09 (v1-grounded: Lofoten/North-Sea scale).
 
 ## 4.3 Communities (the condensation)
 

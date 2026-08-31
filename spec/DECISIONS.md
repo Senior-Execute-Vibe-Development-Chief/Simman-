@@ -177,7 +177,38 @@ lawyered.
        coherence pass, then M0 scaffolding on the owner's word.
     Spec: `16-plagues.md`.
 
+## 2026-08-31 — Charter completion round
+
+14. **All remaining proposals ratified; four additions.**
+    - **P1–P4, P7 ratified as written** (pressure-and-selection;
+      community as the atom; salience-gated centers; fading-authority
+      canonical map; generated names as canon + gazetteer overlay).
+    - **P6 ratified in the recommended form**: faith as simplified fields
+      + pilgrimage economy until M6 validates the obligation graph, then
+      promoted to full non-territorial graph actors.
+    a. **Piracy**: the danger premium (12d) extends to sea lanes —
+       predation where naval authority is thin; convoys, suppression as a
+       sellable service, pirate havens where authority can't project.
+    b. **The full hazard roster**: earthquakes (real fault maps), great
+       floods and river avulsions (with the flood-control legitimacy
+       burden — the failed-dikes Mandate mechanism), storms at sea
+       (fleet-loss draws), harbor silting — all per the DECISIONS-2
+       pattern: drawn from real hazard geography, responses emergent.
+    c. **Megaprojects**: treasury + labor → stocks in existing books
+       (canals edit the travel field; long walls are fortification along
+       emergent frontiers; harbors, lighthouses; monuments). Owner
+       addition: **excess wealth may flow to frivolous, vast-scale
+       prestige projects** — legitimacy manufacture and surplus sink at
+       once (pyramids, palaces, follies).
+    d. **Fish reinstated**: v1's FISH=0 directive was a verdict on the
+       broken flat-cap fishery, not on fish. v2 carries the designed
+       labor/stock/depletion fishery on conserved books.
+    e. **The observatory chapter (17)** written as working design — the
+       owner's reply skipped item A; assumed yes, veto reverts.
+
 ## Proposed — working design, awaiting explicit ratification
+
+*(empty — all proposals ratified as of round 14)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

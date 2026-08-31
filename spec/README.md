@@ -28,6 +28,7 @@ Nothing is staged or propped up.
 | `14-discovery.md` | Discovery & colonization: the known world, the mappa mundi lens, first contact, colonies as outcomes |
 | `15-pastoral.md` | Herds and the emergent steppe: grass physics, the feeding continuum, mirror-empires, the dismount dilemma |
 | `16-plagues.md` | Plagues: disease pools, immunity gaps, emergence from density × livestock, quarantine |
+| `17-observatory.md` | The observatory: lenses, codex, chronicles, the almanac, the sharing loop |
 | `research/` | The distilled v1 learnings corpus (five dossiers) — the evidence base these specs cite |
 
 ## Spec depth rule

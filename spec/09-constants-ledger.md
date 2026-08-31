@@ -58,6 +58,9 @@ Rows below are the seed set, inherited from v1's audited registry
 | ALLUVIUM / IRRIG | 2.0 / 1.5 lifts | floodplain agronomy |
 | GRANARY_NORM | 2–4× subsistence minimum | granary literature |
 | CROP_PACKAGES | per-package tOpt/mOpt/storability/domLag | archaeobotany (port verbatim) |
+| FISH_PER_CAP | ~1.5–2.5 t/yr per fisher on virgin rich water | historical inshore fisheries (v1 re-anchored value) |
+| FISH_MSY | ~4,000 people per ~167 km of richest coast | Lofoten/North-Sea scale |
+| FISH_REGEN | r ≈ 0.3–0.5 /yr logistic | surplus-production literature (C = 4·MSY/r — one fishery, not two dials) |
 
 ## Power (05) — mostly `[DERIVE]` against tables
 

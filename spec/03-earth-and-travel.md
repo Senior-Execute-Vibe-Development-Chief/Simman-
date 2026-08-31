@@ -22,12 +22,18 @@ duplicated climate code unified (Phase 3 concern).
 The earth_sim place-anchored corrections are kept as a labeled
 "earth-corrections" data stage (R7) and excluded from procedural presets.
 
-**Exogenous forcings (DECISIONS 2):** a volcanic/climate-excursion process
-drawn from real hazard geography (eruption sources at real volcanic
-provinces, magnitude-frequency from the record), producing bounded
-multi-year climate multipliers — v1's `climMod` layer generalized, with an
-optional historical-track replay toggle. Never writes the substrate; only
-modulates yields.
+**Exogenous forcings and hazards (DECISIONS 2, 14b):** drawn from real
+hazard geography, responses always emergent. Volcanic winters and climate
+excursions (bounded multi-year yield multipliers — v1's `climMod`
+generalized; optional historical-track replay). **Earthquakes** from real
+fault maps (destroy works/fortification/housing stocks where they strike).
+**Great floods and river avulsions** (the Yellow River class — course
+jumps re-cut the river layer locally, drown works and people; where a
+center maintains flood-control works, their failure is a legitimacy shock:
+the failed-dikes Mandate mechanism). **Storms at sea** (per-voyage
+fleet-loss draws by season and route — the Armada class). **Harbor
+silting** (a slow stock at river-mouth ports — Ephesus). None of these
+write the climate substrate; they hit the standing books.
 
 ## 3.2 The travel-time field — the spine
 
@@ -69,7 +75,11 @@ is thin and displaced violence-men (demobilized levies, famine-displaced —
 from the standing books) are plentiful, scaled by the value of the traffic;
 suppressed where a strong authority patrols (protection is the lord's own
 revenue defense — primitive 4). Trade reads effective cost; armies read
-physical cost. Required emergent consequences: the internal peace dividend
+physical cost. **The same term runs at sea (DECISIONS 14a): piracy** where
+naval authority is thin — convoys as a cost, suppression as a sellable
+imperial service, pirate havens condensing in archipelagos and marshes
+beyond authority's reach. Required emergent consequences: the internal
+peace dividend
 of unified realms; Silk-Road-class overland routes lighting up only when
 imperial spans collapse the summed premium, dying at fragmentation — and
 thereby re-pricing the sea route (14.1's exploration trigger).
