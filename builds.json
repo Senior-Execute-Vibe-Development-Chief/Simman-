@@ -2,6 +2,15 @@
   "live": null,
   "previews": [
     {
+      "branch": "cursor/aesthetic-spec-642a",
+      "sha": "2d71a794bc5303e0edf5f578ccdac49582354e22",
+      "slug": "cursor-aesthetic-spec-642a",
+      "builtAt": "2026-08-31T04:28:08.050Z",
+      "channel": "preview",
+      "saveVersion": 64,
+      "path": "/b/cursor-aesthetic-spec-642a/"
+    },
+    {
       "branch": "cursor/granary-spoil-15e6",
       "sha": "e57902b3e95e4c40b379fbdc7907aa37dcd11738",
       "slug": "cursor-granary-spoil-15e6",
