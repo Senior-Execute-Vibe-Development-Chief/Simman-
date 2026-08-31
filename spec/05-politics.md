@@ -84,10 +84,13 @@ Land and levies dominant → warrior king + landed elite; trade and finance
 dominant (ports) → council rule, the merchant republic (Venice, Genoa, the
 Dutch — underivable without this); legitimacy manufacture dominant →
 priest-rule; massed citizen soldiers or rowers dominant → broad
-participation (the hoplite/rower → polis chain). The label is derived,
-never chosen, and carries real consequences: elective/council succession
-trades succession crises for factional strife; forms feed the value
-vectors (07.6) and blocking profiles (11).
+participation (the hoplite/rower → polis chain). The label is pure
+display — nothing reads it (the label law, 18.2). The consequences flow
+from the coalition weights themselves: a center whose capacity has no
+single dynastic holder resolves succession by renegotiation among
+coalition members (factional strife instead of succession crisis);
+coalition composition — not the form's name — feeds the value vectors
+(07.6) and blocking profiles (11).
 
 ## 5.4 The obligation graph
 

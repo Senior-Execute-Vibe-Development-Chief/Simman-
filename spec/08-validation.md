@@ -19,6 +19,11 @@ Adopted from v1's proven harness (research/05 §4):
   v1's resgate charter: a ratchet, re-baselined downward on improvement,
   floors never derived in the same change as a regime shift.
 - **Monotone**: names that claim history never decrease (ported).
+- **Representation invariance** (18.3): macro-history statistics
+  invariant, within chaos-twin bounds, under perturbation of every
+  representation threshold (condensation bars, K-slots, catalog
+  granularity) — armed from the milestone where each threshold first
+  exists.
 - **Coverage**: perturbation-reachability of all state from the collector,
   fail-open exclusions, self-testing canary (ported).
 

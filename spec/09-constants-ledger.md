@@ -114,6 +114,14 @@ worldgen param registry, outside this ledger, because they define the
 | DEBT_BOND / MANUMIT rates | `[DERIVE]` | debt-crisis and freedman literature (06.4) |
 | VALUE_EMA | generational lag on culture value vectors | path-dependence literature (07.6) `[DERIVE]` |
 
+## Representation thresholds (18.3 — NOT world constants)
+
+Bookkeeping numbers, each carrying a tested invariance band instead of a
+citation: the community condensation bar, the center salience bar,
+authority top-K (4), identity top-K (4), catalog granularities, grid
+resolution. A threshold whose perturbation changes macro-history is a bug
+(the representation-invariance gate, 08).
+
 ## Rules
 
 1. No constant outside this file. CI greps for numeric literals in

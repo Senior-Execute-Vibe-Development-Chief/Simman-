@@ -277,9 +277,24 @@ lawyered.
        into war-assessment noise), education beyond carrier pools,
        intra-family politics below the dynasty, sub-monthly weather.
 
+## 2026-08-31 — Foundations round (owner-ordered full reduction audit)
+
+18. **The reduction audit.** Every mechanism reduces to: Level-0 data,
+    Level-1 conserved matter/energy, a **closed registry of ten
+    population mental stocks** (each with carrier/writer/reader/
+    calibration; the four attachment stocks declared latent variables,
+    outcome-validated; cap enforced), obligation edges as recorded facts
+    with always-re-derived live strength, and hazard draws in the
+    ratified slots only. New laws: **the label law** (no mechanism reads
+    a derived label — one violation found in 17a's phrasing and fixed)
+    and **the representation-invariance gate** (macro-history invariant
+    under perturbation of bookkeeping thresholds — the generalized third
+    cardinal rule). Spec: `18-foundations.md`; 05.3 fixed; 08 + 09
+    amended.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 17)*
+*(empty — all proposals ratified as of round 18)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.
