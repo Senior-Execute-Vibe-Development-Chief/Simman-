@@ -324,7 +324,7 @@ function handleMessage(m) {
       world = initPeopleSim(m.w, {
         seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes,
         deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh,
-        ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival,
+        ancestryCount: m.ancestryCount, ancHue: m.ancHue, ancHomelands: m.ancHomelands, tArrival: m.tArrival,
         onGenesisProgress: (info) => {
           // Mint-ready gather blocks this worker for a long wall-clock at the
           // app grid — without these, the page looks paused (play does nothing

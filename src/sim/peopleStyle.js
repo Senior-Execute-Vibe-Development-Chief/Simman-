@@ -93,15 +93,26 @@ export function mixLook(parts) {
 }
 
 /**
- * Carried look. Needs `homeland` or `ancMix` + `homelands`.
+ * Genesis-homeland climates stamped at ancestry anchors (pipeline generateAncestry).
+ * Indexed by ancestry id; null when the world predates the stamp.
+ */
+export function homelandsFrom(world) {
+  const arr = world && world.ancHomelands;
+  if (!arr || !arr.length) return null;
+  return arr;
+}
+
+/**
+ * Carried look. Needs `homeland`, or `ancMix` + `homelands` / `world.ancHomelands`.
  * Does not read the current tile's climate.
  */
 export function lookOf(c) {
-  if (c && c.ancMix && c.homelands) {
+  const homelands = (c && c.homelands) || (c && c.world && homelandsFrom(c.world));
+  if (c && c.ancMix && homelands) {
     const parts = [];
     for (const pair of c.ancMix) {
       const id = pair[0], share = pair[1];
-      const h = c.homelands[id];
+      const h = homelands[id];
       if (!h || !(share > 0)) continue;
       parts.push({ look: lookFromHomeland(h), share });
     }
@@ -109,6 +120,14 @@ export function lookOf(c) {
   }
   if (c && c.homeland) return lookFromHomeland(c.homeland);
   return null;
+}
+
+/** Pure ancestry mix at a sim tile (pre-settlement probe). */
+export function ancMixAtTile(world, ti) {
+  const anc = world && world.ancestry;
+  if (!anc || ti == null || ti < 0 || ti >= anc.length) return null;
+  const id = anc[ti];
+  return id < 0 ? null : [[id, 1]];
 }
 
 function wealthOf(c) {

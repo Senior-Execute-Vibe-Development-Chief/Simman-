@@ -84,5 +84,5 @@ export function buildWorld(opts = {}) {
 /** Full pipeline → a running people-sim world (tileRes 1, app-identical). */
 export function buildSim(opts = {}) {
   const { w, ter, tCrop, deposits } = buildWorld(opts);
-  return initPeopleSim(w, { seed: w.seed, tCrop, tFlood: ter.tFlood, tileRes: 1, deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival, ...(opts.simOpts || {}) });
+  return initPeopleSim(w, { seed: w.seed, tCrop, tFlood: ter.tFlood, tileRes: 1, deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, ancHomelands: ter.ancHomelands, tArrival: ter.tArrival, ...(opts.simOpts || {}) });
 }

@@ -1,5 +1,8 @@
 // People-style decider (`src/sim/peopleStyle.js`). No UI, no save fields.
-import { lookFromHomeland, mixLook, lookOf, dressOf, builtOf, styleOf } from "../src/sim/peopleStyle.js";
+import { lookFromHomeland, mixLook, lookOf, dressOf, builtOf, styleOf, homelandsFrom, ancMixAtTile } from "../src/sim/peopleStyle.js";
+import { buildWorld as pipelineBuild } from "../src/sim/pipeline.js";
+import { buildSim } from "./_harness.mjs";
+import { lonLatToIndex } from "../src/sim/earthPlates.js";
 
 let fails = 0, checks = 0;
 function ok(cond, msg) {
@@ -245,6 +248,39 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
   const prints = [tropicPlain, aridFine, woolFine, silkFine, hidePlain].map(fp);
   const uniq = new Set(prints);
   ok(uniq.size === 5, `five climate/wealth bags stay distinct (${prints.join(" || ")})`);
+}
+
+{
+  const { ter } = pipelineBuild({ W: 240, H: 120, seed: 7, preset: "earth_sim" });
+  ok(ter.ancHomelands && ter.ancHomelands.length === ter.ancestryCount,
+    `every lineage has a genesis homeland (${ter.ancHomelands?.length}/${ter.ancestryCount})`);
+  const h0 = ter.ancHomelands[0];
+  ok(h0 && h0.temp > 0.65 && h0.lat > -10 && h0.lat < 25,
+    `cradle lineage anchor is warm-equatorial (${h0?.temp?.toFixed(2)} t ${h0?.lat?.toFixed(1)}° lat)`);
+  ok(homelandsFrom({ ancHomelands: ter.ancHomelands }) === ter.ancHomelands,
+    "homelandsFrom reads world.ancHomelands");
+  for (const h of ter.ancHomelands) {
+    ok(h.temp >= 0 && h.temp <= 1 && h.moist >= 0 && h.moist <= 1 && typeof h.lat === "number",
+      `homeland stamp is finite climate (${h.temp?.toFixed(2)} ${h.moist?.toFixed(2)} ${h.lat?.toFixed(1)}°)`);
+  }
+  const warmId = ter.ancHomelands.findIndex(h => h.lat < 15 && h.temp > 0.78);
+  const coldId = ter.ancHomelands.findIndex(h => h.lat > 50);
+  ok(warmId >= 0 && coldId >= 0, "Earth run has equatorial and high-lat lineage anchors");
+  const warmLook = lookOf({ ancMix: [[warmId, 1]], world: { ancHomelands: ter.ancHomelands } });
+  const coldLook = lookOf({ ancMix: [[coldId, 1]], world: { ancHomelands: ter.ancHomelands } });
+  ok(warmLook.skin > coldLook.skin + 0.12,
+    `stamped homelands separate warm/cold look (${warmLook.skin.toFixed(2)} vs ${coldLook.skin.toFixed(2)})`);
+  const world = buildSim({ W: 240, H: 120, seed: 7, preset: "earth_sim" });
+  ok(world.ancHomelands && world.ancHomelands.length === ter.ancestryCount,
+    "buildSim carries ancHomelands");
+  ok(world.ancHomelands[0].temp === ter.ancHomelands[0].temp,
+    "homeland stamp is deterministic across builds");
+  const norTi = lonLatToIndex(8, 60, world.tw, world.th);
+  const mix = ancMixAtTile(world, norTi);
+  ok(mix && mix.length === 1, `Norway tile has one ancestry (${mix && mix[0][0]})`);
+  const tileLook = lookOf({ ancMix: mix, world });
+  ok(tileLook && tileLook.skin >= 0 && tileLook.build >= 0,
+    `tile look resolves through world.ancHomelands (skin ${tileLook?.skin?.toFixed(2)})`);
 }
 
 if (fails) {

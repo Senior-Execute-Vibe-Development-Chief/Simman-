@@ -823,7 +823,7 @@ try{
     console.warn('[SimWorker] error before first frame — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,ancHomelands:t.ancHomelands,tArrival:t.tArrival});
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
@@ -849,7 +849,7 @@ try{
   const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams,realWind:!!w.realWindUsed};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
-  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,ancHomelands:t.ancHomelands,tArrival:t.tArrival});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'visibility',hidden:typeof document!=="undefined"&&document.hidden});
@@ -866,10 +866,10 @@ if(!usedWorker){
   catch(err){
     console.error("load failed:",err);
     alert("Could not load save: "+(err&&err.message));
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,ancHomelands:t.ancHomelands,tArrival:t.tArrival});
     peopleRef.current._realWindGen=!!w.realWindUsed;
   }}
-  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
+  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,ancHomelands:t.ancHomelands,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;

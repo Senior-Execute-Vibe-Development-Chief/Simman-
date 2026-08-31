@@ -170,7 +170,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
       if (score > best) { best = score; origin = ti; }
     }
   }
-  if (origin < 0) return { tAncestry: anc, ancestryCount: 0 };
+  if (origin < 0) return { tAncestry: anc, ancestryCount: 0, ancHomelands: [] };
 
   // 2. PEOPLING — spread the origin population from the cradle; arrival = cost-time.
   const arrival = dijkstra([origin], null);
@@ -254,10 +254,20 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
     ax.push(s[0]); ay.push(s[1]); aBirth.push(s[2]); aParent.push(par);
   }
   const K = ax.length;
-  if (!K) return { tAncestry: anc, ancestryCount: 0 };
+  if (!K) return { tAncestry: anc, ancestryCount: 0, ancHomelands: [] };
 
   // 4. GROW lineage regions from the anchors (nearest by the same barrier cost).
   const src = new Array(K); for (let a = 0; a < K; a++) src[a] = ay[a] * tw + ax[a];
+  const ancHomelands = new Array(K);
+  for (let a = 0; a < K; a++) {
+    const ti = src[a], y = (ti / tw) | 0;
+    ancHomelands[a] = {
+      temp: tTemp[ti],
+      moist: tMoist[ti],
+      elev: tElev[ti],
+      lat: 90 - (y + 0.5) / th * 180,
+    };
+  }
   dijkstra(src, anc);
 
   // 5. sea, permanent ice and polar landmasses carried gene flow but hold no ancestry.
@@ -294,7 +304,12 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
     const jit = (id) => ((Math.imul(id + 1, 2654435761) >>> 0) / 4294967296) - 0.5;
     for (let a = 0; a < K; a++) ancLight[a] = 52 + jit(a) * 12;                       // slight per-lineage shade ~46–58%
   }
-  return { tAncestry: anc, ancestryCount: K, tArrival, ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent), ancHue, ancLight, ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
+  return {
+    tAncestry: anc, ancestryCount: K, tArrival,
+    ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent),
+    ancHue, ancLight, ancHomelands,
+    ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th,
+  };
 }
 
 export function buildTerritory(w,RES=1){
@@ -612,8 +627,8 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
-const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,tRelief,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
+const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancHomelands,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,tRelief,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancHomelands,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={},realWind=false,realWindFns=null}={}){

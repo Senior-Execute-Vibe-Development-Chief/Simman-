@@ -803,7 +803,7 @@ export function loadWorld(data, opts = {}) {
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
-  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
+  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, ancHomelands: ter.ancHomelands, tArrival: ter.tArrival });
   world._loadedSaveV = loadedSaveV;   // display-only: which physics regime this world was born under
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.

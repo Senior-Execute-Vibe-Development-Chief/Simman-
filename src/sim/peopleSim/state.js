@@ -230,6 +230,7 @@ function initAncestry(world, w, opts) {
   // reached frontier). The resident population a colony admixes with is dense where residence is
   // long, sparse on a just-peopled frontier — the demographic lever behind blend/replace/bootload.
   world.ancHue = opts.ancHue || null;
+  world.ancHomelands = opts.ancHomelands || null;
   const src = opts.tAncestry; if (!src) return;
   const stw = opts.terTw || w.width, sth = opts.terTh || w.height;
   const arr = opts.tArrival || null;
