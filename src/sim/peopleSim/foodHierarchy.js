@@ -47,6 +47,7 @@
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
 import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach, granaryCap } from "./settlement.js";
+import { grainSpoilClimate } from "./habitability.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
 import { creditFarmGatePayment } from "./tileMoney.js";
 import { mergeReach } from "./roads.js";
@@ -187,7 +188,15 @@ export function foodHaulArrive(world, child, parent) {
     ? !!((child._seaReach && child._seaReach.has(parent.id)) || (parent._seaReach && parent._seaReach.has(child.id)))
     : (onWater(ci) && onWater(pi));
   if (byWater) range *= 1 + (waterMul - 1) * (0.5 + 0.5 * nav);
-  return Math.exp(-d / Math.max(1e-3, range));
+  // T.CLIMATE_SPOIL — grain rots faster on hot, damp hauls (route climate, not
+  // destination rank). Geometric mean of the two endpoints' storage climates.
+  let spoilMult = 1;
+  if (T.CLIMATE_SPOIL > 0) {
+    const ct = child._climTemp ?? 0.5, cm = child._climMoist ?? 0.5;
+    const pt = parent._climTemp ?? 0.5, pm = parent._climMoist ?? 0.5;
+    spoilMult = Math.sqrt(grainSpoilClimate(ct, cm) * grainSpoilClimate(pt, pm));
+  }
+  return Math.exp(-d * spoilMult / Math.max(1e-3, range));
 }
 // Fraction of its grain POOL a settlement ships up to its market centre, by tier
 // (village → town → city → metropolis). A village is a farm: it sends most of

@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src",
-    "test": "node tools/smoke.mjs && node tools/emblem.test.mjs && node tools/test_market_pay.mjs",
+    "test": "node tools/smoke.mjs && node tools/emblem.test.mjs && node tools/test_market_pay.mjs && node tools/test_grain_spoil.mjs",
     "validate": "node tools/stylized.mjs",
     "resgate": "node tools/resgate.mjs",
     "coverage": "node tools/coverage.mjs",
