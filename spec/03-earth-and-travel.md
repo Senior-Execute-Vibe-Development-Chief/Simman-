@@ -63,6 +63,17 @@ integrate over the year (annualized trade) or read the month (campaign
 seasons, sailing windows). This is new relative to v1 and is the cheap
 door to campaign seasons, monsoon trade, and winter famine logistics.
 
+**The danger premium (DECISIONS 12d).** Effective travel cost = physical
+cost + a per-segment predation premium: high where authority weight (05)
+is thin and displaced violence-men (demobilized levies, famine-displaced —
+from the standing books) are plentiful, scaled by the value of the traffic;
+suppressed where a strong authority patrols (protection is the lord's own
+revenue defense — primitive 4). Trade reads effective cost; armies read
+physical cost. Required emergent consequences: the internal peace dividend
+of unified realms; Silk-Road-class overland routes lighting up only when
+imperial spans collapse the summed premium, dying at fragmentation — and
+thereby re-pricing the sea route (14.1's exploration trigger).
+
 ## 3.3 Reality table (gates M1)
 
 | Quantity | Target | Source |

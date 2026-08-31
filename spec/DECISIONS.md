@@ -128,6 +128,38 @@ lawyered.
        force) onto the obligation-graph substrate.
     Spec: `14-discovery.md`.
 
+## 2026-08-31 — Steppe & roads round
+
+12. **Herds, not nomads — and the danger premium.** (Ratified; 12a is the
+    owner's own deeper formulation, superseding the "mobile community
+    type" proposal.)
+    a. **Fully physical pastoralism**: herds are stocks that need food;
+       they can eat grass (seasonal, locally depletable, regrowing),
+       fodder (stored grass — labor + storage technique), or grain
+       (competes with mouths). Communities drift toward their food
+       source. No nomad type exists: sedentary mixed farming,
+       transhumance, semi-nomadism, and full steppe nomadism are points
+       on the feeding-ratio continuum. The mounted-war archetype emerges
+       from horses + daily riding practice (11). Reality check: the
+       agro-pastoral frontier must emerge at the cropping-beats-herding
+       rainfall line (the Great Wall line).
+    b. **Mirror-empire cascade**: steppe confederation hazard scales with
+       the adjacent settled neighbor's extortable wealth; person-bound
+       edges make hordes shatter at succession.
+    c. **The dismount dilemma**: a conquering steppe center's legitimacy
+       splits between steppe followers (eroded by adopting settled
+       institutions) and settled subjects (built by it) — the Khaldun
+       cycle emerges.
+    d. **The danger premium** (owner question ratified into mechanism):
+       effective travel cost = physical cost + predation danger per
+       segment — high where authority is thin and displaced violence-men
+       are plentiful, suppressed by strong authority (protection is the
+       lord's own revenue defense). Consequences required emergent: the
+       internal peace dividend; Silk-Road-class overland routes lighting
+       only under imperial spans and dying at fragmentation — which
+       re-prices the sea route (14's exploration trigger).
+    Spec: `15-pastoral.md` + 03 amendment.
+
 ## Proposed — working design, awaiting explicit ratification
 
 These are in the specs as the working design; the owner has not explicitly
