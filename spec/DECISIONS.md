@@ -58,6 +58,23 @@ lawyered.
    cross-cutting charters); urbanization and state formation are coupled
    but distinct processes.
 
+## 2026-08-31 — Knowledge & technology round
+
+8. **Techniques live in practitioners.** (All four sub-rulings ratified.)
+   a. Knowledge is carried by practitioner pools (the goods economy's labor
+      shares), practiced, transmitted person-to-person, and mortal — never
+      an abstract civilization-level stat. Complexity sustainable scales
+      with the connected carrier population (the Tasmania principle).
+   b. The institution catalog (05.5) merges into this system as the
+      administration domain — institutions are techniques whose
+      practitioners are scribes and officials. One mechanism.
+   c. Awareness vs mastery: knowing-of a technique diffuses easily;
+      proficiency must be rebuilt locally through practice or imported
+      carriers.
+   d. Blocking (guilds, elites suppressing threatening techniques) runs at
+      full historical strength in Phase 1.
+   Spec: `11-knowledge.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 These are in the specs as the working design; the owner has not explicitly

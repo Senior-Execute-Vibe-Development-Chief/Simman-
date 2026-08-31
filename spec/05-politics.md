@@ -103,22 +103,19 @@ strength, binding ∈ {person, office}). Rules:
   Derived, never authored (02). Marches, frontiers, and stateless zones
   are where weights are low or contested — free, from the cost field.
 
-## 5.5 The institution portfolio (P5)
+## 5.5 The institution portfolio (P5 → ratified via DECISIONS 8b)
 
-A catalog (~12 at Phase-1 scope), each: emergence conditions (from world
-state), upkeep (paid from extraction), the specific cost term it lowers,
-decay when unfed, and mortality (can die with its host — collapse scars,
-palace-dependence weighted). Initial catalog: tallies/seals → extraction
-accounting; writing → monitoring at distance (the province door); law code
-→ coordination/legitimacy (adjudication as a service); coinage → tax
-without haulage; roads/posts → information lag; agent recruitment
-(priesthood / examination / slave-administrator variants) → the
-principal-agent leak; census/survey → legibility; the impersonal
-crown/office → succession survival; standing army → coercion independent
-of levies; credit/fisc instruments → war finance `[DERIVE: exact list,
-conditions, magnitudes — against Seshat administrative variables]`.
-Implementation pattern: v1's tech DAG (condition-derived, effect channels,
-memoized) — proven — but per-center, decaying, and upkeep-costing.
+**Institutions are techniques of the administration domain — this section
+is implemented by `11-knowledge.md`.** A center's "portfolio" is its
+proficiency set in administration-domain catalog entries (tallies/seals,
+writing, law code, coinage, roads/posts, agent recruitment, census/survey,
+the impersonal crown/office, standing army, credit/fisc instruments), whose
+carriers are its scribes and officials, whose practice volume is the actual
+business of ruling, and whose complexity explains palace-dependent death
+(Linear B). Each entry lowers the specific cost term named here (monitoring,
+extraction accounting, the agency leak, succession fragility, war finance)
+`[DERIVE: magnitudes — against Seshat administrative variables]`. All
+emergence, upkeep, decay, transmission, and blocking mechanics live in 11.
 
 ## 5.6 Consolidation `[SKETCH — hardened after M4/M6 gates]`
 
