@@ -64,7 +64,25 @@ version split — the scribes' version filtered through the writing culture's
 perspective and the patron's legitimacy needs. A distinctive product
 feature; implementation rides the event log.
 
-## 7.6 Reality tables
+## 7.6 Values and societal character (DECISIONS 15)
+
+Societal "personality" is path dependence in three layers: what a society
+practices (11), what it institutionalized (11/05), and **what it has come
+to prize** — a small value vector per culture (martial honor, commercial
+esteem, piety, learning, austerity, splendor), written as a slow EMA of
+practiced and rewarded life, read back as behavioral weights on the
+hazards and pressure dynamics wherever style matters (13 war appetite,
+14c prestige-project choice, extraction restraint, conversion resistance,
+exploration, 11 blocking). The generational lag is the lock-in: the
+war-forged culture comes to prize war and keeps prizing it after the
+cause dies — situation → institutionalized response → cultural lock-in →
+selection's eventual fee (Sparta's arc, end to end). **Founder effects**
+at branching amplify individual traits into cultural ones (small-N
+drift). **No society-level dice, ever** (15c): idiosyncrasy enters only
+through persons and founders. The emblem engine's semantic axes read
+these values — it was built waiting for them.
+
+## 7.7 Reality tables
 
 | Quantity | Target | Source |
 |---|---|---|

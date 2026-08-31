@@ -206,9 +206,30 @@ lawyered.
     e. **The observatory chapter (17)** written as working design — the
        owner's reply skipped item A; assumed yes, veto reverts.
 
+## 2026-08-31 — Personalities round
+
+15. **Societal character is path dependence, never dice.** (Ratified.)
+    a. Three emergent layers: the practice profile (11), the institutional
+       portfolio (11/05), and **value vectors on cultures** — written
+       slowly by practiced/rewarded life, read back as behavioral weights
+       (war appetite, prestige-project choice, extraction restraint,
+       conversion resistance, exploration, blocking), decaying on
+       generational timescales. The lag is the lock-in: styles outlive
+       their causes (the Sparta mechanism).
+    b. **Founder effects** at culture branching: small founding
+       populations amplify individual traits into cultural ones.
+    c. **No society-level random personality, ever** — idiosyncrasy
+       enters only through persons (ruler traits, dynasties) and founder
+       effects. Constitution-adjacent rule.
+    d. **Personality collapse is a pathology gate** (v1's scar: "by 50k
+       every realm reads Trading Empire"): all mature realms converging
+       on one style = red build; target is Sparta/Athens-class divergence
+       under similar conditions.
+    Spec: 07 values section; 08.3 gate.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 14)*
+*(empty — all proposals ratified as of round 15)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

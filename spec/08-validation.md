@@ -61,7 +61,8 @@ The class v1 lacked until late. Two sources:
   (top-1 shares), immortal giants (mortality gradient, #1 churn), war
   flicker (declarations vs concurrent wars), floor-mode pinning (share of
   register at any floor), two-clock (no mechanic reads the calendar —
-  enforced by lint), and the rest. Thresholds start at v1's measured
+  enforced by lint), **personality collapse** (all mature realms
+  converging on one style — DECISIONS 15d), and the rest. Thresholds start at v1's measured
   broken/healthy values and are re-derived, blind, per v1's discipline.
 - **Play-experience gates**: the owner's recurring reports encoded as
   standing measurements at the shipped grid on the drawn map — median
