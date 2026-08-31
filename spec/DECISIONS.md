@@ -248,9 +248,38 @@ lawyered.
        rewarded.
     Spec: 06.4 expanded.
 
+## 2026-08-31 — Audit round (ratified via owner "ok"; any item revertible on a word)
+
+17. **The thin-spot audit, folded in.**
+    a. **Government form** is coalition-derived: the form of rule reflects
+       whose resources the center cannot do without (land+levies → kings;
+       trade+finance → merchant councils/republics; legitimacy manufacture
+       → priest-rule; massed citizen soldiers/rowers → broad
+       participation). Derived label with real consequences (succession
+       law, factional strife, value feedback). Spec: 05.3.
+    b. **The trust problem**: cross-authority trade is gated by an
+       enforcement term — shared authority, shared identity networks
+       (**emergent trade diasporas** along high-value routes), or late
+       institutional substitutes (merchant law, credit — the
+       impersonal-exchange transition). Spec: 06.5.
+    c. **Naval warfare**: fleets as entities; sea control, blockade into
+       the siege/food books, convoy vs commerce raiding, galley-era
+       coastal seasonality. Spec: 13.6.
+    d. **Money's origin** derived: coinage as a verification technique;
+       states adopt it because taxing and paying armies monetized is
+       cheaper — monetization spreads with state capacity. Spec: 06.2.
+    e. **Mass-migration cascades** (Sea Peoples / Völkerwanderung class)
+       are a required emergent outcome — a gate, not a mechanism;
+       verified at M5–M6. Spec: 08.
+    f. **Consciously excluded from Phase 1** (a choice, not an
+       oversight; each re-openable): household/marriage-pattern
+       demography (EMP — Phase-2 depth), espionage as a system (folded
+       into war-assessment noise), education beyond carrier pools,
+       intra-family politics below the dynasty, sub-monthly weather.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 16)*
+*(empty — all proposals ratified as of round 17)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

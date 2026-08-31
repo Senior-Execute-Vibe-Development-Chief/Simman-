@@ -62,7 +62,11 @@ The class v1 lacked until late. Two sources:
   flicker (declarations vs concurrent wars), floor-mode pinning (share of
   register at any floor), two-clock (no mechanic reads the calendar —
   enforced by lint), **personality collapse** (all mature realms
-  converging on one style — DECISIONS 15d), and the rest. Thresholds start at v1's measured
+  converging on one style — DECISIONS 15d), and the rest. Plus
+  required-outcome gates: **mass-migration cascades** (Sea Peoples /
+  Völkerwanderung-class domino folk-movements must occur in the ensemble
+  — DECISIONS 17e), hordes beside rich settled belts (15), diaspora
+  networks along high-value routes (17b). Thresholds start at v1's measured
   broken/healthy values and are re-derived, blind, per v1's discipline.
 - **Play-experience gates**: the owner's recurring reports encoded as
   standing measurements at the shipped grid on the drawn map — median

@@ -29,6 +29,11 @@ Food moves because someone **paid** for it or someone **took** it.
 
 ## 6.2 Money `(v1-validated design; re-homed)`
 
+- **Why money (DECISIONS 17d)**: coinage is a verification technique —
+  the stamp collapses the cost of weighing and assaying every exchange —
+  and states adopt and enforce it because it makes the two things states
+  do (tax and pay soldiers) radically cheaper; monetization therefore
+  spreads *with* state capacity, never ahead of it.
 - **Closed specie loop**: finite deposits → mining → mint (seigniorage to
   the minting center) → circulation → wear/hoard/shipwreck sink. No coin
   from nowhere (R5). Barter before coin; coined markets are an emergent
@@ -118,6 +123,17 @@ fragmentation closes them; tolls/tariffs accrue to whoever holds authority
 over chokepoints — revenue that feeds 05's centers. Mercenaries: violence
 as a purchasable good in this market where coin and war demand coincide
 (DECISIONS 10d; 13.1).
+
+**The trust problem (DECISIONS 17b):** trade across authority boundaries
+has no contract enforcement, so its volume is gated by an enforcement
+term satisfied by any of: one authority spanning the route; a **shared
+identity network** at both ends — trade diasporas, emergent as tiny
+merchant communities of one culture at foreign ports along high-value
+routes (identity layer + small migration flows; reputation and community
+sanction do the enforcing — the Sogdian/Armenian/Hanse-kontor pattern);
+or late institutional substitutes (merchant law and credit techniques in
+11's catalog). The transition from diaspora trade to impersonal exchange
+is a real, datable emergent event of late Phase 1.
 
 ## 6.6 Megaprojects and prestige spending `(DECISIONS 14c)`
 

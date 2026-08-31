@@ -78,6 +78,17 @@ temple-manager (runs the store) — texture, not types. Centers also
 condense on *gravity* (market/temple towns, 06): authority without
 conquest, edges formed by service dependence (the city-over-lords path).
 
+**Government form (DECISIONS 17a):** the form of rule at a center is
+derived from its coalition weights — the shares of its capacity by source.
+Land and levies dominant → warrior king + landed elite; trade and finance
+dominant (ports) → council rule, the merchant republic (Venice, Genoa, the
+Dutch — underivable without this); legitimacy manufacture dominant →
+priest-rule; massed citizen soldiers or rowers dominant → broad
+participation (the hoplite/rower → polis chain). The label is derived,
+never chosen, and carries real consequences: elective/council succession
+trades succession crises for factional strife; forms feed the value
+vectors (07.6) and blocking profiles (11).
+
 ## 5.4 The obligation graph
 
 Edges: (from, to, kind ∈ {tribute, levy, fealty, charter, alliance, debt},

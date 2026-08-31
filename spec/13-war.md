@@ -63,7 +63,19 @@ war (primitive 7 at low intensity — marches, the steppe rim), no separate
 system. Pathology gate: v1's war-flicker signature (declarations ≫
 concurrent wars; rematch churn) must read healthy.
 
-## 13.5 Reality tables
+## 13.5 War at sea (DECISIONS 17c)
+
+The army logic afloat: **fleets as entities** built from port capacity,
+timber, and naval technique; galley-era fleets are coastal, seasonal, and
+crew-heavy (rowers draw the same manpower books; beached nightly — battles
+hug coasts); the sail era extends reach and season. **Sea control** is
+contesting lanes: **blockade** cuts a port's sea supply and plugs directly
+into the siege/food books (island and maritime polities become
+starvable); **convoy escort vs commerce raiding** is the navy working the
+sea danger premium (14a); amphibious operations pay the landing bar.
+Athens, Carthage, and Venice live and die by this layer.
+
+## 13.6 Reality tables
 
 | Quantity | Target | Source |
 |---|---|---|
