@@ -8,6 +8,7 @@ import {
   HASH_RADIX,
   HASH_OFFSET_BASIS,
   HASH_PRIME,
+  MONTHS_PER_YEAR,
   PLACEHOLDER_NOISE_AMPLITUDE,
   PLACEHOLDER_NOISE_DECAY,
   PLACEHOLDER_NOISE_FREQUENCY,
@@ -56,6 +57,7 @@ export class World {
   readonly debug: WorldDebug;
   noise!: Float64Array;
   step = 0;
+  calendarMonth = 0;
 
   constructor(options: WorldOptions) {
     const dimensions = dimensionsFor(options.grid);
@@ -91,7 +93,12 @@ export function stepWorld(world: World): void {
   const field = world.noise;
   if (!(field instanceof Float64Array)) throw new Error("The placeholder field is unavailable.");
 
-  world.ledger.begin("placeholder.noise", field);
+  world.ledger.beginPass(
+    "placeholder.noise",
+    field,
+    "placeholder.input",
+    "placeholder.decay",
+  );
   const random = passRng(world.seed, "m0.placeholder", world.step);
   const phase = random();
   const signal = dsin(
@@ -99,23 +106,22 @@ export function stepWorld(world: World): void {
     + world.step * PLACEHOLDER_NOISE_FREQUENCY
     + world.step * PLACEHOLDER_STEP_PHASE,
   );
+  let sourceAmount = 0;
+  let sinkAmount = 0;
   for (let index = 0; index < field.length; index++) {
     const oldValue = field[index] ?? 0;
     const nextValue = oldValue * PLACEHOLDER_NOISE_DECAY
       + signal * PLACEHOLDER_NOISE_AMPLITUDE;
-    world.ledger.write(
-      "placeholder.noise",
-      field,
-      index,
-      nextValue,
-      "placeholder.input",
-      "placeholder.decay",
-    );
+    field[index] = nextValue;
+    const delta = nextValue - oldValue;
+    if (delta >= 0) sourceAmount += delta;
+    else sinkAmount -= delta;
   }
-  world.ledger.end("placeholder.noise", field);
+  world.ledger.endPass("placeholder.noise", field, sourceAmount, sinkAmount);
   world.ledger.assertAll();
   world.debug.conservationChecks++;
   world.step++;
+  world.calendarMonth = (world.calendarMonth + 1) % MONTHS_PER_YEAR;
   world.debug.ticks++;
 }
 
@@ -174,6 +180,7 @@ export function hashWorld(world: World): string {
   let hash = HASH_OFFSET_BASIS;
   hash = hashText(hash, stableStringify(world.config));
   hash = hashNumber(hash, world.step);
+  hash = hashNumber(hash, world.calendarMonth);
   for (const { definition, field } of fieldEntries(world as unknown as Record<string, unknown>)) {
     hash = hashText(hash, definition.name);
     hash = hashNumber(hash, field.length);

@@ -130,3 +130,31 @@ resolution. A threshold whose perturbation changes macro-history is a bug
    either gain a grounding or be dissolved into a mechanism (R2).
 3. Paired constants that must move together are one row with both values.
 4. A row's value changes only with a measurement attached.
+
+## M1 — proposed (review pending)
+
+These rows are introduced by the M1 substrate and travel harness. They are
+implementation parameters with the unit or grounding needed to review them;
+they are not hidden outcome-fitting levers.
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `TARGET_GRID_WIDTH / HEIGHT` | 1800 / 900 | simulation cells; ~22 km equatorial target convention from M1 handoff |
+| `MONTHS_PER_YEAR` | 12 | calendar/climate cycle |
+| `EARTH_CIRCUMFERENCE_KM / MERIDIONAL_KM` | 40,075 / 20,004 | spherical Earth geodesy |
+| `DEG_TO_RAD` | π/180 | coordinate conversion |
+| `FOOT_DAY / RIDE_DAY` | 25 / 35 | km/day; standard travel anchors |
+| `CART / RIVER / COASTAL / OPEN-SEA SPEED` | 30 / 45 / 80 / 120 | km/day; mode anchors pending ORBIS calibration |
+| `COASTAL_BAND_KM` | 150 | km; coastal-mode shoreline band |
+| `RIVER_MIN_MAGNITUDE` | 2 | river classification bar from the ported hydrology |
+| `DIAGONAL_FACTOR` | √2 | grid geometry |
+| `TRANSFER_DAYS` | 0.25 | days; intermodal handling placeholder |
+| `MOUNTAIN / SLOPE / RELIEF COST` | 5 / 3 / 4 | continuous terrain-factor coefficients; M1 gate parameters |
+| `COLD / MUD / WATERLOG / SEA-STORM` | 2 / 0.8 / 0.7 / 1.2 | seasonal cost response coefficients |
+| `RIVER_DOWNSTREAM / UPSTREAM` | 0.6 / 1.4 | directed river travel factors |
+| `FREIGHT sea:river:land` | 1:5:28 | Duncan-Jones relative freight anchor |
+| `MAX_LAKE_AREA_KM2` | 370,000 | Caspian-class physical lake cap |
+| `ANCESTRY_HOP_FREE / OCEAN_EFOLD` | 80 / 40 | km; converted from v1 tile conventions |
+| `LAKE_MOISTURE_RADIUS_KM` | 60 | km; converted from v1 tile convention |
+| `VOLCANIC_INFLUENCE / FULL_KM` | 300 / 140 | km; converted plate-boundary soil influence |
+| `MINE_SCATTER_RADIUS_KM / SMALL` | 500 / 375 | km; converted v1 scatter radii |

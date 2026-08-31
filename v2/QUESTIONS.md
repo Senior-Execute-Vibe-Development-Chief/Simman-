@@ -37,3 +37,35 @@ simulation assumptions.
    goldens together in one commit.
 3. **Wasm fixture graph**: ratified as a toolchain fixture only; it is
    deleted when the real CRP routing engine lands at M1.
+
+## M1 findings
+
+4. M1 adopts the ratified target grid of `1800×900` simulation cells. The
+   copied v1 supplier is sampled at that grid and the substrate owns monthly
+   arrays (`cell × 12`); v1 exposes annual temperature/moisture plus seasonal
+   amplitude rather than twelve monthly fields, so the adapter expands those
+   seasonal fields into monthly values. This is marked `M1-PLACEHOLDER` in
+   `substrate.ts` and should be replaced by a directly supplied monthly
+   observation/solver contract if the M1 climate review requires it.
+5. The M1 Rust API implements the ratified three phases and the layered,
+   directed graph, with deterministic Dijkstra workspaces behind the API.
+   Nested partition labels are present, but shortcut customization is not
+   yet materially faster than the baseline at this milestone; a later CRP
+   optimization must remain invisible to the TypeScript caller.
+6. The initial target-grid measurements miss the provisional `≤5 ms` point
+   query and `≤500 ms` full distance-map budgets on the current Earth
+   substrate. Query early termination and pooled workspaces are in place;
+   the measured values remain in `bench-baselines.json` and are a performance
+   finding, not a relaxed gate.
+7. The first travel reality run at seed `42042` exposes real cross-grid
+   findings: several long ORBIS routes differ by 12–50% between `dev` and
+   `target`, and the coarse raster can lose a land or sea connection. The
+   gate remains hard and reports these rows rather than adding route-specific
+   corrections; the correct next change is a resolution-invariant topology
+   mechanism.
+8. The same first gate run passes the fixed freight and daily-speed anchors
+   and now produces a measurable Indian Ocean seasonal difference from the
+   observed monthly climate. Several ORBIS route rows remain outside their
+   25% bands, so `npm run gate` exits nonzero as an explicit M1 calibration
+   finding; expected values and route factors were not changed to make this
+   first substrate pass.

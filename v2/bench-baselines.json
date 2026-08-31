@@ -1,0 +1,17 @@
+{
+  "dev": {
+    "substrateMilliseconds": 1000,
+    "routingInitializeMilliseconds": 20,
+    "customizeMilliseconds": 20,
+    "queryMilliseconds": 40,
+    "distanceMapMilliseconds": 30
+  },
+  "target": {
+    "substrateMilliseconds": 30000,
+    "routingInitializeMilliseconds": 120,
+    "customizeMilliseconds": 550,
+    "queryMilliseconds": 1700,
+    "distanceMapMilliseconds": 1700
+  },
+  "notes": "M1 local Linux baseline, seed 42042, earth_sim, target 1800x900. Values are rounded upward to absorb runner noise; CI fails values above 120% of these baselines."
+}

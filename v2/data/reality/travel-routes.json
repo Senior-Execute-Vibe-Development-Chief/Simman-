@@ -1,0 +1,167 @@
+[
+  {
+    "id": "rome-alexandria",
+    "from": { "lat": 41.9028, "lon": 12.4964 },
+    "to": { "lat": 31.2001, "lon": 29.9187 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 70,
+    "source": "ORBIS, Stanford Digital Forma Urbis / route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "rome-london",
+    "from": { "lat": 41.9028, "lon": 12.4964 },
+    "to": { "lat": 51.5074, "lon": -0.1278 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 50,
+    "source": "ORBIS, Stanford Digital Forma Urbis / route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "rome-paris",
+    "from": { "lat": 41.9028, "lon": 12.4964 },
+    "to": { "lat": 48.8566, "lon": 2.3522 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 35,
+    "source": "ORBIS, Stanford Digital Forma Urbis / route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "alexandria-antioch",
+    "from": { "lat": 31.2001, "lon": 29.9187 },
+    "to": { "lat": 36.2021, "lon": 36.1606 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 35,
+    "source": "ORBIS, Stanford Digital Forma Urbis / route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "chang-an-luoyang",
+    "from": { "lat": 34.3416, "lon": 108.9398 },
+    "to": { "lat": 34.6197, "lon": 112.454 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 12,
+    "source": "ORBIS-style overland comparison, route distances from historical itineraries",
+    "tolerance": 0.25
+  },
+  {
+    "id": "chang-an-dunhuang",
+    "from": { "lat": 34.3416, "lon": 108.9398 },
+    "to": { "lat": 40.1417, "lon": 94.662 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 45,
+    "source": "Silk Road itinerary distance synthesis, route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "pataliputra-taxila",
+    "from": { "lat": 25.61, "lon": 85.14 },
+    "to": { "lat": 33.7456, "lon": 72.8397 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 45,
+    "source": "ORBIS-style overland comparison, South Asian historical itinerary synthesis",
+    "tolerance": 0.25
+  },
+  {
+    "id": "athens-corinth",
+    "from": { "lat": 37.9838, "lon": 23.7275 },
+    "to": { "lat": 37.9386, "lon": 22.9322 },
+    "month": 5,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 8,
+    "source": "ORBIS-style route distance reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "alexandria-rome-sea",
+    "from": { "lat": 31.2001, "lon": 29.9187 },
+    "to": { "lat": 41.9028, "lon": 12.4964 },
+    "month": 5,
+    "modes": ["foot", "coastal", "open-sea"],
+    "capabilities": ["boats", "navigation"],
+    "expectedDays": 18,
+    "source": "ORBIS maritime extension, Mediterranean sailing-time reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "calicut-aden",
+    "from": { "lat": 11.2588, "lon": 75.7804 },
+    "to": { "lat": 12.7855, "lon": 45.0187 },
+    "month": 5,
+    "modes": ["foot", "coastal", "open-sea"],
+    "capabilities": ["boats", "navigation"],
+    "expectedDays": 25,
+    "source": "Indian Ocean sailing-season literature, route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "guangzhou-malacca",
+    "from": { "lat": 23.1291, "lon": 113.2644 },
+    "to": { "lat": 2.1896, "lon": 102.2501 },
+    "month": 5,
+    "modes": ["foot", "coastal", "open-sea"],
+    "capabilities": ["boats", "navigation"],
+    "expectedDays": 25,
+    "source": "South China Sea sailing-season literature, route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "cadiz-carthage",
+    "from": { "lat": 36.5271, "lon": -6.2886 },
+    "to": { "lat": 36.8065, "lon": 10.1815 },
+    "month": 5,
+    "modes": ["foot", "coastal", "open-sea"],
+    "capabilities": ["boats", "navigation"],
+    "expectedDays": 12,
+    "source": "Mediterranean sailing-time literature, route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "london-bordeaux",
+    "from": { "lat": 51.5074, "lon": -0.1278 },
+    "to": { "lat": 44.8378, "lon": -0.5792 },
+    "month": 5,
+    "modes": ["foot", "coastal", "open-sea"],
+    "capabilities": ["boats", "navigation"],
+    "expectedDays": 12,
+    "source": "Atlantic coastal sailing-time literature, route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "calicut-aden-monsoon",
+    "from": { "lat": 11.2588, "lon": 75.7804 },
+    "to": { "lat": 12.7855, "lon": 45.0187 },
+    "month": 10,
+    "modes": ["foot", "coastal", "open-sea"],
+    "capabilities": ["boats", "navigation"],
+    "expectedDays": 32,
+    "source": "Indian Ocean sailing-season literature, route-model reconstruction",
+    "tolerance": 0.25
+  },
+  {
+    "id": "rome-alexandria-winter",
+    "from": { "lat": 41.9028, "lon": 12.4964 },
+    "to": { "lat": 31.2001, "lon": 29.9187 },
+    "month": 11,
+    "modes": ["foot", "pack"],
+    "capabilities": ["packAnimals"],
+    "expectedDays": 78,
+    "source": "ORBIS seasonal route-model reconstruction",
+    "tolerance": 0.25
+  }
+]

@@ -3,9 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Simman v2 — M0</title>
+    <title>Simman v2 — M1</title>
+    <style>
+      :root { color-scheme: dark; font: 14px system-ui, sans-serif; }
+      body { margin: 0; background: #101820; color: #e8dfc8; }
+      main { max-width: 980px; margin: auto; padding: 20px; }
+      h1 { margin: 0 0 6px; font-size: 21px; }
+      p { color: #adbaa9; }
+      .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 14px 0; }
+      label { color: #d4c8a9; }
+      #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; }
+      #status, #route { min-height: 20px; color: #8fd3c7; }
+      input[type="range"] { accent-color: #e5b65c; }
+    </style>
   </head>
   <body>
-    <main>Simman v2 M0 instrument bench</main>
+    <main>
+      <h1>Simman v2 · M1 land and movement</h1>
+      <p>Earth substrate, monthly climate, and one layered travel-time field.</p>
+      <div class="controls">
+        <label>Lens
+          <select id="lens">
+            <option value="terrain">Terrain</option>
+            <option value="climate">Climate</option>
+          </select>
+        </label>
+        <label id="month-label">Month 1</label>
+        <input id="month" type="range" min="0" max="11" step="1" value="0" />
+        <label><input data-capability="packAnimals" type="checkbox" checked /> pack animals</label>
+        <label><input data-capability="wheelsDraft" type="checkbox" /> wheels + draft</label>
+        <label><input data-capability="boats" type="checkbox" checked /> boats</label>
+        <label><input data-capability="navigation" type="checkbox" checked /> navigation</label>
+      </div>
+      <canvas id="map" width="900" height="450"></canvas>
+      <div id="status">Building substrate…</div>
+      <div id="route">Click two points for a route.</div>
+    </main>
+    <script type="module" src="/src/shell/main.ts"></script>
   </body>
 </html>
