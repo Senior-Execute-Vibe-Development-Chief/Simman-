@@ -133,6 +133,12 @@ function _ensureTerrOwnerCopy(world, key, N) {
   return a;
 }
 
+function _ensureTerrFloatSnap(world, key, N) {
+  let a = world[key];
+  if (!a || a.length !== N) a = world[key] = new Float32Array(N);
+  return a;
+}
+
 // Spare coin the grain market will actually spend — getWealthReserve inlined
 // so this file does not import settlement.js (settlement → territory cycle).
 function _spareCoin(s) {
@@ -550,6 +556,24 @@ export function computeTerritory(world) {
   // stable settlement order, the same one always wins, so no flicker.
   // Under MARKET_PULL_CACHE a clean fingerprint skips this whole flood and
   // keeps the stored partition for the tally below.
+  // T.MARKET_FARM_HOLD — worked tiles keep their haul path until a rival wins
+  // the bid (granary-death chain, 2026-08-31). When MARKET_PULL's bid shrinks
+  // the flood frontier, cost resets to Infinity on tiles the sweep no longer
+  // reaches; tally then marks them unreachable, landFood cliffs to 0, supply
+  // reads off while the granary still holds tens of tonnes, and ONE_POP drains
+  // the census. Carry last pass's haul costs on incumbent-owned tiles the flood
+  // skipped — peasants do not stop farming because the partition math ran short
+  // this cadence. Owner change, siege, or a fresh reach from the flood releases.
+  let farmSnapOwner = null, farmSnapCost = null, farmSnapTcost = null;
+  const farmHold = mktPull && T.MARKET_FARM_HOLD > 0;
+  if (mktFlood && farmHold) {
+    farmSnapOwner = _ensureTerrOwnerCopy(world, "_terrFarmSnapOwner", N);
+    farmSnapOwner.set(owner);
+    farmSnapCost = _ensureTerrFloatSnap(world, "_terrFarmSnapCost", N);
+    farmSnapCost.set(cost);
+    farmSnapTcost = _ensureTerrFloatSnap(world, "_terrFarmSnapTcost", N);
+    farmSnapTcost.set(tcost);
+  }
   if (mktFlood) {
   // Reset COST every flood (roads / budgets / bids shift the falloff) but keep
   // OWNER — ownership is persistent, that's what stabilises the borders.
@@ -777,6 +801,19 @@ export function computeTerritory(world) {
   }
 
   if (prevOwner) _applyMarketHysteresis(owner, cost, tcost, clm, prevOwner, cost2, tcost2, clm2, byId, N, T.MARKET_PULL_HYST);
+  if (farmSnapOwner && farmSnapCost && farmSnapTcost) {
+    const siegeFresh = (T.POLITY_INTERVAL || 150) * 1.5;
+    for (let ti = 0; ti < N; ti++) {
+      const o = owner[ti];
+      if (o < 0 || o !== farmSnapOwner[ti] || !byId.has(o)) continue;
+      const st = byId.get(o);
+      if (T.SIEGE_STARVE && st._besiegedAt !== undefined && world.step - st._besiegedAt < siegeFresh) continue;
+      if (cost[ti] < Infinity) continue;
+      if (farmSnapTcost[ti] >= Infinity) continue;
+      cost[ti] = farmSnapCost[ti];
+      tcost[ti] = farmSnapTcost[ti];
+    }
+  }
   if (mktPull) { world._mktFloodSig = mktSig; world._mktFloodReady = true; world._mktFloodAge = 0; }
   } else if (mktPull) {
     // Tally-only: partition reused. Debug counter for probes / HUD.

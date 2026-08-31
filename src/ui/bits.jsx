@@ -52,7 +52,8 @@ export function fmtUrbanCatchment(urban, catchment) {
 // (_foodSupply = net flow incl. imports; _landFood = local harvest only;
 // granary = s.food; _coreNeed = urban core + garrison mouths).
 export function foodLedgerInfo(s) {
-  const supply = s._foodSupply || 0;
+  const supply = s._foodAvail != null ? s._foodAvail : (s._foodSupply || 0);
+  const flow = s._foodFlow != null ? s._foodFlow : (s._foodSupply || 0);
   const demand = s._foodDemand || 0;
   const importRate = s._foodImportRate || 0;
   const landFood = s._landFood || 0;
@@ -70,7 +71,8 @@ export function foodLedgerInfo(s) {
     status = "surplus";
     statusColor = "#3a7";
   } else if (surplus < -eps) {
-    if ((s.food || 0) <= 0.01 && supply < coreNeed) {
+    const store = s.food || 0;
+    if (store <= 0.01 && flow < coreNeed && store < coreNeed) {
       status = "starving";
       statusColor = "#c44";
     } else if (ticksLeft < 50) {

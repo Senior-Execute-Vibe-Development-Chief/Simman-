@@ -2762,8 +2762,11 @@ export function updateFishStocks(world) {
   }
 }
 
-function updateFood(world, s) {
+function updateFood(world, s, harvestOnly) {
   climateOf(world, s);   // before granary spoil / climate-gated food reads
+  const ledgerOnly = !harvestOnly && s._foodHarvestStep === world.step;
+  let landFood;
+  if (!ledgerOnly) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
   // agriculture. Storable — fills granaries and ships to feed cities. A big
@@ -3064,6 +3067,13 @@ function updateFood(world, s) {
   // rising in a dearth is a real behaviour, not an artefact to correct away —
   // and it is what the emergent history validates against across seeds.
   s._pastShare = landFood > 0 ? pastoral / landFood : 0;
+    s._landFood = landFood;
+    s._storableSupply = landFood;
+    s._foodHarvestStep = world.step;
+    if (harvestOnly) return;
+  } else {
+    landFood = s._landFood || 0;
+  }
 
   // ── Food demand ── (computed BEFORE the fish block: the fish gate reads the
   // share of this demand the RETAINED land food leaves unfilled. Nothing here
@@ -3285,9 +3295,12 @@ function updateFood(world, s) {
   // block, which gates on it) plus local perishable fish. So a city is fed by
   // its whole hinterland, not 12 partners.
   const supply = netLand + fish;
+  s._foodFlow = supply;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = (T.SIEGE_STARVE && s._besiegedNow) ? 0 : supply;   // a besieged seat's flow is the besieger's (T.SIEGE_STARVE, block above)
+  const coreForAvail = s._coreNeed !== undefined ? s._coreNeed : 0;
+  s._foodAvail = supply + (coreForAvail > 0 ? Math.min(s.food || 0, coreForAvail) : 0);
   s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
   s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
@@ -3302,8 +3315,8 @@ function updateFood(world, s) {
   {
     const need = s._coreNeed || 0;
     const store = s.food || 0;
-    const flow = s._foodSupply || 0;
-    const covered = need > 0 ? Math.min(need, flow + store) : need;
+    const flow = s._foodAvail || s._foodSupply || 0;
+    const covered = need > 0 ? Math.min(need, flow) : need;
     const fedNow = need > 0 ? Math.min(1, covered / need) : 1;
     s._fedM = s._fedM === undefined ? 1 : 0.99 * s._fedM + 0.01 * fedNow;
   }
@@ -3342,6 +3355,12 @@ function updateFood(world, s) {
     const loss = 0.0025 * clim * (s.food || 0) * (world._dt || 1);
     s.food = Math.max(0, (s.food || 0) - loss);
   }
+}
+
+/** Harvest pass only — stamps _landFood / _storableSupply for poolFoodHierarchy. */
+export function stampLandHarvest(world, s) {
+  if (s._foodHarvestStep === world.step) return;
+  updateFood(world, s, true);
 }
 
 // The granary's capacity — ONE definition, two consumers: the updateFood clamp
@@ -3649,8 +3668,12 @@ function updatePopulation(world, s) {
   // (flow below the core's own need) dies exactly as before. Follows the
   // FED_FAMINE precedent: scope the famine CONSEQUENCE, never re-key the
   // calibrated granary/trade drain. Lever off ⇒ gate absent, byte-identical.
+  const coreGate = s._coreNeed !== undefined ? s._coreNeed : Infinity;
+  const flowGate = s._foodFlow || s._foodSupply || 0;
+  const storeGate = s.food || 0;
+  const coreStarving = flowGate < coreGate && storeGate < coreGate;
   if (s.food <= 0.01 && s.people > 1
-      && (!T.FOOD_REACH || (s._foodSupply || 0) < (s._coreNeed !== undefined ? s._coreNeed : Infinity))) {
+      && (!T.FOOD_REACH || coreStarving)) {
     const before = s.people;
     if (T.FED_FAMINE) {
       const dependents = Math.min(before, s._urbanPop || 0);

@@ -8,8 +8,8 @@
 // from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL, updateFishStocks, FISH_REGEN_INTERVAL } from "./settlement.js";
-import { aggregateFoodHierarchy } from "./foodHierarchy.js";
+import { updateSettlement, urbanise, stampLandHarvest, updateSoil, SOIL_INTERVAL, updateFishStocks, FISH_REGEN_INTERVAL } from "./settlement.js";
+import { aggregateFoodHierarchy, poolFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
@@ -179,13 +179,15 @@ export function stepPeopleSim(world, n = 1) {
     }
     mark("territory");
     for (let i = 0; i < world.settlements.length; i++) {
+      const s = world.settlements[i];
+      if (s.mode === "settled") stampLandHarvest(world, s);
+    }
+    // Same-tick imports: pool this tick's harvest before the granary ledger runs.
+    poolFoodHierarchy(world);
+    for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
     urbanise(world);   // rural→urban drift: concentrate population into hubs so real cities form
-    // Central-place food: surplus flows UP the liege tree so a city is fed by its
-    // whole hinterland (foodHierarchy.js). Produces _foodNet for next tick's
-    // updateFood; runs here so it sees this tick's fresh production + housing.
-    aggregateFoodHierarchy(world);
     // Population field (T.POP_FIELD): advance the per-tile people/carrying-capacity
     // substrate. It's a SLOW diffusion (logistic growth + capacity-seeking migration),
     // so it runs on a STRIDE (POP_FIELD_STRIDE) at stride× the step size — same
@@ -204,6 +206,8 @@ export function stepPeopleSim(world, n = 1) {
         mark("derive");
       }
     }
+    // Scarcity prices for next territory cadence (pooling ran before the ledger).
+    aggregateFoodHierarchy(world);
     // Political control field (controlField.js). In PRETTY mode (CONTROL_FIELD, CTRL_LIVE off)
     // it's a render-only layer (world._ctrlOwner is the drawn border; nothing in the sim reads
     // it) — so STRIDE it (the border relaxes one hop per firing and moves slowly, and the

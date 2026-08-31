@@ -259,7 +259,8 @@ export function grainScarcityOf(s) {
   return Math.min(3, Math.max(0.5, demand / Math.max(0.01, supply)));
 }
 
-export function aggregateFoodHierarchy(world) {
+/** Levy + tree + open-market pooling — sets _foodNet from fresh _storableSupply. */
+export function poolFoodHierarchy(world) {
   const byId = world._byId;
   if (!byId) return;
   // T.SHIP_SURPLUS — the farm gate sells the SURPLUS, not a tier slice
@@ -277,29 +278,6 @@ export function aggregateFoodHierarchy(world) {
   // everywhere, and offers would VANISH rather than open).
   const surplusBasis = T.SHIP_SURPLUS > 0 && T.ONE_BOOK > 0 && T.ONE_POP > 0 && T.DISSOLVE_FARMS > 0;
 
-  // Decay every settlement's smoothed import inflow up front (the hierarchy walk
-  // below only ever ADDS arrivals) so a settlement that drops out of the food
-  // hierarchy — or out of "settled" mode — reads a fading, then zero, "Imported
-  // /tick" row instead of freezing at its last value.
-  for (const s of world.settlements) {
-    if (s._foodImportRate) s._foodImportRate *= 0.9;
-    // T.PRICE_GROSS — stash the value the scarcity price needs BEFORE it rolls.
-    // The capacity book already treats exports as production it still owns
-    // (settlement.js: foodK = (_foodSupply + _foodExported)/perCapita, "selling
-    // grain is a downward-take, and the market cannot drag a catchment's
-    // carrying capacity below what its own land grows"). The scarcity price
-    // below does NOT, and reads the RETAINED net instead — so the same
-    // settlement, in the same tick, is priced against one supply figure and
-    // sized against another. foodHierarchy's own comment already names the
-    // consequence: "a heavy exporter can read as short and price its exports
-    // dear". Today that is a bounded pricing quirk. Under the bid rule
-    // (docs/tier-ratchet-2026-08-27.md section 42) scarcity becomes the thing
-    // that ASSIGNS LAND, so an exporter would bid for its own fields BECAUSE it
-    // exports — a runaway on a measurement artefact. Transient, derived,
-    // rebuilt every aggregation; never persisted.
-    s._foodExportedPrev = s._foodExported || 0;
-    if (s._foodExported) s._foodExported = 0;   // T.GRAIN_MARKET capacity add-back: rolls each aggregation; updateSettlement (earlier in the tick) read the previous pass's value
-  }
   // Goods-flow overlay recorder (render-only; the worker sets _wantGoodsFlows
   // while the "Goods flow" view is open — zero cost and zero allocations
   // otherwise). Grain MARKET entries (settlement↔settlement purchases) rebuild
@@ -312,53 +290,6 @@ export function aggregateFoodHierarchy(world) {
   world._goodsFlowsGrain = gf;
   const tw = world.tw;
   const tiOf = (s) => (s.pos.y | 0) * tw + (s.pos.x | 0);
-
-  // ── 1. price per settlement ─────────────────────────────────────────
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
-    const hK = s._houseK || 0, fK = s._foodK || 0;
-    s._grainHunger = hK > 0 ? Math.max(0, Math.min(1, (hK - fK) / hK)) : 0;
-    // (b) NOMINAL-inflation model: the price NEVER tracks localP (the MONETARY price
-    // level). Money pools at producers (mines/exporters), which lifts localP — but the
-    // grain-BUYING cities don't hold that coin, so pricing grain by localP squeezed them
-    // for money sitting elsewhere and made population depend on the money SUPPLY. So the
-    // absolute money level stays out of the price; localP drives only Hume
-    // competitiveness + the ticker.
-    // What DOES move it is REAL scarcity — a physical demand/supply ratio, NOT a monetary
-    // quantity (this is a different axis from the localP coupling removed above, not a
-    // reintroduction of it): base tier price × clamp(local demand/supply, 0.5, 3). In a
-    // dearth (famine, siege, over-crowding) demand outruns the harvest and grain gets
-    // DEAR; in a glut it's cheap. Read from updateFood's _foodDemand/_foodSupply.
-    // Conserved — it's a price the buy loop pays, so coin still balances; it redistributes
-    // coin toward whoever is SHORT (a famine/siege makes the hungry SELLER's grain dear).
-    // Clamped so a shock can't send the price to zero or infinity.
-    // KNOWN TRADEOFF (surfaced, not hidden): _foodSupply is the RETAINED net after
-    // shipping up, so a heavy exporter can read as short and price its exports dear,
-    // occasionally inverting the steep farm-gate→market tier gradient below on a
-    // same-/near-tier pair. The 0.5–3 clamp bounds it and coin stays conserved; a truer
-    // supply signal (production-relative, not retained-relative) is a scoped follow-up,
-    // deliberately not bolted on here where it would destabilise the validated economy.
-    // T.PRICE_GROSS: price against the SAME supply the capacity book uses —
-    // production-relative, exports added back — so the two agree. Zero new
-    // constants and no new term: it is the identical _foodExported the capacity
-    // add-back already applies, gated on the same T.GRAIN_MARKET.
-    // T.MARKET_PULL reads this as WILLINGNESS TO PAY — hunger, not the tier
-    // label. Kept beside _grainPrice rather than derived from it, because
-    // _grainPrice carries GRAIN_PRICE_BY_TIER and dividing it back out would
-    // reintroduce the ratchet through the back door. Transient, rebuilt every
-    // aggregation. Ability to pay is a different axis (the city purse); the
-    // farm-gate seed is min(this, that) under T.MARKET_PAY. Granary is a
-    // buffer, not harvest: a stocked city still wants the farms that fill it.
-    const scarcity = grainScarcityOf(s);
-    s._scarcity = scarcity;
-    // T.PRICE_GROSS retires GRAIN_PRICE_BY_TIER: grain is dear where it is scarce,
-    // not because the seller wears a metropolis label. The tier ladder was a
-    // fitted outcome; scarcity × demand/supply on the production-relative book is
-    // the cause. Legacy path (v<51 / lever off) keeps the table for save compat.
-    s._grainPrice = T.PRICE_GROSS > 0
-      ? scarcity
-      : GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
-  }
 
   // ── children lists from the CURRENT liege tree ──────────────────────
   // Same-country, alive parent only, so a stale liegeId (after an absorption /
@@ -479,6 +410,30 @@ export function aggregateFoodHierarchy(world) {
     }
   }
   if (T.GRAIN_MARKET > 0) grainMarketPass(world);
+}
+
+/** Scarcity prices + export roll — after the ledger, for next tick's territory bids. */
+export function rollAndPriceFoodHierarchy(world) {
+  for (const s of world.settlements) {
+    if (s._foodImportRate) s._foodImportRate *= 0.9;
+    s._foodExportedPrev = s._foodExported || 0;
+    if (s._foodExported) s._foodExported = 0;
+  }
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const hK = s._houseK || 0, fK = s._foodK || 0;
+    s._grainHunger = hK > 0 ? Math.max(0, Math.min(1, (hK - fK) / hK)) : 0;
+    const scarcity = grainScarcityOf(s);
+    s._scarcity = scarcity;
+    s._grainPrice = T.PRICE_GROSS > 0
+      ? scarcity
+      : GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
+  }
+}
+
+// End-of-tick pass: prices for next territory cadence (pooling runs earlier).
+export function aggregateFoodHierarchy(world) {
+  rollAndPriceFoodHierarchy(world);
 }
 
 // ── T.GRAIN_MARKET: the OPEN grain market (2026-08-25, the uptake wave) ──────
