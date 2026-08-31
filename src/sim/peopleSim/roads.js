@@ -52,6 +52,7 @@ import { T, rNormPop } from "./tuning.js";
 import { getPolity } from "./entities.js";
 import { TECH_IDX } from "./tech.js";
 import { exportValueOf, getWealthReserve, techEff } from "./settlement.js";
+import { grainSpoilClimate } from "./habitability.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
@@ -1281,7 +1282,10 @@ function runTradePass(world, rf, flowTiles, stride) {
       const st = s._gStock, e = s._gExpLeft, im = s._gImpLeft;
       const es = entrepotShare(s);
       const room = STOCK_CAP_W * es * Math.sqrt(Math.max(1, s.people || 0));
-      const spoil = Math.pow(1 - STOCK_SPOIL, stride);
+      const spoilRate = T.CLIMATE_SPOIL > 0
+        ? STOCK_SPOIL * grainSpoilClimate(s._climTemp ?? 0.5, s._climMoist ?? 0.5)
+        : STOCK_SPOIL;
+      const spoil = Math.pow(1 - spoilRate, stride);
       for (const g of TRADABLE) {
         const baseE = Math.max(0, ((s._gProd && s._gProd[g]) || 0) - ((s._gDem && s._gDem[g]) || 0)) * stride;
         const baseIm = Math.max(0, ((s._gDem && s._gDem[g]) || 0) - ((s._gProd && s._gProd[g]) || 0)) * GT_OVERBUY * stride;

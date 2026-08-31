@@ -12,8 +12,10 @@
 //   { type:'select', id }                       — selected settlement (gets full detail)
 //   { type:'view', view }                       — current view (gates per-view extras)
 //   { type:'tune', values, reset }              — live tuning levers
+//   { type:'settTrace', cmd:'start'|'stop'|'clear'|'copy'|'once', id, every }
 // Messages OUT:
 //   { type:'snapshot', ... }                    — see buildSnapshot() (stats embedded)
+//   { type:'settTraceData', json, n, name }     — inspect-card copy of a settlement log
 //   { type:'error', message, stack }            — init/step failure
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -37,7 +39,9 @@ import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
 import { TRAITS, labelFor } from "./sim/peopleSim/personality.js";
 import { estimateCountryRange } from "./sim/peopleSim/conquest.js";
+import { haulDeliverableFoodPool } from "./sim/peopleSim/territory.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
+import { makeTrace, sampleTrace, traceStatus, traceEnvelope } from "./sim/peopleSim/settlementTrace.js";
 
 // Country editor: drop a FULLY-FORMED realm — a capital plus the cities and towns
 // filling the territory its tech allows it to hold (estimateCountryRange), then a
@@ -110,6 +114,7 @@ let fastEpochNow = false;
 let quietAgesNow = false;   // the pre-nation condition itself (chip shows whenever it holds; gold = accelerating, dim = user opted out)
 let speed = 30;        // TARGET ticks-per-second (see scheduleTick); 30 = ~1 step per snapshot
 let selId = -1;
+let settTrace = null;            // inspect-card recorder: one settlement, every N ticks
 let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
 let dynastyOpen = false;      // the family-tree overlay is open — ship the ruling house graph
 let viewMode = "terrain";    // main thread tells us the view so we only ship
@@ -342,6 +347,7 @@ function handleMessage(m) {
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      settTrace = null;
       _bufPool.clear();           // a new world can change N — stale-size buffers would never be hit again
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
@@ -405,6 +411,52 @@ function handleMessage(m) {
       try { self.postMessage({ type: "historyData", json: JSON.stringify(exportHistory(world)), step: world.step }); }
       catch (err) { self.postMessage({ type: "error", message: "export failed: " + (err && err.message), stack: err && err.stack }); }
     }
+  } else if (m.type === "settTrace") {
+    const cmd = m.cmd;
+    if (cmd === "start") {
+      const id = m.id | 0;
+      const every = Math.max(1, m.every | 0);
+      const live = world && world._byId ? world._byId.get(id) : null;
+      if (settTrace && settTrace.id === id && !settTrace.recording) {
+        settTrace.recording = true;
+        settTrace.every = every;
+        settTrace.nextAt = -1;
+        if (world) sampleTrace(world, settTrace);
+      } else {
+        settTrace = makeTrace(id, every, live ? live.name : "");
+        if (world) sampleTrace(world, settTrace);
+      }
+      if (!playing && world) buildSnapshot();
+    } else if (cmd === "stop") {
+      if (settTrace) settTrace.recording = false;
+      if (!playing && world) buildSnapshot();
+    } else if (cmd === "clear") {
+      settTrace = null;
+      if (!playing && world) buildSnapshot();
+    } else if (cmd === "copy" || cmd === "once") {
+      try {
+        let payload;
+        if (cmd === "once") {
+          const id = m.id | 0;
+          const live = world && world._byId ? world._byId.get(id) : null;
+          const rec = makeTrace(id, 1, live ? live.name : "");
+          if (world) sampleTrace(world, rec);
+          payload = traceEnvelope(world, rec);
+        } else {
+          if (!settTrace) {
+            self.postMessage({ type: "settTraceData", json: "", n: 0, name: "", empty: true });
+          } else {
+            payload = traceEnvelope(world, settTrace);
+          }
+        }
+        if (payload) {
+          const json = JSON.stringify(payload);
+          self.postMessage({ type: "settTraceData", json, n: payload.samples.length, name: payload.name || "" });
+        }
+      } catch (err) {
+        self.postMessage({ type: "error", message: "settlement trace failed: " + (err && err.message), stack: err && err.stack });
+      }
+    }
   } else if (m.type === "save") {
     if (world) {
       try { self.postMessage({ type: "saveData", json: serializeWorld(world, genMeta), step: world.step }); }
@@ -419,6 +471,7 @@ function handleMessage(m) {
       world._wantMoneyFlows = (viewMode === "money");
       world._wantGoodsFlows = (viewMode === "goodsflow");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      settTrace = null;
       _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
       buildSnapshot();
       if (playing) scheduleTick();
@@ -585,6 +638,7 @@ function tick() {
   for (; ran < steps; ran++) {
     try {
       stepPeopleSim(world, 1);
+      if (settTrace) sampleTrace(world, settTrace);
       journalTick();
       if (world.step - lastKeyStep >= CAPTURE_IVL) { lastKeyStep = world.step; captureFrame(timeline, world); }
     }
@@ -702,6 +756,7 @@ function packSelected(s) {
     _tradeProfile: getTradeProfile(s, world),
     _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
     culMix: s.culMix || null, faithMix: s.faithMix || null, langMix: s.langMix || null,
+    _haulFoodPool: haulDeliverableFoodPool(world, s),
   };
 }
 
@@ -1160,6 +1215,7 @@ function buildSnapshotUnsafe() {
     })() : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
+    settTrace: traceStatus(settTrace),
     chronicle,
     dynasty,
     feed,

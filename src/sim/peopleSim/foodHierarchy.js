@@ -47,6 +47,7 @@
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
 import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach, granaryCap } from "./settlement.js";
+import { grainSpoilClimate } from "./habitability.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
 import { creditFarmGatePayment } from "./tileMoney.js";
 import { mergeReach } from "./roads.js";
@@ -187,7 +188,43 @@ export function foodHaulArrive(world, child, parent) {
     ? !!((child._seaReach && child._seaReach.has(parent.id)) || (parent._seaReach && parent._seaReach.has(child.id)))
     : (onWater(ci) && onWater(pi));
   if (byWater) range *= 1 + (waterMul - 1) * (0.5 + 0.5 * nav);
-  return Math.exp(-d / Math.max(1e-3, range));
+  // T.CLIMATE_SPOIL — grain rots faster on hot, damp hauls (route climate, not
+  // destination rank). Geometric mean of the two endpoints' storage climates.
+  let spoilMult = 1;
+  if (T.CLIMATE_SPOIL > 0) {
+    const ct = child._climTemp ?? 0.5, cm = child._climMoist ?? 0.5;
+    const pt = parent._climTemp ?? 0.5, pm = parent._climMoist ?? 0.5;
+    spoilMult = Math.sqrt(grainSpoilClimate(ct, cm) * grainSpoilClimate(pt, pm));
+  }
+  return Math.exp(-d * spoilMult / Math.max(1e-3, range));
+}
+
+// Haul e-folding distance in tiles (land curve; water bonus excluded — conservative bound).
+export function haulSpoilRangeTiles(world, parent) {
+  const tw = world.tw;
+  const baseTiles = T.HAUL_PHYS > 0 ? HAUL_LAND_KM / (EARTH_KM / tw) : T.FOOD_HAUL_RANGE * rNormPop(world);
+  const tierMul = T.HAUL_PAID > 0 ? 1 : FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];
+  let range = baseTiles * tierMul;
+  const k = parent.knowledge || {};
+  range *= 1 + ((k.construction || 0) * 0.6 + (k.mobility || 0) * 0.4
+    + Math.max(0, (k.construction || 0) - 0.85) * 5) * T.FOOD_HAUL_TECH;
+  return range;
+}
+
+// Fraction surviving haul from a map tile (or farm-gate) to a market settlement.
+export function foodHaulArrivePos(world, x, y, parent, srcSettlement = null) {
+  const tw = world.tw, th = world.th;
+  const ty = Math.min(th - 1, Math.max(0, y | 0));
+  const tx = ((x | 0) % tw + tw) % tw;
+  const ci = ty * tw + tx;
+  const child = {
+    pos: { x: tx, y: ty },
+    _climTemp: world.temp?.[ci] ?? 0.5,
+    _climMoist: world.moist?.[ci] ?? 0.5,
+    knowledge: srcSettlement?.knowledge || {},
+    _seaReach: srcSettlement?._seaReach || null,
+  };
+  return foodHaulArrive(world, child, parent);
 }
 // Fraction of its grain POOL a settlement ships up to its market centre, by tier
 // (village → town → city → metropolis). A village is a farm: it sends most of

@@ -21,7 +21,8 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { landSurplusFrac, FOOD_PER_PERSON } from "./landSurplus.js";
+import { landSurplusFrac, tradeableFoodFromGross, FOOD_PER_PERSON } from "./landSurplus.js";
+import { foodHaulArrivePos, haulSpoilRangeTiles } from "./foodHierarchy.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -966,6 +967,50 @@ function tallyTerritory(world, owner, cost, byId) {
   }
   world._goodsFlowsLevy = levy;
   world._borders = borders;
+}
+
+// If this settlement claimed every tradeable surplus tile within spoilage-limited
+// haul range, how much grain would arrive per tick after distance falloff, haul
+// decay (tech + climate), and implied-countryside eat? Hypothetical pool — not
+// what the bid partition assigned this tick.
+export function haulDeliverableFoodPool(world, market) {
+  if (!market || market.mode !== "settled") return 0;
+  const { N, tw, th, fert, elev } = world;
+  if (!fert || !elev) return 0;
+  const cm = world.climMod;
+  const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  const mx = market.pos.x | 0, my = market.pos.y | 0;
+  const tcost = world._territoryTrueCost;
+  const owner = world._territoryOwner;
+  const byId = world._byId;
+  const minFert = MIN_PLANTABLE_FERT_BASE
+    - MIN_PLANTABLE_FERT_SLOPE * ((market.knowledge && market.knowledge.agriculture) || 0);
+  const maxD = haulSpoilRangeTiles(world, market) * 4;   // ~2% survive floor on the exponential
+  let total = 0;
+  for (let ti = 0; ti < N; ti++) {
+    if (elev[ti] <= 0) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    let dx = Math.abs(tx - mx);
+    if (dx > tw / 2) dx = tw - dx;
+    const dy = Math.abs(ty - my);
+    const dEuclid = Math.sqrt(dx * dx + dy * dy);
+    if (dEuclid > maxD) continue;
+    const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
+    if (f < minFert) continue;
+    const tc = tcost && tcost[ti] < Infinity ? tcost[ti] : dEuclid;
+    const w = foodFalloff(tc / _rn);
+    const grossFertWt = f * w * _invA;
+    const oid = owner ? owner[ti] : -1;
+    let farmer = market;
+    if (oid >= 0) {
+      if (byId && byId.has(oid)) farmer = byId.get(oid);
+      else for (const ss of world.settlements) if (ss.id === oid) { farmer = ss; break; }
+    }
+    const food = tradeableFoodFromGross(world, ti, grossFertWt, farmer);
+    if (food <= 0) continue;
+    total += food * foodHaulArrivePos(world, tx, ty, market, farmer);
+  }
+  return total;
 }
 
 // Cheap local fallback so a freshly-founded settlement has food + resource

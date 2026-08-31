@@ -33,6 +33,29 @@ export const FOOD_PER_PERSON = 0.0030;
 // Implied manor/church rent above bare eat on the tile (not the polity tithe).
 export const LOCAL_OBLIG_MUL = 1.15;
 
+/** Settlement-uniform yield multiplier on a fert-weighted tile (tally / updateFood stack). */
+export function settlementYieldMul(world, s) {
+  let y = T.FARM_YIELD_PER_FERT || 0.035;
+  if (!s) return y;
+  y *= (s._eraProd || 1);
+  if (T.HARVEST_YEARS) y *= (s._harvestYearMul ?? 1);
+  else if (world.step < (s._famineUntil || 0)) y *= (s._harvestMul || 1);
+  const army = (s.army || 0), pop = Math.max(1, s.people || 1);
+  y *= Math.max(0.15, 1 - (army / pop) * 0.5);
+  const cashLand = T.SLAVERY ? (s._cashFrac || 0) * 0.5 : 0;
+  y *= Math.max(0, 1 - cashLand);
+  if (s._alluvium > 0) y *= s._alluvium;
+  if (s._irrigation > 0) y *= s._irrigation;
+  if (s._workable > 0) y *= s._workable;
+  return y;
+}
+
+/** Tradeable food units on a tile after implied-countryside eat (Scenario 5). */
+export function tradeableFoodFromGross(world, ti, grossFertWt, s) {
+  const frac = landSurplusFrac(world, ti, grossFertWt, s);
+  return frac > 0 ? grossFertWt * settlementYieldMul(world, s) * frac : 0;
+}
+
 /**
  * Fraction of gross tile harvest (in fert-weight units at tally time) that
  * enters the tradeable pool. 1 = all gross is surplus; 0 = none.
@@ -49,27 +72,7 @@ export function landSurplusFrac(world, ti, grossFertWt, s) {
   const bridge = world._onePopScale;
   if (!(bridge > 0)) return 1;         // census bridge not live yet — don't zero harvest
 
-  let y = T.FARM_YIELD_PER_FERT || 0.035;
-  if (s) {
-    y *= (s._eraProd || 1);
-    if (T.HARVEST_YEARS) y *= (s._harvestYearMul ?? 1);
-    else if (world.step < (s._famineUntil || 0)) y *= (s._harvestMul || 1);
-    // Army-off-the-land and cash-crop displacement — same terms updateFood uses
-    // on the settlement-uniform half of the stack.
-    const army = (s.army || 0), pop = Math.max(1, s.people || 1);
-    const armyLabor = Math.max(0.15, 1 - (army / pop) * 0.5);
-    y *= armyLabor;
-    const cashLand = T.SLAVERY ? (s._cashFrac || 0) * 0.5 : 0;
-    y *= Math.max(0, 1 - cashLand);
-    // Last tick's alluvium / irrigation / workability — without these,
-    // floodplain surplus stays understated and farm credit collapses on the
-    // densest valleys (the herd-only symptom).
-    if (s._alluvium > 0) y *= s._alluvium;
-    if (s._irrigation > 0) y *= s._irrigation;
-    if (s._workable > 0) y *= s._workable;
-  }
-
-  const grossFood = grossFertWt * y;
+  const grossFood = grossFertWt * settlementYieldMul(world, s);
   const localMouths = pf[ti] * bridge;
   const localTake = localMouths * FOOD_PER_PERSON * LOCAL_OBLIG_MUL;
 

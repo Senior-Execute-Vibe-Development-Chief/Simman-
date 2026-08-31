@@ -425,6 +425,9 @@ useEffect(()=>{
 const[codexOpen,setCodexOpen]=useState(false);   // narrow only: the codex drawer
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
+const[settTraceEvery,setSettTraceEvery]=useState(10);
+const[settTrace,setSettTrace]=useState({recording:false,id:-1,n:0,every:10,name:"",max:600});
+const[settTraceCopied,setSettTraceCopied]=useState(false);
 // ── Floating surfaces: ALL popovers/drawers/documents live on ONE external
 // stack (src/ui/surfaces.js) — exclusive popovers & drawers, stacking
 // documents, Esc pops the top, z from stack order. The derived consts +
@@ -745,6 +748,31 @@ try{
       const a=document.createElement("a");a.href=URL.createObjectURL(blob);
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
+    else if(d.type==='settTraceData'){
+      const json=d.json||"";
+      const n=d.n|0;
+      const name=(d.name||"settlement").replace(/[^\w\-]+/g,"_").slice(0,40);
+      const save=()=>{
+        const blob=new Blob([json||"{}"],{type:"application/json"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+        a.download=`simman-${name}-trace.json`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      };
+      if(!json||d.empty){setSettTraceCopied(false);return;}
+      const tryCopy=async()=>{
+        try{
+          if(navigator.clipboard&&navigator.clipboard.writeText) await navigator.clipboard.writeText(json);
+          else throw new Error("no clipboard");
+          setSettTraceCopied(true);
+          setTimeout(()=>setSettTraceCopied(false),2000);
+        }catch{
+          save();
+        }
+      };
+      // Huge traces miss the clipboard — download so nothing is lost.
+      if(json.length>1_000_000) save();
+      tryCopy();
     }
     else if(d.type==='runLog'){
       // The run journal (worker journalTick): the observation file to hand to
@@ -2876,6 +2904,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
   if(snap.fastEpoch!==undefined)setFastEpoch(!!snap.fastEpoch);
   if(snap.quietAges!==undefined)setQuietAges(!!snap.quietAges);
+  if(_pulsed&&snap.settTrace)setSettTrace(snap.settTrace);
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   if(snap.wars)psw._wars=snap.wars;                 // active war pairs [att,def,...] (static cadence; [] clears at peace)
   if(snap.warArrows)psw._warArrows=snap.warArrows;  // aggressor→defender border arrows (small — GC'd, not pooled)
@@ -3758,6 +3787,7 @@ const renderInspect=()=>{
   // Food balance — shared helper mirrors the famine physics' rulers.
   const fl=foodLedgerInfo(s);
   const {supply,demand,importRate,landFood,surplus,ticksLeft,coreNeed,fedM,status,statusColor}=fl;
+  const haulPool = s._haulFoodPool || 0;
 
   // Treasury + trade.
   const wealth=Math.round(s.wealth||0);
@@ -3812,6 +3842,38 @@ const renderInspect=()=>{
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
       </div>
+      {(()=>{
+        const rec=settTrace;
+        const mine=rec.id===s.id;
+        const live=rec.recording&&mine;
+        const other=rec.recording&&rec.id>=0&&!mine;
+        const n=mine||other?rec.n:0;
+        const post=(cmd)=>simWorkerRef.current&&simWorkerRef.current.postMessage({type:"settTrace",cmd,id:s.id,every:settTraceEvery});
+        return <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:4,marginBottom:8,padding:"5px 6px",
+          background:"rgba(18,13,8,0.35)",border:"1px solid rgba(216,190,150,0.18)",borderRadius:3}}>
+          <span className="au-fade" style={{fontSize:9,letterSpacing:"0.04em",textTransform:"uppercase"}}>Trace</span>
+          <span className="au-fade" style={{fontSize:10}}>every</span>
+          <input type="number" min={1} max={2000} value={settTraceEvery} disabled={!!rec.recording}
+            onChange={e=>setSettTraceEvery(Math.max(1, e.target.value|0))}
+            title="Sample this city's full live state every N ticks (1 tick = 0.5 years)"
+            style={{width:52,padding:"1px 4px",fontSize:11}}/>
+          <span className="au-fade" style={{fontSize:10}}>ticks</span>
+          {!rec.recording
+            ? <button className="au-btn au-flat" style={{fontSize:10,padding:"1px 7px"}}
+                onClick={()=>post("start")} title="Record this settlement's exact data every N ticks">Record</button>
+            : <button className="au-btn au-wax" style={{fontSize:10,padding:"1px 7px"}}
+                onClick={()=>post("stop")} title="Stop recording (keep samples)">Stop</button>}
+          <button className="au-btn au-flat" style={{fontSize:10,padding:"1px 7px"}}
+            onClick={()=>post(n>0?"copy":"once")}
+            title={n>0?"Copy the recorded log to the clipboard (download if too large)":"Copy this settlement's current state, exactly"}>
+            {settTraceCopied?"Copied":(n>0?`Copy ${n}`:"Copy now")}</button>
+          {n>0&&<button className="au-btn au-flat" style={{fontSize:10,padding:"1px 7px"}}
+            onClick={()=>post("clear")} title="Discard recorded samples">Clear</button>}
+          <span className="au-fade" style={{fontSize:10,marginLeft:"auto"}}>
+            {live?`recording · ${n} sample${n===1?"":"s"}`:(other?`recording ${rec.name||"#"+rec.id} · ${n}`:(n?`${n} saved`:""))}
+          </span>
+        </div>;
+      })()}
       {/* ── The three identity layers, each a row of chips into its registry:
             who they ARE (people), what they SPEAK, what they BELIEVE — three
             separate, differently-paced layers, cross-linked (plan §7.3). ── */}
@@ -4096,6 +4158,9 @@ const renderInspect=()=>{
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
           {demand>0&&isFinite(ticksLeft)&&<><span className="au-fade">Store runway</span><span>{ticksLeft>=500?"500+":Math.round(ticksLeft)} tick{Math.round(ticksLeft)===1?"":"s"}</span></>}
           <span className="au-fade">Supply /tick</span><span title="Harvest + trade this tick — the city GROWS to this. Stores hold the core through a dip (Core fed avg); they do not grow it.">{fmtFood(supply)}</span>
+          {haulPool > 0.001 && haulPool > supply * 1.05 && (
+            <><span className="au-fade">Haul reach pool</span>
+            <span title="If this market claimed every tradeable surplus tile within spoilage-limited haul range, how much grain would arrive per tick after transport falloff, haul decay (distance, tech, climate), and countryside eat-first — not what competitors bid away this tick.">{fmtFood(haulPool)}</span></>)}
           {landFood>0.001&&landFood!==supply&&<><span className="au-fade">· local harvest</span><span className="au-fade">{fmtFood(landFood)}</span></>}
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
           {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}

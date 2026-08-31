@@ -18,7 +18,7 @@ import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
 import { cageAt, cageFillAt } from "./cageField.js";
-import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
+import { malariaSignal, tsetseSignal, aridSignal, grainSpoilClimate } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
 import { POP_SCALE } from "../units.js";   // T.VIABLE_UNITS reads the viability constants as PEOPLE, which is what their comments say they are
@@ -739,6 +739,11 @@ export { applyClusterBoost };   // goods.js (GOODS_UNIFY): the goods caps carry 
 // (continental-axis diffusion + climate specialization).
 function climateOf(world, s) {
   if (s._climLat !== undefined) return;
+  rederiveSiteClimate(world, s);
+}
+
+// Static home-tile climate — recomputed on load (terrain is immutable).
+export function rederiveSiteClimate(world, s) {
   const ty = Math.min(world.th - 1, Math.max(0, s.pos.y | 0));
   const tx = ((s.pos.x | 0) % world.tw + world.tw) % world.tw;
   const ci = ty * world.tw + tx;
@@ -2252,7 +2257,7 @@ function updateKnowledge(world, s) {
     const drive = Math.min(1, Math.max(pressMul - 1, Math.max(s._stateContact || 0, cageDrv)));
     contactMul = (1 + T.ORG_CONTACT * drive) / (1 + T.ORG_CONTACT);
   }
-  if (process.env.SIM_DBG_PRESS && (world._pDbg = (world._pDbg || 0) + 1) <= 5) {
+  if (typeof process !== "undefined" && process.env && process.env.SIM_DBG_PRESS && (world._pDbg = (world._pDbg || 0) + 1) <= 5) {
     console.error(`  [press] confine=${(s._confine||0).toFixed(3)} people=${Math.round(s.people||0)} _k=${(s._k||0).toFixed(1)} fill=${_fillK.toFixed(3)} pressMul=${pressMul.toFixed(3)} confineMul=${confineMul.toFixed(3)} contactMul=${contactMul.toFixed(3)} org=${k.organization.toFixed(4)}`);
   }
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
@@ -2758,6 +2763,7 @@ export function updateFishStocks(world) {
 }
 
 function updateFood(world, s) {
+  climateOf(world, s);   // before granary spoil / climate-gated food reads
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
   // agriculture. Storable — fills granaries and ships to feed cities. A big
@@ -2899,7 +2905,7 @@ function updateFood(world, s) {
     // Byte-identical at 0.
     const _agriK = (s.knowledge && s.knowledge.agriculture) || 0;
     const mixedFarm = T.MIXED_FARM > 0 ? 1 + T.MIXED_FARM * (s._livestock || 0) * _agriK : 1;
-    if (process.env.SIM_DBG_MIXED && (world._mDbg = (world._mDbg || 0) + 1) <= 5) console.error(`  [mixed] live=${(s._livestock||0).toFixed(3)} agri=${_agriK.toFixed(3)} mixedFarm=${mixedFarm.toFixed(3)} works=${worksMul.toFixed(3)} indCap=${s._indCap.toFixed(3)}`);
+    if (typeof process !== "undefined" && process.env && process.env.SIM_DBG_MIXED && (world._mDbg = (world._mDbg || 0) + 1) <= 5) console.error(`  [mixed] live=${(s._livestock||0).toFixed(3)} agri=${_agriK.toFixed(3)} mixedFarm=${mixedFarm.toFixed(3)} works=${worksMul.toFixed(3)} indCap=${s._indCap.toFixed(3)}`);
     s._eraProd = worksMul * mixedFarm * s._indCap;   // composite productivity index (housing/rural/cash/output consumers keep one number)
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
@@ -3326,6 +3332,16 @@ function updateFood(world, s) {
   const storageCap = granaryCap(s);
   if (s.food > storageCap) s.food = storageCap;
   if (s.food < 0) s.food = 0;
+  // T.GRANARY_SPOIL — stored grain rots (insects, damp, rats). Not the mouths
+  // drain above — passive loss on what sits in the barn. T.CLIMATE_SPOIL scales
+  // the rate: hot+wet tropics fast, hot+dry river valleys slow (the Nile kept
+  // grain; the wet tropics could not). ~1%/yr at reference climate (~4 steps/yr).
+  if (T.GRANARY_SPOIL > 0 && (s.food || 0) > 0) {
+    const clim = T.CLIMATE_SPOIL > 0
+      ? grainSpoilClimate(s._climTemp, s._climMoist) : 1;
+    const loss = 0.0025 * clim * (s.food || 0) * (world._dt || 1);
+    s.food = Math.max(0, (s.food || 0) - loss);
+  }
 }
 
 // The granary's capacity — ONE definition, two consumers: the updateFood clamp
