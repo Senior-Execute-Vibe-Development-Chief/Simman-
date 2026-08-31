@@ -15,6 +15,7 @@ import { computeRelief } from "./worldgenUtils.js";
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { T } from "./peopleSim/tuning.js";
 import { BK_RIDGE, BK_SUBDUCTION, BK_HOTSPOT, seamTiles } from "./earthPlates.js";
+import { stampLineageGenetics } from "./lineageGenetics.js";
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
@@ -268,6 +269,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
       lat: 90 - (y + 0.5) / th * 180,
     };
   }
+  stampLineageGenetics(ancHomelands, K, aParent, src, seed >>> 0, tTemp, tMoist, arrN);
   dijkstra(src, anc);
 
   // 5. sea, permanent ice and polar landmasses carried gene flow but hold no ancestry.

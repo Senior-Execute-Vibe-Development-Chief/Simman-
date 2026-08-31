@@ -1,5 +1,6 @@
 // People-style decider (`src/sim/peopleStyle.js`). No UI, no save fields.
-import { lookFromHomeland, mixLook, lookOf, dressOf, builtOf, styleOf, homelandsFrom, ancMixAtTile } from "../src/sim/peopleStyle.js";
+import { lookFromHomeland, mixLook, lookOf, dressOf, builtOf, styleOf, homelandsFrom, ancMixAtTile, canGrowBeard, BEARD_VISIBLE } from "../src/sim/peopleStyle.js";
+import { facialHairAtAnchor } from "../src/sim/lineageGenetics.js";
 import { buildWorld as pipelineBuild } from "../src/sim/pipeline.js";
 import { buildSim } from "./_harness.mjs";
 import { lonLatToIndex } from "../src/sim/earthPlates.js";
@@ -281,6 +282,38 @@ const sahara  = { temp: 0.88, moist: 0.10, lat: 22, elev: 0.04 };
   const tileLook = lookOf({ ancMix: mix, world });
   ok(tileLook && tileLook.skin >= 0 && tileLook.build >= 0,
     `tile look resolves through world.ancHomelands (skin ${tileLook?.skin?.toFixed(2)})`);
+}
+
+{
+  const temp = new Float32Array([0.72]);
+  const moist = new Float32Array([0.22]);
+  const root = facialHairAtAnchor(7, 0, -1, 0, 0, temp, moist, new Float32Array([0.08]));
+  const child = facialHairAtAnchor(7, 1, 0, root, 0, temp, moist, new Float32Array([0.08]));
+  ok(root >= 0 && root <= 1 && child >= 0 && child <= 1,
+    `facialHair stays in range (${root.toFixed(2)} ${child.toFixed(2)})`);
+  ok(Math.abs(child - root) < 0.22, `child inherits parent facialHair (${child.toFixed(2)} vs ${root.toFixed(2)})`);
+  let sumCradle = 0, sumFrontier = 0;
+  for (let s = 1; s <= 32; s++) {
+    sumCradle += facialHairAtAnchor(s, 5, -1, 0, 0, temp, moist, new Float32Array([0.05]));
+    sumFrontier += facialHairAtAnchor(s, 5, -1, 0, 0, temp, moist, new Float32Array([0.92]));
+  }
+  ok(sumCradle / 32 > sumFrontier / 32 + 0.04,
+    `deeper peopling lowers root facialHair (${(sumCradle / 32).toFixed(2)} vs ${(sumFrontier / 32).toFixed(2)})`);
+  const mixed = mixLook([
+    { look: { facialHair: 0.8 }, share: 0.5 },
+    { look: { facialHair: 0.2 }, share: 0.5 },
+  ]);
+  near(mixed.facialHair, 0.5, 1e-6, "facialHair admixes as the mean");
+  ok(canGrowBeard({ facialHair: BEARD_VISIBLE }), "beard capacity threshold");
+  ok(!canGrowBeard({ facialHair: BEARD_VISIBLE - 0.05 }), "low capacity is below beard threshold");
+  const { ter } = pipelineBuild({ W: 240, H: 120, seed: 7, preset: "earth_sim" });
+  for (let a = 0; a < ter.ancestryCount; a++) {
+    const fh = ter.ancHomelands[a].facialHair;
+    ok(fh >= 0 && fh <= 1, `lineage #${a} facialHair stamped (${fh.toFixed(2)})`);
+  }
+  const beardLook = lookOf({ ancMix: [[0, 1]], world: { ancHomelands: ter.ancHomelands } });
+  ok(beardLook && beardLook.facialHair != null,
+    `lookOf carries stamped facialHair (${beardLook?.facialHair?.toFixed(2)})`);
 }
 
 if (fails) {

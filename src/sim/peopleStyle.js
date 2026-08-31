@@ -4,8 +4,8 @@
 // tile. This one decides how people LOOK and what they WEAR and BUILD.
 //
 // Split:
-//   look  — carried. Genesis-homeland climate, mixed by ancMix. Never the
-//           tile you stand on (adaptation is too slow for historical time).
+//   look  — carried. Genesis-homeland climate + lineage genetics (Rail B),
+//           mixed by ancMix. Never the tile you stand on.
 //   dress — local. Climate is insulation and motion; fibre/dye from materials.
 //   built — local. Climate is the load (snow, rain, heat, flood); wall from
 //           timber / mudbrick / stone / reed on the tile.
@@ -65,7 +65,7 @@ export function lookFromHomeland(h) {
   // UV: equator + altitude. Cloud (moist) only weakly shades it.
   const uv = clamp((1 - absLat) * (1 - 0.15 * wet) + 0.22 * elev * (1 - absLat));
   const skin = clamp(0.12 + 0.78 * uv * (0.45 + 0.55 * warm));
-  return {
+  const look = {
     skin,
     stature: clamp(0.38 + 0.28 * cold + 0.12 * (1 - absLat)),
     build: clamp(0.22 + 0.62 * cold),
@@ -74,10 +74,12 @@ export function lookFromHomeland(h) {
     hairDark: clamp(0.22 + 0.72 * skin),
     noseWidth: clamp(0.16 + 0.70 * warm * Math.max(wet, 0.25)),
   };
+  if (h.facialHair != null) look.facialHair = clamp(h.facialHair);
+  return look;
 }
 
 export function mixLook(parts) {
-  const keys = ["skin", "stature", "build", "limbs", "hairCurl", "hairDark", "noseWidth"];
+  const keys = ["skin", "stature", "build", "limbs", "hairCurl", "hairDark", "noseWidth", "facialHair"];
   const acc = Object.fromEntries(keys.map(k => [k, 0]));
   let w = 0;
   for (const p of parts || []) {
@@ -101,6 +103,8 @@ export function homelandsFrom(world) {
   if (!arr || !arr.length) return null;
   return arr;
 }
+
+export { BEARD_VISIBLE, canGrowBeard } from "./lineageGenetics.js";
 
 /**
  * Carried look. Needs `homeland`, or `ancMix` + `homelands` / `world.ancHomelands`.
