@@ -46,3 +46,48 @@ lawyered.
    modeled at the scale history actually had (centers, obligations,
    gradients of control), and the territorially exclusive modern state must
    be an emergent late outcome, not the built-in unit.
+
+7. **Micro-founded power.** (Ratified through the brainstorm arc of
+   2026-08-31.) The authority layer is derived from first principles — the
+   seven primitives of `05-politics.md` (appropriable surplus, coercion as a
+   fed stock, exit, the extraction bargain, legitimacy, monitoring cost,
+   war economics) — with the recursion-up-scale model amended by the
+   accepted critiques: a strong state is chain-*breaking* (bureaucratization),
+   not a taller chain; "organisation" is an institution portfolio, never a
+   scalar; the obligation graph is not a tree (peer edges, leagues,
+   cross-cutting charters); urbanization and state formation are coupled
+   but distinct processes.
+
+## Proposed — working design, awaiting explicit ratification
+
+These are in the specs as the working design; the owner has not explicitly
+ruled on them. Veto or amend freely; specs will follow.
+
+- **P1. Behavioral doctrine: pressure and selection, not rational
+  calculation.** Actors' rates drift under local pressures; variation comes
+  from ruler traits and dynasties; selection (death of misruled polities)
+  does the optimizing. Discrete acts (declaring war, granting a charter)
+  are hazard rates driven by the same pressures.
+- **P2. The community is the atom of the ruled.** Compliance, unrest, and
+  legitimacy are booked per community (village-scale aggregate condensed
+  from the population field), not per individual. Individuals are rendered
+  texture, except historically load-bearing persons (rulers, founders).
+- **P3. Centers condense at a salience bar.** A "local lord" becomes an
+  entity only where controlled mass crosses a threshold; below it, lordship
+  is texture in the authority field. Same condensation principle as
+  villages.
+- **P4. Map honesty.** The canonical political map renders authority as it
+  is: solid at cores, fading through sworn lands, blank where no one rules —
+  hard crisp borders emerge only with late-Phase-1 state capacity. A
+  simplified "dominant authority" lens exists for quick reading.
+- **P5. Institution portfolio.** A catalog of ~10–15 named institutions
+  (tallies, writing, law, coinage, roads/posts, agent recruitment, census,
+  the impersonal crown, …), each condition-emergent, upkeep-costing,
+  decaying, and mortal — replacing any scalar "organisation" stat.
+- **P6. Non-territorial authority networks** (organized religion; later,
+  leagues like the Hanse) are first-class actors in the obligation graph.
+  Scope question open: full actor class in Phase 1, or v1-style faith
+  fields + pilgrimage economy until M6 validates.
+- **P7. Names.** Generated names (language engine) are canon on the
+  alternate Earth; an optional real-geography gazetteer overlay exists for
+  orientation, styled clearly as annotation, never as world content.
