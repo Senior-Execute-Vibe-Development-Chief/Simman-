@@ -1,0 +1,11 @@
+{
+  "name": "Simman v2",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "v2-dev",
+      "command": "cd v2 && npm run dev"
+    }
+  ],
+  "ports": [5173]
+}
