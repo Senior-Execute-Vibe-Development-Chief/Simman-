@@ -142,11 +142,15 @@ export const TRAVEL_WATERLOG_THRESHOLD = 0.7; // spec/09-constants-ledger.md §M
 export const TRAVEL_MOISTURE_FLOOR = 0.4; // spec/09-constants-ledger.md §M1 proposed — aridity cost (baseEdgeCost terrain seed)
 export const TRAVEL_LAND_MIN_FACTOR = 0.5; // spec/09-constants-ledger.md §M1 proposed — terrain factor floor
 export const TRAVEL_COASTAL_MIN_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — coastal travel factor
-export const TRAVEL_OPEN_SEA_STORM_FACTOR = 1.2; // spec/09-constants-ledger.md §M1 proposed — seasonal sea cost
 export const TRAVEL_SEASONAL_AMPLITUDE = 0.6; // spec/09-constants-ledger.md §M1 proposed — monthly climate cost response
 export const TRAVEL_HALF = 0.5; // spec/09-constants-ledger.md §M1 proposed — real-unit averaging
 export const TRAVEL_MONTH_PHASE = 0.5235987755982988; // spec/09-constants-ledger.md §M1 proposed — monthly climate phase
-export const TRAVEL_COLD_SEA_THRESHOLD = 0.3; // spec/09-constants-ledger.md §M1 proposed — sea ice response
+// Seawater freezes at about −1.8°C; on the sim scale t = 0.6 + °C/100 that
+// is 0.582. A sea cell is closed to sail in any month below it, and closed
+// YEAR-ROUND where the annual mean sits below it — multi-year pack ice
+// persists wherever the heat budget cannot clear it (why the Northeast
+// Passage stayed shut until 1878, emergent from the climate data alone).
+export const SEA_FREEZING_TEMPERATURE = 0.582; // spec/09-constants-ledger.md §M1 proposed — seawater freezing point
 export const TRAVEL_INFRASTRUCTURE_FACTOR = 1; // spec/09-constants-ledger.md §M1 proposed — neutral infrastructure slot
 export const DEFAULT_OCEAN_LEVEL = 0.78; // spec/09-constants-ledger.md §M1 proposed — worldgen substrate configuration
 // The monsoon mechanism: sailing time responds to wind ALIGNMENT along the

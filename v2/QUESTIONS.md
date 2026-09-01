@@ -220,7 +220,43 @@ Review corrections to the M1 build (all validated before merge):
     Nile keeps both directions (28.3 d up under sail / 18.7 d down,
     every edge within bars). Gate green, manifest unchanged.
 
-14. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+14. **No sea ice (owner play-report, 2026-09-01).** Amsterdam→Jakarta
+    sailed the Northeast Passage — the old cold-sea term only fired
+    below −30°C air, so the Arctic priced as open summer water (and over
+    the pole IS shorter than the Cape). Replaced with ice as BLOCKING:
+    a sea cell closes in any month below seawater's freezing point
+    (−1.8°C, `SEA_FREEZING_TEMPERATURE`), and closes YEAR-ROUND where
+    the annual mean is below it (multi-year pack — the heat budget never
+    clears). Measured: Kara Sea July +0.5°C but annual −9.6°C →
+    pack-blocked (the exact case needing the annual rule); north Baltic
+    −5.7°C January / +3°C annual → frozen in winter, open in summer.
+    Amsterdam→Jakarta now runs the classic pre-Suez spice route
+    (Mediterranean → Egypt portage → Red Sea → monsoon Indian Ocean,
+    117.6 days). The VOC's Cape detour was POLITICAL (Ottoman/Portuguese
+    control of the short way) — expect it to emerge only when authority
+    and the danger premium exist (M5+), not from physics. The dead
+    cold-storm constants were retired. Also fixed: routes wrapping the
+    antimeridian drew a straight line across the map (render-only; the
+    engine's wrap math was always right) — segments now split at the
+    seam.
+
+15. **Cataracts validated; the middle Niger is a hydrology finding
+    (owner question, 2026-09-01).** The gradient bars reproduce the
+    African river geography: Congo mouth→Kinshasa 0% by river (the
+    Livingstone Falls seal the interior from the sea; the route walks
+    the historical porterage) while Kinshasa→Kisangani runs 87% river
+    (the steamer highway); Nile above Aswan runs 65% river with foot
+    portages around the cataract reaches. MISS: Segou→Timbuktu shows 0%
+    river, but the middle Niger was the famously navigable pirogue
+    highway of the Mali empire — the D8 hydrology classes it magnitude 1
+    (below the navigable bar), likely the ultra-flat inland delta
+    defeating the raster (the real river splits into a maze and loses
+    ~half its flow to evaporation there). Recorded as a SUBSTRATE
+    hydrology finding for a dedicated pass (the chain is v1-inherited
+    and oracle-pinned); not to be dialed from the navigability side
+    (R2).
+
+16. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal

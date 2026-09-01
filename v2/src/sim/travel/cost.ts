@@ -11,7 +11,7 @@ import {
   TRAVEL_COASTAL_BAND_KM,
   TRAVEL_COASTAL_KM_PER_DAY,
   TRAVEL_COASTAL_MIN_FACTOR,
-  TRAVEL_COLD_SEA_THRESHOLD,
+  SEA_FREEZING_TEMPERATURE,
   TRAVEL_COST_FREIGHT_LAND,
   TRAVEL_COST_FREIGHT_RIVER,
   TRAVEL_COST_FREIGHT_SEA,
@@ -24,7 +24,6 @@ import {
   TRAVEL_MODE_RIVER_INDEX,
   TRAVEL_MUD_COST_FACTOR,
   TRAVEL_OPEN_SEA_KM_PER_DAY,
-  TRAVEL_OPEN_SEA_STORM_FACTOR,
   TRAVEL_PACK_KM_PER_DAY,
   TRAVEL_RIVER_KM_PER_DAY,
   TRAVEL_RIVER_DOWNSTREAM_FACTOR,
@@ -145,22 +144,36 @@ function terrainFactor(substrate: Substrate, cell: number): number {
 }
 
 // Land months slow for real reasons (cold: snow and pass closure; waterlogged
-// ground: the mud season). At sea only COLD storms and ice slow everyone
-// alike — the monsoon is not a symmetric weather tax but a wind DIRECTION
-// effect, applied per-edge in the engine from the observed monthly wind
-// (M1 review: a |moisture−floor| term here taxed all tropical sea travel
-// identically both ways, which is not a monsoon).
+// ground: the mud season). At sea the weather physics are the wind DIRECTION
+// effect (per-edge in the engine, from the observed monthly wind) and ICE
+// (blocking, below). A previous cold-storm term here only fired below −30°C
+// air — dead in practice — and was retired when ice blocking landed.
 function seasonalFactor(substrate: Substrate, cell: number, month: number, water: boolean): number {
   const index = climateIndex(cell, month);
   const temperature = substrate.climate.temperature[index];
-  if (water) {
-    const storm = Math.max(0, TRAVEL_COLD_SEA_THRESHOLD - temperature) * TRAVEL_OPEN_SEA_STORM_FACTOR;
-    return 1 + storm * TRAVEL_SEASONAL_AMPLITUDE;
-  }
+  if (water) return 1;
   const moisture = substrate.climate.moisture[index];
   const cold = Math.max(0, TRAVEL_COLD_THRESHOLD - temperature) * TRAVEL_COLD_COST_FACTOR;
   const mud = Math.max(0, moisture - TRAVEL_WATERLOG_THRESHOLD) * TRAVEL_MUD_COST_FACTOR;
   return 1 + (cold + mud) * TRAVEL_SEASONAL_AMPLITUDE;
+}
+
+/**
+ * Sea ice closes water to sail: in any month below seawater's freezing
+ * point, and YEAR-ROUND where the annual mean is below it (multi-year
+ * pack — the heat budget never clears the ice). The Baltic freezing shut
+ * in January while the Northeast Passage never opens both fall out of
+ * the same two lines and the climate data.
+ */
+function seaIceBlocked(substrate: Substrate, cell: number, month: number): boolean {
+  if (substrate.climate.temperature[climateIndex(cell, month)] < SEA_FREEZING_TEMPERATURE) {
+    return true;
+  }
+  let annual = 0;
+  for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+    annual += substrate.climate.temperature[cell * MONTHS_PER_YEAR + m] ?? 0;
+  }
+  return annual / MONTHS_PER_YEAR < SEA_FREEZING_TEMPERATURE;
 }
 
 /**
@@ -210,13 +223,16 @@ function modeIsAvailable(
   if (mode === "coastal") {
     return hasCapability(metric, "boats")
       && ((land && substrate.coast[cell] !== 0)
-        || (!land && substrate.coastDistanceKm[cell] <= TRAVEL_COASTAL_BAND_KM));
+        || (!land
+          && substrate.coastDistanceKm[cell] <= TRAVEL_COASTAL_BAND_KM
+          && !seaIceBlocked(substrate, cell, metric.month)));
   }
   // Navigation is a technique, not a vessel: open sea needs the boat too
   // (M1 review: navigation alone was unlocking the ocean).
   return hasCapability(metric, "boats")
     && hasCapability(metric, "navigation")
-    && (!land || substrate.coastDistanceKm[cell] <= TRAVEL_COASTAL_BAND_KM);
+    && (!land || substrate.coastDistanceKm[cell] <= TRAVEL_COASTAL_BAND_KM)
+    && (land || !seaIceBlocked(substrate, cell, metric.month));
 }
 
 function modeDaysPerKm(

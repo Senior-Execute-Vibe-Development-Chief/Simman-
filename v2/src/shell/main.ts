@@ -124,9 +124,7 @@ function renderBase(selectedMonth: number): void {
   baseKey = key;
 }
 
-function toScreen(cell: number): [number, number] {
-  const y = Math.floor(cell / substrate.width);
-  const x = cell - y * substrate.width;
+function toScreenXY(x: number, y: number): [number, number] {
   return [(x + 0.5 - viewX) * zoom, (y + 0.5 - viewY) * zoom];
 }
 
@@ -146,18 +144,37 @@ function draw(): void {
   if (lastRoute && lastRoute.path.length > 1) {
     context.lineCap = "round";
     for (let index = 1; index < lastRoute.path.length; index++) {
-      const [ax, ay] = toScreen(lastRoute.path[index - 1] ?? 0);
-      const [bx, by] = toScreen(lastRoute.path[index] ?? 0);
+      const a = lastRoute.path[index - 1] ?? 0;
+      const b = lastRoute.path[index] ?? 0;
+      const ay = Math.floor(a / substrate.width);
+      const by = Math.floor(b / substrate.width);
+      const ax = a - ay * substrate.width;
+      let bx = b - by * substrate.width;
+      // A segment that wraps the antimeridian is drawn out through the
+      // seam, not straight across the map: shift the far endpoint by a
+      // world width and draw the mirrored piece too.
+      let wrapped = 0;
+      if (bx - ax > substrate.width / 2) { bx -= substrate.width; wrapped = -1; }
+      else if (ax - bx > substrate.width / 2) { bx += substrate.width; wrapped = 1; }
       context.strokeStyle = MODE_COLORS[lastRoute.modes[index] ?? 0] ?? "#ffd166";
       context.lineWidth = stroke;
       context.beginPath();
-      context.moveTo(ax, ay);
-      context.lineTo(bx, by);
+      const [sax, say] = toScreenXY(ax, ay);
+      const [sbx, sby] = toScreenXY(bx, by);
+      context.moveTo(sax, say);
+      context.lineTo(sbx, sby);
+      if (wrapped !== 0) {
+        const [max2, may2] = toScreenXY(ax + wrapped * substrate.width, ay);
+        const [mbx2, mby2] = toScreenXY(bx + wrapped * substrate.width, by);
+        context.moveTo(max2, may2);
+        context.lineTo(mbx2, mby2);
+      }
       context.stroke();
     }
   }
   if (startCell !== undefined) {
-    const [sx, sy] = toScreen(startCell);
+    const y = Math.floor(startCell / substrate.width);
+    const [sx, sy] = toScreenXY(startCell - y * substrate.width, y);
     context.fillStyle = "#ffd166";
     context.beginPath();
     context.arc(sx, sy, stroke * 2.5, 0, Math.PI * 2);
