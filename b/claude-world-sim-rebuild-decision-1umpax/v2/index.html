@@ -12,11 +12,11 @@
       p { color: #adbaa9; }
       .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 14px 0; }
       label { color: #d4c8a9; }
-      #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; }
+      #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
       #status, #route { min-height: 20px; color: #8fd3c7; }
       input[type="range"] { accent-color: #e5b65c; }
     </style>
-    <script type="module" crossorigin src="./assets/index-DdvRVwoy.js"></script>
+    <script type="module" crossorigin src="./assets/index-CEpET-XO.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-CbXtAM7H.js">
     <link rel="modulepreload" crossorigin href="./assets/global_precip-CdgUZ06r.js">
     <link rel="modulepreload" crossorigin href="./assets/global_airtemp-BXRRf8jQ.js">
@@ -37,6 +37,8 @@
         </label>
         <label id="month-label">Month 1</label>
         <input id="month" type="range" min="0" max="11" step="1" value="0" />
+        <label id="zoom-label">Zoom 1×</label>
+        <input id="zoom" type="range" min="0" max="6" step="0.01" value="0" />
         <label><input data-capability="packAnimals" type="checkbox" checked /> pack animals</label>
         <label><input data-capability="wheelsDraft" type="checkbox" /> wheels + draft</label>
         <label><input data-capability="boats" type="checkbox" checked /> boats</label>
