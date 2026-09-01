@@ -4,7 +4,12 @@ import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
 import type { Capability, TravelMetric } from "../sim/travel/cost";
 import type { GridPreset } from "../sim/world";
 
-const GRID: GridPreset = "dev";
+// ?grid=target serves the full 1800×900 map (the shipped grid — expect a
+// ~minute of substrate building on load); the default dev grid loads in
+// seconds. Same physics, same seed, different resolution.
+const GRID: GridPreset = new URLSearchParams(window.location.search).get("grid") === "target"
+  ? "target"
+  : "dev";
 const canvas = document.querySelector<HTMLCanvasElement>("#map")!;
 const lens = document.querySelector<HTMLSelectElement>("#lens")!;
 const month = document.querySelector<HTMLInputElement>("#month")!;
@@ -20,6 +25,10 @@ if (!context) throw new Error("Canvas is unavailable.");
 
 const substrate = buildSubstrate(M0_DEFAULT_SEED, { preset: "earth_sim" }, GRID);
 const travel = await createTravelEngine(substrate);
+// Render at the simulation's own resolution; CSS scales the display.
+canvas.width = substrate.width;
+canvas.height = substrate.height;
+const frame = new ImageData(substrate.width, substrate.height);
 const worker = new Worker(new URL("../sim/worker.ts", import.meta.url), { type: "module" });
 worker.postMessage({ type: "create", seed: M0_DEFAULT_SEED, grid: GRID });
 worker.addEventListener("message", (event) => {
@@ -58,28 +67,27 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
 function draw(): void {
   const selectedMonth = Number(month.value);
   monthLabel.textContent = `Month ${selectedMonth + 1}`;
-  const scaleX = canvas.width / substrate.width;
-  const scaleY = canvas.height / substrate.height;
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  const pixels = frame.data;
   for (let cell = 0; cell < substrate.N; cell++) {
-    const y = Math.floor(cell / substrate.width);
-    const x = cell - y * substrate.width;
     const [red, green, blue] = pixelColor(cell, selectedMonth);
-    context.fillStyle = `rgb(${red} ${green} ${blue})`;
-    context.fillRect(x * scaleX, y * scaleY, scaleX + 1, scaleY + 1);
+    const offset = cell * 4;
+    pixels[offset] = red;
+    pixels[offset + 1] = green;
+    pixels[offset + 2] = blue;
+    pixels[offset + 3] = 255;
   }
+  context.putImageData(frame, 0, 0);
+  const stroke = Math.max(1, substrate.width / 300);
   if (lastPath.length > 1) {
     context.strokeStyle = "#ffd166";
-    context.lineWidth = 2;
+    context.lineWidth = stroke;
     context.beginPath();
     for (let index = 0; index < lastPath.length; index++) {
       const cell = lastPath[index] ?? 0;
       const cellY = Math.floor(cell / substrate.width);
       const cellX = cell - cellY * substrate.width;
-      const px = (cellX + 0.5) * scaleX;
-      const py = (cellY + 0.5) * scaleY;
-      if (index === 0) context.moveTo(px, py);
-      else context.lineTo(px, py);
+      if (index === 0) context.moveTo(cellX + 0.5, cellY + 0.5);
+      else context.lineTo(cellX + 0.5, cellY + 0.5);
     }
     context.stroke();
   }
@@ -88,7 +96,7 @@ function draw(): void {
     const x = startCell - y * substrate.width;
     context.fillStyle = "#ffd166";
     context.beginPath();
-    context.arc((x + 0.5) * scaleX, (y + 0.5) * scaleY, 5, 0, Math.PI * 2);
+    context.arc(x + 0.5, y + 0.5, stroke * 2.5, 0, Math.PI * 2);
     context.fill();
   }
 }

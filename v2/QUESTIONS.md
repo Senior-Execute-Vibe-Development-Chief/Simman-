@@ -136,3 +136,18 @@ Review corrections to the M1 build (all validated before merge):
 - Duplicate/unused constants deleted; dead `mapImport.js` removed; the
   shell now draws the route path; bench times the placeholder tick
   again; wind sampling bulk-indexed (~10 s off the target substrate).
+
+9. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+   cross a strait wherever two land cells touch only at a corner with
+   water on both sides — proven with a direct 2-cell foot path over open
+   water (62 such corner pairs at dev). Fixed in the engine: a diagonal
+   move must be passable through at least one of its two orthogonal
+   intermediate cells, applied symmetrically (ships can no longer slip
+   through zero-width isthmus corners either); river mode is exempt
+   because a D8 channel is itself the connector between diagonal cells.
+   No gate route or known-miss changed — the affected corners are all
+   off the measured corridors. Note: some crossings visible in the shell
+   are legitimate coastal-sail hops (boats default on); the path line
+   does not yet distinguish modes — a lens candidate for M2's shell.
+   The shell also gained `?grid=target` (full 1800×900 rendering via
+   ImageData; dev stays the fast default).

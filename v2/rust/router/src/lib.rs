@@ -366,6 +366,20 @@ impl Router {
             if self.mode_mask[next_cell] & (1 << mode) == 0 {
                 continue;
             }
+            // No corner-cutting: a diagonal move must pass THROUGH one of its
+            // two orthogonal intermediate cells — two land cells touching only
+            // at a corner across a strait are not a road, and two sea cells
+            // across an isthmus corner are not a channel. River mode is exempt:
+            // a D8 river channel is itself the connector between diagonal cells.
+            if dx != 0 && dy != 0 && mode != RIVER_MODE {
+                let side_a = y * self.width + nx;
+                let side_b = ny * self.width + x;
+                if self.mode_mask[side_a] & (1 << mode) == 0
+                    && self.mode_mask[side_b] & (1 << mode) == 0
+                {
+                    continue;
+                }
+            }
             // True edge length: EW edges shrink with latitude, diagonals are
             // the precomputed hypotenuse of the two axis extents.
             let diag_row = y.min(ny);
