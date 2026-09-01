@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simman v2 — M1</title>
+    <style>
+      :root { color-scheme: dark; font: 14px system-ui, sans-serif; }
+      body { margin: 0; background: #101820; color: #e8dfc8; }
+      main { max-width: 980px; margin: auto; padding: 20px; }
+      h1 { margin: 0 0 6px; font-size: 21px; }
+      p { color: #adbaa9; }
+      .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 14px 0; }
+      label { color: #d4c8a9; }
+      #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
+      #status, #route { min-height: 20px; color: #8fd3c7; }
+      input[type="range"] { accent-color: #e5b65c; }
+    </style>
+    <script type="module" crossorigin src="./assets/index-C0BhbKP4.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-CbXtAM7H.js">
+    <link rel="modulepreload" crossorigin href="./assets/global_precip-CdgUZ06r.js">
+    <link rel="modulepreload" crossorigin href="./assets/global_airtemp-BXRRf8jQ.js">
+    <link rel="modulepreload" crossorigin href="./assets/global_wind-DDgQwDPT.js">
+  </head>
+  <body>
+    <main>
+      <h1>Simman v2 · M1 land and movement</h1>
+      <p>Earth substrate, monthly climate, and one layered travel-time field.</p>
+      <div class="controls">
+        <label>Lens
+          <select id="lens">
+            <option value="terrain">Terrain</option>
+            <option value="climate">Climate</option>
+            <option value="fertility">Fertility</option>
+            <option value="crops">Crop suitability</option>
+            <option value="population">Population density</option>
+            <option value="technique">Farming technique</option>
+            <option value="wind">Wind</option>
+            <option value="rivers">River passability</option>
+          </select>
+        </label>
+        <label id="month-label">Month 1</label>
+        <input id="month" type="range" min="0" max="11" step="1" value="0" />
+        <label id="zoom-label">Zoom 1×</label>
+        <input id="zoom" type="range" min="0" max="6" step="0.01" value="0" />
+        <label><input data-capability="packAnimals" type="checkbox" checked /> pack animals</label>
+        <label><input data-capability="wheelsDraft" type="checkbox" /> wheels + draft</label>
+        <label><input data-capability="boats" type="checkbox" checked /> boats</label>
+        <label><input data-capability="navigation" type="checkbox" checked /> navigation</label>
+        <button id="run" type="button">Pause</button>
+        <label>Speed <span id="speed-label">1×</span></label>
+        <input id="speed" type="range" min="0" max="6" step="1" value="0" />
+        <span id="population">Population: waiting for worker…</span>
+      </div>
+      <canvas id="map" width="900" height="450"></canvas>
+      <div id="status">Building substrate…</div>
+      <div id="route">Click two points for a route. Scroll to zoom, drag to pan.</div>
+      <p style="margin:6px 0 0">
+        <span style="color:#ffd166">■ foot</span> ·
+        <span style="color:#f4a259">■ pack</span> ·
+        <span style="color:#e07a5f">■ cart</span> ·
+        <span style="color:#5fd0c5">■ river</span> ·
+        <span style="color:#6ab6ff">■ coastal</span> ·
+        <span style="color:#3d7dff">■ open-sea</span>
+        <span id="river-legend" hidden> · river lens:
+          <span style="color:#46e15a">■ two-way</span> ·
+          <span style="color:#f0aa28">■ downstream only</span> ·
+          <span style="color:#eb3c32">■ cataract/falls</span> ·
+          <span style="color:#787d87">■ too small</span> ·
+          <span style="color:#50c8c8">■ lake</span> ·
+          <span style="color:#cde1eb">■ frozen (this month)</span>
+        </span>
+      </p>
+      <p id="grid-hint"></p>
+    </main>
+    <script>
+      // Pre-module hint: the target grid builds ~1.6M cells of substrate.
+      (function () {
+        var target = new URLSearchParams(location.search).get("grid") === "target";
+        document.getElementById("status").textContent = target
+          ? "Building the full 1800×900 substrate — give it a minute…"
+          : "Building substrate…";
+        var hint = document.getElementById("grid-hint");
+        hint.innerHTML = target
+          ? 'Full-resolution shipped grid (~22 km cells). <a href="?">Back to the fast dev grid</a>.'
+          : 'Fast dev grid (240×120). <a href="?grid=target">Open the full 1800×900 map</a> — slower first load.';
+      })();
+    </script>
+  </body>
+</html>
