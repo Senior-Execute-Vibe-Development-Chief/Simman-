@@ -1,3 +1,24 @@
 {
-  "misses": []
+  "misses": [
+    {
+      "id": "population:-5000",
+      "reason": "Measured 226M vs band max 60M: growth runs at the intrinsic rate straight to farmed capacity because NOTHING YET DIES \u2014 famine variance, harvest failure, plagues and soil exhaustion are M3/M7 physics. The handoff's predicted first-landing miss, recorded verbatim: that is M3's job arriving on schedule, never a rate to dial."
+    },
+    {
+      "id": "population:-3000",
+      "reason": "Measured 438M vs band max 100M \u2014 same missing-mortality physics as population:-5000."
+    },
+    {
+      "id": "population:-1000",
+      "reason": "Measured 739M vs band max 200M \u2014 same missing-mortality physics as population:-5000."
+    },
+    {
+      "id": "population:1",
+      "reason": "Measured 908M vs band max 400M; the curve saturates against farmed capacity (Malthus via ceiling only, no famine variance) \u2014 same missing-mortality physics as population:-5000."
+    },
+    {
+      "id": "arrival:indus",
+      "reason": "Measured -8070 vs earliest -7000 (-7800 with the \u00b1800 grace): under the peopled-basin-years law the Indus floodplain basin arms as fast as the Fertile Crescent's, igniting ~270 years beyond the grace bound. The real Mehrgarh lag involves package adaptation and monsoon-margin factors not yet modeled; a physics finding, not a dial. The other five regions arrive in-window and in the right order."
+    }
+  ]
 }

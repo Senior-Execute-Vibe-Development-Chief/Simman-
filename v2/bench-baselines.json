@@ -5,7 +5,7 @@
     "customizeMilliseconds": 45,
     "queryMilliseconds": 95,
     "distanceMapMilliseconds": 75,
-    "tickMilliseconds": 15
+    "tickMilliseconds": 27
   },
   "target": {
     "substrateMilliseconds": 68000,
@@ -13,7 +13,7 @@
     "customizeMilliseconds": 2600,
     "queryMilliseconds": 3600,
     "distanceMapMilliseconds": 3800,
-    "tickMilliseconds": 650
+    "tickMilliseconds": 640
   },
-  "notes": "M2 baseline (seed 42042, earth_sim, target 1800x900) measures the real people pass: 10 monthly ticks averaged ~11 ms at dev and ~486 ms at target on this runner. Values carry headroom for runner variance; CI fails above 120% of these. The target-grid people loop is the known performance finding in QUESTIONS.md and remains behind the same typed-array API for the later kernel drop-in."
+  "notes": "M2 review baseline (seed 42042, earth_sim). 10-tick averages on the review runner: dev ~20 ms (JIT-warmup dominated; 120-tick steady state ~6.5 ms), target ~479 ms after the hash-identical review optimization pass (pre-optimization: ~1564 ms on the same runner). Values carry headroom for runner variance; CI fails above 120% of these. The target-grid long-horizon run remains the recorded performance finding (QUESTIONS.md #30/#32) pending the banded/wasm kernel drop-in behind the same typed-array API."
 }

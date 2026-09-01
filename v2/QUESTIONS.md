@@ -707,3 +707,55 @@ Review corrections to the M1 build (all validated before merge):
    requires chunking the existing synchronous worldgen supplier; that is
    deferred rather than pretending a status label makes the current build
    asynchronous.
+
+32. **M2 review reconciliation (2026-09-01).** Merged with the strait,
+    gradient and lens work that landed after the handoff; two textual
+    conflicts (QUESTIONS renumbering, gradient sentinel). Review findings
+    and fixes, all measured:
+    (a) **The root play page crashed** — M2's run/speed/population
+    controls existed only in the browser-smoke shell; added to
+    v2/index.html.
+    (b) **Hash-identical performance pass**: per-row edge-length tables,
+    per-tick cached foot-cost days/km, static forager/disease LUTs, a
+    per-row substepped migration share, and closure hoisting took the
+    people tick from 17 to 6.5 ms (dev, 120-tick steady state) and
+    1564 to ~479 ms (target, idle) with the world hash PROVEN
+    byte-identical before/after at both grids. Bench baselines
+    re-measured on this runner.
+    (c) **Conservation tolerance scales with the conserved stock**: the
+    count-only bound tripped on -3e-6 persons of rounding dust against
+    a hundred-million-person sheet (relative error 1e-13) ten millennia
+    into the long run. Still an epsilon, never a leak allowance.
+    (d) **The always-pass 12-month people gate is replaced**: every run
+    now carries a ~3000-year dev trajectory arm (first ignitions, curve
+    checkpoints), and GATE_PEOPLE_LONG=1 runs the full YD->1 CE dev
+    battery — population checkpoint bands, farming arrival order and
+    timing, density ordering — against
+    data/reality/known-misses-people.json with the same
+    acknowledge-or-fail ratchet as travel. The gate prints its measured
+    findings before asserting. The target-grid long horizon stays the
+    recorded kernel-drop-in limitation (#30).
+    (e) **THE LATITUDE BUG** (the first honest long run earned its keep
+    immediately): three people-sim sites used the full-circle 360-degree
+    span in latitude formulas. Hearth pins landed at HALF their real
+    latitude — the Fertile Crescent ignited in Yemen, the Nile in the
+    Sahara, and arrivals at the true regions ran ~6,000 years late as
+    the wave walked back; the southern hemisphere had ZERO cell area, so
+    its people weighed nothing in the census; technique spread lengths
+    zeroed south of 45N. Fixed to the 90-180f form travel/cost.ts always
+    used.
+    (f) **Hearth arming re-grounded**: basinFill measured fill against
+    CURRENT capacity, so a pin stalled the moment a neighboring wave
+    lifted its basin to farmed capacity (fill collapsed ~10x). Peopled-
+    basin-years now measure against the STATIC forager capacity, per the
+    law's own wording.
+    (g) **First honest YD->1 CE results** (dev, seed 42042): farming
+    reaches FIVE of six regions inside their radiocarbon windows and in
+    the right order — Fertile Crescent -8130, Nile -8030, Yellow River
+    -7380, Mesoamerica -6290, Andes -4810; the Indus ignites ~270 years
+    early (manifested). Density ordering emerges: river valleys
+    19.9/km2 >> rainfed 13.1 >> forager 0.24. The population curve is
+    in-band at -8000 (5.3M) then overshoots — 226M at -5000, 908M at
+    1 CE — because nothing yet dies of famine, plague, or exhausted
+    soil: M3's job arriving on schedule, manifested per checkpoint, no
+    rate dialed.
