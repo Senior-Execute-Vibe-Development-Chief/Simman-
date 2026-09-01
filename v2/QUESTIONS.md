@@ -436,3 +436,38 @@ Review corrections to the M1 build (all validated before merge):
     rome-alexandria loop through the river moisture boost; the shipped
     grid holds). QUESTIONS #15's middle-Niger finding is superseded:
     the real inland delta geometry is now in the data.
+
+22. **The river passability lens, and measured floor gradients (owner
+    play-report, 2026-09-01: "STILL the Nile is cheaper to avoid? HOW?
+    add a river passability overlay").** The new shell lens colours
+    every channel cell by the number the router actually compares:
+    green = sailable both ways (reach ≤ 0.5 m/km), orange = downstream
+    only (≤ 1.5), red = cataract/falls, grey = too small, teal = lake
+    (legend appears with the lens). It answered the HOW immediately:
+    the mid-Nile was green broken by phantom orange every few cells —
+    22 km cell-average elevations bounce between clean floodplain and
+    desert-shoulder averages along the real meandering course, and each
+    phantom break costs an upstream portage. Two estimator fixes were
+    tried and MEASURED: unlimited hydraulic carving (water never rises
+    downstream) fixed the Nile but UNSEALED the Congo — the Livingstone
+    gorge's cell averages genuinely rise, so the carve clipped a real
+    canyon as noise, and even a window-min estimator left its reach at
+    its honest-but-misleading 0.77 m/km 100-km MEAN (the raster smears
+    32 rapids into a navigable-looking glide; kinshasa→sea briefly ran
+    77% river). The resolution floor is real, so the answer is DATA
+    (R7): the bake tool now measures the channel-floor profile on
+    1.8 km ETOPO point-samples along the HydroSHEDS fine paths — the
+    steepest ~28 km sub-reach of the next ~100 km, ±1-step running-min
+    smoothed — and ships it beside the directions (RIVER_GRAD, 1/16
+    m/km per byte); riverReachGradient uses the measured value where
+    data exists and keeps the window-min estimator for fallback cells
+    and procedural worlds. Measured after: Nile 0.13-0.25 green
+    delta→Dongola, Aswan→sea 53/53 cells green, boats-only upstream 86%
+    river (23.3 d); Livingstone 2.31 RED — kinshasa→sea walks the
+    historical porterage again (55% foot); Victoria Falls 4.63 RED;
+    Indus/Brahmaputra gorges pinned at the 15.9 encoding cap; Ganges
+    plain 0.13 green. Gate 13/13 river anchors, smoke, oracle green
+    with zero manifest churn. The remaining Red Sea preference for
+    southbound couriers stands as recorded in #20 (free ports), and the
+    pack leg cutting the Nubian bend is the historical Korosko road
+    emerging.

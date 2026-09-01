@@ -48,6 +48,7 @@ import {
 import { dcos } from "../dmath";
 import { D8_DX, D8_DY } from "../../ported/worldgen/riverGen.js";
 import type { Substrate } from "../substrate";
+import { sampleRiverReachGradients } from "../../ported/worldgen/riverDirSample.js";
 
 export const TRAVEL_MODES = [
   "foot",
@@ -189,15 +190,58 @@ function seaIceBlocked(substrate: Substrate, cell: number, month: number): boole
  */
 const reachGradientCache = new WeakMap<Substrate, Float64Array>();
 
+/**
+ * Water-surface elevation estimate for a channel cell: the MINIMUM cell
+ * elevation over the cell and its next two cells downstream. A meander cell
+ * whose average includes the valley wall is one-cell noise — one of the next
+ * cells is clean floodplain and reveals the surface — while a real incised
+ * gorge (the Livingstone Falls canyon) stays high across many consecutive
+ * cells and keeps its full drop. The window length is the raster's noise
+ * scale (per-cell wall contamination), not a tuning knob. Water cells clamp
+ * at sea level (the receiving SURFACE, never the sea floor).
+ */
+function surfaceElevation(substrate: Substrate, cell: number): number {
+  const { width, height } = substrate;
+  const elevationOf = (at: number): number => (substrate.landMask[at]
+    ? substrate.elevation[at]
+    : Math.max(0, substrate.elevation[at]));
+  let minimum = elevationOf(cell);
+  let current = cell;
+  for (let step = 0; step < 2; step++) {
+    if (!substrate.landMask[current]) break;
+    const direction = substrate.rivers.direction[current];
+    if (direction === undefined || direction > 7) break;
+    const y = Math.floor(current / width);
+    const ny = y + (D8_DY[direction] ?? 0);
+    if (ny < 0 || ny >= height) break;
+    current = ny * width + ((((current - y * width) + (D8_DX[direction] ?? 0)) % width + width) % width);
+    const value = elevationOf(current);
+    if (value < minimum) minimum = value;
+  }
+  return minimum;
+}
+
 export function riverReachGradient(substrate: Substrate): Float64Array {
   const cached = reachGradientCache.get(substrate);
   if (cached) return cached;
   const { width, height, N } = substrate;
   const rows = rowEastWestKm(substrate);
   const nsKm = EARTH_MERIDIONAL_KM / height;
+  // Earth presets carry MEASURED channel-floor reach gradients (baked from
+  // fine ETOPO samples along the real channels — QUESTIONS.md #22); the
+  // walk below is the estimator for cells without data and for procedural
+  // worlds, where only the sim's own elevation exists.
+  const baked = substrate.preset === "earth" || substrate.preset === "earth_sim"
+    ? sampleRiverReachGradients(width, height)
+    : null;
   const result = new Float64Array(N);
   for (let cell = 0; cell < N; cell++) {
     if ((substrate.rivers.magnitude[cell] ?? 0) < TRAVEL_RIVER_MIN_MAGNITUDE) continue;
+    const measured = baked ? baked[cell] ?? -1 : -1;
+    if (measured >= 0) {
+      result[cell] = measured;
+      continue;
+    }
     let current = cell;
     let km = 0;
     for (let step = 0; step < TRAVEL_RIVER_GRADIENT_MAX_STEPS
@@ -218,13 +262,7 @@ export function riverReachGradient(substrate: Substrate): Float64Array {
       if (!substrate.landMask[current]) break;
     }
     if (km > 0) {
-      // A river's fall ends at the receiving water's SURFACE: a walk that
-      // terminates in the ocean must not count the drop to the sea FLOOR
-      // (bathymetry is negative elevation), or every mouth reads as a scarp.
-      const endElevation = substrate.landMask[current]
-        ? substrate.elevation[current]
-        : Math.max(0, substrate.elevation[current]);
-      const drop = Math.max(0, (substrate.elevation[cell] - endElevation))
+      const drop = Math.max(0, (surfaceElevation(substrate, cell) - surfaceElevation(substrate, current)))
         * ELEVATION_METERS_PER_UNIT;
       result[cell] = drop / km;
     }

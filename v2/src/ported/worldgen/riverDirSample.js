@@ -15,10 +15,13 @@
  */
 import {
   RIVER_DIR,
+  RIVER_GRAD,
   RIVER_DIR_W,
   RIVER_DIR_H,
   RIVER_DIR_TERMINAL,
   RIVER_DIR_NODATA,
+  RIVER_GRAD_NODATA,
+  RIVER_GRAD_PER_M_KM,
   decodeRiverDir,
 } from "./riverDirData.js";
 
@@ -75,6 +78,19 @@ function rose(dx, dy) {
 }
 
 export function sampleRiverDirections(tw, th) {
+  return sampleRivers(tw, th).dirs;
+}
+
+/**
+ * Baked channel-floor reach gradients (m/km; QUESTIONS.md #22) projected to
+ * the sim grid at each cell's dominant channel — -1 where no data (the
+ * caller falls back to its own estimate).
+ */
+export function sampleRiverReachGradients(tw, th) {
+  return sampleRivers(tw, th).grads;
+}
+
+function sampleRivers(tw, th) {
   const key = tw + "x" + th;
   const cached = cache.get(key);
   if (cached) return cached;
@@ -288,6 +304,16 @@ export function sampleRiverDirections(tw, th) {
       for (const cell of path) state[cell] = 2;
     }
   }
-  cache.set(key, out);
-  return out;
+  // Project the baked floor gradients at each sim cell's representative.
+  const fineGrad = decodeRiverDir(RIVER_GRAD);
+  const grads = new Float64Array(tw * th).fill(-1);
+  for (let o = 0; o < tw * th; o++) {
+    const fi = rep[o];
+    if (fi < 0) continue;
+    const g = fineGrad[fi];
+    if (g !== RIVER_GRAD_NODATA) grads[o] = g / RIVER_GRAD_PER_M_KM;
+  }
+  const entry = { dirs: out, grads };
+  cache.set(key, entry);
+  return entry;
 }

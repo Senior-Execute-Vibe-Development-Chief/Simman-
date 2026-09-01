@@ -29,6 +29,7 @@
             <option value="fertility">Fertility</option>
             <option value="crops">Crop suitability</option>
             <option value="wind">Wind</option>
+            <option value="rivers">River passability</option>
           </select>
         </label>
         <label id="month-label">Month 1</label>
@@ -50,6 +51,13 @@
         <span style="color:#5fd0c5">■ river</span> ·
         <span style="color:#6ab6ff">■ coastal</span> ·
         <span style="color:#3d7dff">■ open-sea</span>
+        <span id="river-legend" hidden> · river lens:
+          <span style="color:#46e15a">■ two-way</span> ·
+          <span style="color:#f0aa28">■ downstream only</span> ·
+          <span style="color:#eb3c32">■ cataract/falls</span> ·
+          <span style="color:#787d87">■ too small</span> ·
+          <span style="color:#50c8c8">■ lake</span>
+        </span>
       </p>
       <p id="grid-hint"></p>
     </main>

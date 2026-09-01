@@ -1,7 +1,13 @@
-import { M0_DEFAULT_SEED, MONTHS_PER_YEAR } from "../sim/constants";
+import {
+  M0_DEFAULT_SEED,
+  MONTHS_PER_YEAR,
+  TRAVEL_RIVER_MIN_MAGNITUDE,
+  TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
+  TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
+} from "../sim/constants";
 import { buildSubstrate, type Substrate } from "../sim/substrate";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
-import type { Capability, TravelMetric } from "../sim/travel/cost";
+import { riverReachGradient, type Capability, type TravelMetric } from "../sim/travel/cost";
 import type { GridPreset } from "../sim/world";
 
 // ?grid=target serves the full 1800×900 map (the shipped grid — expect a
@@ -103,6 +109,24 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     if (!substrate.landMask[cell]) return [16, 34, 54];
     const [red, green, blue] = terrainColor(cell, moisture, y);
     return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
+  }
+  if (lens.value === "rivers") {
+    // River passability: the reach gradient (m of fall per km over the 100 km
+    // reach) that the router compares against its two bars. Green = sailable
+    // both ways, orange = downstream only, red = cataract/falls (blocked),
+    // grey = channel too small to navigate; everything else muted terrain.
+    if (!substrate.landMask[cell]) return [16, 34, 54];
+    const magnitude = substrate.rivers.magnitude[cell] ?? 0;
+    if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [80, 200, 200];
+    if (magnitude >= 1) {
+      if (magnitude < TRAVEL_RIVER_MIN_MAGNITUDE) return [120, 125, 135];
+      const gradient = riverReachGradient(substrate)[cell] ?? 0;
+      if (gradient > TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM) return [235, 60, 50];
+      if (gradient > TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM) return [240, 170, 40];
+      return [70, 225, 90];
+    }
+    const [red, green, blue] = terrainColor(cell, moisture, y);
+    return [Math.round(red * 0.35), Math.round(green * 0.35), Math.round(blue * 0.35)];
   }
   if (!substrate.landMask[cell]) return [25, 55, 86];
   if (lens.value === "climate") {
@@ -361,7 +385,11 @@ zoomInput.addEventListener("input", () => {
   setZoom(Math.pow(2, Number(zoomInput.value)));
 });
 
-lens.addEventListener("change", draw);
+const riverLegend = document.querySelector<HTMLElement>("#river-legend");
+lens.addEventListener("change", () => {
+  if (riverLegend) riverLegend.hidden = lens.value !== "rivers";
+  draw();
+});
 month.addEventListener("input", draw);
 for (const input of document.querySelectorAll<HTMLInputElement>("input[data-capability]")) {
   input.addEventListener("change", () => {

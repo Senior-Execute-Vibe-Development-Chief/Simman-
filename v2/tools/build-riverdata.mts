@@ -146,9 +146,78 @@ function lzwDecode(src: Uint8Array, expected: number): Uint8Array {
 }
 
 const inputPath = process.argv[2];
-if (!inputPath) throw new Error("usage: build-riverdata.mts <hyd_glo_dir_5m.tif>");
+if (!inputPath) throw new Error("usage: build-riverdata.mts <hyd_glo_dir_5m.tif> [etopo .nc]");
 const esri = readTiff(inputPath);
 console.log("decoded source grid");
+
+// Optional ETOPO grid (the earthData fetch, 6-arcmin stride of the 1-arcmin
+// model: POINT samples with ~1.8 km footprints) for the channel FLOOR
+// profile. A 22 km cell average cannot tell a cataract field from a
+// navigable glide — the Livingstone gorge smears to its 0.77 m/km mean —
+// but 1.8 km samples near the channel resolve the real steps.
+let etopo: { data: Float64Array; w: number; h: number } | null = null;
+{
+  const ncPath = process.argv.slice(3).find((arg) => arg.endsWith(".nc"));
+  if (ncPath) {
+    const nc = readNetcdfAltitude(ncPath);
+    etopo = { data: nc.data, w: nc.dims[1]!, h: nc.dims[0]! };
+    console.log(`etopo floor grid ${etopo.w}×${etopo.h}`);
+  }
+}
+
+// Minimal NetCDF-3 reader (same file class as tools/build-earthdata.mts).
+function readNetcdfAltitude(path: string): { dims: number[]; data: Float64Array } {
+  const buf = readFileSync(path);
+  if (buf.toString("latin1", 0, 3) !== "CDF") throw new Error("not a NetCDF-3 file");
+  let off = 4;
+  const u32 = () => { const v = buf.readUInt32BE(off); off += 4; return v; };
+  const name = () => {
+    const n = u32();
+    const s = buf.toString("latin1", off, off + n);
+    off += n + ((4 - (n % 4)) % 4);
+    return s;
+  };
+  u32();
+  const dimSizes: number[] = [];
+  const dimTag = u32();
+  const dimCount = u32();
+  if (dimTag === 10) for (let i = 0; i < dimCount; i++) { name(); dimSizes.push(u32()); }
+  const skipAttrs = () => {
+    const tag = u32();
+    const count = u32();
+    if (tag === 0 && count === 0) return;
+    for (let i = 0; i < count; i++) {
+      name();
+      const type = u32();
+      const n = u32();
+      const size = [0, 1, 1, 2, 4, 4, 8][type] ?? 1;
+      const bytes = n * size;
+      off += bytes + ((4 - (bytes % 4)) % 4);
+    }
+  };
+  skipAttrs();
+  const varTag = u32();
+  const varCount = u32();
+  if (varTag !== 11) throw new Error("no variables");
+  let found: { dims: number[]; begin: number; count: number; type: number } | undefined;
+  for (let i = 0; i < varCount; i++) {
+    const varName = name();
+    const rank = u32();
+    const dims: number[] = [];
+    for (let d = 0; d < rank; d++) dims.push(dimSizes[u32()] ?? 0);
+    skipAttrs();
+    const type = u32();
+    u32();
+    const begin = u32();
+    if (varName === "altitude") found = { dims, begin, count: dims.reduce((a, b) => a * b, 1), type };
+  }
+  if (!found) throw new Error("altitude variable missing");
+  const data = new Float64Array(found.count);
+  for (let i = 0; i < found.count; i++) {
+    data[i] = found.type === 3 ? buf.readInt16BE(found.begin + i * 2) : buf.readDoubleBE(found.begin + i * 8);
+  }
+  return { dims: found.dims, data };
+}
 
 // Remap to rose indices; 0 → TERMINAL, 255 → NODATA, anything else invalid.
 const fineDir = new Uint8Array(SRC_W * SRC_H);
@@ -224,7 +293,7 @@ for (let i = 0; i < esri.length; i++) {
 
 // Optional debug window: argv[3] = "lat,lon" prints the post-rescue fine
 // neighbourhood (O = terminal, ~ = nodata, digits = rose directions).
-if (process.argv[3]) {
+if (process.argv[3]?.includes(",")) {
   const [lat, lon] = process.argv[3].split(",").map(Number) as [number, number];
   const fy = Math.floor((SRC_LAT0 - lat) * SRC_PER_DEG);
   const fx = Math.floor((lon + 180) * SRC_PER_DEG);
@@ -474,6 +543,88 @@ for (let round = 0; round < 5; round++) {
 }
 console.log(`coarse cells with data: ${out.filter((v) => v !== NODATA).length}; cycles broken: ${broken}`);
 
+// ── Channel-floor reach gradients (QUESTIONS.md #22) ──
+// Per fine channel cell: walk ~100 km downstream along the fine path and take
+// the STEEPEST ~28 km sub-reach of the channel-floor profile — the worst
+// water a boat must pass in that reach. The floor at a fine cell is the
+// minimum ETOPO point-sample (1.8 km footprints) in its 3×3 neighbourhood —
+// fine enough that the Livingstone gorge's real steps resolve instead of
+// smearing into their navigable-looking 100 km mean, while the Nile's
+// floodplain floor reads flat because a near-channel sample sees the valley,
+// not the walls. Profile smoothed by a ±1-step running MIN so a single
+// wall-contaminated floor sample cannot fake a cataract. Encoded 1/16 m/km
+// per byte (0..15.8), 255 = no data.
+const GRAD_NODATA = 255;
+const gradOut = new Uint8Array(OUT_W * OUT_H).fill(GRAD_NODATA);
+if (etopo) {
+  const { data: eData, w: eW, h: eH } = etopo;
+  const floorOf = (fx: number, fy: number): number => {
+    const lat = SRC_LAT0 - (fy + 0.5) / SRC_PER_DEG;
+    const lon = -180 + (fx + 0.5) / SRC_PER_DEG;
+    const ey = Math.round(((lat + 90) / 180) * (eH - 1)); // ETOPO rows ascend from -90
+    const ex = Math.round(((lon + 180) / 360) * (eW - 1));
+    let minimum = Infinity;
+    for (let dy = -1; dy <= 1; dy++) {
+      const y = ey + dy;
+      if (y < 0 || y >= eH) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = Math.min(eW - 1, Math.max(0, ex + dx));
+        const v = eData[y * eW + x] ?? 0;
+        if (v < minimum) minimum = v;
+      }
+    }
+    return Math.max(0, minimum); // the water surface never sits below sea level
+  };
+  const SUB_STEPS = 3;   // ~28 km sub-reach
+  const MAX_STEPS = 11;  // ~100 km walk
+  const KM_PER_FINE_NS = 9.27;
+  const fineGrad = new Float32Array(SRC_W * SRC_H).fill(-1);
+  for (let fi = 0; fi < SRC_W * SRC_H; fi++) {
+    if (fineDir[fi]! > 7) continue;
+    // Collect the floor profile along the walk (with per-step km).
+    const floors: number[] = [];
+    const kms: number[] = [0];
+    let current = fi;
+    for (let step = 0; step <= MAX_STEPS; step++) {
+      const fy = Math.floor(current / SRC_W);
+      floors.push(floorOf(current - fy * SRC_W, fy));
+      const d = fineDir[current]!;
+      if (d > 7) break;
+      const ny = fy + D8_DY[d]!;
+      if (ny < 0 || ny >= SRC_H) break;
+      const lat = SRC_LAT0 - (fy + 0.5) / SRC_PER_DEG;
+      const ew = D8_DX[d]! !== 0 ? KM_PER_FINE_NS * Math.cos((lat * Math.PI) / 180) : 0;
+      const ns = D8_DY[d]! !== 0 ? KM_PER_FINE_NS : 0;
+      kms.push((kms[kms.length - 1] ?? 0) + Math.sqrt(ew * ew + ns * ns));
+      current = ny * SRC_W + ((current - fy * SRC_W + D8_DX[d]! + SRC_W) % SRC_W);
+    }
+    // ±1-step running-min smoothing.
+    const smooth = floors.map((_, index) => Math.min(
+      floors[index]!,
+      floors[index - 1] ?? Infinity,
+      floors[index + 1] ?? Infinity,
+    ));
+    let worst = 0;
+    for (let start = 0; start + SUB_STEPS < smooth.length; start++) {
+      const drop = (smooth[start] ?? 0) - (smooth[start + SUB_STEPS] ?? 0);
+      const km = (kms[start + SUB_STEPS] ?? 0) - (kms[start] ?? 0);
+      if (drop > 0 && km > 0) worst = Math.max(worst, drop / km);
+    }
+    fineGrad[fi] = worst;
+  }
+  // Bake at each coarse cell's dominant (representative) fine cell.
+  let graded = 0;
+  for (let o = 0; o < OUT_W * OUT_H; o++) {
+    const fi = rep[o]!;
+    if (fi < 0 || (fineGrad[fi] ?? -1) < 0) continue;
+    gradOut[o] = Math.min(254, Math.round(fineGrad[fi]! * 16));
+    graded++;
+  }
+  console.log(`floor gradients baked for ${graded} coarse cells`);
+} else {
+  console.log("no etopo grid given — RIVER_GRAD baked as all-nodata");
+}
+
 const header = `/* V2 DATA — real river geometry (recorded deviation, QUESTIONS.md #21)
  * RIVER_DIR: global D8 flow directions at 1920x960 (the earthData grid),
  * baked 2026-09-01 by tools/build-riverdata.mts from the HydroSHEDS v1
@@ -485,9 +636,17 @@ const header = `/* V2 DATA — real river geometry (recorded deviation, QUESTION
  * beyond the source's 84N..56S coverage; the sim derives those from
  * elevation as before). Earth presets take river GEOMETRY from this data;
  * runoff, accumulation and magnitude stay emergent from climate (R7).
+ *
+ * RIVER_GRAD (QUESTIONS.md #22): the channel-floor reach gradient at each
+ * coarse cell's dominant channel — the steepest ~28 km sub-reach of the
+ * next ~100 km, measured on 1.8 km ETOPO point-samples along the HydroSHEDS
+ * path (a 22 km cell average smears the Livingstone cataracts into a
+ * navigable-looking mean; the fine floor profile keeps their real steps).
+ * Encoding: 1/16 m/km per byte (0..15.8), 255 = no data.
  */
 export const RIVER_DIR_W = ${OUT_W}, RIVER_DIR_H = ${OUT_H};
 export const RIVER_DIR_TERMINAL = 8, RIVER_DIR_NODATA = 255;
+export const RIVER_GRAD_NODATA = 255, RIVER_GRAD_PER_M_KM = 16;
 
 export function decodeRiverDir(b64) {
   const bin = atob(b64);
@@ -497,6 +656,7 @@ export function decodeRiverDir(b64) {
 }
 `;
 const b64 = Buffer.from(out).toString("base64");
+const gradB64 = Buffer.from(gradOut).toString("base64");
 const targetPath = fileURLToPath(new URL("../src/ported/worldgen/riverDirData.js", import.meta.url));
-writeFileSync(targetPath, `${header}\nexport const RIVER_DIR="${b64}";\n`);
+writeFileSync(targetPath, `${header}\nexport const RIVER_DIR="${b64}";\n\nexport const RIVER_GRAD="${gradB64}";\n`);
 console.log(`wrote ${targetPath}`);
