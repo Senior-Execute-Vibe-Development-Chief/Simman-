@@ -397,7 +397,24 @@ lawyered.
 
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 22)*
+- **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
+  QUESTIONS #27). Bake an LGM land mask (ETOPO altitude > −120 m — the
+  bathymetry is already in the source data) and let `generateAncestry`'s
+  pre-history wavefront walk the real ice-age coastline: Beringia,
+  Sundaland, Sahul and Doggerland become actual land, and the tuned
+  strait-pricing proxies (`ANC_OCEAN_STEP` / `ANC_HOP_FREE`) relax into
+  physics. Bake-side only — no live sea level; replaces dials with data
+  (R2/R7). Not needed for M2: the proxies already yield the correct
+  peopling extents and ordering that its gates consume.
+- **P9. Holocene sea-rise epoch staging (Phase 2+).** The YD→6kya rise
+  falls inside the simulated window (the Persian Gulf fills; Doggerland
+  and Sundaland drown ~8kya). A sea-level track is a legitimate
+  exogenous forcing under R1 — a boundary condition like the observed
+  climate, with mechanisms responding to the water, never the date —
+  but a dynamic coastline breaks the immutable-substrate doctrine, so
+  the shape is epoch-staged substrate rebuilds keyed on (data identity,
+  sea level). Pull forward only when a gate or play-test demands it;
+  M2's gates are insensitive at their stated tolerances.
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

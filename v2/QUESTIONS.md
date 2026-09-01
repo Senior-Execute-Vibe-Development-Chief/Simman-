@@ -605,3 +605,31 @@ Review corrections to the M1 build (all validated before merge):
     an unledgered `glacier × 0.05` runoff term was DELETED by the
     handoff's own rule — implement only what a gate demands, and every
     river-seasons anchor passes without it.
+
+27. **Do we need a prehistory phase — ice-age seas, spread from the
+    Cradle, isolation as it warmed, Peoples drifting? (owner question,
+    2026-09-01).** Mostly already built, at worldgen rather than as a
+    ticked phase: `generateAncestry` (pipeline.js) SIMULATES the
+    peopling — origin hard-pinned at the East African Rift (Lake
+    Turkana/Omo, ~4N 37E, fossil-record data with the same R7 standing
+    as hearth pins), a cost-distance wavefront resisted by mountains,
+    desert, climate change and ice, accelerated along warm coasts (the
+    beachcomber highway — Sahul early, the Americas last through cold
+    Beringia), per-cell ARRIVAL time, and divergence falling out of
+    residence time (ancient homelands fragment into many peoples, fresh
+    frontiers stay coarse; serial-founder bottleneck thins deep lineages
+    with distance from Africa; lineage borders settle on oceans, ranges,
+    deserts). M2's initial condition reads exactly these fields. What it
+    does NOT do is physically lower the ocean: land-bridge crossings
+    ride tuned strait-pricing proxies (near-shore hops cheap, open ocean
+    exponentially dear). Rulings recorded: the honest upgrade is the
+    LGM-coastline mask (DECISIONS Proposed P8 — bake-side, replaces the
+    dials with data; not M2-blocking since extents and ordering are
+    already correct); intra-sim Holocene sea rise (the Persian Gulf
+    filling, Doggerland drowning inside the YD→6kya window) is P9,
+    Phase 2+ epoch staging, exogenous-forcing-legitimate under R1 but
+    a break of the immutable-substrate doctrine not worth paying until
+    a gate demands it. Peoples as living actors (culture, language,
+    adaptation, disease resistance) are chapters 07 and 16, later
+    milestones — nothing is lost by waiting, because the divergence
+    geography they need is already banked in the ancestry fields.
