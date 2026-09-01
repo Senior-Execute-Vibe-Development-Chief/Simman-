@@ -15,6 +15,7 @@ import {
 } from "./constants";
 import { dsin } from "./dmath";
 import { buildWorld, type PortedTerritory, type PortedWorld } from "../ported/worldgen/pipeline.js";
+import { computeSeasonalRiverFlow } from "../ported/worldgen/riverGen.js";
 import { classifyBiome } from "../ported/worldgen/biomeClass.js";
 import {
   fillRealClimate,
@@ -59,6 +60,12 @@ export interface SubstrateRivers {
   readonly direction: Uint8Array;
   readonly flowAccum: Float32Array;
   readonly lake: Int32Array;
+  /** Baked lake placement, independent of whether the basin holds water. */
+  readonly lakeGeometry?: Uint8Array;
+  /** Monthly discharge divided by the annual flow at each cell. */
+  readonly seasonalFlowScale?: Float32Array;
+  /** Annual flow equivalent of the navigable tributary catchment bar. */
+  readonly navigableThreshold?: number;
 }
 
 export interface SubstrateAncestry {
@@ -86,7 +93,8 @@ export interface Substrate {
   readonly moisture: Float32Array;
   readonly rivers: SubstrateRivers;
   readonly ancestry: SubstrateAncestry;
-  readonly floodplain: Uint8Array;
+  /** Share of each cell covered by measured flood-stage land, 0..1. */
+  readonly floodplain: Float32Array;
   readonly biome: Uint8Array;
   readonly soil: Float32Array;
   readonly fertility: Float32Array;
@@ -273,6 +281,32 @@ export function buildSubstrate(
   const climate = (observedClimate ? observedMonthlyClimate(world, cells) : null)
     ?? monthlyClimate(world, cells);
   const wind = monthlyWind(world, cells, observedClimate);
+  const annualTemperature = new Float32Array(cells);
+  const annualMoisture = new Float32Array(cells);
+  for (let cell = 0; cell < cells; cell++) {
+    let temperatureSum = 0;
+    let moistureSum = 0;
+    for (let month = 0; month < MONTHS_PER_YEAR; month++) {
+      const index = cell * MONTHS_PER_YEAR + month;
+      temperatureSum += climate.temperature[index] ?? 0;
+      moistureSum += climate.moisture[index] ?? 0;
+    }
+    annualTemperature[cell] = temperatureSum / MONTHS_PER_YEAR;
+    annualMoisture[cell] = moistureSum / MONTHS_PER_YEAR;
+  }
+  const seasonalFlowScale = computeSeasonalRiverFlow({
+    tw: width,
+    th: height,
+    tElev: territory.tElev,
+    annualMoisture,
+    annualTemperature,
+    monthlyMoisture: climate.moisture,
+    monthlyTemperature: climate.temperature,
+    flowDir: territory.rivers.flowDir,
+    annualFlow: territory.rivers.flowAccum,
+    drainsTerminal: territory.rivers.drainsTerminal,
+    resolutionInvariantLoss: preset === "earth" || preset === "earth_sim",
+  });
   const elevation = territory.tElev;
   const landMask = makeLandMask(elevation);
   const substrate: Substrate = {
@@ -293,6 +327,9 @@ export function buildSubstrate(
       direction: territory.rivers.flowDir,
       flowAccum: territory.rivers.flowAccum,
       lake: territory.rivers.lake,
+      lakeGeometry: territory.rivers.lakeGeometry,
+      seasonalFlowScale,
+      navigableThreshold: territory.rivers.navigableThreshold,
     },
     ancestry: {
       lineage: territory.tAncestry,

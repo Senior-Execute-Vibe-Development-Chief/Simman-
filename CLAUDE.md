@@ -3,9 +3,9 @@
 This is a procedural world generator and **emergent** civilization simulator.
 Nothing is scripted; every empire on the map is the output of local rules. Read
 `README.md` for architecture, and `docs/` for design plans. Run `npm test`
-(smoke: determinism, invariants, save/load), `npm run validate` (stylized
-facts: is the emergent history history-SHAPED?) and `npm run resgate` (the
-app-grid arm — see the THIRD CARDINAL RULE) before pushing.
+(smoke: determinism, invariants, save/load) before pushing. The v1
+`npm run validate` and `npm run resgate` tools remain available for manual
+diagnostics; v2 changes use the acceptance suite in `v2/`.
 
 If you ADD STATE to the world, also run `npm run coverage`: it proves, by
 perturbation rather than by name-matching, that every measurable property is

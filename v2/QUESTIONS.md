@@ -583,3 +583,25 @@ Review corrections to the M1 build (all validated before merge):
     smoke chromium-identical (firefox/webkit are the CI matrix — this
     container ships only chromium). A stray ledger-lint literal from
     the #22 wave rides along as TRAVEL_RIVER_GRADIENT_UNMEASURED.
+
+26. **W1 water implementation (2026-09-01).** Earth lake placement is now a
+    HydroLAKES positive-elevation polygon mask rasterized at 1920×960 and
+    majority-sampled to the active grid; the existing emergent inflow and
+    evaporation test remains the water test. Procedural and `rawRivers` paths
+    retain derived depression lakes. Floodplain coverage is a fractional
+    ETOPO cross-section measurement, not a channel mask or crop override.
+    Seasonal river flow routes monthly climate runoff over the fixed annual
+    direction field and stores a cell×12 ratio to annual flow. A grounded
+    groundwater/baseflow share damps rainfall flashiness, while its minimal
+    snow store is included because the Volga/Indus month-of-maximum gate needs
+    melt release; neither is a flood-regime consumer or persistent world
+    state. W4 remains deferred: month-of-peak, amplitude, and
+    interannual variance are reads on this output for M3's flood-regime and
+    salinization mechanisms, not new state in M1.
+    Review corrections at merge (both gate-verified): the snow store now
+    spins up over one unrecorded year so December accumulation feeds the
+    next spring's melt (single-pass undercounted the crest by the autumn
+    share; the Volga max/min rose 1.92 → 2.18 with the peak unmoved), and
+    an unledgered `glacier × 0.05` runoff term was DELETED by the
+    handoff's own rule — implement only what a gate demands, and every
+    river-seasons anchor passes without it.

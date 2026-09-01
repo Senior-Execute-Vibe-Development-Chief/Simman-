@@ -109,6 +109,8 @@ export const TRAVEL_COASTAL_KM_PER_DAY = 80; // spec/09-constants-ledger.md §M1
 export const TRAVEL_OPEN_SEA_KM_PER_DAY = 120; // spec/09-constants-ledger.md §M1 proposed — open-sea sail speed
 export const TRAVEL_COASTAL_BAND_KM = 150; // spec/09-constants-ledger.md §M1 proposed — coastal sailing band
 export const TRAVEL_RIVER_MIN_MAGNITUDE = 2; // spec/09-constants-ledger.md §M1 proposed — navigable river bar
+export const RIVER_FREEZING_TEMPERATURE = 0.6; // spec/09-constants-ledger.md §W1 proposed — freshwater freezing point
+export const RIVER_BASEFLOW_FRACTION = 0.65; // spec/09-constants-ledger.md §W1 proposed — groundwater-fed annual flow share
 // Navigability is about FALL, not just flow: boats die in rapids. Commercial
 // navigation historically holds below ~0.5 m/km; skilled small craft manage
 // a bit more; mountain torrents (tens of m/km) are portage country.

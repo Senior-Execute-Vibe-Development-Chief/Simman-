@@ -43,6 +43,12 @@ const OUT_W = 1920;
 const OUT_H = 960;
 const TERMINAL = 8;
 const NODATA = 255;
+const FLOOD_STAGE_M = 8; // pre-dam great-river flood crest above low water
+const FLOOD_SEARCH_RADIUS_KM = 100; // physical lateral flood-spread search bound
+const ELEVATION_SAMPLE_STEP_KM = 1.8; // ETOPO point-sample spacing
+const FINE_CHANNEL_ACCUM_MIN = 4; // drainage cells needed to be a mapped channel
+const LAKE_RASTER_SUBSAMPLES = 4; // per-axis coverage samples for majority rasterization
+const LAKE_SOURCE_MIN_AREA_KM2 = 100; // skip HydroLAKES texture below the shipped-pixel scale
 const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
 // ESRI code value -> our rose index (code 2^i -> i).
@@ -145,8 +151,153 @@ function lzwDecode(src: Uint8Array, expected: number): Uint8Array {
   return out.subarray(0, outLen);
 }
 
+interface LakeShape {
+  readonly bbox: readonly [number, number, number, number];
+  readonly parts: readonly number[];
+  readonly points: readonly [number, number][];
+}
+
+function readDbfAreas(path: string): Float64Array {
+  const buf = readFileSync(path);
+  const records = buf.readUInt32LE(4);
+  const headerLength = buf.readUInt16LE(8);
+  const recordLength = buf.readUInt16LE(10);
+  let fieldOffset = 32;
+  let recordFieldOffset = 1; // DBF records begin with the deletion flag
+  let areaOffset = -1;
+  let areaLength = 0;
+  while (fieldOffset + 32 <= headerLength && buf[fieldOffset] !== 0x0d) {
+    const name = buf.toString("latin1", fieldOffset, fieldOffset + 11).replace(/\0.*$/, "").trim().toLowerCase();
+    if (name === "lake_area" || name === "lakearea") {
+      areaOffset = recordFieldOffset;
+      areaLength = buf[fieldOffset + 16] ?? 0;
+    }
+    recordFieldOffset += buf[fieldOffset + 16] ?? 0;
+    fieldOffset += 32;
+  }
+  if (areaOffset < 0 || areaLength <= 0) throw new Error("HydroLAKES DBF has no Lake_area field");
+  const areas = new Float64Array(records);
+  for (let record = 0; record < records; record++) {
+    const start = headerLength + record * recordLength;
+    if (buf[start] === 0x2a) continue;
+    areas[record] = Number.parseFloat(
+      buf.toString("ascii", start + areaOffset, start + areaOffset + areaLength).trim(),
+    ) || 0;
+  }
+  return areas;
+}
+
+function readPolygonRecord(buf: Buffer, offset: number): LakeShape | null {
+  const shapeType = buf.readInt32LE(offset);
+  if (shapeType === 0) return null;
+  if (shapeType !== 5 && shapeType !== 15 && shapeType !== 25) {
+    throw new Error(`unsupported HydroLAKES shape type ${shapeType}`);
+  }
+  const bbox: [number, number, number, number] = [
+    buf.readDoubleLE(offset + 4),
+    buf.readDoubleLE(offset + 12),
+    buf.readDoubleLE(offset + 20),
+    buf.readDoubleLE(offset + 28),
+  ];
+  const partsCount = buf.readInt32LE(offset + 36);
+  const pointCount = buf.readInt32LE(offset + 40);
+  const parts: number[] = [];
+  for (let part = 0; part < partsCount; part++) parts.push(buf.readInt32LE(offset + 44 + part * 4));
+  const pointsOffset = offset + 44 + partsCount * 4;
+  const points: [number, number][] = [];
+  for (let point = 0; point < pointCount; point++) {
+    const at = pointsOffset + point * 16;
+    points.push([buf.readDoubleLE(at), buf.readDoubleLE(at + 8)]);
+  }
+  return { bbox, parts, points };
+}
+
+function pointInRing(x: number, y: number, points: readonly [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i]!;
+    const [xj, yj] = points[j]!;
+    const crosses = (yi > y) !== (yj > y)
+      && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInShape(x: number, y: number, shape: LakeShape): boolean {
+  let inside = false;
+  for (let part = 0; part < shape.parts.length; part++) {
+    const start = shape.parts[part]!;
+    const end = shape.parts[part + 1] ?? shape.points.length;
+    if (end - start >= 3 && pointInRing(x, y, shape.points.slice(start, end))) inside = !inside;
+  }
+  return inside;
+}
+
 const inputPath = process.argv[2];
-if (!inputPath) throw new Error("usage: build-riverdata.mts <hyd_glo_dir_5m.tif> [etopo .nc]");
+if (!inputPath) throw new Error("usage: build-riverdata.mts <hyd_glo_dir_5m.tif> [etopo .nc] [HydroLAKES .shp]");
+
+const lakePath = process.argv.slice(2).find((arg) => arg.toLowerCase().endsWith(".shp"));
+const lakeMask = new Uint8Array(OUT_W * OUT_H);
+const earthSource = readFileSync(
+  fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
+  "utf8",
+);
+const earthMatch = earthSource.match(/export const EARTH_ELEV="([^"]+)"/);
+if (!earthMatch) throw new Error("EARTH_ELEV not found for lake rasterization");
+const earthRaster = Buffer.from(earthMatch[1]!, "base64");
+if (lakePath) {
+  const dbfPath = lakePath.replace(/\.[^.]+$/, ".dbf");
+  const areas = readDbfAreas(dbfPath);
+  const shp = readFileSync(lakePath);
+  const shapeType = shp.readInt32LE(32);
+  if (shapeType !== 5) throw new Error(`expected HydroLAKES Polygon shapefile, got ${shapeType}`);
+  const recordCount = areas.length;
+  let considered = 0;
+  let records = 0;
+  let offset = 100;
+  while (offset + 8 <= shp.length && records < recordCount) {
+    const contentBytes = shp.readInt32BE(offset + 4) * 2;
+    const content = offset + 8;
+    const area = areas[records] ?? 0;
+    if (area >= LAKE_SOURCE_MIN_AREA_KM2 && content + contentBytes <= shp.length) {
+      const shape = readPolygonRecord(shp, content);
+      if (shape) {
+        considered++;
+        const [minLon, minLat, maxLon, maxLat] = shape.bbox;
+        const x0 = Math.max(0, Math.floor(((minLon + 180) / 360) * OUT_W) - 1);
+        const x1 = Math.min(OUT_W - 1, Math.ceil(((maxLon + 180) / 360) * OUT_W) + 1);
+        const y0 = Math.max(0, Math.floor(((90 - maxLat) / 180) * OUT_H) - 1);
+        const y1 = Math.min(OUT_H - 1, Math.ceil(((90 - minLat) / 180) * OUT_H) + 1);
+        for (let oy = y0; oy <= y1; oy++) {
+          for (let ox = x0; ox <= x1; ox++) {
+            const o = oy * OUT_W + ox;
+            if (lakeMask[o]) continue;
+            // A body already represented by the Earth sea mask is sea-class,
+            // not a W1 lake. Positive-elevation polygons are the only ones
+            // allowed to enter this layer.
+            const earthWater = (earthRaster[o] ?? 0) < 3;
+            if (earthWater) continue;
+            let inside = 0;
+            for (let sy = 0; sy < LAKE_RASTER_SUBSAMPLES; sy++) {
+              for (let sx = 0; sx < LAKE_RASTER_SUBSAMPLES; sx++) {
+                const lon = -180 + ((ox + (sx + 0.5) / LAKE_RASTER_SUBSAMPLES) / OUT_W) * 360;
+                const lat = 90 - ((oy + (sy + 0.5) / LAKE_RASTER_SUBSAMPLES) / OUT_H) * 180;
+                if (pointInShape(lon, lat, shape)) inside++;
+              }
+            }
+            if (inside >= (LAKE_RASTER_SUBSAMPLES * LAKE_RASTER_SUBSAMPLES) / 2) lakeMask[o] = 1;
+          }
+        }
+      }
+    }
+    offset += 8 + contentBytes;
+    records++;
+  }
+  console.log(`HydroLAKES polygons rasterized: ${considered} candidates; ${lakeMask.reduce((sum, value) => sum + value, 0)} data pixels`);
+} else {
+  console.log("no HydroLAKES .shp given — LAKE_MASK emitted as empty");
+}
 const esri = readTiff(inputPath);
 console.log("decoded source grid");
 
@@ -543,6 +694,63 @@ for (let round = 0; round < 5; round++) {
 }
 console.log(`coarse cells with data: ${out.filter((v) => v !== NODATA).length}; cycles broken: ${broken}`);
 
+// ── Measured floodplain fractions (QUESTIONS.md #23) ──
+// A floodplain is the share of the local cross-section that lies within a
+// real flood stage of the channel floor. It is deliberately not a corridor
+// mask: a narrow river in a broad cell contributes only a narrow fraction.
+const floodOut = new Uint8Array(OUT_W * OUT_H);
+if (etopo) {
+  const { data: eData, w: eW, h: eH } = etopo;
+  const kmPerDegree = 20004 / 180;
+  const eValue = (lat: number, lon: number): number => {
+    const ey = Math.max(0, Math.min(eH - 1, Math.round(((lat + 90) / 180) * (eH - 1))));
+    const wrappedLon = ((lon + 180) % 360 + 360) % 360 - 180;
+    const ex = Math.max(0, Math.min(eW - 1, Math.round(((wrappedLon + 180) / 360) * (eW - 1))));
+    return eData[ey * eW + ex] ?? 0;
+  };
+  const channelFloor = (fx: number, fy: number): number => {
+    const lat = SRC_LAT0 - (fy + 0.5) / SRC_PER_DEG;
+    const lon = -180 + (fx + 0.5) / SRC_PER_DEG;
+    let minimum = Infinity;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const sampleLat = lat + dy * ELEVATION_SAMPLE_STEP_KM / kmPerDegree;
+        const sampleLon = lon + dx * ELEVATION_SAMPLE_STEP_KM
+          / (kmPerDegree * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
+        minimum = Math.min(minimum, eValue(sampleLat, sampleLon));
+      }
+    }
+    return Math.max(0, minimum);
+  };
+  const radiusSteps = Math.ceil(FLOOD_SEARCH_RADIUS_KM / ELEVATION_SAMPLE_STEP_KM);
+  let measured = 0;
+  for (let o = 0; o < OUT_W * OUT_H; o++) {
+    const fi = rep[o]!;
+    if (fi < 0 || fineDir[fi]! > 7 || fineAcc[fi]! < FINE_CHANNEL_ACCUM_MIN) continue;
+    const fy = Math.floor(fi / SRC_W);
+    const fx = fi - fy * SRC_W;
+    const direction = fineDir[fi]!;
+    const px = -D8_DY[direction]!;
+    const py = D8_DX[direction]!;
+    const baseLat = SRC_LAT0 - (fy + 0.5) / SRC_PER_DEG;
+    const baseLon = -180 + (fx + 0.5) / SRC_PER_DEG;
+    const floor = channelFloor(fx, fy);
+    let hits = 0;
+    for (let offset = -radiusSteps; offset <= radiusSteps; offset++) {
+      const lat = baseLat + py * offset * ELEVATION_SAMPLE_STEP_KM / kmPerDegree;
+      const lon = baseLon + px * offset * ELEVATION_SAMPLE_STEP_KM
+        / (kmPerDegree * Math.max(0.05, Math.cos((baseLat * Math.PI) / 180)));
+      const height = eValue(lat, lon);
+      if (height >= floor && height <= floor + FLOOD_STAGE_M) hits++;
+    }
+    floodOut[o] = Math.min(255, Math.round((hits / (radiusSteps * 2 + 1)) * 255));
+    measured++;
+  }
+  console.log(`floodplain fractions measured for ${measured} data pixels`);
+} else {
+  console.log("no etopo grid given — RIVER_FLOOD baked as all-zero");
+}
+
 // ── Channel-floor reach gradients (QUESTIONS.md #22) ──
 // Per fine channel cell: walk ~100 km downstream along the fine path and take
 // the STEEPEST ~28 km sub-reach of the channel-floor profile — the worst
@@ -643,6 +851,15 @@ const header = `/* V2 DATA — real river geometry (recorded deviation, QUESTION
  * path (a 22 km cell average smears the Livingstone cataracts into a
  * navigable-looking mean; the fine floor profile keeps their real steps).
  * Encoding: 1/16 m/km per byte (0..15.8), 255 = no data.
+ *
+ * RIVER_FLOOD (QUESTIONS.md #23): per-data-pixel flood-stage share, measured
+ * from the same ~1.8 km ETOPO point samples in a ±100 km lateral scan of
+ * each dominant channel. Encoding: 0..255 = fraction 0..1.
+ *
+ * LAKE_MASK (QUESTIONS.md #23): positive-elevation HydroLAKES polygon
+ * geometry rasterized by 4×4 majority coverage. Sea-class EARTH_ELEV pixels
+ * are excluded; water activation remains an emergent inflow/evaporation
+ * decision in riverGen.
  */
 export const RIVER_DIR_W = ${OUT_W}, RIVER_DIR_H = ${OUT_H};
 export const RIVER_DIR_TERMINAL = 8, RIVER_DIR_NODATA = 255;
@@ -657,6 +874,8 @@ export function decodeRiverDir(b64) {
 `;
 const b64 = Buffer.from(out).toString("base64");
 const gradB64 = Buffer.from(gradOut).toString("base64");
+const floodB64 = Buffer.from(floodOut).toString("base64");
+const lakeB64 = Buffer.from(lakeMask).toString("base64");
 const targetPath = fileURLToPath(new URL("../src/ported/worldgen/riverDirData.js", import.meta.url));
-writeFileSync(targetPath, `${header}\nexport const RIVER_DIR="${b64}";\n\nexport const RIVER_GRAD="${gradB64}";\n`);
+writeFileSync(targetPath, `${header}\nexport const RIVER_DIR="${b64}";\n\nexport const RIVER_GRAD="${gradB64}";\n\nexport const RIVER_FLOOD="${floodB64}";\n\nexport const LAKE_MASK="${lakeB64}";\n`);
 console.log(`wrote ${targetPath}`);

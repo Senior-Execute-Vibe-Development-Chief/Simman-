@@ -87,7 +87,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
       originFx: 0,
       originFy: 0,
     },
-    floodplain: new Uint8Array(N),
+    floodplain: new Float32Array(N),
     biome: new Uint8Array(N),
     soil: new Float32Array(N),
     fertility: new Float32Array(N),

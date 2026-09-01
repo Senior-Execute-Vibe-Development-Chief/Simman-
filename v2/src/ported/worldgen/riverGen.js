@@ -1,8 +1,14 @@
 /* V2 M1 PORT
- * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; hydrology otherwise remains verbatim.
+ * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; W1 adds a data lake mask and a monthly-flow reader over fixed geometry; hydrology otherwise remains verbatim.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
-import { EARTH_SURFACE_KM2, MAX_LAKE_AREA_KM2 } from "../../sim/constants.ts";
+import {
+  EARTH_SURFACE_KM2,
+  MAX_LAKE_AREA_KM2,
+  MONTHS_PER_YEAR,
+  RIVER_BASEFLOW_FRACTION,
+  RIVER_FREEZING_TEMPERATURE,
+} from "../../sim/constants.ts";
 import { dpow } from "../../sim/dmath.ts";
 // ── River Hydrology: Conceptual River Network ──
 // D8 flow direction + priority-flood pit filling + flow accumulation.
@@ -82,13 +88,14 @@ const SNOWMELT_K = 3.0;
 // the t-scale where 0.01 = 1°C) below the ANNUAL mean, scaled by latitude — the seasonal
 // half-amplitude that makes a cold-winter mountain bank a snowpack the annual mean hides.
 const SNOWMELT_WINTER = 0.38;
+const SEASONAL_SNOW_RELEASE_BAND = 0.08;
 
 // `bakedDir` (optional, Uint8Array N; QUESTIONS.md #21): real river GEOMETRY
 // for Earth presets — 0-7 = D8 direction, 8 = terminal inland sink, 255 = no
 // data (derive from elevation as before). Water amounts stay emergent: runoff,
 // accumulation, transmission loss and magnitude all run through the given
 // geometry unchanged.
-export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
+export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bakedLakeMask = null) {
   const N = tw * th;
 
   // ── Step 1: Priority-flood pit filling ──
@@ -221,6 +228,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
   const minLakeSize = 15; // ~315km² at RES=1
   const minLakeDepth = 0.005; // ~40m — lower threshold OK because river-inflow check filters noise
   const candidateLakes = []; // {tiles[], maxDepth}
+  if (!bakedLakeMask) {
   {
     const visited = new Uint8Array(N);
     for (let ti = 0; ti < N; ti++) {
@@ -252,6 +260,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
         candidateLakes.push({ tiles, maxDepth });
       }
     }
+  }
   }
 
   // ── Step 2: D8 flow direction on filled surface ──
@@ -645,14 +654,43 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
 
   // ── Step 5: Validate candidate lakes against river inflow ──
   // A depression only becomes a lake if rivers actually feed it.
-  // Check flow accumulation at tiles bordering each candidate — if significant
-  // flow enters the depression, it's a real lake.
-  for (const candidate of candidateLakes) {
+  // On the Earth data path placement comes from the HydroLAKES mask, while
+  // this same inflow/evaporation test decides whether the basin has water.
+  const lakeCandidates = candidateLakes.slice();
+  if (bakedLakeMask) {
+    const visited = new Uint8Array(N);
+    for (let start = 0; start < N; start++) {
+      if (!bakedLakeMask[start] || visited[start] || tElev[start] <= 0) continue;
+      const tiles = [];
+      const queue = [start];
+      visited[start] = 1;
+      for (let head = 0; head < queue.length; head++) {
+        const current = queue[head];
+        tiles.push(current);
+        const cx = current % tw;
+        const cy = (current - cx) / tw;
+        for (let d = 0; d < 8; d++) {
+          const nx = (cx + D8_DX[d] + tw) % tw;
+          const ny = cy + D8_DY[d];
+          if (ny < 0 || ny >= th) continue;
+          const next = ny * tw + nx;
+          if (bakedLakeMask[next] && !visited[next] && tElev[next] > 0) {
+            visited[next] = 1;
+            queue.push(next);
+          }
+        }
+      }
+      lakeCandidates.push({ tiles, maxDepth: 0, dataGeometry: true });
+    }
+  }
+  const minInflow = accumFor(CATCH_STREAM);
+  for (const candidate of lakeCandidates) {
     // Build a set of candidate tiles for fast lookup
     const tileSet = new Set(candidate.tiles);
     // Find max flow accumulation at the border of this depression
     // (tiles adjacent to the depression that flow INTO it)
     let maxInflow = 0;
+    let totalInflow = 0;
     for (const ti of candidate.tiles) {
       const tx = ti % tw, ty2 = (ti - tx) / tw;
       for (let d = 0; d < 8; d++) {
@@ -670,12 +708,12 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
         const fny = ((ni - ni % tw) / tw) + fdy;
         if (fny >= 0 && fny < th && tileSet.has(fny * tw + fnx)) {
           maxInflow = Math.max(maxInflow, flowAccum[ni]);
+          totalInflow += flowAccum[ni];
         }
       }
     }
     // Lake needs meaningful river inflow — at least stream-level accumulation (the same
     // resolution-invariant absolute Stream bar the classifier uses, so it holds at any grid).
-    const minInflow = accumFor(CATCH_STREAM);
     // ── Evaporation gate ──
     // A lake in a HOT basin loses far more water to evaporation than a cold one, so it
     // needs proportionally more river inflow to stay open water rather than drying to a
@@ -687,11 +725,17 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
     let basinTemp = 0;
     for (const bt of candidate.tiles) if (tTemp[bt] > basinTemp) basinTemp = tTemp[bt];
     const evapMul = 1 + Math.max(0, basinTemp - 0.5) * 18;
-    if (maxInflow >= minInflow * evapMul) {
-      // Only keep the deep core of the depression, not shallow margins
-      // Tiles must be raised by at least 40% of the max depth
+    const effectiveInflow = candidate.dataGeometry ? totalInflow : maxInflow;
+    if (candidate.dataGeometry && typeof process !== "undefined" && process.env?.SIM_LAKE_DIAG) {
+      console.log(`[lakeDiag] cells=${candidate.tiles.length} maxInflow=${maxInflow.toFixed(2)} totalInflow=${totalInflow.toFixed(2)} min=${(minInflow * evapMul).toFixed(2)} temp=${basinTemp.toFixed(3)}`);
+    }
+    if (effectiveInflow >= minInflow * evapMul) {
+      // Data geometry is already a measured shoreline mask. Procedural
+      // candidates retain the v1 deep-core selection byte-for-byte.
       const depthCutoff = candidate.maxDepth * 0.3;
-      let coreTiles = candidate.tiles.filter(t => (filled[t] - tElev[t]) >= depthCutoff);
+      let coreTiles = candidate.dataGeometry
+        ? candidate.tiles.slice()
+        : candidate.tiles.filter(t => (filled[t] - tElev[t]) >= depthCutoff);
       // Cap lake size — largest real lake (Caspian) is ~370k km² ≈ ~840 tiles at 21km
       const maxLakeTiles = Math.max(1, Math.ceil(MAX_LAKE_AREA_KM2 / (kmPerTile || 1)));
       if (coreTiles.length > maxLakeTiles) {
@@ -699,22 +743,152 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
         coreTiles.sort((a, b) => (filled[b] - tElev[b]) - (filled[a] - tElev[a]));
         coreTiles = coreTiles.slice(0, maxLakeTiles);
       }
-      if (coreTiles.length >= 5) {
+      if (coreTiles.length >= (candidate.dataGeometry ? 1 : 5)) {
         const id = lakeInfo.length;
         for (const t of coreTiles) lake[t] = id;
-        lakeInfo.push({ id, size: coreTiles.length, depth: candidate.maxDepth });
+        lakeInfo.push({
+          id,
+          size: coreTiles.length,
+          depth: candidate.maxDepth,
+          dataGeometry: !!candidate.dataGeometry,
+        });
       }
     }
   }
 
+  const lakeGeometry = bakedLakeMask
+    ? Uint8Array.from(bakedLakeMask)
+    : Uint8Array.from(lake, (value) => value >= 0 ? 1 : 0);
   // km2PerTile / km2PerAccum: the grid's physical scale and the flowAccum→catchment-km²
   // conversion (inverse of accumFor), so downstream consumers (the pipeline's floodplain
   // ribbon) can express river-scaled features in REAL kilometres. km2PerAccum is
   // runoff-weighted: it converts accumulation to DISCHARGE-equivalent km² — a wet
   // catchment reads bigger than a dry one of equal area, which is exactly what a
   // discharge-carved feature (a valley) should key on.
-  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo, drainsTerminal,
-           km2PerTile: kmPerTile, km2PerAccum: avgRunoff > 0 ? kmPerTile / avgRunoff : 0 };
+  return {
+    flowDir,
+    flowAccum,
+    riverMag,
+    maxAccum,
+    lake,
+    lakeInfo,
+    lakeGeometry,
+    drainsTerminal,
+    navigableThreshold: accumFor(CATCH_TRIB),
+    km2PerTile: kmPerTile,
+    km2PerAccum: avgRunoff > 0 ? kmPerTile / avgRunoff : 0,
+  };
+}
+
+/**
+ * Accumulate the monthly water signal over the already chosen channel
+ * geometry. Geometry and terminal drainage are static; only runoff changes.
+ * The returned values are dimensionless ratios to annual flow, so consumers
+ * can use one compact cell×12 field without retaining twelve flow volumes.
+ */
+export function computeSeasonalRiverFlow({
+  tw,
+  th,
+  tElev,
+  annualMoisture,
+  annualTemperature,
+  monthlyMoisture,
+  monthlyTemperature,
+  flowDir,
+  annualFlow,
+  drainsTerminal,
+  resolutionInvariantLoss = false,
+}) {
+  const N = tw * th;
+  const result = new Float32Array(N * MONTHS_PER_YEAR);
+  const target = new Int32Array(N).fill(-1);
+  const baseDegree = new Uint16Array(N);
+  for (let cell = 0; cell < N; cell++) {
+    const direction = flowDir[cell];
+    if (direction > 7) continue;
+    const x = cell % tw;
+    const y = (cell - x) / tw;
+    const ny = y + D8_DY[direction];
+    if (ny < 0 || ny >= th) continue;
+    const next = ny * tw + ((x + D8_DX[direction] + tw) % tw);
+    target[cell] = next;
+    baseDegree[next]++;
+  }
+  const queue = new Int32Array(N);
+  const runoff = new Float32Array(N);
+  const flow = new Float32Array(N);
+  const snow = new Float32Array(N);
+  const degree = new Uint16Array(N);
+  const cellKm = Math.sqrt(EARTH_KM2 / N);
+  const refTileKm = Math.sqrt(EARTH_KM2 / (480 * 240));
+
+  // Two passes over the year: the first spins the snow store up so December
+  // accumulation feeds the next spring's melt (a single pass starts the year
+  // with empty snowpack and undercounts the melt crest by the autumn share);
+  // only the second, steady-state pass writes results.
+  for (let iteration = 0; iteration < 2 * MONTHS_PER_YEAR; iteration++) {
+    const month = iteration % MONTHS_PER_YEAR;
+    const record = iteration >= MONTHS_PER_YEAR;
+    for (let cell = 0; cell < N; cell++) {
+      if (tElev[cell] <= 0) {
+        runoff[cell] = 0;
+        continue;
+      }
+      const index = cell * MONTHS_PER_YEAR + month;
+      const temperature = monthlyTemperature[index] ?? annualTemperature[cell] ?? 0;
+      const moisture = Math.max(0, monthlyMoisture[index] ?? annualMoisture[cell] ?? 0);
+      const evapLoss = Math.max(0, temperature - 0.3) * 0.3;
+      const rain = Math.max(0.05, moisture - evapLoss);
+      const annualRain = Math.max(
+        0.05,
+        (annualMoisture[cell] ?? moisture) - Math.max(0, (annualTemperature[cell] ?? temperature) - 0.3) * 0.3,
+      );
+      const baseflow = annualRain * RIVER_BASEFLOW_FRACTION;
+      const freeze = Math.min(1, Math.max(0, (RIVER_FREEZING_TEMPERATURE - temperature) / 0.15));
+      let surface = baseflow + rain * (1 - RIVER_BASEFLOW_FRACTION) * (1 - freeze);
+      if (freeze > 0) {
+        snow[cell] += rain * (1 - RIVER_BASEFLOW_FRACTION) * freeze;
+      } else if (snow[cell] > 0) {
+        const release = snow[cell] * Math.min(1, Math.max(0,
+          (temperature - RIVER_FREEZING_TEMPERATURE) / SEASONAL_SNOW_RELEASE_BAND));
+        snow[cell] -= release;
+        surface += release;
+      }
+      runoff[cell] = surface;
+    }
+    if (!record) continue;
+
+    flow.set(runoff);
+    degree.set(baseDegree);
+    let queueLength = 0;
+    for (let cell = 0; cell < N; cell++) {
+      if (tElev[cell] > 0 && degree[cell] === 0) queue[queueLength++] = cell;
+    }
+    for (let head = 0; head < queueLength; head++) {
+      const cell = queue[head];
+      const next = target[cell];
+      if (next < 0) continue;
+      const terminal = drainsTerminal[cell] === 1;
+      let survival = 1;
+      if (terminal) {
+        const moisture = Math.max(0, Math.min(1, annualMoisture[cell] ?? 0));
+        const temperature = annualTemperature[cell] ?? 0;
+        const aridity = Math.max(0, Math.min(1, (0.45 - moisture) / 0.45));
+        const seepEvap = 0.7 + 0.3 * Math.max(0, Math.min(1, (temperature - 0.40) / 0.25));
+        survival = resolutionInvariantLoss
+          ? dpow(1 - 0.30, (cellKm / refTileKm) * aridity * seepEvap)
+          : 1 - 0.30 * aridity * seepEvap;
+      }
+      flow[next] += flow[cell] * survival;
+      degree[next]--;
+      if (degree[next] === 0 && tElev[next] > 0) queue[queueLength++] = next;
+    }
+    for (let cell = 0; cell < N; cell++) {
+      const annual = annualFlow[cell] ?? 0;
+      result[cell * MONTHS_PER_YEAR + month] = annual > 0 ? flow[cell] / annual : 0;
+    }
+  }
+  return result;
 }
 
 export function riverName(riverMag, ti) {

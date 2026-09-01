@@ -120,6 +120,13 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [80, 200, 200];
     if (magnitude >= 1) {
       if (magnitude < TRAVEL_RIVER_MIN_MAGNITUDE) return [120, 125, 135];
+      const flowScale = substrate.rivers.seasonalFlowScale?.[
+        climateIndex
+      ] ?? 1;
+      const threshold = substrate.rivers.navigableThreshold ?? 0;
+      if (threshold > 0 && (substrate.rivers.flowAccum[cell] ?? 0) * flowScale < threshold) {
+        return [120, 125, 135];
+      }
       const gradient = riverReachGradient(substrate)[cell] ?? 0;
       if (gradient > TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM) return [235, 60, 50];
       if (gradient > TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM) return [240, 170, 40];

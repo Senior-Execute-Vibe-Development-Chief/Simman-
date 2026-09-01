@@ -29,6 +29,7 @@ import {
   TRAVEL_RIVER_DOWNSTREAM_FACTOR,
   TRAVEL_RIVER_UPSTREAM_FACTOR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
+  RIVER_FREEZING_TEMPERATURE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_GRADIENT_BASELINE_KM,
@@ -287,11 +288,18 @@ function modeIsAvailable(
   if (mode === "cart") return land && hasCapability(metric, "wheelsDraft");
   if (mode === "river") {
     if (!land || !hasCapability(metric, "boats")) return false;
+    if (substrate.climate.temperature[climateIndex(cell, metric.month)] < RIVER_FREEZING_TEMPERATURE) {
+      return false;
+    }
     if (substrate.rivers.lake[cell] >= 0) return true;
     // Navigable = big enough AND gentle enough at reach scale: rapids are
     // portage country (M1 review, owner play-report — boats were rowing up
     // Himalayan gorges).
+    const flowScale = substrate.rivers.seasonalFlowScale?.[climateIndex(cell, metric.month)] ?? 1;
+    const monthlyFlow = (substrate.rivers.flowAccum[cell] ?? 0) * flowScale;
+    const threshold = substrate.rivers.navigableThreshold ?? 0;
     return substrate.rivers.magnitude[cell] >= TRAVEL_RIVER_MIN_MAGNITUDE
+      && (threshold <= 0 || monthlyFlow >= threshold)
       && (riverReachGradient(substrate)[cell] ?? 0) <= TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM;
   }
   if (mode === "coastal") {

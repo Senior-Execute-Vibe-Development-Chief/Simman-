@@ -22,6 +22,8 @@ import {
   RIVER_DIR_NODATA,
   RIVER_GRAD_NODATA,
   RIVER_GRAD_PER_M_KM,
+  RIVER_FLOOD,
+  LAKE_MASK,
   decodeRiverDir,
 } from "./riverDirData.js";
 
@@ -31,11 +33,15 @@ const MAX_TRACE = 96;
 
 let fineDir = null;
 let fineAcc = null;
+let fineFlood = null;
+let fineLake = null;
 const cache = new Map();
 
 function ensureFine() {
   if (fineDir) return;
   fineDir = decodeRiverDir(RIVER_DIR);
+  fineFlood = decodeRiverDir(RIVER_FLOOD);
+  fineLake = decodeRiverDir(LAKE_MASK);
   const W = RIVER_DIR_W, H = RIVER_DIR_H, n = W * H;
   const targetIdx = new Int32Array(n).fill(-1);
   const indeg = new Int32Array(n);
@@ -90,6 +96,16 @@ export function sampleRiverReachGradients(tw, th) {
   return sampleRivers(tw, th).grads;
 }
 
+/** Sample the baked floodplain coverage into a per-cell fraction. */
+export function sampleFloodplainFraction(tw, th) {
+  return sampleRivers(tw, th).flood;
+}
+
+/** Sample the baked positive-elevation lake geometry by area majority. */
+export function sampleLakeMask(tw, th) {
+  return sampleRivers(tw, th).lakes;
+}
+
 function sampleRivers(tw, th) {
   const key = tw + "x" + th;
   const cached = cache.get(key);
@@ -97,6 +113,27 @@ function sampleRivers(tw, th) {
   ensureFine();
   const W = RIVER_DIR_W, H = RIVER_DIR_H;
   const out = new Uint8Array(tw * th).fill(RIVER_DIR_NODATA);
+  const flood = new Float32Array(tw * th);
+  const lakes = new Uint8Array(tw * th);
+  const floodSum = new Uint32Array(tw * th);
+  const lakeCount = new Uint32Array(tw * th);
+  const memberTotal = new Uint32Array(tw * th);
+  for (let fy = 0; fy < H; fy++) {
+    const oy = ((fy * th) / H) | 0;
+    for (let fx = 0; fx < W; fx++) {
+      const o = oy * tw + (((fx * tw) / W) | 0);
+      memberTotal[o]++;
+      floodSum[o] += fineFlood[fy * W + fx] ?? 0;
+      lakeCount[o] += (fineLake[fy * W + fx] ?? 0) ? 1 : 0;
+    }
+  }
+  for (let o = 0; o < tw * th; o++) {
+    const total = memberTotal[o] ?? 0;
+    if (total > 0) {
+      flood[o] = (floodSum[o] ?? 0) / (total * 255);
+      lakes[o] = (lakeCount[o] ?? 0) * 2 >= total ? 1 : 0;
+    }
+  }
   // Per-sim-cell member lists (fine data cells), via counting sort.
   // fine cell (fx,fy) belongs to sim cell (floor(fx*tw/W), floor(fy*th/H)).
   const memberCount = new Int32Array(tw * th);
@@ -313,7 +350,7 @@ function sampleRivers(tw, th) {
     const g = fineGrad[fi];
     if (g !== RIVER_GRAD_NODATA) grads[o] = g / RIVER_GRAD_PER_M_KM;
   }
-  const entry = { dirs: out, grads };
+  const entry = { dirs: out, grads, flood, lakes };
   cache.set(key, entry);
   return entry;
 }

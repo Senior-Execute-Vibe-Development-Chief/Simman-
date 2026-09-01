@@ -19,3 +19,10 @@ The `global_*.json` files are derived NCEP/NCAR Reanalysis 1991–2020
 climatologies, converted by the v1 conversion tools from the public NOAA
 archive. Their provenance is retained in the copied loader headers; the
 files are inputs to the observed-climate mode and are not simulation state.
+
+`lakes.json` is the W1 reality fixture for the positive-elevation portion of
+HydroLAKES v1.0. The committed `LAKE_MASK` is a generated 1920×960 majority
+raster of the polygon layer; HydroLAKES is © WWF/Lehner et al. and licensed
+CC-BY 4.0. `floodplain.json` and `river-seasons.json` record the W1 gates for
+ETOPO channel-floor cross-sections and monthly runoff derived from observed
+climate. These fixtures contain checks and citations, not runtime state.

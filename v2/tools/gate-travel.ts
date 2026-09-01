@@ -30,7 +30,7 @@ interface RouteFixture {
 }
 
 interface KnownMiss {
-  readonly check: "route" | "crossGrid" | "check" | "river";
+  readonly check: "route" | "crossGrid" | "check" | "river" | "lake" | "floodplain" | "season";
   readonly id: string;
   readonly grid?: GridPreset;
   readonly reason: string;
@@ -62,6 +62,51 @@ interface RiverMeasurement {
   readonly detail: string;
 }
 
+interface LakeFixture {
+  readonly id: string;
+  readonly lat: number;
+  readonly lon: number;
+  readonly minActiveCells: number;
+  readonly minGeometryCells: number;
+  readonly source: string;
+}
+
+interface LakeRealityFixture {
+  readonly anchors: readonly LakeFixture[];
+  readonly totalGeometryAreaKm2: number;
+  readonly totalAreaTolerance: number;
+  readonly source: string;
+}
+
+interface FloodplainFixture {
+  readonly id: string;
+  readonly latMin: number;
+  readonly latMax: number;
+  readonly lonMin: number;
+  readonly lonMax: number;
+  readonly highFraction: number;
+  readonly maxWidthCells?: number;
+  readonly minWidthCells?: number;
+  readonly source: string;
+}
+
+interface FloodplainRealityFixture {
+  readonly corridors: readonly FloodplainFixture[];
+  readonly globalShareMin: number;
+  readonly globalShareMax: number;
+  readonly source: string;
+}
+
+interface RiverSeasonFixture {
+  readonly id: string;
+  readonly lat: number;
+  readonly lon: number;
+  readonly expectedMaxMonth?: number;
+  readonly maxMonthTolerance?: number;
+  readonly maxMinRatioMax?: number;
+  readonly source: string;
+}
+
 interface RouteMeasurement {
   readonly id: string;
   readonly grid: GridPreset;
@@ -83,6 +128,15 @@ const knownMisses = JSON.parse(
 const riverFixtures = JSON.parse(
   readFileSync(new URL("../data/reality/river-network.json", import.meta.url), "utf8"),
 ) as readonly RiverFixture[];
+const lakeFixture = JSON.parse(
+  readFileSync(new URL("../data/reality/lakes.json", import.meta.url), "utf8"),
+) as LakeRealityFixture;
+const floodplainFixture = JSON.parse(
+  readFileSync(new URL("../data/reality/floodplain.json", import.meta.url), "utf8"),
+) as FloodplainRealityFixture;
+const riverSeasonFixtures = JSON.parse(
+  readFileSync(new URL("../data/reality/river-seasons.json", import.meta.url), "utf8"),
+) as readonly RiverSeasonFixture[];
 
 function missKey(check: string, id: string, grid?: string): string {
   return grid ? `${check}:${id}:${grid}` : `${check}:${id}`;
@@ -240,6 +294,167 @@ function riverChecks(grid: GridPreset): readonly RiverMeasurement[] {
   return rows;
 }
 
+interface WaterMeasurement {
+  readonly id: string;
+  readonly grid: GridPreset;
+  readonly status: "pass" | "fail";
+  readonly detail: string;
+}
+
+function cellsInBox(
+  substrate: Substrate,
+  box: { readonly latMin: number; readonly latMax: number; readonly lonMin: number; readonly lonMax: number },
+): number[] {
+  const cells: number[] = [];
+  for (let y = 0; y < substrate.height; y++) {
+    const lat = riverCellLatLon(substrate, y * substrate.width).lat;
+    if (lat < box.latMin || lat > box.latMax) continue;
+    for (let x = 0; x < substrate.width; x++) {
+      const cell = y * substrate.width + x;
+      const lon = riverCellLatLon(substrate, cell).lon;
+      if (lon >= box.lonMin && lon <= box.lonMax) cells.push(cell);
+    }
+  }
+  return cells;
+}
+
+function lakeChecks(grid: GridPreset): readonly WaterMeasurement[] {
+  if (grid !== "target") return [];
+  const substrate = gateSubstrate(grid);
+  const rows: WaterMeasurement[] = [];
+  for (const anchor of lakeFixture.anchors) {
+    const box = {
+      latMin: anchor.lat - 2,
+      latMax: anchor.lat + 2,
+      lonMin: anchor.lon - 3,
+      lonMax: anchor.lon + 3,
+    };
+    const cells = cellsInBox(substrate, box);
+    const active = cells.filter((cell) => substrate.rivers.lake[cell] >= 0).length;
+    const geometry = cells.filter((cell) => (substrate.rivers.lakeGeometry?.[cell] ?? 0) !== 0).length;
+    const status = active >= anchor.minActiveCells && geometry >= anchor.minGeometryCells ? "pass" : "fail";
+    rows.push({
+      id: anchor.id,
+      grid,
+      status,
+      detail: `${active} active lake cells, ${geometry} geometry cells near ${anchor.lat},${anchor.lon}`,
+    });
+  }
+  const rowsArea = substrate.height;
+  const northSouthKm = EARTH_MERIDIONAL_KM / substrate.height;
+  const eastWest = rowEastWestKm(substrate);
+  let actualArea = 0;
+  for (let y = 0; y < rowsArea; y++) {
+    const area = northSouthKm * (eastWest[y] ?? 0);
+    for (let x = 0; x < substrate.width; x++) {
+      if ((substrate.rivers.lakeGeometry?.[y * substrate.width + x] ?? 0) !== 0) actualArea += area;
+    }
+  }
+  const relativeError = Math.abs(actualArea - lakeFixture.totalGeometryAreaKm2)
+    / Math.max(lakeFixture.totalGeometryAreaKm2, CONSERVATION_EPSILON);
+  rows.push({
+    id: "lake-total-area",
+    grid,
+    status: relativeError <= lakeFixture.totalAreaTolerance ? "pass" : "fail",
+    detail: `${actualArea.toFixed(0)} km² raster area vs ${lakeFixture.totalGeometryAreaKm2} km² source baseline`,
+  });
+  return rows;
+}
+
+function floodplainChecks(grid: GridPreset): readonly WaterMeasurement[] {
+  if (grid !== "target") return [];
+  const substrate = gateSubstrate(grid);
+  const rows: WaterMeasurement[] = [];
+  for (const corridor of floodplainFixture.corridors) {
+    const cells = cellsInBox(substrate, corridor);
+    let highCells = 0;
+    let maxWidth = 0;
+    for (let y = 0; y < substrate.height; y++) {
+      let width = 0;
+      for (const cell of cells) {
+        if (Math.floor(cell / substrate.width) !== y) continue;
+        if ((substrate.floodplain[cell] ?? 0) >= corridor.highFraction) {
+          highCells++;
+          width++;
+        } else {
+          maxWidth = Math.max(maxWidth, width);
+          width = 0;
+        }
+      }
+      maxWidth = Math.max(maxWidth, width);
+    }
+    const widthOk = (corridor.maxWidthCells === undefined || maxWidth <= corridor.maxWidthCells)
+      && (corridor.minWidthCells === undefined || maxWidth >= corridor.minWidthCells);
+    const status = highCells > 0 && widthOk ? "pass" : "fail";
+    rows.push({
+      id: corridor.id,
+      grid,
+      status,
+      detail: `${highCells} high-f cells; maximum corridor width ${maxWidth} cells`,
+    });
+  }
+  const northSouthKm = EARTH_MERIDIONAL_KM / substrate.height;
+  const eastWest = rowEastWestKm(substrate);
+  let weightedFlood = 0;
+  let landArea = 0;
+  for (let y = 0; y < substrate.height; y++) {
+    const area = northSouthKm * (eastWest[y] ?? 0);
+    for (let x = 0; x < substrate.width; x++) {
+      const cell = y * substrate.width + x;
+      if (!substrate.landMask[cell]) continue;
+      landArea += area;
+      weightedFlood += (substrate.floodplain[cell] ?? 0) * area;
+    }
+  }
+  const share = landArea > 0 ? weightedFlood / landArea : 0;
+  rows.push({
+    id: "floodplain-global-share",
+    grid,
+    status: share >= floodplainFixture.globalShareMin && share <= floodplainFixture.globalShareMax
+      ? "pass" : "fail",
+    detail: `${(share * 100).toFixed(2)}% of land by area`,
+  });
+  return rows;
+}
+
+function monthDistance(actual: number, expected: number): number {
+  const distance = Math.abs(actual - expected);
+  return Math.min(distance, MONTHS_PER_YEAR - distance);
+}
+
+function riverSeasonChecks(grid: GridPreset): readonly WaterMeasurement[] {
+  if (grid !== "target") return [];
+  const substrate = gateSubstrate(grid);
+  const rows: WaterMeasurement[] = [];
+  for (const fixture of riverSeasonFixtures) {
+    const cell = channelNear(substrate, fixture.lat, fixture.lon);
+    if (cell < 0 || !substrate.rivers.seasonalFlowScale) {
+      rows.push({ id: fixture.id, grid, status: "fail", detail: "no seasonal navigable channel near anchor" });
+      continue;
+    }
+    const values = Array.from({ length: MONTHS_PER_YEAR }, (_, month) =>
+      (substrate.rivers.flowAccum[cell] ?? 0)
+      * (substrate.rivers.seasonalFlowScale?.[cell * MONTHS_PER_YEAR + month] ?? 0));
+    let maxMonth = 0;
+    for (let month = 1; month < values.length; month++) {
+      if ((values[month] ?? 0) > (values[maxMonth] ?? 0)) maxMonth = month;
+    }
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const ratio = min > 0 ? max / min : Number.POSITIVE_INFINITY;
+    const peakOk = fixture.expectedMaxMonth === undefined
+      || monthDistance(maxMonth, fixture.expectedMaxMonth) <= (fixture.maxMonthTolerance ?? 2);
+    const ratioOk = fixture.maxMinRatioMax === undefined || ratio <= fixture.maxMinRatioMax;
+    rows.push({
+      id: fixture.id,
+      grid,
+      status: peakOk && ratioOk ? "pass" : "fail",
+      detail: `peak month ${maxMonth + 1}, max/min ${ratio.toFixed(2)}`,
+    });
+  }
+  return rows;
+}
+
 // Tools may cache the substrate per (seed, preset, grid) within a process
 // (M2 handoff ruling 11) — the route arm and the river arm share one build.
 const substrateCache = new Map<GridPreset, Substrate>();
@@ -383,7 +598,7 @@ function referenceSubstrate(): Substrate {
       originFx: 0,
       originFy: 0,
     },
-    floodplain: new Uint8Array(N),
+    floodplain: new Float32Array(N),
     biome: new Uint8Array(N),
     soil: new Float32Array(N),
     fertility: new Float32Array(N),
@@ -529,6 +744,9 @@ async function main(): Promise<void> {
   const crossGrid = checkCrossGrid(measurements);
   const checks = referenceChecks(reference, measurements);
   const rivers = [...riverChecks("dev"), ...riverChecks("target")];
+  const lakes = lakeChecks("target");
+  const floodplain = floodplainChecks("target");
+  const seasons = riverSeasonChecks("target");
 
   const failureKeys = new Set<string>();
   for (const row of measurements) {
@@ -542,6 +760,15 @@ async function main(): Promise<void> {
   }
   for (const row of rivers) {
     if (row.status === "fail") failureKeys.add(missKey("river", row.id, row.grid));
+  }
+  for (const row of lakes) {
+    if (row.status === "fail") failureKeys.add(missKey("lake", row.id, row.grid));
+  }
+  for (const row of floodplain) {
+    if (row.status === "fail") failureKeys.add(missKey("floodplain", row.id, row.grid));
+  }
+  for (const row of seasons) {
+    if (row.status === "fail") failureKeys.add(missKey("season", row.id, row.grid));
   }
   const manifestKeys = new Map(knownMisses.map((miss) => [missKey(miss.check, miss.id, miss.grid), miss.reason]));
   const unexpected = [...failureKeys].filter((key) => !manifestKeys.has(key));
@@ -557,6 +784,9 @@ async function main(): Promise<void> {
     checks,
     crossGrid,
     rivers,
+    lakes,
+    floodplain,
+    seasons,
     routes: measurements,
     knownMisses: acknowledged,
     unexpectedFailures: unexpected,
