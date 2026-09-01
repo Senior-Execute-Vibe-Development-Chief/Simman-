@@ -37,6 +37,8 @@ async function browserResult(type: BrowserType): Promise<BrowserM1Result> {
   try {
     const page = await browser.newPage();
     await page.goto(`${BASE_URL}/src/shell/index.html`, { waitUntil: "domcontentloaded" });
+    const isolated = await page.evaluate(() => globalThis.crossOriginIsolated);
+    assert.equal(isolated, true, `${type.name} did not receive COOP/COEP isolation headers`);
     return await page.evaluate(async (seed) => {
       const entry = "/src/sim/browserSmoke.ts";
       const module = await import(entry);

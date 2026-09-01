@@ -210,3 +210,6 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_CHILD / WORKING_AGE_YEARS` | 15 / 45 | fixed compartment cohort spans |
 | `PEOPLE_*_MORTALITY_FACTOR` | 1.2 / 0.8 / 2.4 | child, working, elder mortality weights |
 | `SAVE_VERSION_M2` | 3 | additive people-field persistence format |
+| `PEOPLE_BAND_COUNT` | 16 | fixed contiguous row bands derived from the grid, independent of worker count |
+| `PEOPLE_BROWSER_PARITY_TICKS` | 24 | browser/node wasm identity sample horizon |
+| `PEOPLE_BENCH_LONG_YEARS` | 1000 | target-grid wall-clock benchmark horizon |

@@ -307,12 +307,16 @@ function basinFill(world: PeopleWorld, cell: number): number {
   return capacity > 0 ? clamp01(people / capacity) : 0;
 }
 
-export function initializeTechnique(world: PeopleWorld): void {
+export function prepareTechnique(world: PeopleWorld): void {
   if (world._techniqueSuitability.length !== world.N) {
     world._techniqueSuitability = new Float64Array(world.N);
   }
   fillTechniqueEdgeLengths(world);
   fillTechniqueSuitability(world);
+}
+
+export function initializeTechnique(world: PeopleWorld): void {
+  prepareTechnique(world);
   world.technique.fill(0);
   world._techniqueNext.fill(0);
   world.hearths = chooseHearths(world);
@@ -321,6 +325,33 @@ export function initializeTechnique(world: PeopleWorld): void {
 export function stepTechnique(world: PeopleWorld): number {
   const technique = world.technique;
   const next = world._techniqueNext;
+  const wasm = world._wasmPeopleKernel;
+  if (wasm) {
+    wasm.prepareTechnique();
+    for (const hearth of world.hearths) {
+      if (hearth.ignited) {
+        technique[hearth.cell] = 1;
+        next[hearth.cell] = 1;
+        continue;
+      }
+      hearth.armedYears += basinFill(world, hearth.cell) / MONTHS_PER_YEAR;
+      if (hearth.armedYears >= hearth.lagYears) {
+        hearth.ignited = true;
+        technique[hearth.cell] = 1;
+        next[hearth.cell] = 1;
+      }
+    }
+    wasm.spreadTechnique();
+    wasm.commitTechnique();
+    let covered = 0;
+    let land = 0;
+    for (let cell = 0; cell < world.N; cell++) {
+      if (!world.substrate.landMask[cell]) continue;
+      land++;
+      if ((technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;
+    }
+    return land > 0 ? covered / land : 0;
+  }
   next.set(technique);
   for (const hearth of world.hearths) {
     if (hearth.ignited) {

@@ -22,6 +22,7 @@ npm run gate       # travel reality gate followed by M2 people gate
 npm run oracle     # v1 supplier comparison with per-field diff report
 npm run bench      # substrate and routing phase measurements
 npm run bench -- --check  # compare measurements with committed baselines
+BENCH_LONG=1 npm run bench  # add the target-grid 1000-year wall-clock run
 npm run build      # WASM build, strict TypeScript check, Vite production build
 npm run browser    # Node + Chromium + Firefox + WebKit identity checks
 npm run dev        # Vite development server
@@ -30,11 +31,11 @@ npm run dev        # Vite development server
 `npm run gate:people` runs the people arm directly. Its opening-window checks
 run at both grids and every run adds a ~3000-year dev trajectory arm (first
 hearth ignitions, curve checkpoints inside the window). The full YD→1 CE
-dev battery — population checkpoint bands, farming arrival order and timing,
-density ordering — runs with `GATE_PEOPLE_LONG=1 npm run gate:people`
-(~15 minutes); misses are acknowledged in
-`data/reality/known-misses-people.json` or fail the gate. The target-grid
-long horizon awaits the banded kernel (QUESTIONS.md #30).
+dev and shipped target batteries — population checkpoint bands, farming arrival
+order and timing, density ordering — run with
+`GATE_PEOPLE_LONG=1 npm run gate:people`; misses are acknowledged in
+`data/reality/known-misses-people.json` or fail the gate. The target-grid long
+battery is the primary W2 verdict; the dev battery is retained for comparison.
 
 The W1 water bake is reproducible with `npx tsx tools/build-waterdata.mts
 <etopo.nc> <HydroLAKES_polys_v10.shp>` when refreshing the committed
@@ -53,6 +54,7 @@ src/sim/       world, substrate adapter, people fields, travel engine, dmath, wo
 src/ported/    byte-compatible RNG and copied v1 worldgen supplier
 src/shell/     terrain/climate/travel demo
 rust/router/   wasm-bindgen layered routing engine
+rust/people/   wasm-bindgen banded people kernel
 data/reality/  cited travel reality fixture
 tools/         smoke, gate, oracle, bench, browser runner, collector
 ```
@@ -87,6 +89,8 @@ fudge factors.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
   technique coverage, and weighted cohort shares.
 - Every people field pass uses aggregated named source/sink accounting.
+- The wasm people kernel uses 16 fixed grid-derived row bands; worker count is
+  an execution lever and cannot alter the field or world hash.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,

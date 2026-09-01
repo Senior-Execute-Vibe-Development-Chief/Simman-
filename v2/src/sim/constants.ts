@@ -251,3 +251,6 @@ export const PEOPLE_CHILD_MORTALITY_FACTOR = 1.2; // spec/09-constants-ledger.md
 export const PEOPLE_WORKING_MORTALITY_FACTOR = 0.8; // spec/09-constants-ledger.md §M2 proposed — cohort mortality weighting
 export const PEOPLE_ELDER_MORTALITY_FACTOR = 2.4; // spec/09-constants-ledger.md §M2 proposed — cohort mortality weighting
 export const SAVE_VERSION_M2 = 3; // spec/09-constants-ledger.md §M2 proposed — people-field save format
+export const PEOPLE_BAND_COUNT = 16; // spec/09-constants-ledger.md §W2 proposed — fixed grid-derived kernel bands
+export const PEOPLE_BROWSER_PARITY_TICKS = 24; // spec/09-constants-ledger.md §W2 proposed — browser people identity sample
+export const PEOPLE_BENCH_LONG_YEARS = 1000; // spec/09-constants-ledger.md §W2 proposed — target benchmark horizon

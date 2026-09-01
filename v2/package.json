@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "wasm:build": "wasm-pack build rust/router --target web --out-dir ../../src/wasm --release",
+    "wasm:build": "wasm-pack build rust/router --target web --out-dir ../../src/wasm/router --release && wasm-pack build rust/people --target web --out-dir ../../src/wasm/people --release",
     "build": "npm run wasm:build && tsc --noEmit && vite build",
     "lint": "eslint . && tsx tools/ledger-lint.ts",
-    "test": "npm run smoke && tsx tools/unit.test.ts",
+    "test": "npm run smoke && tsx tools/unit.test.ts && tsx tools/kernel-parity.ts",
     "presmoke": "npm run wasm:build",
     "smoke": "tsx tools/smoke.ts",
     "prebench": "npm run wasm:build",

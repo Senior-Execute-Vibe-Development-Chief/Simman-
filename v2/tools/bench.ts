@@ -1,9 +1,11 @@
 import { performance } from "node:perf_hooks";
 import { readFileSync } from "node:fs";
+import { MONTHS_PER_YEAR, PEOPLE_BENCH_LONG_YEARS } from "../src/sim/constants";
 import { printProvenance, provenance } from "./lib/provenance";
 import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
+import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 
 const BENCH_TICKS = 10;
 
@@ -15,6 +17,7 @@ interface BenchRow {
   readonly queryMilliseconds: number;
   readonly distanceMapMilliseconds: number;
   readonly tickMilliseconds: number;
+  readonly longRunMilliseconds?: number;
   readonly provenance: ReturnType<typeof provenance>;
 }
 
@@ -50,6 +53,13 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
   const tickStart = performance.now();
   runSteps(world, BENCH_TICKS);
   const tickMilliseconds = (performance.now() - tickStart) / BENCH_TICKS;
+  const longRunMilliseconds = process.env.BENCH_LONG === "1" && grid === "target"
+    ? (() => {
+      const start = performance.now();
+      runSteps(world, PEOPLE_BENCH_LONG_YEARS * MONTHS_PER_YEAR);
+      return performance.now() - start;
+    })()
+    : undefined;
   return {
     grid,
     substrateMilliseconds,
@@ -58,10 +68,12 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     queryMilliseconds,
     distanceMapMilliseconds,
     tickMilliseconds,
+    ...(longRunMilliseconds === undefined ? {} : { longRunMilliseconds }),
     provenance: provenance(world),
   };
 }
 
+if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 const rows = [await benchmark("dev"), await benchmark("target")];
 if (process.argv.includes("--check")) {
   const baselines = JSON.parse(
@@ -90,4 +102,7 @@ console.log(JSON.stringify({
   bench: rows,
   format: "milliseconds",
   peopleTickSamples: BENCH_TICKS,
+  longRun: process.env.BENCH_LONG === "1"
+    ? `target ${PEOPLE_BENCH_LONG_YEARS} years`
+    : "disabled (set BENCH_LONG=1)",
 }));

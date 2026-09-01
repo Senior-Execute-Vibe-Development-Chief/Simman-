@@ -9,11 +9,13 @@ import {
 import { deriveCapacity } from "./capacity";
 import { cellAreasKm2, annualClimateFromSubstrate, fillStaticHabitability } from "./habitability";
 import { grow } from "./growth";
-import { migrate } from "./migration";
-import { initializeTechnique, stepTechnique } from "./technique";
+import { fillMigrationShareRows, migrate } from "./migration";
+import { initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
+import { createPeopleKernel } from "../peopleKernel";
+import { allocateFields } from "../fields";
 
 function allocatePeopleScratch(world: PeopleWorld): void {
   const length = world.N;
@@ -78,6 +80,19 @@ export function initializePeople(worldInput: World): PeopleWorld {
   allocatePeopleScratch(world);
   annualClimateFromSubstrate(world);
   fillStaticHabitability(world);
+  fillMigrationShareRows(world);
+  prepareTechnique(world);
+  const forceTypeScript = world.config.peopleKernel === "ts";
+  if (!forceTypeScript) {
+    const configuredWorkers = Number(world.config.peopleWorkers ?? 1);
+    world._wasmPeopleKernel = createPeopleKernel(
+      world,
+      Number.isFinite(configuredWorkers) ? configuredWorkers : 1,
+    );
+  }
+  if (!world._wasmPeopleKernel) {
+    allocateFields(world as unknown as Record<string, unknown>, world.N);
+  }
   world.ledger.beginPass(
     "people",
     world.people,
@@ -124,7 +139,8 @@ export function stepPeople(worldInput: World): void {
   deriveCapacity(world);
   const growth = grow(world);
   const migration = migrate(world, world.calendarMonth);
-  world.people.set(world._peopleNext);
+  if (world._wasmPeopleKernel) world._wasmPeopleKernel.commitPopulation();
+  else world.people.set(world._peopleNext);
   normalizeCohorts(world);
   world.ledger.recordChannel("people", "migration", migration, migration);
   world.ledger.endPass("people", world.people, growth.births, growth.deaths);

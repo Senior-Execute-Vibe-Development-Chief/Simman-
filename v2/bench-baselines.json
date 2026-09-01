@@ -1,19 +1,19 @@
 {
   "dev": {
-    "substrateMilliseconds": 2300,
-    "routingInitializeMilliseconds": 80,
-    "customizeMilliseconds": 45,
-    "queryMilliseconds": 95,
-    "distanceMapMilliseconds": 75,
-    "tickMilliseconds": 20
+    "substrateMilliseconds": 1200,
+    "routingInitializeMilliseconds": 12,
+    "customizeMilliseconds": 25,
+    "queryMilliseconds": 35,
+    "distanceMapMilliseconds": 25,
+    "tickMilliseconds": 4
   },
   "target": {
-    "substrateMilliseconds": 68000,
-    "routingInitializeMilliseconds": 2800,
-    "customizeMilliseconds": 2600,
-    "queryMilliseconds": 3600,
-    "distanceMapMilliseconds": 3800,
-    "tickMilliseconds": 470
+    "substrateMilliseconds": 30000,
+    "routingInitializeMilliseconds": 150,
+    "customizeMilliseconds": 500,
+    "queryMilliseconds": 1400,
+    "distanceMapMilliseconds": 1450,
+    "tickMilliseconds": 150
   },
-  "notes": "M2 review baseline (seed 42042, earth_sim). 10-tick cold averages on the review runner: dev ~14.5 ms, target ~361 ms; 24-tick warm steady state ~210 ms/tick at target after the second hash-identical optimization round (row-local edge math, per-month cost-field caches, static habitability LUTs; world hashes byte-equal to the pre-optimization tree at both grids). Values carry headroom for runner variance; CI fails above 120%. The target-grid long-horizon run remains the recorded performance finding (QUESTIONS.md #30/#32) pending the banded/wasm kernel drop-in."
+  "notes": "W2 baseline, seed 42042, earth_sim. On this runner the wasm people kernel measures 2.61 ms/tick at dev and 122.06 ms/tick at the shipped target over 10 ticks; target is a 3.95-hour YD-to-1 CE projection (116,412 monthly ticks). Baselines include runner headroom and the 20% ratchet compares each phase independently. The optional BENCH_LONG=1 arm records the target 1000-year wall-clock."
 }

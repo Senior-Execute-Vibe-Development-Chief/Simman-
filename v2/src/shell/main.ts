@@ -61,7 +61,9 @@ function displayDate(step: number): string {
 }
 worker.addEventListener("message", (event) => {
   if (event.data?.type === "created") {
-    status.textContent = `Worker ready · ${event.data.hash}`;
+    const kernel = event.data.kernel === "wasm" ? "WASM people bands" : "TypeScript people fallback";
+    const bands = event.data.sharedBands ? " · shared control" : "";
+    status.textContent = `Worker ready · ${kernel}${bands} · ${event.data.hash}`;
   }
   if (event.data?.type === "snapshot" && event.data.buffer instanceof ArrayBuffer) {
     tickPending = false;
