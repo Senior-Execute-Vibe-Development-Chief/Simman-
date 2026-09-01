@@ -14,9 +14,12 @@ export interface BalanceSheet {
 
 type NumericField = { readonly length: number; readonly [index: number]: number };
 
-function sumField(field: NumericField): number {
+function sumField(field: NumericField, weights?: NumericField): number {
   let total = 0;
-  for (let index = 0; index < field.length; index++) total += field[index] ?? 0;
+  for (let index = 0; index < field.length; index++) {
+    const value = field[index] ?? 0;
+    total += weights ? value * (weights[index] ?? 0) : value;
+  }
   return total;
 }
 
@@ -33,8 +36,15 @@ function totalChannels(channels: Record<string, number>): number {
  */
 export class ConservationLedger {
   private readonly sheets = new Map<string, BalanceSheet>();
+  private readonly weights = new Map<string, NumericField | undefined>();
 
-  beginPass(quantity: string, field: NumericField, sourceChannel: string, sinkChannel: string): void {
+  beginPass(
+    quantity: string,
+    field: NumericField,
+    sourceChannel: string,
+    sinkChannel: string,
+    weights?: NumericField,
+  ): void {
     const previous = this.sheets.get(quantity);
     const sheet = previous ?? {
       opening: 0,
@@ -49,7 +59,7 @@ export class ConservationLedger {
     };
     sheet.sourceChannel = sourceChannel;
     sheet.sinkChannel = sinkChannel;
-    sheet.opening = sumField(field);
+    sheet.opening = sumField(field, weights);
     sheet.closing = sheet.opening;
     sheet.observedDelta = 0;
     for (const key in sheet.sources) sheet.sources[key] = 0;
@@ -59,6 +69,18 @@ export class ConservationLedger {
     sheet.unexplained = 0;
     sheet.tolerance = CONSERVATION_EPSILON * Math.max(1, field.length);
     this.sheets.set(quantity, sheet);
+    this.weights.set(quantity, weights);
+  }
+
+  /** Add an explicitly balanced channel, such as migration in/out. */
+  recordChannel(quantity: string, channel: string, sourceAmount: number, sinkAmount: number): void {
+    const sheet = this.sheets.get(quantity);
+    if (!sheet) throw new Error(`No balance sheet started for ${quantity}.`);
+    if (!Number.isFinite(sourceAmount) || !Number.isFinite(sinkAmount)) {
+      throw new Error(`Non-finite ${quantity} channel accounting.`);
+    }
+    sheet.sources[channel] = sourceAmount;
+    sheet.sinks[channel] = sinkAmount;
   }
 
   endPass(
@@ -74,7 +96,7 @@ export class ConservationLedger {
     }
     sheet.sources[sheet.sourceChannel] = sourceAmount;
     sheet.sinks[sheet.sinkChannel] = sinkAmount;
-    sheet.closing = sumField(field);
+    sheet.closing = sumField(field, this.weights.get(quantity));
     const actualDelta = sheet.closing - sheet.opening;
     const accountedDelta = totalChannels(sheet.sources) - totalChannels(sheet.sinks);
     sheet.observedDelta = actualDelta;

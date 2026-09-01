@@ -1,8 +1,10 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
+import { SAVE_VERSION_M2 } from "./constants";
 import { type GridPreset, World } from "./world";
+import type { HearthState } from "./people/types";
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = SAVE_VERSION_M2;
 
 export interface SerializedField {
   readonly length: number;
@@ -18,6 +20,10 @@ export interface SaveEnvelope {
   readonly calendarMonth: number;
   readonly config: Record<string, string | number | boolean>;
   readonly fields: Record<string, SerializedField>;
+  readonly people: {
+    readonly initialized: boolean;
+    readonly hearths: readonly HearthState[];
+  };
 }
 
 function base64FromField(field: NumericField): string {
@@ -68,6 +74,10 @@ export function saveWorld(world: World): SaveEnvelope {
     calendarMonth: world.calendarMonth,
     config: { ...world.config },
     fields,
+    people: {
+      initialized: world.peopleInitialized,
+      hearths: world.hearths.map((hearth) => ({ ...hearth })),
+    },
   };
 }
 
@@ -75,7 +85,7 @@ export function serializeWorld(world: World): string {
   return JSON.stringify(saveWorld(world));
 }
 
-export function loadWorld(input: string | SaveEnvelope): World {
+export function loadWorld(input: string | SaveEnvelope, substrate?: import("./substrate").Substrate): World {
   const data = typeof input === "string" ? JSON.parse(input) as SaveEnvelope : input;
   if (!data || data.version !== SAVE_VERSION) {
     throw new Error(`Unsupported save version ${data?.version}.`);
@@ -84,6 +94,7 @@ export function loadWorld(input: string | SaveEnvelope): World {
     seed: data.seed,
     grid: data.grid,
     config: data.config,
+    substrate,
   });
   world.step = data.step;
   world.calendarMonth = data.calendarMonth;
@@ -93,6 +104,8 @@ export function loadWorld(input: string | SaveEnvelope): World {
     const field = fieldFromBase64(serialized, definition);
     (world as unknown as Record<string, unknown>)[definition.name] = field;
   }
+  world.peopleInitialized = data.people.initialized;
+  world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
   return world;
 }
 

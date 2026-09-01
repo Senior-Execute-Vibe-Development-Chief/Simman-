@@ -68,8 +68,9 @@ async function main(): Promise<void> {
   extra.extraState = { numericLeaf: 12 };
   const metrics = collect(world);
   assert.equal(metrics["world.extraState.numericLeaf"], 12);
-  assert.equal(metrics["field.noise.n"], world.N);
-  assert.equal(metrics["field.noise.sum.n"], undefined);
+  assert.equal(metrics["field.people.n"], world.N);
+  assert.equal(metrics["field.technique.n"], world.N);
+  assert.equal(metrics["field.people.sum.n"], undefined);
 
   console.log(JSON.stringify({ tests: "ok", rng: "v1-byte-compatible", dmath: "golden", saveLoad: "byte-identical", routing: "ok" }));
 }

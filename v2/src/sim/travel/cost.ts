@@ -408,6 +408,54 @@ export function buildCostField(substrate: Substrate, metric: TravelMetric): Cost
   };
 }
 
+const migrationRows = new WeakMap<Substrate, Float64Array>();
+
+function edgeLengthKm(substrate: Substrate, from: number, to: number): number {
+  let rows = migrationRows.get(substrate);
+  if (!rows) {
+    rows = rowEastWestKm(substrate);
+    migrationRows.set(substrate, rows);
+  }
+  const fromY = Math.floor(from / substrate.width);
+  const toY = Math.floor(to / substrate.width);
+  const fromX = from - fromY * substrate.width;
+  const toX = to - toY * substrate.width;
+  const rawDx = Math.abs(fromX - toX);
+  const dx = Math.min(rawDx, substrate.width - rawDx);
+  const dy = Math.abs(fromY - toY);
+  const eastWest = dx * ((rows[fromY] ?? 0) + (rows[toY] ?? 0)) * TRAVEL_HALF;
+  const northSouth = dy * northSouthKm(substrate);
+  return Math.sqrt(eastWest * eastWest + northSouth * northSouth);
+}
+
+/**
+ * Narrow read API for people migration. It is the M1 foot-mode edge cost,
+ * including the current month's land climate factor and true Earth geometry.
+ * Migration must not grow a second terrain or reach formula.
+ */
+export function migrationEdgeCost(
+  substrate: Substrate,
+  from: number,
+  to: number,
+  month: number,
+): number {
+  if (!substrate.landMask[from] || !substrate.landMask[to]) return Number.POSITIVE_INFINITY;
+  const daysPerKm = 1 / TRAVEL_FOOT_KM_PER_DAY
+    * terrainFactor(substrate, to)
+    * seasonalFactor(substrate, to, month, false);
+  return daysPerKm * edgeLengthKm(substrate, from, to);
+}
+
+export function migrationConductance(
+  substrate: Substrate,
+  from: number,
+  to: number,
+  month: number,
+): number {
+  const cost = migrationEdgeCost(substrate, from, to, month);
+  return Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0;
+}
+
 /**
  * Freight cost in relative per-ton units for a haul of `days` by `mode`:
  * time × the mode's cost-per-ton-day, where cost-per-ton-day = nominal speed

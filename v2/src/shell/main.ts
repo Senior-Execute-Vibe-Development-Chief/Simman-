@@ -24,8 +24,13 @@ const zoomInput = document.querySelector<HTMLInputElement>("#zoom")!;
 const zoomLabel = document.querySelector<HTMLElement>("#zoom-label")!;
 const status = document.querySelector<HTMLElement>("#status")!;
 const route = document.querySelector<HTMLElement>("#route")!;
-if (!canvas || !lens || !month || !monthLabel || !zoomInput || !zoomLabel || !status || !route) {
-  throw new Error("M1 shell markup is incomplete.");
+const population = document.querySelector<HTMLElement>("#population")!;
+const runButton = document.querySelector<HTMLButtonElement>("#run")!;
+const speedInput = document.querySelector<HTMLInputElement>("#speed")!;
+const speedLabel = document.querySelector<HTMLElement>("#speed-label")!;
+if (!canvas || !lens || !month || !monthLabel || !zoomInput || !zoomLabel || !status || !route
+  || !population || !runButton || !speedInput || !speedLabel) {
+  throw new Error("M2 shell markup is incomplete.");
 }
 
 const context = canvas.getContext("2d")!;
@@ -44,14 +49,28 @@ const baseContext = base.getContext("2d")!;
 let baseKey = "";
 
 const worker = new Worker(new URL("../sim/worker.ts", import.meta.url), { type: "module" });
-worker.postMessage({ type: "create", seed: M0_DEFAULT_SEED, grid: GRID });
+worker.postMessage({ type: "create", seed: M0_DEFAULT_SEED, grid: GRID, substrate });
+let playing = true;
+let speed = 1;
+let overlayPopulation: Float32Array | undefined;
+let overlayTechnique: Float32Array | undefined;
 worker.addEventListener("message", (event) => {
-  if (event.data?.type === "created") status.textContent = `Worker ready · ${event.data.hash}`;
+  if (event.data?.type === "created") {
+    status.textContent = `Worker ready · ${event.data.hash}`;
+  }
   if (event.data?.type === "snapshot" && event.data.buffer instanceof ArrayBuffer) {
-    worker.postMessage({ type: "recycle", buffer: event.data.buffer }, [event.data.buffer]);
+    const buffer = event.data.buffer as ArrayBuffer;
+    const count = Number(event.data.cells ?? substrate.N);
+    overlayPopulation = new Float32Array(buffer, 8, count);
+    overlayTechnique = new Float32Array(buffer, 8 + count * 4, count);
+    population.textContent = `Population: ${Number(event.data.population ?? 0).toLocaleString()} persons · month ${event.data.step}`;
+    draw();
+    worker.postMessage({ type: "recycle", buffer }, [buffer]);
   }
 });
-window.setInterval(() => worker.postMessage({ type: "tick", steps: 1 }), 1000);
+window.setInterval(() => {
+  if (playing) worker.postMessage({ type: "tick", steps: speed });
+}, 250);
 
 month.max = String(MONTHS_PER_YEAR - 1);
 month.value = "0";
@@ -136,6 +155,15 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     return [Math.round(red * 0.35), Math.round(green * 0.35), Math.round(blue * 0.35)];
   }
   if (!substrate.landMask[cell]) return [25, 55, 86];
+  if (lens.value === "population") {
+    const density = overlayPopulation?.[cell] ?? 0;
+    const intensity = Math.min(1, Math.log(1 + Math.max(0, density)) / Math.log(21));
+    return [Math.round(35 + 215 * intensity), Math.round(55 + 150 * (1 - intensity)), 70];
+  }
+  if (lens.value === "technique") {
+    const value = Math.max(0, Math.min(1, overlayTechnique?.[cell] ?? 0));
+    return [Math.round(45 + 190 * value), Math.round(70 + 140 * value), Math.round(105 - 70 * value)];
+  }
   if (lens.value === "climate") {
     return [Math.round(210 * temperature + 25), Math.round(180 * moisture + 30), Math.round(210 * (1 - temperature) + 25)];
   }
@@ -390,6 +418,14 @@ canvas.addEventListener("wheel", (event) => {
 }, { passive: false });
 zoomInput.addEventListener("input", () => {
   setZoom(Math.pow(2, Number(zoomInput.value)));
+});
+runButton.addEventListener("click", () => {
+  playing = !playing;
+  runButton.textContent = playing ? "Pause" : "Run";
+});
+speedInput.addEventListener("input", () => {
+  speed = Math.max(1, Math.pow(2, Number(speedInput.value)));
+  speedLabel.textContent = `${speed}×`;
 });
 
 const riverLegend = document.querySelector<HTMLElement>("#river-legend");

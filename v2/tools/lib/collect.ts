@@ -1,11 +1,32 @@
 import { FIELD_LIST } from "../../src/sim/fields";
+import { populationDensityMean, populationTotal } from "../../src/sim/people";
 import type { World } from "../../src/sim/world";
 
 /**
  * Only instrumentation machinery is excluded. This list intentionally fails
  * open: anything new not named here is measured by the generic walker.
  */
-export const WORLD_SCRATCH = new Set<string>(["ledger"]);
+export const WORLD_SCRATCH = new Set<string>([
+  "ledger",
+  "substrate",
+  "cellAreaKm2",
+  "capField",
+  "_peopleNext",
+  "_techniqueNext",
+  "_childrenMass",
+  "_workingMass",
+  "_eldersMass",
+  "_childrenNext",
+  "_workingNext",
+  "_eldersNext",
+  "_migrationOut",
+  "_migrationWeight",
+  "_migrationPopulation",
+  "_landCells",
+  "_annualTemperature",
+  "_annualMoisture",
+  "_techniqueSuitability",
+]);
 
 const isNumeric = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -82,6 +103,33 @@ export function collect(world: World): Record<string, number> {
   for (const key of Object.keys(world).sort()) {
     if (WORLD_SCRATCH.has(key) || FIELD_LIST.some((definition) => definition.name === key)) continue;
     walk((world as unknown as Record<string, unknown>)[key], `world.${key}`, output, seen);
+  }
+  if (world.substrate && world.peopleInitialized) {
+    output["pop.people"] = populationTotal(world);
+    output["pop.perKm2"] = populationDensityMean(world);
+    let largestCellDensity = 0;
+    let landCount = 0;
+    let techniqueCovered = 0;
+    let totalPeople = 0;
+    let children = 0;
+    let working = 0;
+    let elders = 0;
+    for (let cell = 0; cell < world.N; cell++) {
+      if (!world.substrate.landMask[cell]) continue;
+      landCount++;
+      largestCellDensity = Math.max(largestCellDensity, world.people[cell] ?? 0);
+      if ((world.technique[cell] ?? 0) >= 0.01) techniqueCovered++;
+      const people = (world.people[cell] ?? 0) * (world.cellAreaKm2[cell] ?? 0);
+      totalPeople += people;
+      children += people * (world.children[cell] ?? 0);
+      working += people * (world.working[cell] ?? 0);
+      elders += people * (world.elders[cell] ?? 0);
+    }
+    output["pop.largestCellDensity"] = largestCellDensity;
+    output["technique.coverage"] = landCount > 0 ? techniqueCovered / landCount : 0;
+    output["cohort.children"] = totalPeople > 0 ? children / totalPeople : 0;
+    output["cohort.working"] = totalPeople > 0 ? working / totalPeople : 0;
+    output["cohort.elders"] = totalPeople > 0 ? elders / totalPeople : 0;
   }
   return output;
 }

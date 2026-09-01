@@ -13,7 +13,27 @@ export interface FieldDefinition {
  */
 export const FIELD_LIST: readonly FieldDefinition[] = [
   {
-    name: "noise",
+    name: "people",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    name: "technique",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    name: "children",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    name: "working",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    name: "elders",
     defaultValue: 0,
     allocate: (length) => new Float64Array(length),
   },

@@ -17,7 +17,9 @@
     "prebench": "npm run wasm:build",
     "bench": "tsx tools/bench.ts",
     "pregate": "npm run wasm:build",
-    "gate": "tsx tools/gate-travel.ts",
+    "gate": "npm run gate:travel && npm run gate:people",
+    "gate:travel": "tsx tools/gate-travel.ts",
+    "gate:people": "tsx tools/gate-people.ts",
     "oracle": "tsx tools/worldgen-oracle.ts",
     "browser": "npm run wasm:build && tsx tools/browser-smoke.ts"
   },
