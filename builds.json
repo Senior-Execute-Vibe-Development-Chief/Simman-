@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "cursor/m2-handoff-9068",
-      "sha": "29ddff32c3ee68ddcbce430fa6fa2daf4ad95576",
+      "sha": "e71dfd59ffefd1863269253865008d888f84407d",
       "slug": "cursor-m2-handoff-9068",
-      "builtAt": "2026-09-01T10:46:29.623Z",
+      "builtAt": "2026-09-01T10:53:49.998Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-m2-handoff-9068/"
