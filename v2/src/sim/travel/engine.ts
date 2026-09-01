@@ -14,6 +14,8 @@ import {
 export interface TravelRoute {
   readonly days: number;
   readonly path: readonly number[];
+  /** Mode index per path entry (aligned with `path`); a transfer repeats the cell with both modes. */
+  readonly modes: readonly number[];
 }
 
 function metricKey(metric: TravelMetric): string {
@@ -90,7 +92,11 @@ export class TravelEngine {
   query(start: number, goal: number, metric: TravelMetric): TravelRoute {
     this.customize(metric);
     const days = this.router.query(start, goal);
-    return { days, path: Array.from(this.router.path()) };
+    return {
+      days,
+      path: Array.from(this.router.path()),
+      modes: Array.from(this.router.path_modes()),
+    };
   }
 
   distanceMap(sources: readonly number[], metric: TravelMetric): Float64Array {

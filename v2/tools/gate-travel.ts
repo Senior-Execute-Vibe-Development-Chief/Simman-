@@ -279,7 +279,7 @@ async function measureReference(): Promise<ReferenceMeasurements> {
   const foot = measure(REF_MEASURE_ROW, "foot", []);
   const pack = measure(REF_MEASURE_ROW, "pack", ["packAnimals"]);
   const cart = measure(REF_MEASURE_ROW, "cart", ["wheelsDraft"]);
-  const sea = measure(REF_SEA_ROW, "open-sea", ["navigation"]);
+  const sea = measure(REF_SEA_ROW, "open-sea", ["boats", "navigation"]);
   const riverDown = measure(REF_RIVER_ROW, "river", ["boats"]);
   const riverUp = measure(REF_RIVER_ROW, "river", ["boats"], true);
   const freightPerKm = {

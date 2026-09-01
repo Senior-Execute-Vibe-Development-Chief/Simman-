@@ -154,7 +154,24 @@ Review corrections to the M1 build (all validated before merge):
    storability) arrives at M2/M3 by design, and M2's density-ordering
    gate measures the outcome.
 
-10. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+10. **Navigation without boats unlocked the ocean (owner play-report,
+    2026-09-01).** The open-sea gate required only the navigation
+    capability, so a boatless traveler could walk to the Persian Gulf
+    and sail to China. Fixed: open-sea = boats AND navigation
+    (navigation is a technique, not a vessel); verified navigation-only
+    Rome→Alexandria now walks the 225-day land loop, all-capabilities
+    Samarkand→Guangzhou goes pack → river → coastal → open-sea in 117.5
+    days. On the sea-vs-land balance itself: sail at ~3-5× foot speed is
+    the validated history (ORBIS's own fastest routes are sea wherever
+    possible; Duncan-Jones's 1:28 freight cliff), so long hauls
+    preferring water is design, not bug — the M7 road/relay
+    infrastructure narrows the gap overland where empires build it.
+    The engine now returns per-leg MODES with the path; the shell colors
+    route segments by mode (legend added) and gained wheel-zoom +
+    drag-pan, so leg choices are inspectable. Deep zoom with rendered
+    condensations remains spec 12 (M2+ per DECISIONS 9).
+
+11. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal

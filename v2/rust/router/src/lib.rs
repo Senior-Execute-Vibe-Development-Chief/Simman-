@@ -105,6 +105,7 @@ pub struct Router {
     previous: Vec<i32>,
     heap: MinHeap,
     last_path: Vec<u32>,
+    last_path_modes: Vec<u8>,
     transfer_days: f64,
     slope_factor: f64,
     river_downstream_factor: f64,
@@ -175,6 +176,7 @@ impl Router {
             previous: vec![-1; nodes],
             heap: MinHeap::new(nodes.min(1024)),
             last_path: Vec::new(),
+            last_path_modes: Vec::new(),
             transfer_days: 0.0,
             slope_factor: 0.0,
             river_downstream_factor: 1.0,
@@ -272,6 +274,12 @@ impl Router {
 
     pub fn path(&self) -> Vec<u32> {
         self.last_path.clone()
+    }
+
+    /// The mode used at each path entry, aligned with `path()`. A transfer
+    /// shows as the same cell twice with the two modes.
+    pub fn path_modes(&self) -> Vec<u8> {
+        self.last_path_modes.clone()
     }
 
     pub fn distance_map(&mut self, sources: &[u32]) -> Vec<f64> {
@@ -467,8 +475,15 @@ impl Router {
 
     fn collect_path(&mut self, mut node: usize) {
         self.last_path.clear();
+        self.last_path_modes.clear();
         loop {
-            self.last_path.push((node / MODE_COUNT) as u32);
+            let cell = (node / MODE_COUNT) as u32;
+            let mode = (node % MODE_COUNT) as u8;
+            let len = self.last_path.len();
+            if len == 0 || self.last_path[len - 1] != cell || self.last_path_modes[len - 1] != mode {
+                self.last_path.push(cell);
+                self.last_path_modes.push(mode);
+            }
             let previous = self.previous[node];
             if previous < 0 {
                 break;
@@ -476,6 +491,6 @@ impl Router {
             node = previous as usize;
         }
         self.last_path.reverse();
-        self.last_path.dedup();
+        self.last_path_modes.reverse();
     }
 }

@@ -179,7 +179,10 @@ function modeIsAvailable(
       && ((land && substrate.coast[cell] !== 0)
         || (!land && substrate.coastDistanceKm[cell] <= TRAVEL_COASTAL_BAND_KM));
   }
-  return hasCapability(metric, "navigation")
+  // Navigation is a technique, not a vessel: open sea needs the boat too
+  // (M1 review: navigation alone was unlocking the ocean).
+  return hasCapability(metric, "boats")
+    && hasCapability(metric, "navigation")
     && (!land || substrate.coastDistanceKm[cell] <= TRAVEL_COASTAL_BAND_KM);
 }
 

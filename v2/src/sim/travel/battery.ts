@@ -118,7 +118,7 @@ function metricFor(mode: TravelMode, month: number): TravelMetric {
         ? ["wheelsDraft"] as const
         : mode === "river" || mode === "coastal"
           ? ["boats"] as const
-          : ["navigation"] as const;
+          : ["boats", "navigation"] as const;
   return { month, modes: [mode], capabilities };
 }
 
