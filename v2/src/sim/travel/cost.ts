@@ -31,6 +31,8 @@ import {
   TRAVEL_RIVER_MIN_MAGNITUDE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
+  TRAVEL_RIVER_GRADIENT_BASELINE_KM,
+  TRAVEL_RIVER_GRADIENT_MAX_STEPS,
   TRAVEL_SEASONAL_AMPLITUDE,
   TRAVEL_SLOPE_COST_FACTOR,
   TRAVEL_TRANSFER_DAYS,
@@ -76,6 +78,7 @@ export interface CostField {
   readonly modeMask: Uint8Array;
   readonly windU: Float64Array;
   readonly windV: Float64Array;
+  readonly riverGradient: Float64Array;
   readonly transferDays: number;
   readonly slopeFactor: number;
   readonly riverDownstreamFactor: number;
@@ -177,28 +180,51 @@ function seaIceBlocked(substrate: Substrate, cell: number, month: number): boole
 }
 
 /**
- * The river's downstream fall at this cell, m/km, from its own flow
- * direction and the real edge geometry. Terminal cells (mouths, lakes,
- * sinks) fall 0. Resolution-invariant: it is a RATE, so the same reach
- * reads the same at any grid that resolves it.
+ * Reach-scale river gradient, m/km per cell: follow the river's own course
+ * downstream over the baseline distance and divide total fall by total
+ * length. This is both the physically right definition of navigability
+ * (a reach, not a cell edge) and the cure for the DEM's ~37 m elevation
+ * quantization, which makes single-edge gradients pure noise. Cached per
+ * substrate — the geometry is metric-independent.
  */
-function riverGradientPerKm(substrate: Substrate, cell: number): number {
-  const direction = substrate.rivers.direction[cell];
-  if (direction === undefined || direction > 7) return 0;
-  const y = Math.floor(cell / substrate.width);
-  const dx = D8_DX[direction] ?? 0;
-  const dy = D8_DY[direction] ?? 0;
-  const ny = y + dy;
-  if (ny < 0 || ny >= substrate.height) return 0;
-  const nx = (((cell - y * substrate.width) + dx) % substrate.width + substrate.width) % substrate.width;
-  const next = ny * substrate.width + nx;
-  const dropMeters = Math.max(0, (substrate.elevation[cell] - substrate.elevation[next])) * ELEVATION_METERS_PER_UNIT;
-  const ns = dy !== 0 ? EARTH_MERIDIONAL_KM / substrate.height : 0;
-  const latitude = (EARTH_HALF_DEGREES * TRAVEL_HALF
-    - ((y + TRAVEL_HALF) / substrate.height) * EARTH_HALF_DEGREES) * DEG_TO_RAD;
-  const ew = dx !== 0 ? EARTH_CIRCUMFERENCE_KM / substrate.width * Math.max(0, dcos(latitude)) : 0;
-  const edgeKm = Math.sqrt(ew * ew + ns * ns);
-  return edgeKm > 0 ? dropMeters / edgeKm : 0;
+const reachGradientCache = new WeakMap<Substrate, Float64Array>();
+
+export function riverReachGradient(substrate: Substrate): Float64Array {
+  const cached = reachGradientCache.get(substrate);
+  if (cached) return cached;
+  const { width, height, N } = substrate;
+  const rows = rowEastWestKm(substrate);
+  const nsKm = EARTH_MERIDIONAL_KM / height;
+  const result = new Float64Array(N);
+  for (let cell = 0; cell < N; cell++) {
+    if ((substrate.rivers.magnitude[cell] ?? 0) < TRAVEL_RIVER_MIN_MAGNITUDE) continue;
+    let current = cell;
+    let km = 0;
+    for (let step = 0; step < TRAVEL_RIVER_GRADIENT_MAX_STEPS
+      && km < TRAVEL_RIVER_GRADIENT_BASELINE_KM; step++) {
+      const direction = substrate.rivers.direction[current];
+      if (direction === undefined || direction > 7) break;
+      const y = Math.floor(current / width);
+      const dx = D8_DX[direction] ?? 0;
+      const dy = D8_DY[direction] ?? 0;
+      const ny = y + dy;
+      if (ny < 0 || ny >= height) break;
+      const nx = (((current - y * width) + dx) % width + width) % width;
+      const next = ny * width + nx;
+      const ew = dx !== 0 ? ((rows[y] ?? 0) + (rows[ny] ?? 0)) * TRAVEL_HALF : 0;
+      const ns = dy !== 0 ? nsKm : 0;
+      km += Math.sqrt(ew * ew + ns * ns);
+      current = next;
+      if (!substrate.landMask[current]) break;
+    }
+    if (km > 0) {
+      const drop = Math.max(0, (substrate.elevation[cell] - substrate.elevation[current]))
+        * ELEVATION_METERS_PER_UNIT;
+      result[cell] = drop / km;
+    }
+  }
+  reachGradientCache.set(substrate, result);
+  return result;
 }
 
 function modeIsAvailable(
@@ -215,10 +241,11 @@ function modeIsAvailable(
   if (mode === "river") {
     if (!land || !hasCapability(metric, "boats")) return false;
     if (substrate.rivers.lake[cell] >= 0) return true;
-    // Navigable = big enough AND gentle enough: rapids are portage country
-    // (M1 review, owner play-report — boats were rowing up Himalayan gorges).
+    // Navigable = big enough AND gentle enough at reach scale: rapids are
+    // portage country (M1 review, owner play-report — boats were rowing up
+    // Himalayan gorges).
     return substrate.rivers.magnitude[cell] >= TRAVEL_RIVER_MIN_MAGNITUDE
-      && riverGradientPerKm(substrate, cell) <= TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM;
+      && (riverReachGradient(substrate)[cell] ?? 0) <= TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM;
   }
   if (mode === "coastal") {
     return hasCapability(metric, "boats")
@@ -313,14 +340,14 @@ export function buildCostField(substrate: Substrate, metric: TravelMetric): Cost
     modeMask,
     windU,
     windV,
+    riverGradient: riverReachGradient(substrate),
     transferDays: TRAVEL_TRANSFER_DAYS,
     slopeFactor: TRAVEL_SLOPE_COST_FACTOR,
     riverDownstreamFactor: TRAVEL_RIVER_DOWNSTREAM_FACTOR,
     riverUpstreamFactor: TRAVEL_RIVER_UPSTREAM_FACTOR,
-    // The engine compares elevation-units per km, so convert the ledgered
-    // m/km bars through the elevation scale.
-    riverDownGradientLimit: TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM / ELEVATION_METERS_PER_UNIT,
-    riverUpGradientLimit: TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM / ELEVATION_METERS_PER_UNIT,
+    // Reach-scale bars, m/km, matching the riverGradient array's units.
+    riverDownGradientLimit: TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
+    riverUpGradientLimit: TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
     windGain: TRAVEL_WIND_GAIN,
     windRefMs: TRAVEL_WIND_REF_MS,
   };

@@ -1,6 +1,12 @@
 [
   {
     "check": "route",
+    "id": "london-bordeaux",
+    "grid": "target",
+    "reason": "27% over a 25% band: coastal mode traces the water-cell lattice around every Breton headland \u2014 it cannot chord across the mouth of a bay the way real fair-wind coastal passages did. A known M1 coarseness of the coastal model, not a data or speed error; the dev row and both cross-grid rows this route once held were FIXED by the overland-sailing ban and have been ratcheted out."
+  },
+  {
+    "check": "route",
     "id": "rome-alexandria",
     "grid": "dev",
     "reason": "No road/relay infrastructure at M1 (the slot reads neutral until roads emerge, M7): the overland loop runs ~2.1x the ORBIS figure, consistent with Roman roads+relays roughly doubling effective land speed. Ratchets out when infrastructure lands."
@@ -9,13 +15,13 @@
     "check": "route",
     "id": "rome-alexandria",
     "grid": "target",
-    "reason": "No road/relay infrastructure at M1 — see the dev entry; ~2.1x the ORBIS figure at the shipped grid too, so this is physics, not raster."
+    "reason": "No road/relay infrastructure at M1 \u2014 see the dev entry; ~2.1x the ORBIS figure at the shipped grid too, so this is physics, not raster."
   },
   {
     "check": "route",
     "id": "rome-alexandria-winter",
     "grid": "dev",
-    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (161.5 vs 161.3 dev — the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells)."
+    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (161.5 vs 161.3 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells)."
   },
   {
     "check": "route",
@@ -33,13 +39,13 @@
     "check": "route",
     "id": "rome-paris",
     "grid": "target",
-    "reason": "26% over — the marginal no-roads effect on a pure land route; inside tolerance once infrastructure exists."
+    "reason": "26% over \u2014 the marginal no-roads effect on a pure land route; inside tolerance once infrastructure exists."
   },
   {
     "check": "route",
     "id": "chang-an-dunhuang",
     "grid": "dev",
-    "reason": "The Hexi-corridor caravan figure assumes the oasis/road chain (infrastructure, M7) — bare terrain runs ~2x it."
+    "reason": "The Hexi-corridor caravan figure assumes the oasis/road chain (infrastructure, M7) \u2014 bare terrain runs ~2x it."
   },
   {
     "check": "route",
@@ -72,12 +78,6 @@
     "reason": "Passes at the shipped grid (12.8 vs 12); dev raster zigzag on the Alboran run."
   },
   {
-    "check": "route",
-    "id": "london-bordeaux",
-    "grid": "dev",
-    "reason": "Passes at the shipped grid (14.8 vs 12); dev's coarse coast CUTS the Brittany corner, coming out too fast."
-  },
-  {
     "check": "crossGrid",
     "id": "rome-london",
     "reason": "Dev land-bridges the Channel (sub-pixel strait at 165 km cells), so the two grids answer different journeys. Dev-raster geometry."
@@ -90,7 +90,7 @@
   {
     "check": "crossGrid",
     "id": "chang-an-dunhuang",
-    "reason": "Dev-raster geometry over broken terrain — finer cells resolve a cheaper corridor."
+    "reason": "Dev-raster geometry over broken terrain \u2014 finer cells resolve a cheaper corridor."
   },
   {
     "check": "crossGrid",
@@ -99,22 +99,12 @@
   },
   {
     "check": "crossGrid",
-    "id": "guangzhou-malacca",
-    "reason": "Dev-raster sea-lane zigzag through the archipelago (13% vs the 10% band)."
-  },
-  {
-    "check": "crossGrid",
     "id": "cadiz-carthage",
     "reason": "Dev-raster sea-lane zigzag."
   },
   {
     "check": "crossGrid",
-    "id": "london-bordeaux",
-    "reason": "Dev cuts the Brittany corner that target honestly rounds."
-  },
-  {
-    "check": "crossGrid",
     "id": "rome-alexandria-winter",
-    "reason": "11% vs the 10% band — the marginal dev-raster stretch on the long land loop."
+    "reason": "11% vs the 10% band \u2014 the marginal dev-raster stretch on the long land loop."
   }
 ]

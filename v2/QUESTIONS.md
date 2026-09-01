@@ -256,7 +256,33 @@ Review corrections to the M1 build (all validated before merge):
     and oracle-pinned); not to be dialed from the navigability side
     (R2).
 
-16. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+16. **Ships were sailing overland; gradients were quantization noise
+    (owner play-report, 2026-09-01).** Two engine fixes from one zoomed
+    screenshot. (a) Land coast cells carry sea modes as PORTS (transfer
+    nodes), but the engine also built sea-mode edges between adjacent
+    land port cells — chains of them formed 80 km/day overland sailing
+    highways (straight "coastal" lines across Britain and the Deccan;
+    the drawn path was faithful — the route really did sail overland).
+    Sea-mode edges now require a water endpoint; ports are nodes, never
+    corridors. Aberdeen→Southampton sails 100% around Britain;
+    overland-sail edge count is zero on every probe. This also FIXED
+    cross-grid parity rows (dev's coarse bands no longer shortcut
+    peninsulas): the known-miss manifest shrank 21 → 19, its first
+    honest ratchet-down. (b) The DEM stores elevation in ~37 m steps, so
+    per-edge river gradients read up to ~1.7 m/km of pure noise —
+    shredding gentle rivers' upstream legs. Gradient is now measured at
+    REACH scale (along the channel over a 100 km baseline, cached per
+    substrate) and the directional bars compare against that: the
+    Nile's upstream river share rose 49% → 64% (26.7 d up / 15.9 d
+    down by boat), while the Congo's Livingstone Falls severance and
+    the Himalayan wall survive (their real falls dwarf the noise). Note
+    the full-capability upstream traveler still prefers pack (21.7 d) —
+    time-optimal couriers rode; the boat's dominance is a FREIGHT-cost
+    fact (28× per ton-km) that lands with freight consumers at M7.
+    New honest miss: coastal mode cannot chord across bay mouths, so
+    target london-bordeaux reads 27% over its 12-day anchor.
+
+17. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal

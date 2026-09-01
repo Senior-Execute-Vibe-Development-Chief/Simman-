@@ -59,6 +59,7 @@ export class TravelEngine {
       field.modeMask,
       field.windU,
       field.windV,
+      field.riverGradient,
       field.transferDays,
       field.slopeFactor,
       field.riverDownstreamFactor,

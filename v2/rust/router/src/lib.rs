@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 const MODE_COUNT: usize = 6;
 const INFINITY: f64 = 1.0e300;
 const RIVER_MODE: usize = 3;
+const COASTAL_MODE: usize = 4;
 
 // The eight neighbors in the D8 rose shared with riverGen's flowDir
 // (E=0, SE=1, S=2, SW=3, W=4, NW=5, N=6, NE=7): opposite = (d + 4) % 8.
@@ -99,6 +100,9 @@ pub struct Router {
     costs_per_km: Vec<f64>,
     wind_u: Vec<f64>,
     wind_v: Vec<f64>,
+    // Reach-scale river fall per cell, m/km (quantization-safe, computed
+    // along the channel by the caller).
+    river_gradient: Vec<f64>,
     partition: Vec<u32>,
     distances: Vec<f64>,
     previous: Vec<i32>,
@@ -174,6 +178,7 @@ impl Router {
             costs_per_km: vec![INFINITY; nodes],
             wind_u: vec![0.0; cells],
             wind_v: vec![0.0; cells],
+            river_gradient: vec![0.0; cells],
             partition: vec![0; cells],
             distances: vec![INFINITY; nodes],
             previous: vec![-1; nodes],
@@ -217,6 +222,7 @@ impl Router {
         mode_mask: &[u8],
         wind_u: &[f64],
         wind_v: &[f64],
+        river_gradient: &[f64],
         transfer_days: f64,
         slope_factor: f64,
         river_downstream_factor: f64,
@@ -230,6 +236,7 @@ impl Router {
             || mode_mask.len() != self.mode_mask.len()
             || wind_u.len() != self.wind_u.len()
             || wind_v.len() != self.wind_v.len()
+            || river_gradient.len() != self.river_gradient.len()
         {
             return false;
         }
@@ -237,6 +244,7 @@ impl Router {
         self.mode_mask.copy_from_slice(mode_mask);
         self.wind_u.copy_from_slice(wind_u);
         self.wind_v.copy_from_slice(wind_v);
+        self.river_gradient.copy_from_slice(river_gradient);
         self.transfer_days = transfer_days;
         self.slope_factor = slope_factor;
         self.river_downstream_factor = river_downstream_factor;
@@ -383,6 +391,13 @@ impl Router {
             if self.mode_mask[next_cell] & (1 << mode) == 0 {
                 continue;
             }
+            // A ship moves on WATER: land cells carry sea modes only as ports
+            // (nodes for embarking), never as corridors — an edge between two
+            // land cells is not sailable (M1 review, owner play-report:
+            // "coastal" legs were crossing Britain overland at 80 km/day).
+            if mode >= COASTAL_MODE && self.land[cell] != 0 && self.land[next_cell] != 0 {
+                continue;
+            }
             // No corner-cutting: a diagonal move must pass THROUGH one of its
             // two orthogonal intermediate cells — two land cells touching only
             // at a corner across a strait are not a road, and two sea cells
@@ -423,22 +438,27 @@ impl Router {
                 0.0
             };
             let river_factor = if mode == RIVER_MODE {
-                // Edge-level directional navigability: floating down tolerates
-                // steeper water than hauling up (and this closes the per-cell
-                // gate's meander-hop hole — M1 review, owner play-report).
-                let climb_rate = (self.elevation[next_cell] - self.elevation[cell]) / edge_km;
-                if climb_rate > self.river_up_gradient_limit
-                    || -climb_rate > self.river_down_gradient_limit
-                {
-                    continue;
-                }
+                // Directional navigability at REACH scale: floating down
+                // tolerates steeper water than hauling up. Reach gradients
+                // come from the caller (measured along the channel), so DEM
+                // quantization noise cannot shred a gentle river.
+                let reach = self.river_gradient[cell].max(self.river_gradient[next_cell]);
                 let downstream = self.river_direction[cell] as usize;
                 let upstream = (direction + 4) % 8;
                 if downstream == direction {
+                    if reach > self.river_down_gradient_limit {
+                        continue;
+                    }
                     self.river_downstream_factor
                 } else if self.river_direction[next_cell] as usize == upstream {
+                    if reach > self.river_up_gradient_limit {
+                        continue;
+                    }
                     self.river_upstream_factor
                 } else {
+                    if reach > self.river_up_gradient_limit {
+                        continue;
+                    }
                     1.0
                 }
             } else {
