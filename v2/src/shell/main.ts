@@ -57,6 +57,13 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   if (lens.value === "climate") {
     return [Math.round(210 * temperature + 25), Math.round(180 * moisture + 30), Math.round(210 * (1 - temperature) + 25)];
   }
+  if (lens.value === "fertility" || lens.value === "crops") {
+    const value = lens.value === "fertility"
+      ? substrate.fertility[cell]
+      : substrate.wildCropSuitability[cell];
+    const v = clamp(value, 0, 1);
+    return [Math.round(60 + 40 * v), Math.round(45 + 175 * v), Math.round(40 + 25 * (1 - v))];
+  }
   const elevation = substrate.elevation[cell];
   const river = substrate.rivers.magnitude[cell];
   const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);
