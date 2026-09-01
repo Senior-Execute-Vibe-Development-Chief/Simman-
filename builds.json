@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/m2-handoff-9068",
+      "sha": "ba82d7a58086e0738b8b99840dcc665254573ba6",
+      "slug": "cursor-m2-handoff-9068",
+      "builtAt": "2026-09-01T10:32:55.059Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-m2-handoff-9068/"
+    },
+    {
       "branch": "claude/world-sim-rebuild-decision-1umpax",
       "sha": "6a0a74dc44cc1a4bd45052b87ded0e4a5912f296",
       "slug": "claude-world-sim-rebuild-decision-1umpax",
