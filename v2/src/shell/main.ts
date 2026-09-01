@@ -64,6 +64,7 @@ worker.addEventListener("message", (event) => {
     status.textContent = `Worker ready · ${event.data.hash}`;
   }
   if (event.data?.type === "snapshot" && event.data.buffer instanceof ArrayBuffer) {
+    tickPending = false;
     const buffer = event.data.buffer as ArrayBuffer;
     const count = Number(event.data.cells ?? substrate.N);
     const populationView = new Float32Array(buffer, 8, count);
@@ -72,15 +73,22 @@ worker.addEventListener("message", (event) => {
     overlayTechnique = new Float32Array(count);
     overlayPopulation.set(populationView);
     overlayTechnique.set(techniqueView);
-    population.textContent = `Population: ${Number(event.data.population ?? 0).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
+    population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
     baseKey = "";
     draw();
     worker.postMessage({ type: "recycle", buffer }, [buffer]);
   }
 });
-window.setInterval(() => {
-  if (playing) worker.postMessage({ type: "tick", steps: speed });
-}, 250);
+// Backpressure: post the next tick batch only after the previous snapshot
+// returns. A fixed-interval post outran the worker on the target grid
+// (~0.5 s/tick) and queued unboundedly — the page read as frozen.
+let tickPending = false;
+function requestTicks(): void {
+  if (!playing || tickPending) return;
+  tickPending = true;
+  worker.postMessage({ type: "tick", steps: speed });
+}
+window.setInterval(requestTicks, 250);
 
 month.max = String(MONTHS_PER_YEAR - 1);
 month.value = "0";
@@ -177,9 +185,18 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   }
   if (!substrate.landMask[cell]) return [25, 55, 86];
   if (lens.value === "population") {
+    // Log ramp over the historically meaningful density span, 0.01..100
+    // persons/km2 (sparse foragers .. dense farmed valleys). EMPTY land is
+    // dark - the old ramp's zero point was bright green, so an unpeopled
+    // Antarctica read exactly like a peopled steppe (owner play-report).
     const density = overlayPopulation?.[cell] ?? 0;
-    const intensity = Math.min(1, Math.log(1 + Math.max(0, density)) / Math.log(21));
-    return [Math.round(35 + 215 * intensity), Math.round(55 + 150 * (1 - intensity)), 70];
+    if (density <= 0) return [28, 34, 40];
+    const intensity = Math.min(1, Math.max(0, (Math.log10(density) + 2) / 4));
+    return [
+      Math.round(40 + 215 * Math.min(1, intensity * 1.6)),
+      Math.round(60 + 170 * intensity - (intensity > 0.75 ? 340 * (intensity - 0.75) : 0)),
+      Math.round(90 - 60 * intensity),
+    ];
   }
   if (lens.value === "technique") {
     const value = Math.max(0, Math.min(1, overlayTechnique?.[cell] ?? 0));
