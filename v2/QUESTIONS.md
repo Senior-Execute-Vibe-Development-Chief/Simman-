@@ -363,3 +363,29 @@ Review corrections to the M1 build (all validated before merge):
     phantom steps where the valley is narrower than the 22 km cell
     (Cairo), and 0.70 m/km at Aswan — where the First Cataract actually
     was.
+
+20. **Southbound via the Red Sea: the router is right about the wind and
+    wrong about the ports (owner probe, 2026-09-01).** Measured at
+    target with pack+boats+navigation: sea→Aswan goes Red Sea (18.9 d,
+    open-sea 61% / pack 39%); Aswan→sea returns 93% BY RIVER (15.2 d) —
+    the sim already refuses the reverse hop (northern Red Sea fights
+    year-round northerlies). The Egyptian channel is now 85%
+    upstream-sailable (33/39 reaches ≤ 0.5 m/km; 100% raftable down);
+    six blocking reaches remain — five phantom (0.57-0.98, cell-average
+    wall bias over a ~0.08 m/km water surface) and Aswan's 0.70, which
+    is the FIRST CATARACT and belongs there. But the phantoms barely
+    matter for time: even a fully continuous upstream sail (~38-40
+    km/day incl. wind) ≈ 25-27 d ≈ the valley road — the Red Sea's
+    ~8-day lead rests entirely on TRANSFER_DAYS = 0.25 pricing a ship
+    swap at six hours on ANY coast cell. Historically the southbound
+    Red Sea run was wind-favoured on paper and the Qena-Qusayr desert
+    crossing was a real 5-7 day caravan corridor — yet nobody bypassed
+    the valley that way, because the northern Red Sea had almost no
+    shipping (fleets based far south at Myos Hormos/Berenice to dodge
+    the northerly beat home; reefs; weeks waiting at Clysma/Suez for a
+    sailing), and desert legs needed organized, watered, guarded
+    caravans. MECHANISM, not dial: transfer cost must become EMERGENT —
+    hours at a busy river town, days-to-weeks where no ships call —
+    i.e. priced by port traffic when trade exists (M7), with caravan
+    logistics/security at M5+. No constant was changed; the flat 0.25 d
+    stands as the recorded M1 simplification.
