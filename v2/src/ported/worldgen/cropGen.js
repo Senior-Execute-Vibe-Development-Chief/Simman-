@@ -31,9 +31,9 @@ import { pkgClimateBell } from "./cropPackages.js";
 //   dead). Without it the moisture bell floored dry land at ~0.27, so deserts
 //   read as prime farmland. The alluvial bonus still threads GREEN RIBBONS
 //   through the sand (Nile/Indus/Murray, oasis coasts).
-function envGate(climate, t, m, e, coast, rm, bDist) {
+function envGate(climate, t, m, e, coast, rm, bDist, floodFraction=1, irrigated=false) {
   const aridGate = Math.min(1, Math.max(0, (m - 0.12) / 0.18));
-  let crop = climate * aridGate;
+  let crop = climate * (irrigated ? 1 : aridGate);
   // Tropical lateritic-soil penalty (the Amazon/Congo paradox), discounted by
   // young soil (volcanic/orogenic near plate boundaries, alluvial, coastal).
   if (t > 0.75 && m > 0.65) {
@@ -41,7 +41,8 @@ function envGate(climate, t, m, e, coast, rm, bDist) {
     let youngSoil = 0;
     if (bDist != null && bDist < VOLCANIC_FULL_KM) youngSoil += (1 - bDist / VOLCANIC_FULL_KM) * 0.85;
     if (coast) youngSoil += 0.35;
-    if (rm >= 3) youngSoil += 0.50; else if (rm >= 2) youngSoil += 0.20;
+    if (rm >= 3) youngSoil += 0.50 * floodFraction;
+    else if (rm >= 2) youngSoil += 0.20 * floodFraction;
     trop *= Math.max(0, 1 - Math.min(1, youngSoil));
     crop *= 1 - 0.65 * trop;
   }
@@ -51,6 +52,7 @@ function envGate(climate, t, m, e, coast, rm, bDist) {
   let allu = 0;
   if (rm >= 3) allu += 0.45; else if (rm >= 2) allu += 0.22; else if (rm >= 1) allu += 0.08;
   if (coast) allu += 0.15;
+  allu *= Math.min(1, Math.max(0, floodFraction));
   // Cold-gate the alluvial pull: this bonus pulls crop TOWARD 1, so applied raw it
   // overrode the cold gate entirely — a frozen great-river valley came out at crop≈0.45
   // and read as prime cropland, settling the Lena/Ob/Yenisei taiga densely (near-empty in
@@ -64,13 +66,18 @@ function envGate(climate, t, m, e, coast, rm, bDist) {
   return Math.max(0, Math.min(1, crop));
 }
 
-export function cropSuitability(t, m, e, coast, riverMag, bDist) {
+export function cropSuitability(t, m, e, coast, riverMag, bDist, floodFraction) {
   if (e <= 0) return 0;
   if (e > 0.45) return 0.02;
   const rm = riverMag || 0;
   const tBell = Math.min(1, Math.max(0, (t - 0.57) / 0.13)) * Math.min(1, 1 - dpow(Math.max(0, t - 0.88), 2) * 1.5);
   const mBell = dexp(-((m - 0.45) * (m - 0.45)) / (2 * 0.28 * 0.28));
-  return envGate(tBell * mBell, t, m, e, coast, rm, bDist);
+  if (floodFraction === undefined) return envGate(tBell * mBell, t, m, e, coast, rm, bDist);
+  const fraction = Math.min(1, Math.max(0, floodFraction));
+  const rainfed = envGate(tBell * mBell, t, m, e, coast, rm, bDist, fraction);
+  if (fraction <= 0 || rm < 1) return rainfed;
+  const flood = envGate(tBell, t, m, e, coast, rm, bDist, fraction, true);
+  return fraction * flood + (1 - fraction) * rainfed;
 }
 
 // ── Per-package suitability ───────────────────────────────────────────
@@ -79,7 +86,7 @@ export function cropSuitability(t, m, e, coast, riverMag, bDist) {
 // (src/cropPackages.js) while every ENVIRONMENT gate is the shared envGate()
 // above. So a package inherits all the tuned soil/water realism and differs only
 // in WHICH climate it wants. Returns 0..1 × the package's peak yield.
-export function cropSuitabilityPkg(pkg, t, m, e, coast, riverMag, bDist, tGrow, mGrow) {
+export function cropSuitabilityPkg(pkg, t, m, e, coast, riverMag, bDist, tGrow, mGrow, floodFraction) {
   if (e <= 0) return 0;
   if (e > 0.45) return 0.02 * pkg.yield;
   const rm = riverMag || 0;
@@ -89,5 +96,14 @@ export function cropSuitabilityPkg(pkg, t, m, e, coast, riverMag, bDist, tGrow, 
   // year-round; a laterite soil is a laterite soil). tGrow undefined ⇒ annual,
   // byte-identical.
   const bell = tGrow !== undefined ? pkgClimateBell(pkg, tGrow, mGrow) : pkgClimateBell(pkg, t, m);
-  return envGate(bell, t, m, e, coast, rm, bDist) * pkg.yield;
+  if (floodFraction === undefined) return envGate(bell, t, m, e, coast, rm, bDist) * pkg.yield;
+  const fraction = Math.min(1, Math.max(0, floodFraction));
+  const rainfed = envGate(bell, t, m, e, coast, rm, bDist, fraction);
+  if (fraction <= 0 || rm < 1) return rainfed * pkg.yield;
+  const floodMoisture = pkg.mOpt;
+  const floodBell = tGrow !== undefined
+    ? pkgClimateBell(pkg, tGrow, floodMoisture)
+    : pkgClimateBell(pkg, t, floodMoisture);
+  const flood = envGate(floodBell, t, m, e, coast, rm, bDist, fraction, true);
+  return (fraction * flood + (1 - fraction) * rainfed) * pkg.yield;
 }

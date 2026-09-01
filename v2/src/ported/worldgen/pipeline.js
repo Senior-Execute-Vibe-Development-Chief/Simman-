@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/sim/pipeline.js; deviations: people-sim imports are extracted to v2 modules, Earth presets feed computeRivers baked real flow directions (riverDirSample.js), transcendental calls use v2 dmath, the real-units travel-cost boundary supplies baseEdgeCost, and lake/ancestry/volcanic radii are converted to km.
+ * source: src/sim/pipeline.js; deviations: people-sim imports are extracted to v2 modules, Earth presets feed computeRivers baked real flow directions (riverDirSample.js), W1 adds data lakes and measured floodplain fractions plus the fraction-weighted crop path, transcendental calls use v2 dmath, the real-units travel-cost boundary supplies baseEdgeCost, and lake/ancestry/volcanic radii are converted to km.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import { dexp, dpow, dcos } from "../../sim/dmath.ts";
@@ -14,7 +14,7 @@ import { MATH_PI as PI } from "../../sim/constants.ts";
 
 import { generateWorld } from "./worldgen.js";
 import { computeRivers, RIVER_STREAM } from "./riverGen.js";
-import { sampleRiverDirections } from "./riverDirSample.js";
+import { sampleFloodplainFraction, sampleLakeMask, sampleRiverDirections } from "./riverDirSample.js";
 import { cropSuitability } from "./cropGen.js";
 import { generateResources } from "./resourceGen.js";
 import { baseEdgeCost } from "../../sim/travel/cost.ts";
@@ -336,14 +336,17 @@ if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+
 // (QUESTIONS.md #21); water amounts stay emergent from climate. Procedural
 // presets derive geometry from elevation as before.
 const bakedDir=(!w._rawRivers&&(w.preset==="earth"||w.preset==="earth_sim"))?sampleRiverDirections(tw,th):null;
-const rivers=computeRivers(tw,th,tElev,tMoist,tTemp,bakedDir);
+const bakedLakeMask=bakedDir?sampleLakeMask(tw,th):null;
+const rivers=computeRivers(tw,th,tElev,tMoist,tTemp,bakedDir,bakedLakeMask);
 
 // ── River moisture boost: rivers raise local moisture, then fertility recalculates ──
 // This is the physically correct approach: rivers bring water → soil moisture rises →
 // fertility formula (bell curve) naturally produces good values.
 // Biome classification, resources, and all downstream systems react correctly.
 const riverMoist=new Float32Array(tw*th);
-const tFlood=new Uint8Array(tw*th);   // arid-river floodplain mask (Nile/Indus/Euphrates valley): its own biome + prime cropland
+const tFlood=new Float32Array(tw*th);   // per-cell share of measured flood-stage samples
+const riverMoistPeak=[0,0.22,0.45,0.52,0.58];
+if(!bakedDir){
 {// A river waters the floodplain band where farming concentrates — and how WIDE that
 // band is is a property of the RIVER, not of the pixel grid. Hydraulic geometry: the
 // alluvial valley a river lays down scales with the discharge that built it (valley
@@ -369,7 +372,6 @@ const tFlood=new Uint8Array(tw*th);   // arid-river floodplain mask (Nile/Indus/
 const FLOOD_W_KM=0.05;   // alluvial-valley HALF-width: km per √(discharge-equivalent km² of catchment). Hydraulic geometry (width ∝ √Q); ~2× generous vs Earth valleys for map legibility, but ORDER-true: Nile-scale → ~70 km, a 10⁴-km² stream → ~5 km
 const kmPerPx=Math.sqrt(rivers.km2PerTile||1);   // linear km per pixel (area convention — matches riverGen's catchment bars)
 const riverRadius=[0,1,2,3,3];   // legacy path (lever OFF): fixed NONE,STREAM,TRIB,MAJOR,GREAT tile radii
-const riverMoistPeak=[0,0.22,0.45,0.52,0.58];
 const resInv=!!true;
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
@@ -433,6 +435,30 @@ tFert[ti]=Math.min(1,tFert[ti]+allu);
 // vegetation line) when the underlying land is arid — the Nile / Indus / Euphrates
 // ribbon through desert, the full width that reads as non-desert.
 if(oldMoist<0.32&&tMoist[ti]>0.14&&rm>0.04)tFlood[ti]=1;}}
+}else{
+// Earth geometry uses the measured share of flood-stage samples. The
+// discharge factor keeps a fossil channel from manufacturing moisture or
+// cropland: a fraction is useful only when the emergent annual flow clears
+// the same stream-scale water bar that classifies the river.
+const flood=sampleFloodplainFraction(tw,th);
+const dischargeFloor=Math.max(1,rivers.navigableThreshold||0);
+for(let ti=0;ti<tw*th;ti++){
+const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
+const measured=Math.min(1,Math.max(0,flood[ti]||0));
+const discharge=Math.min(1,Math.max(0,rivers.flowAccum[ti]/dischargeFloor));
+const fraction=measured*discharge;
+if(fraction<=0)continue;
+tFlood[ti]=fraction;
+const rm=(riverMoistPeak[mag]||0)*fraction;
+riverMoist[ti]=rm;
+const oldMoist=tMoist[ti];
+if(oldMoist<0.45)tMoist[ti]=Math.min(0.50,oldMoist+rm);
+else tMoist[ti]=Math.min(1,oldMoist+rm*0.08);
+tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
+const alluCold=Math.min(1,Math.max(0,(tTemp[ti]-0.57)/0.13));
+const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10)*alluCold;
+tFert[ti]=Math.min(1,tFert[ti]+allu);
+}}
 
 // ── Lake moisture boost: lakes act as local moisture sources ──
 if(rivers.lake){
@@ -576,7 +602,10 @@ if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
 // broad warm plateau (temperate breadbaskets → subtropics → watered tropics)
 // with only a gentle roll-off in extreme heat. Hot-wet laterite and aridity are
 // handled by the moisture bell + penalties below.
-tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,bDist?bDist[ti]:null);
+tCrop[ti]=cropSuitability(
+  t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,
+  bDist?bDist[ti]:null,bakedDir?tFlood[ti]:undefined,
+);
 // An arid-river FLOODPLAIN is prime irrigated cropland (the Nile / Mesopotamia /
 // Indus alluvium — the most productive farmland there was), whatever the bare
 // climate would rate the hot dry valley as — BUT only where it is warm enough to
@@ -587,7 +616,6 @@ tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverM
 // breadbaskets that bypass the cold gate entirely — a runaway-primate landmine.
 // The hottest cradles' later salinisation (SOIL_EXHAUST, settlement.js) still
 // applies the historical decline.
-if(tFlood[ti]){const coldGate=Math.min(1,Math.max(0,(t-0.57)/0.13));tCrop[ti]=Math.max(tCrop[ti],0.92*coldGate);}
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
 // overlay is direction-agnostic.

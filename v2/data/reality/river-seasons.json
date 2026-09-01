@@ -1,0 +1,49 @@
+[
+  {
+    "id": "nile-cairo",
+    "lat": 30.05,
+    "lon": 31.2,
+    "expectedMaxMonth": 8,
+    "maxMonthTolerance": 2,
+    "source": "Nile annual flood at Cairo; late-summer peak"
+  },
+  {
+    "id": "niger-inland-delta",
+    "lat": 16,
+    "lon": -4,
+    "expectedMaxMonth": 8,
+    "maxMonthTolerance": 2,
+    "source": "Niger inland-delta flood pulse; September–October peak"
+  },
+  {
+    "id": "ganges",
+    "lat": 25,
+    "lon": 88,
+    "expectedMaxMonth": 7,
+    "maxMonthTolerance": 2,
+    "source": "Ganges monsoon discharge"
+  },
+  {
+    "id": "yangtze",
+    "lat": 31,
+    "lon": 121,
+    "expectedMaxMonth": 6,
+    "maxMonthTolerance": 2,
+    "source": "Yangtze summer monsoon discharge"
+  },
+  {
+    "id": "volga",
+    "lat": 46,
+    "lon": 47,
+    "expectedMaxMonth": 4,
+    "maxMonthTolerance": 2,
+    "source": "Volga snowmelt and spring discharge"
+  },
+  {
+    "id": "rhine",
+    "lat": 51,
+    "lon": 6,
+    "maxMinRatioMax": 2,
+    "source": "Rhine near-even annual navigation flow"
+  }
+]

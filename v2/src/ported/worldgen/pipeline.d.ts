@@ -27,7 +27,7 @@ export interface PortedTerritory {
   readonly tFert: Float32Array;
   readonly tCrop: Float32Array;
   readonly tCross: Float32Array;
-  readonly tFlood: Uint8Array;
+  readonly tFlood: Float32Array;
   readonly tRelief: Float32Array;
   readonly tAncestry: Int16Array;
   readonly tArrival: Float32Array;
@@ -42,6 +42,9 @@ export interface PortedTerritory {
     readonly flowAccum: Float32Array;
     readonly riverMag: Uint8Array;
     readonly lake: Int32Array;
+    readonly lakeGeometry: Uint8Array;
+    readonly drainsTerminal: Int8Array;
+    readonly navigableThreshold: number;
   };
 }
 

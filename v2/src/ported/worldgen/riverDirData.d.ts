@@ -1,0 +1,11 @@
+export const RIVER_DIR_W: number;
+export const RIVER_DIR_H: number;
+export const RIVER_DIR_TERMINAL: number;
+export const RIVER_DIR_NODATA: number;
+export const RIVER_GRAD_NODATA: number;
+export const RIVER_GRAD_PER_M_KM: number;
+export const RIVER_DIR: string;
+export const RIVER_GRAD: string;
+export const RIVER_FLOOD: string;
+export const LAKE_MASK: string;
+export function decodeRiverDir(value: string): Uint8Array;

@@ -26,6 +26,12 @@ npm run browser    # Node + Chromium + Firefox + WebKit identity checks
 npm run dev        # Vite development server
 ```
 
+The W1 water bake is reproducible with `npx tsx tools/build-waterdata.mts
+<etopo.nc> <HydroLAKES_polys_v10.shp>` when refreshing the committed
+`RIVER_FLOOD` and `LAKE_MASK` layers. The full
+`tools/build-riverdata.mts` bake accepts the polygon path as an additional
+argument.
+
 `npm run smoke`, `npm run build`, and `npm run browser` build the Rust bindings
 as needed. `npm run browser` launches its own Vite server and compares the
 Node and three browser results.
@@ -52,7 +58,8 @@ fudge factors.
 - The v1 worldgen chain is copied under `src/ported/worldgen` and only
   consumed through the typed `buildSubstrate` boundary.
 - The substrate exposes land, monthly temperature/moisture, rivers/lakes,
-  floodplain, biome, soil/crop suitability, resources, relief, coast distance,
+  measured fractional floodplain and monthly river-flow scales, biome,
+  soil/crop suitability, resources, relief, coast distance,
   and deep ancestry as typed arrays; it is rebuilt, never saved.
 - Travel is in days using real Earth geometry, month-specific climate,
   capability-gated modes, directed river costs, intermodal transfers, and a

@@ -502,3 +502,18 @@ Review corrections to the M1 build (all validated before merge):
     freeze). Flood regime (month-of-peak, amplitude, variance — the
     Nile-gentle vs Tigris-violent asymmetry) is an M3 read on the
     seasonal-flow output; no state ships for it now.
+
+24. **W1 water implementation (2026-09-01).** Earth lake placement is now a
+    HydroLAKES positive-elevation polygon mask rasterized at 1920×960 and
+    majority-sampled to the active grid; the existing emergent inflow and
+    evaporation test remains the water test. Procedural and `rawRivers` paths
+    retain derived depression lakes. Floodplain coverage is a fractional
+    ETOPO cross-section measurement, not a channel mask or crop override.
+    Seasonal river flow routes monthly climate runoff over the fixed annual
+    direction field and stores a cell×12 ratio to annual flow. A grounded
+    groundwater/baseflow share damps rainfall flashiness, while its minimal
+    snow store is included because the Volga/Indus month-of-maximum gate needs
+    melt release; neither is a flood-regime consumer or persistent world
+    state. W4 remains deferred: month-of-peak, amplitude, and
+    interannual variance are reads on this output for M3's flood-regime and
+    salinization mechanisms, not new state in M1.

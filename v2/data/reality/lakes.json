@@ -1,0 +1,16 @@
+{
+  "source": "HydroLAKES v1.0 polygon layer (Lehner & Döll, 2004; WWF HydroSHEDS, CC-BY 4.0), Lake_area ≥100 km² and positive-elevation source baseline, rasterized to the shipped 1920×960 data grid",
+  "totalGeometryAreaKm2": 1307990.52,
+  "totalAreaTolerance": 0.2,
+  "anchors": [
+    { "id": "victoria", "lat": -1, "lon": 33, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "baikal", "lat": 53.5, "lon": 108, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "superior", "lat": 47.7, "lon": -88, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "michigan", "lat": 45.8, "lon": -87, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "huron", "lat": 45.2, "lon": -82.5, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "ladoga", "lat": 60.8, "lon": 31, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "balkhash", "lat": 46.3, "lon": 75, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "titicaca", "lat": -15.8, "lon": -69.3, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" },
+    { "id": "chad", "lat": 13.2, "lon": 14, "minActiveCells": 1, "minGeometryCells": 1, "source": "HydroLAKES v1.0" }
+  ]
+}

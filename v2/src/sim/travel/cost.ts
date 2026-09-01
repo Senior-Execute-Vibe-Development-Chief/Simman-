@@ -4,6 +4,7 @@ import {
   EARTH_HALF_DEGREES,
   EARTH_MERIDIONAL_KM,
   ELEVATION_METERS_PER_UNIT,
+  MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   TRAVEL_BASE_TERRAIN,
   TRAVEL_COLD_COST_FACTOR,
@@ -29,6 +30,7 @@ import {
   TRAVEL_RIVER_DOWNSTREAM_FACTOR,
   TRAVEL_RIVER_UPSTREAM_FACTOR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
+  RIVER_FREEZING_TEMPERATURE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_GRADIENT_BASELINE_KM,
@@ -237,7 +239,7 @@ export function riverReachGradient(substrate: Substrate): Float64Array {
   const result = new Float64Array(N);
   for (let cell = 0; cell < N; cell++) {
     if ((substrate.rivers.magnitude[cell] ?? 0) < TRAVEL_RIVER_MIN_MAGNITUDE) continue;
-    const measured = baked ? baked[cell] ?? -1 : -1;
+    const measured = baked ? baked[cell] ?? MATH_NEGATIVE_ONE : MATH_NEGATIVE_ONE;
     if (measured >= 0) {
       result[cell] = measured;
       continue;
@@ -284,11 +286,18 @@ function modeIsAvailable(
   if (mode === "cart") return land && hasCapability(metric, "wheelsDraft");
   if (mode === "river") {
     if (!land || !hasCapability(metric, "boats")) return false;
+    if (substrate.climate.temperature[climateIndex(cell, metric.month)] < RIVER_FREEZING_TEMPERATURE) {
+      return false;
+    }
     if (substrate.rivers.lake[cell] >= 0) return true;
     // Navigable = big enough AND gentle enough at reach scale: rapids are
     // portage country (M1 review, owner play-report — boats were rowing up
     // Himalayan gorges).
+    const flowScale = substrate.rivers.seasonalFlowScale?.[climateIndex(cell, metric.month)] ?? 1;
+    const monthlyFlow = (substrate.rivers.flowAccum[cell] ?? 0) * flowScale;
+    const threshold = substrate.rivers.navigableThreshold ?? 0;
     return substrate.rivers.magnitude[cell] >= TRAVEL_RIVER_MIN_MAGNITUDE
+      && (threshold <= 0 || monthlyFlow >= threshold)
       && (riverReachGradient(substrate)[cell] ?? 0) <= TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM;
   }
   if (mode === "coastal") {

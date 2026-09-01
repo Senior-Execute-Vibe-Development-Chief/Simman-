@@ -164,3 +164,17 @@ they are not hidden outcome-fitting levers.
 | `LAKE_MOISTURE_RADIUS_KM` | 60 | km; converted from v1 tile convention |
 | `VOLCANIC_INFLUENCE / FULL_KM` | 300 / 140 | km; converted plate-boundary soil influence |
 | `MINE_SCATTER_RADIUS_KM / SMALL` | 500 / 375 | km; converted v1 scatter radii |
+
+## W1 — proposed (review pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `FLOOD_STAGE_M` | 8 | metres above the local low-water channel floor; order set by the pre-dam Nile crest at Aswan |
+| `FLOOD_SEARCH_RADIUS_KM` | 100 | kilometres; physical lateral bound for a flood-stage cross-section scan, with the elevation cut determining the actual plain |
+| `ELEVATION_SAMPLE_STEP_KM` | 1.8 | kilometres; spacing of the ETOPO point samples used by the river-floor and floodplain measurements |
+| `RIVER_FREEZING_TEMPERATURE` | 0.60 | sim temperature units; freshwater freezing point at 0°C under `t = 0.60 + °C/100` |
+| `RIVER_BASEFLOW_FRACTION` | 0.65 | share of mean annual runoff represented by groundwater/baseflow in the monthly routing pass; damps flash-rainfall noise without changing annual flow |
+| `FINE_CHANNEL_ACCUM_MIN` | 4 | fine-grid drainage cells; bake-time channel observation floor, not a world or river-class threshold |
+| `LAKE_RASTER_SUBSAMPLES` | 4×4 | subpixel coverage samples; representation rule for the majority-filled data-pixel bar |
+| `LAKE_SOURCE_MIN_AREA_KM2` | 100 | square kilometres; bake-time parsing floor below the shipped-pixel scale, retained only to skip sub-grid HydroLAKES texture |
+| `SEASONAL_SNOW_RELEASE_BAND` | 0.08 | sim temperature units; minimal monthly thaw band used by the snow-store fallback for cold-season runoff |
