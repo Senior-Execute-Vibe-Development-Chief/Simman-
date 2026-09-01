@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "claude/world-sim-rebuild-decision-1umpax",
+      "sha": "6e8889f8f9e2c7d5fa269a93ee1420d055317d83",
+      "slug": "claude-world-sim-rebuild-decision-1umpax",
+      "builtAt": "2026-09-01T11:03:13.384Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/claude-world-sim-rebuild-decision-1umpax/"
+    },
+    {
       "branch": "cursor/m2-handoff-9068",
       "sha": "e71dfd59ffefd1863269253865008d888f84407d",
       "slug": "cursor-m2-handoff-9068",
@@ -17,15 +26,6 @@
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-m2-handoff-9068/"
-    },
-    {
-      "branch": "claude/world-sim-rebuild-decision-1umpax",
-      "sha": "6a0a74dc44cc1a4bd45052b87ded0e4a5912f296",
-      "slug": "claude-world-sim-rebuild-decision-1umpax",
-      "builtAt": "2026-09-01T10:14:26.112Z",
-      "channel": "preview",
-      "saveVersion": 67,
-      "path": "/b/claude-world-sim-rebuild-decision-1umpax/"
     },
     {
       "branch": "cursor/setup-v2-dev-environment-f1e8",
