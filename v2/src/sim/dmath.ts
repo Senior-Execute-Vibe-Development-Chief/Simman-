@@ -8,6 +8,7 @@ import {
   MATH_ATAN_FIRST_ODD,
   MATH_ATAN_LAST_ODD,
   MATH_ATAN_STEP,
+  MATH_TAN_EIGHTH_PI,
   MATH_COS_C10,
   MATH_COS_C12,
   MATH_COS_C14,
@@ -191,6 +192,21 @@ export function dln(value: number): number {
   return 2 * series + exponent * MATH_LN2;
 }
 
+// Alternating Maclaurin series for atan on |z| ≤ tan(π/8) ≈ 0.4142, where
+// the last kept term (z²³/23) is below 2e-11 — inside the ~1e-9 contract.
+function datanSeries(z: number): number {
+  const zSquare = z * z;
+  let power = z;
+  let series = z;
+  let sign = MATH_NEGATIVE_ONE;
+  for (let odd = MATH_ATAN_FIRST_ODD; odd <= MATH_ATAN_LAST_ODD; odd += MATH_ATAN_STEP) {
+    power *= zSquare;
+    series += sign * (power / odd);
+    sign = -sign;
+  }
+  return series;
+}
+
 function datanUnit(value: number): number {
   let sign = 1;
   let magnitude = value;
@@ -201,15 +217,12 @@ function datanUnit(value: number): number {
   if (magnitude > 1) {
     return sign * (HALF_PI - datanUnit(1 / magnitude));
   }
-  const z = (magnitude - 1) / (magnitude + 1);
-  const zSquare = z * z;
-  let power = z;
-  let series = z;
-  for (let odd = MATH_ATAN_FIRST_ODD; odd <= MATH_ATAN_LAST_ODD; odd += MATH_ATAN_STEP) {
-    power *= zSquare;
-    series += power / odd;
+  // Range reduction keeps the series argument ≤ tan(π/8): atan(m) =
+  // π/4 + atan((m−1)/(m+1)), and for m ≤ tan(π/8) the series is direct.
+  if (magnitude > MATH_TAN_EIGHTH_PI) {
+    return sign * (QUARTER_PI + datanSeries((magnitude - 1) / (magnitude + 1)));
   }
-  return sign * (QUARTER_PI + 2 * series);
+  return sign * datanSeries(magnitude);
 }
 
 export function datan2(y: number, x: number): number {

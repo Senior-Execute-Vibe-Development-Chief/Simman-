@@ -46,7 +46,7 @@ function tsRngVectors(): unknown {
 
 async function main(): Promise<void> {
   assert.deepEqual(tsRngVectors(), v1RngVectors(), "RNG port diverged from v1 oracle");
-  assert.equal(checkDmathGoldens().length, 21);
+  assert.equal(checkDmathGoldens().length, 26);
   const routing = await runRoutingBatteries();
   assert.ok(routing.every((result) => result.queries >= 72));
 

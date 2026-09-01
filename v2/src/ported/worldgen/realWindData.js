@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/realWindData.js; deviations: dataset import path points at v2/data/reality; data injection remains caller-owned.
+ * source: src/realWindData.js; deviations: dataset import path points at v2/data/reality; data injection remains caller-owned; adds sampleMonthlyWind (M1 review) — a bulk cell×12 sampler with precomputed row/column indices (the per-call sampleRealWind scans lat/lon per invocation, which is O(N·12·latlon) when filling a whole grid).
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 // ── Real Wind Data Loader ──
@@ -62,6 +62,70 @@ loadRealWindData();
 export function provideRealWindData(json) {
   windData = json;
   loadFailed = false;
+}
+
+/**
+ * Bulk-sample the monthly wind climatology onto a W×H grid (M1 review
+ * addition). Returns u/v in m/s, indexed cell × 12. Same bilinear scheme and
+ * dateline offset as sampleRealWind, with the lat/lon index search hoisted
+ * out of the per-cell loop.
+ * @returns {{u: Float32Array, v: Float32Array}|null}
+ */
+export function sampleMonthlyWind(W, H) {
+  if (!windData) return null;
+  const lats = windData.lat, lons = windData.lon;
+  const nLat = lats.length, nLon = lons.length;
+  const descending = lats[0] > lats[nLat - 1];
+  const jIdx = new Int32Array(H), jFrac = new Float32Array(H);
+  for (let y = 0; y < H; y++) {
+    const lat = 90 - (y / (H - 1)) * 180;
+    let j0 = 0;
+    if (descending) {
+      for (let i = 0; i < nLat - 1; i++) {
+        if (lats[i] >= lat && lats[i + 1] < lat) { j0 = i; break; }
+      }
+    } else {
+      for (let i = 0; i < nLat - 1; i++) {
+        if (lats[i] <= lat && lats[i + 1] > lat) { j0 = i; break; }
+      }
+    }
+    const j1 = Math.min(nLat - 1, j0 + 1);
+    const range = lats[j1] - lats[j0];
+    jIdx[y] = j0;
+    jFrac[y] = range !== 0 ? Math.max(0, Math.min(1, (lat - lats[j0]) / range)) : 0;
+  }
+  const iIdx = new Int32Array(W), iFrac = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    const lon = ((x / W) * 360 + 180) % 360;
+    let i0 = 0;
+    for (let i = 0; i < nLon - 1; i++) {
+      if (lons[i] <= lon && lons[i + 1] > lon) { i0 = i; break; }
+      if (i === nLon - 2) i0 = i;
+    }
+    const i1 = (i0 + 1) % nLon;
+    const range = i1 > i0 ? lons[i1] - lons[i0] : (360 - lons[i0] + lons[i1]);
+    iIdx[x] = i0;
+    iFrac[x] = range !== 0 ? Math.max(0, Math.min(1, ((lon - lons[i0] + 360) % 360) / range)) : 0;
+  }
+  const u = new Float32Array(W * H * 12);
+  const v = new Float32Array(W * H * 12);
+  for (let m = 0; m < 12; m++) {
+    const md = windData[String(m)];
+    if (!md) continue;
+    for (let y = 0; y < H; y++) {
+      const j0 = jIdx[y], jf = jFrac[y], j1 = Math.min(nLat - 1, j0 + 1);
+      const u0 = md.u[j0], u1 = md.u[j1], v0 = md.v[j0], v1 = md.v[j1];
+      for (let x = 0; x < W; x++) {
+        const i0 = iIdx[x], i1 = (i0 + 1) % nLon, xf = iFrac[x];
+        const cell = y * W + x;
+        u[cell * 12 + m] = (u0[i0] * (1 - xf) + u0[i1] * xf) * (1 - jf)
+          + (u1[i0] * (1 - xf) + u1[i1] * xf) * jf;
+        v[cell * 12 + m] = (v0[i0] * (1 - xf) + v0[i1] * xf) * (1 - jf)
+          + (v1[i0] * (1 - xf) + v1[i1] * xf) * jf;
+      }
+    }
+  }
+  return { u, v };
 }
 
 /**

@@ -146,13 +146,19 @@ they are not hidden outcome-fitting levers.
 | `FOOT_DAY / RIDE_DAY` | 25 / 35 | km/day; standard travel anchors |
 | `CART / RIVER / COASTAL / OPEN-SEA SPEED` | 30 / 45 / 80 / 120 | km/day; mode anchors pending ORBIS calibration |
 | `COASTAL_BAND_KM` | 150 | km; coastal-mode shoreline band |
-| `RIVER_MIN_MAGNITUDE` | 2 | river classification bar from the ported hydrology |
-| `DIAGONAL_FACTOR` | √2 | grid geometry |
+| `RIVER_MIN_MAGNITUDE` | 2 | river classification bar from the ported hydrology; navigability is binary at M1 (a per-magnitude speed discount was removed in review — no grounding, and it broke the emergent freight ratio) |
 | `TRANSFER_DAYS` | 0.25 | days; intermodal handling placeholder |
-| `MOUNTAIN / SLOPE / RELIEF COST` | 5 / 3 / 4 | continuous terrain-factor coefficients; M1 gate parameters |
-| `COLD / MUD / WATERLOG / SEA-STORM` | 2 / 0.8 / 0.7 / 1.2 | seasonal cost response coefficients |
+| `MOUNTAIN / SLOPE / RELIEF COST` | 5 / 3 / 4 | continuous terrain-factor coefficients; the slope term is Naismith-form (days per unit ascent, horizontal-grid-independent, so total climb telescopes across resolutions) |
+| `COLD / MUD / WATERLOG / SEA-STORM` | 2 / 0.8 / 0.7 / 1.2 | seasonal cost responses. Land: cold (snow/pass closure) + waterlogged-ground mud. Sea: the cold-storm/ice term only — review REMOVED an undocumented `MONSOON_STORM_FACTOR = 6` wetness tax that slowed all tropical sea travel identically both ways |
+| `WIND_GAIN / WIND_REF_MS` | 0.4 / 8 | the monsoon mechanism: sail-time factor 1/(1+gain·alignment), alignment = wind·heading clamped at the reference speed. At full monsoon wind the downwind:upwind passage ratio is ≈2.3, the band period sailing records support |
 | `RIVER_DOWNSTREAM / UPSTREAM` | 0.6 / 1.4 | directed river travel factors |
-| `FREIGHT sea:river:land` | 1:5:28 | Duncan-Jones relative freight anchor |
+| `FREIGHT sea:river:land` | 1:5:28 | Duncan-Jones relative freight anchor; the gate MEASURES this through the engine on reference terrain — cost-per-ton-day = mode speed × ratio, so the per-km ratio emerges |
+| `GRAIN_FREIGHT_EFOLD_KM` | 340 | [CONTESTED] Diocletian land-haul anchor, carried from v1 |
+| `GRAIN_SHED_EQUIVALENCE` | 3000 km sea ≡ 75–175 km land | the "cheaper across the Mediterranean than 75 miles inland" anchor (Jones/Gibbon), measured through the engine |
+| `CLIMATE_MONTHLY_RATIO clamps` | 0.05 / 3 | bounds on the observed month/annual precipitation ratio applied to the sim's annual moisture |
+| `DEGC_PER_TEMPERATURE_UNIT` | 100 | the sim temperature scale (t = 0.6 + °C/100), v1 convention |
+| `MATH_TAN_EIGHTH_PI` | tan(π/8) | atan range-reduction bound (dmath datan2 — rewritten in review: the ported series was artanh, not arctan) |
+| `ROUTING_UNREACHABLE_DAYS` | 1e300 | router sentinel, not physics |
 | `MAX_LAKE_AREA_KM2` | 370,000 | Caspian-class physical lake cap |
 | `ANCESTRY_HOP_FREE / OCEAN_EFOLD` | 80 / 40 | km; converted from v1 tile conventions |
 | `LAKE_MOISTURE_RADIUS_KM` | 60 | km; converted from v1 tile convention |

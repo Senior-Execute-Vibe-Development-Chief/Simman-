@@ -24,7 +24,9 @@ export async function createWasmRouter(
   landMask: Uint8Array,
   elevation: Float64Array,
   riverDirection: Uint8Array,
+  northSouthKm: number,
+  rowEastWestKm: Float64Array,
 ): Promise<WasmRouter> {
   await initializeRouter();
-  return new Router(width, height, landMask, elevation, riverDirection);
+  return new Router(width, height, landMask, elevation, riverDirection, northSouthKm, rowEastWestKm);
 }

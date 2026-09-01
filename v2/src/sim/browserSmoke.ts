@@ -6,7 +6,7 @@ import {
   M0_DEFAULT_SEED,
   M0_DETERMINISM_TICKS,
 } from "./constants";
-import { dcos, dexp, dln, dpow, dsin } from "./dmath";
+import { datan2, dcos, dexp, dln, dpow, dsin } from "./dmath";
 import { DMATH_GOLDENS } from "./dmath-goldens";
 import { runRoutingBatteries, type RoutingBatteryResult } from "./travel/battery";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
@@ -34,6 +34,7 @@ function evaluateGolden(name: string, args: readonly number[]): number {
   if (name === "dcos") return dcos(args[0] ?? 0);
   if (name === "dexp") return dexp(args[0] ?? 0);
   if (name === "dln") return dln(args[0] ?? 0);
+  if (name === "datan2") return datan2(args[0] ?? 0, args[1] ?? 0);
   return dpow(args[0] ?? 0, args[1] ?? 0);
 }
 

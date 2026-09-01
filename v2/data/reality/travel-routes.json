@@ -15,10 +15,10 @@
     "from": { "lat": 41.9028, "lon": 12.4964 },
     "to": { "lat": 51.5074, "lon": -0.1278 },
     "month": 5,
-    "modes": ["foot", "pack"],
-    "capabilities": ["packAnimals"],
-    "expectedDays": 50,
-    "source": "ORBIS, Stanford Digital Forma Urbis / route-model reconstruction",
+    "modes": ["foot", "pack", "coastal"],
+    "capabilities": ["packAnimals", "boats"],
+    "expectedDays": 27,
+    "source": "ORBIS route-model, fastest summer Rome→Londinium ≈27 days; the journey crosses the Channel by boat (Britain is an island — a land-only route is unreachable at any honest resolution)",
     "tolerance": 0.25
   },
   {
@@ -83,9 +83,10 @@
     "month": 5,
     "modes": ["foot", "pack"],
     "capabilities": ["packAnimals"],
-    "expectedDays": 8,
-    "source": "ORBIS-style route distance reconstruction",
-    "tolerance": 0.25
+    "expectedDays": 3,
+    "grids": ["target"],
+    "source": "~75 km overland; a 2-3 day journey (ORBIS gives ~2 days) — M1 review corrected an 8-day transcription; below dev-grid resolution (165 km cells), so target-only",
+    "tolerance": 0.34
   },
   {
     "id": "alexandria-rome-sea",
@@ -105,9 +106,9 @@
     "month": 5,
     "modes": ["foot", "coastal", "open-sea"],
     "capabilities": ["boats", "navigation"],
-    "expectedDays": 25,
-    "source": "Indian Ocean sailing-season literature, route-model reconstruction",
-    "tolerance": 0.25
+    "expectedDays": 40,
+    "source": "Indian Ocean monsoon sailing literature: Calicut→Aden in June fights the SW monsoon — the slow, largely avoided passage (M1 review: the original 25-day figure belongs to the with-monsoon season)",
+    "tolerance": 0.3
   },
   {
     "id": "guangzhou-malacca",
@@ -136,10 +137,10 @@
     "from": { "lat": 51.5074, "lon": -0.1278 },
     "to": { "lat": 44.8378, "lon": -0.5792 },
     "month": 5,
-    "modes": ["foot", "coastal", "open-sea"],
-    "capabilities": ["boats", "navigation"],
+    "modes": ["foot", "coastal"],
+    "capabilities": ["boats"],
     "expectedDays": 12,
-    "source": "Atlantic coastal sailing-time literature, route-model reconstruction",
+    "source": "Atlantic coastal sailing-time literature (the medieval wine run hugged the coast around Brittany — coastal mode, no open-sea shortcut across Biscay)",
     "tolerance": 0.25
   },
   {
@@ -149,9 +150,9 @@
     "month": 10,
     "modes": ["foot", "coastal", "open-sea"],
     "capabilities": ["boats", "navigation"],
-    "expectedDays": 32,
-    "source": "Indian Ocean sailing-season literature, route-model reconstruction",
-    "tolerance": 0.25
+    "expectedDays": 25,
+    "source": "Indian Ocean monsoon sailing literature: Calicut→Aden in November rides the NE monsoon — the classic ~3-4 week with-wind passage",
+    "tolerance": 0.3
   },
   {
     "id": "rome-alexandria-winter",

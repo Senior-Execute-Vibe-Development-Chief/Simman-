@@ -33,6 +33,7 @@ window.setInterval(() => worker.postMessage({ type: "tick", steps: 1 }), 1000);
 month.max = String(MONTHS_PER_YEAR - 1);
 month.value = "0";
 let startCell: number | undefined;
+let lastPath: readonly number[] = [];
 
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
@@ -67,6 +68,21 @@ function draw(): void {
     context.fillStyle = `rgb(${red} ${green} ${blue})`;
     context.fillRect(x * scaleX, y * scaleY, scaleX + 1, scaleY + 1);
   }
+  if (lastPath.length > 1) {
+    context.strokeStyle = "#ffd166";
+    context.lineWidth = 2;
+    context.beginPath();
+    for (let index = 0; index < lastPath.length; index++) {
+      const cell = lastPath[index] ?? 0;
+      const cellY = Math.floor(cell / substrate.width);
+      const cellX = cell - cellY * substrate.width;
+      const px = (cellX + 0.5) * scaleX;
+      const py = (cellY + 0.5) * scaleY;
+      if (index === 0) context.moveTo(px, py);
+      else context.lineTo(px, py);
+    }
+    context.stroke();
+  }
   if (startCell !== undefined) {
     const y = Math.floor(startCell / substrate.width);
     const x = startCell - y * substrate.width;
@@ -99,7 +115,9 @@ async function queryRoute(start: number, goal: number): Promise<void> {
     capabilities: capabilities(),
   };
   const result: TravelRoute = travel.query(start, goal, metric);
-  route.textContent = Number.isFinite(result.days)
+  const reachable = Number.isFinite(result.days) && result.days < 1e300;
+  lastPath = reachable ? result.path : [];
+  route.textContent = reachable
     ? `Route: ${result.days.toFixed(1)} days · ${result.path.length} cells · ${travel.cachedMetricCount} cached metric(s)`
     : "No route under the selected capabilities.";
   draw();

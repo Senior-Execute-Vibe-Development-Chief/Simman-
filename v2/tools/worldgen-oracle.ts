@@ -9,7 +9,19 @@ import { printProvenance } from "./lib/provenance";
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const SEED = 42042;
 const SAMPLE_COUNT = 1024;
-const SWAPPED_FIELD_TOLERANCE = 2e-6;
+// Tolerance for fields downstream of a dmath swap. These are Float32 fields
+// produced by ITERATIVE solvers, so a handful of f64-intermediate ULP
+// differences accumulate to ~1e-7 absolute (measured: annualMoisture max
+// |Δ| 1.8e-7 at target). With the scale floor below this bar bounds the
+// absolute error at 5e-7 on small-valued cells and 5e-4 relative on
+// full-scale ones — far below any consumer threshold, while a genuinely
+// broken function (the M1 datan2 bug was order 0.4) still fails by orders
+// of magnitude.
+const SWAPPED_FIELD_TOLERANCE = 5e-4;
+// Error metric floor: relative error above this scale, absolute below it —
+// a desert cell holding 1e-9 moisture must not turn a 1e-7 absolute
+// difference into a "huge" relative one (M1 review).
+const FIELD_SCALE_FLOOR = 1e-3;
 const EXACT_FIELDS = new Set([
   "elevation",
   "relief",
@@ -19,11 +31,14 @@ const EXACT_FIELDS = new Set([
   "riverDirection",
   "lake",
 ]);
+// Fields the M1 port deliberately changed (km-converted radii, the v2
+// baseEdgeCost boundary) — reported but not asserted. annualMoisture is NOT
+// exempt: it is dmath-swapped, so the tolerance assert below must stay live
+// (M1 review: listing it here silently killed that assert).
 const CLEANUP_FIELDS = new Set([
   "soil",
   "wildCropSuitability",
   "crossingCost",
-  "annualMoisture",
   "biome",
   "resource.timber",
   "resource.salt",
@@ -162,7 +177,7 @@ function compareField(name: string, actual: FieldSummary, expected: FieldSummary
   for (let index = 0; index < Math.min(actual.sample.length, expected.sample.length); index++) {
     const error = Math.abs((actual.sample[index] ?? 0) - (expected.sample[index] ?? 0));
     maxSampleError = Math.max(maxSampleError, error);
-    maxRelativeError = Math.max(error / Math.max(Math.abs(expected.sample[index] ?? 0), 1e-12), maxRelativeError);
+    maxRelativeError = Math.max(error / Math.max(Math.abs(expected.sample[index] ?? 0), FIELD_SCALE_FLOOR), maxRelativeError);
   }
   const status = maxSampleError === 0
     ? "exact"

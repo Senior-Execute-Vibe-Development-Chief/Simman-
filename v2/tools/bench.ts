@@ -14,6 +14,7 @@ interface BenchRow {
   readonly customizeMilliseconds: number;
   readonly queryMilliseconds: number;
   readonly distanceMapMilliseconds: number;
+  readonly tickMilliseconds: number;
   readonly provenance: ReturnType<typeof provenance>;
 }
 
@@ -45,7 +46,9 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
   engine.distanceMap([start], metric);
   const distanceMapMilliseconds = performance.now() - distanceMapStart;
 
+  const tickStart = performance.now();
   runSteps(world, BENCH_TICKS);
+  const tickMilliseconds = (performance.now() - tickStart) / BENCH_TICKS;
   return {
     grid,
     substrateMilliseconds,
@@ -53,6 +56,7 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     customizeMilliseconds,
     queryMilliseconds,
     distanceMapMilliseconds,
+    tickMilliseconds,
     provenance: provenance(world),
   };
 }
@@ -68,6 +72,7 @@ if (process.argv.includes("--check")) {
     "customizeMilliseconds",
     "queryMilliseconds",
     "distanceMapMilliseconds",
+    "tickMilliseconds",
   ] as const;
   for (const row of rows) {
     const baseline = baselines[row.grid];

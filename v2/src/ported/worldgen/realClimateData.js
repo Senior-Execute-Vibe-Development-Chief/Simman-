@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/realClimateData.js; deviations: dataset import paths point at v2/data/reality; data injection remains caller-owned.
+ * source: src/realClimateData.js; deviations: dataset import paths point at v2/data/reality; data injection remains caller-owned; adds sampleMonthlyClimate (M1 review) so the substrate can carry the observed MONTHLY fields instead of re-synthesizing seasonality from annual means.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 // ── Real Climate Data Loader ──
@@ -173,6 +173,63 @@ function deriveGrids() {
   }
   derived = { P, T, D, S, A, WF, LAT, LON, NLAT, NLON };
   return derived;
+}
+
+/**
+ * Sample the observed MONTHLY climatology onto a W×H map grid (M1 review
+ * addition). Returns, per cell × month: 2 m air temperature in °C and the
+ * month's precipitation as a RATIO of the cell's own annual monthly mean
+ * (so multiplying the sim's annual moisture by it preserves the annual
+ * total while carrying the observed seasonal pattern — the monsoon
+ * included). Bilinear on the Gaussian grid, same dateline offset as
+ * fillRealClimate. Anomalies, not absolutes: the sim's own annual fields
+ * (with their lapse/orography detail) stay authoritative.
+ * @returns {{tempC: Float32Array, precipRatio: Float32Array}|null}
+ */
+export function sampleMonthlyClimate(W, H) {
+  if (!isRealClimateAvailable()) return null;
+  const LAT = precip.lat, NLAT = LAT.length, NLON = precip.lon.length;
+  const jIdx = new Int32Array(H), jFrac = new Float32Array(H);
+  for (let y = 0; y < H; y++) {
+    const lat = 90 - (y + 0.5) / H * 180;
+    let j = 0;
+    while (j < NLAT - 2 && LAT[j + 1] > lat) j++;
+    jIdx[y] = j;
+    const span = LAT[j] - LAT[j + 1];
+    jFrac[y] = span !== 0 ? Math.max(0, Math.min(1, (LAT[j] - lat) / span)) : 0;
+  }
+  const iIdx = new Int32Array(W), iFrac = new Float32Array(W);
+  const dLon = 360 / NLON;
+  for (let x = 0; x < W; x++) {
+    const lon = (((x + 0.5) / W * 360 + 180) % 360 + 360) % 360;
+    const f = lon / dLon, i0 = Math.floor(f);
+    iIdx[x] = i0 % NLON;
+    iFrac[x] = f - i0;
+  }
+  const sampMonth = (months, m, y, x) => {
+    const j = jIdx[y], jf = jFrac[y], i0 = iIdx[x], i1 = (i0 + 1) % NLON, xf = iFrac[x];
+    const row0 = months[m][j], row1 = months[m][j + 1];
+    const a = row0[i0] * (1 - xf) + row0[i1] * xf;
+    const b = row1[i0] * (1 - xf) + row1[i1] * xf;
+    return a * (1 - jf) + b * jf;
+  };
+  const tempC = new Float32Array(W * H * 12);
+  const precipRatio = new Float32Array(W * H * 12);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const cell = y * W + x;
+      let pAnnual = 0;
+      for (let m = 0; m < 12; m++) pAnnual += sampMonth(precip.months, m, y, x);
+      pAnnual /= 12;
+      for (let m = 0; m < 12; m++) {
+        tempC[cell * 12 + m] = sampMonth(airtemp.months, m, y, x);
+        precipRatio[cell * 12 + m] = pAnnual > 1e-6
+          ? sampMonth(precip.months, m, y, x) / pAnnual
+          : 1;
+      }
+    }
+  }
+  return { tempC, precipRatio };
 }
 
 /**

@@ -3,6 +3,8 @@ import { createWasmRouter, type WasmRouter } from "../router";
 import type { Substrate } from "../substrate";
 import {
   buildCostField,
+  northSouthKm,
+  rowEastWestKm,
   type CostField,
   type TravelMetric,
   type TravelMode,
@@ -42,9 +44,28 @@ export class TravelEngine {
       substrate.landMask,
       Float64Array.from(substrate.elevation),
       substrate.rivers.direction,
+      northSouthKm(substrate),
+      rowEastWestKm(substrate),
     );
     router.preprocess();
     return new TravelEngine(substrate, router);
+  }
+
+  private applyField(field: CostField): void {
+    if (!this.router.customize(
+      field.modeCostPerKm,
+      field.modeMask,
+      field.windU,
+      field.windV,
+      field.transferDays,
+      field.slopeFactor,
+      field.riverDownstreamFactor,
+      field.riverUpstreamFactor,
+      field.windGain,
+      field.windRefMs,
+    )) {
+      throw new Error("WASM router rejected the customized metric dimensions.");
+    }
   }
 
   customize(metric: TravelMetric): void {
@@ -53,31 +74,15 @@ export class TravelEngine {
     let field = this.cache.get(key);
     if (!field) {
       field = buildCostField(this.substrate, metric);
-      if (!this.router.customize(
-        field.modeCosts,
-        field.modeMask,
-        field.transferDays,
-        field.slopeFactor,
-        field.riverDownstreamFactor,
-        field.riverUpstreamFactor,
-      )) {
-        throw new Error("WASM router rejected the customized metric dimensions.");
-      }
+      this.applyField(field);
       this.cache.set(key, field);
       while (this.cache.size > TRAVEL_CACHE_LIMIT) {
         const oldest = this.cache.keys().next().value;
         if (oldest === undefined) break;
         this.cache.delete(oldest);
       }
-    } else if (!this.router.customize(
-      field.modeCosts,
-      field.modeMask,
-      field.transferDays,
-      field.slopeFactor,
-      field.riverDownstreamFactor,
-      field.riverUpstreamFactor,
-    )) {
-      throw new Error("WASM router rejected a cached metric.");
+    } else {
+      this.applyField(field);
     }
     this.activeKey = key;
   }

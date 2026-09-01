@@ -1,5 +1,9 @@
 export function provideRealClimateData(precipitation: unknown, airTemperature: unknown): void;
 export function isRealClimateAvailable(): boolean;
+export function sampleMonthlyClimate(
+  width: number,
+  height: number,
+): { tempC: Float32Array; precipRatio: Float32Array } | null;
 export function fillRealClimate(
   width: number,
   height: number,

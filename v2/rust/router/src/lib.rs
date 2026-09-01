@@ -1,9 +1,15 @@
 use wasm_bindgen::prelude::*;
 
 const MODE_COUNT: usize = 6;
-const DIAGONAL_FACTOR: f64 = 1.4142135623730951;
 const INFINITY: f64 = 1.0e300;
 const RIVER_MODE: usize = 3;
+const COASTAL_MODE: usize = 4;
+
+// The eight neighbors in the D8 rose shared with riverGen's flowDir
+// (E=0, SE=1, S=2, SW=3, W=4, NW=5, N=6, NE=7): opposite = (d + 4) % 8.
+// dy = +1 is SOUTH (y grows downward on the grid).
+const D8_DX: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
+const D8_DY: [isize; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
 
 #[derive(Clone, Copy)]
 struct HeapEntry {
@@ -80,8 +86,20 @@ pub struct Router {
     land: Vec<u8>,
     elevation: Vec<f64>,
     river_direction: Vec<u8>,
+    // Real edge lengths: one north–south extent, one east–west extent per
+    // row (cos-latitude). Diagonals use the hypotenuse of the two;
+    // row_diagonal_km[y] spans rows y and y+1, with its unit-vector
+    // components alongside so the hot loop never takes a square root.
+    north_south_km: f64,
+    row_east_west_km: Vec<f64>,
+    row_diagonal_km: Vec<f64>,
+    row_diagonal_ew_frac: Vec<f64>,
+    row_diagonal_ns_frac: Vec<f64>,
     mode_mask: Vec<u8>,
-    costs: Vec<f64>,
+    // Days per km, cell × mode. The engine multiplies by true edge length.
+    costs_per_km: Vec<f64>,
+    wind_u: Vec<f64>,
+    wind_v: Vec<f64>,
     partition: Vec<u32>,
     distances: Vec<f64>,
     previous: Vec<i32>,
@@ -91,6 +109,8 @@ pub struct Router {
     slope_factor: f64,
     river_downstream_factor: f64,
     river_upstream_factor: f64,
+    wind_gain: f64,
+    wind_ref_ms: f64,
     preprocessed: bool,
     customized: bool,
 }
@@ -104,6 +124,8 @@ impl Router {
         land: &[u8],
         elevation: &[f64],
         river_direction: &[u8],
+        north_south_km: f64,
+        row_east_west_km: &[f64],
     ) -> Router {
         let cells = width.saturating_mul(height);
         let mut land_copy = vec![0; cells];
@@ -116,6 +138,22 @@ impl Router {
         let river_direction_len = river_direction.len().min(cells);
         river_direction_copy[..river_direction_len]
             .copy_from_slice(&river_direction[..river_direction_len]);
+        let mut row_km = vec![0.0; height];
+        let row_len = row_east_west_km.len().min(height);
+        row_km[..row_len].copy_from_slice(&row_east_west_km[..row_len]);
+        let diag_rows = height.saturating_sub(1);
+        let mut row_diagonal_km = vec![0.0; diag_rows];
+        let mut row_diagonal_ew_frac = vec![0.0; diag_rows];
+        let mut row_diagonal_ns_frac = vec![0.0; diag_rows];
+        for y in 0..diag_rows {
+            let ew = (row_km[y] + row_km[y + 1]) * 0.5;
+            let diagonal = (ew * ew + north_south_km * north_south_km).sqrt();
+            row_diagonal_km[y] = diagonal;
+            if diagonal > 0.0 {
+                row_diagonal_ew_frac[y] = ew / diagonal;
+                row_diagonal_ns_frac[y] = north_south_km / diagonal;
+            }
+        }
         let nodes = cells.saturating_mul(MODE_COUNT);
         Router {
             width,
@@ -123,8 +161,15 @@ impl Router {
             land: land_copy,
             elevation: elevation_copy,
             river_direction: river_direction_copy,
+            north_south_km,
+            row_east_west_km: row_km,
+            row_diagonal_km,
+            row_diagonal_ew_frac,
+            row_diagonal_ns_frac,
             mode_mask: vec![0; cells],
-            costs: vec![INFINITY; nodes],
+            costs_per_km: vec![INFINITY; nodes],
+            wind_u: vec![0.0; cells],
+            wind_v: vec![0.0; cells],
             partition: vec![0; cells],
             distances: vec![INFINITY; nodes],
             previous: vec![-1; nodes],
@@ -134,6 +179,8 @@ impl Router {
             slope_factor: 0.0,
             river_downstream_factor: 1.0,
             river_upstream_factor: 1.0,
+            wind_gain: 0.0,
+            wind_ref_ms: 1.0,
             preprocessed: false,
             customized: false,
         }
@@ -153,26 +200,40 @@ impl Router {
         coarse_width.saturating_mul(coarse_height) as u32
     }
 
-    /// Fill the current metric overlay. Costs are days per cardinal edge,
-    /// indexed as cell × mode; unavailable modes use a large sentinel.
+    /// Fill the current metric overlay. Costs are DAYS PER KM per cell ×
+    /// mode; wind is the month's near-surface field in m/s (u east, v north)
+    /// and drives the sail modes' per-edge alignment factor.
+    #[allow(clippy::too_many_arguments)]
     pub fn customize(
         &mut self,
-        costs: &[f64],
+        costs_per_km: &[f64],
         mode_mask: &[u8],
+        wind_u: &[f64],
+        wind_v: &[f64],
         transfer_days: f64,
         slope_factor: f64,
         river_downstream_factor: f64,
         river_upstream_factor: f64,
+        wind_gain: f64,
+        wind_ref_ms: f64,
     ) -> bool {
-        if costs.len() != self.costs.len() || mode_mask.len() != self.mode_mask.len() {
+        if costs_per_km.len() != self.costs_per_km.len()
+            || mode_mask.len() != self.mode_mask.len()
+            || wind_u.len() != self.wind_u.len()
+            || wind_v.len() != self.wind_v.len()
+        {
             return false;
         }
-        self.costs.copy_from_slice(costs);
+        self.costs_per_km.copy_from_slice(costs_per_km);
         self.mode_mask.copy_from_slice(mode_mask);
+        self.wind_u.copy_from_slice(wind_u);
+        self.wind_v.copy_from_slice(wind_v);
         self.transfer_days = transfer_days;
         self.slope_factor = slope_factor;
         self.river_downstream_factor = river_downstream_factor;
         self.river_upstream_factor = river_upstream_factor;
+        self.wind_gain = wind_gain;
+        self.wind_ref_ms = if wind_ref_ms > 0.0 { wind_ref_ms } else { 1.0 };
         self.customized = true;
         true
     }
@@ -291,70 +352,40 @@ impl Router {
     fn relax_neighbors(&mut self, cell: usize, mode: usize, node: usize) {
         let y = cell / self.width;
         let x = cell % self.width;
-        let neighbors = [
-            (
-                if x == 0 { self.width - 1 } else { x - 1 },
-                Some(y),
-                1.0,
-                4usize,
-            ),
-            (
-                if x + 1 == self.width { 0 } else { x + 1 },
-                Some(y),
-                1.0,
-                0usize,
-            ),
-            (x, y.checked_sub(1), 1.0, 6usize),
-            (
-                x,
-                if y + 1 < self.height {
-                    Some(y + 1)
-                } else {
-                    None
-                },
-                1.0,
-                2usize,
-            ),
-            (
-                if x == 0 { self.width - 1 } else { x - 1 },
-                y.checked_sub(1),
-                DIAGONAL_FACTOR,
-                5usize,
-            ),
-            (
-                if x + 1 == self.width { 0 } else { x + 1 },
-                y.checked_sub(1),
-                DIAGONAL_FACTOR,
-                7usize,
-            ),
-            (
-                if x == 0 { self.width - 1 } else { x - 1 },
-                if y + 1 < self.height {
-                    Some(y + 1)
-                } else {
-                    None
-                },
-                DIAGONAL_FACTOR,
-                3usize,
-            ),
-            (
-                if x + 1 == self.width { 0 } else { x + 1 },
-                if y + 1 < self.height {
-                    Some(y + 1)
-                } else {
-                    None
-                },
-                DIAGONAL_FACTOR,
-                1usize,
-            ),
-        ];
-        for (nx, ny, factor, direction) in neighbors {
-            let Some(ny) = ny else { continue };
+        for direction in 0..8usize {
+            let dx = D8_DX[direction];
+            let dy = D8_DY[direction];
+            let ny = y as isize + dy;
+            if ny < 0 || ny >= self.height as isize {
+                continue;
+            }
+            let ny = ny as usize;
+            let nx = ((x as isize + dx).rem_euclid(self.width as isize)) as usize;
             let next_cell = ny * self.width + nx;
             let next_node = next_cell * MODE_COUNT + mode;
             if self.mode_mask[next_cell] & (1 << mode) == 0 {
                 continue;
             }
+            // True edge length: EW edges shrink with latitude, diagonals are
+            // the precomputed hypotenuse of the two axis extents.
+            let diag_row = y.min(ny);
+            let (edge_km, unit_east, unit_north) = if dx == 0 {
+                (self.north_south_km, 0.0, -(dy as f64))
+            } else if dy == 0 {
+                (self.row_east_west_km[y], dx as f64, 0.0)
+            } else {
+                (
+                    self.row_diagonal_km[diag_row],
+                    dx as f64 * self.row_diagonal_ew_frac[diag_row],
+                    -(dy as f64) * self.row_diagonal_ns_frac[diag_row],
+                )
+            };
+            if edge_km <= 0.0 {
+                continue;
+            }
+            // Ascent term, Naismith-style: climbing costs extra days in
+            // proportion to the height gained, independent of the horizontal
+            // grid — so total climb telescopes correctly across resolutions.
             let slope = if mode < RIVER_MODE {
                 (self.elevation[next_cell] - self.elevation[cell]).abs() * self.slope_factor
             } else {
@@ -373,8 +404,21 @@ impl Router {
             } else {
                 1.0
             };
-            let edge =
-                ((self.costs[node] + self.costs[next_node]) * 0.5 + slope) * factor * river_factor;
+            // The monsoon mechanism: sail modes read the month's wind. A
+            // following wind (alignment +1 at the reference speed) divides
+            // time by (1 + gain); a headwind multiplies it symmetrically.
+            // dy = +1 is south, hence the negated north component above.
+            let wind_factor = if mode >= COASTAL_MODE && self.wind_gain > 0.0 {
+                let wu = (self.wind_u[cell] + self.wind_u[next_cell]) * 0.5;
+                let wv = (self.wind_v[cell] + self.wind_v[next_cell]) * 0.5;
+                let alignment =
+                    ((wu * unit_east + wv * unit_north) / self.wind_ref_ms).clamp(-1.0, 1.0);
+                1.0 / (1.0 + self.wind_gain * alignment)
+            } else {
+                1.0
+            };
+            let cost_per_km = (self.costs_per_km[node] + self.costs_per_km[next_node]) * 0.5;
+            let edge = (cost_per_km * edge_km + slope) * river_factor * wind_factor;
             self.relax(node, next_node, edge);
         }
     }

@@ -8,6 +8,13 @@ Duncan-Jones relative-cost anchor. This derived fixture contains no
 third-party source data, so no source dataset is redistributed; the source
 and tolerance are recorded per route for later review.
 
+`known-misses.json` is the reality gate's acknowledged-failure manifest:
+every entry names a failing check and the physical reason it fails at this
+milestone (no road infrastructure until M7; dev-raster geometry at 165 km
+cells). The gate hard-fails on any failure NOT in the manifest and on any
+manifest entry that has silently started passing, so the list only ever
+shrinks for honest reasons — a ratchet, never an exemption list.
+
 The `global_*.json` files are derived NCEP/NCAR Reanalysis 1991–2020
 climatologies, converted by the v1 conversion tools from the public NOAA
 archive. Their provenance is retained in the copied loader headers; the

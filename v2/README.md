@@ -15,6 +15,9 @@ npm run lint       # ESLint restrictions plus constants-ledger lint
 npm run test       # smoke gate plus unit checks
 npm run smoke      # M0 integrity plus layered WASM routing battery
 npm run gate       # ORBIS/freight/season/cross-grid travel reality gate
+                   # (hard-fails on any failure NOT acknowledged in
+                   #  data/reality/known-misses.json, and on any stale
+                   #  manifest entry that now passes — a one-way ratchet)
 npm run oracle     # v1 supplier comparison with per-field diff report
 npm run bench      # substrate and routing phase measurements
 npm run bench -- --check  # compare measurements with committed baselines

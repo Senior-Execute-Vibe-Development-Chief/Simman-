@@ -11,6 +11,7 @@ import {
   ROUTING_FIXTURE_TARGET_WIDTH,
   ROUTING_FIXTURE_TEMPERATURE,
   ROUTING_FIXTURE_WATER_ELEVATION,
+  ROUTING_FIXTURE_WIND_MS,
   TRAVEL_RIVER_TEST_MAGNITUDE,
   UINT8_SENTINEL,
 } from "../constants";
@@ -37,6 +38,11 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
   const flowAccum = new Float32Array(N);
   const lake = new Int32Array(N);
   lake.fill(MATH_NEGATIVE_ONE);
+  // A uniform eastward breeze: sail modes must come out direction-asymmetric
+  // (the monsoon mechanism), while land modes stay exactly symmetric.
+  const windU = new Float32Array(N * MONTHS_PER_YEAR);
+  windU.fill(ROUTING_FIXTURE_WIND_MS);
+  const windV = new Float32Array(N * MONTHS_PER_YEAR);
 
   for (let cell = 0; cell < N; cell++) {
     const y = Math.floor(cell / width);
@@ -68,6 +74,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     elevation,
     landMask,
     climate,
+    wind: { u: windU, v: windV },
     temperature,
     moisture,
     rivers: { magnitude, direction, flowAccum, lake },
@@ -188,7 +195,14 @@ export async function runRoutingBattery(grid: GridPreset): Promise<RoutingBatter
   if (ac > ab + bc) throw new Error(`Triangle inequality failed on ${grid}.`);
   const ca = engine.query(last, first, metricFor("foot", 0)).days;
   if (Math.abs(ac - ca) > ROUTING_SYMMETRY_EPSILON) throw new Error(`Symmetry failed on ${grid}.`);
-  hash = hash32(hash, riverForward.days, riverReverse.days, ab, bc, ac, ca);
+  // Adjacent cells, so the wrap-around cannot reverse the heading: with the
+  // fixture's eastward breeze, the one-edge downwind hop must beat upwind.
+  const sailEast = engine.query(1, 2, metricFor("open-sea", 0)).days;
+  const sailWest = engine.query(2, 1, metricFor("open-sea", 0)).days;
+  if (!(sailEast < sailWest)) {
+    throw new Error(`Wind asymmetry failed on ${grid}: downwind must beat upwind.`);
+  }
+  hash = hash32(hash, riverForward.days, riverReverse.days, ab, bc, ac, ca, sailEast, sailWest);
   return { grid, queries, hash };
 }
 
