@@ -502,3 +502,48 @@ Review corrections to the M1 build (all validated before merge):
     freeze). Flood regime (month-of-peak, amplitude, variance — the
     Nile-gentle vs Tigris-violent asymmetry) is an M3 read on the
     seasonal-flow output; no state ships for it now.
+
+24. **Audit: do the lens's orange/red rapids sit where history's rapids
+    were? (owner skepticism, 2026-09-01: "moderately sceptical about our
+    yellow and red areas").** Probed the shipped grid against 32
+    real-coordinate anchors: 23 historical barriers (all six Nile
+    cataracts, Livingstone/Boyoma/Victoria/Cahora Bassa/Augrabies/
+    Guaíra/Celilo falls, the Bussa/Dnieper/Lachine/Iron Gates/Three
+    Gorges hard stretches, St. Anthony head-of-navigation…) and 9
+    famously navigable controls (Nile below Aswan, middle Congo, lower
+    Mississippi, Amazon, Ganges, middle Volga/Danube…). Result: 27/32
+    line up — every great falls reads RED at the right coordinates,
+    cataracts 1–5 read orange/red exactly at their sites, and all
+    controls except two read clean green. The five exceptions split
+    into three honest classes:
+    (a) **Narrow-gorge wall contamination** (the real failure class):
+    where a NAVIGABLE river runs a gorge whose floor is narrower than
+    the 1.8 km ETOPO sampling, the baked floor profile walks the gorge
+    WALLS and inflates: the Middle Rhine (Bingen–Koblenz) bakes 2.25
+    RED at ~250–310 m sample elevations where the water surface is
+    60–80 m (real water gradient ~0.3 — history's greatest river
+    artery severed); the Three Gorges bake 7.69 RED (trackers hauled
+    junks up it for two millennia — orange, not red); Iron Gates 2.25
+    RED (pilots ran it — borderline, it WAS a choke). Livingstone/
+    Victoria stay correctly red because there the WALLS descend with
+    the falls — the candidate mechanism fix is therefore a monotone
+    (downstream-cummin) floor envelope on the FINE bake path, which
+    keeps every true drop and clips wall bounce, plus an
+    endpoint-conservation cap (measured drop along a reach ≤ upstream
+    minus mouth elevation). NOT implemented — recorded for a follow-up
+    ruling.
+    (b) **A DEM seam artifact**: the Ruki/Busira swamp tributary
+    (~0.2S, 18.5–19.1E, the flattest basin on Earth) bakes 7.50 RED —
+    an ETOPO void-fill/canopy seam, harmless to routing (mag-2 swamp)
+    but a lie on the lens; the conservation cap in (a) would clip it.
+    (c) **Below-bar misses that history forgives**: Blue Nile falls
+    and Rhine Falls sit on sim mag-1 channels (grey, sub-navigable) —
+    both stretches were never navigation routes; and Sabaloka (6th
+    cataract, the mildest — steamers passed at high water) reads green
+    0.25 because a ~10 km gorge dilutes inside the steepest-28 km
+    measure.
+    Net verdict: the barrier GEOGRAPHY is real (the map rediscovers
+    Aswan, Inga, Victoria Falls, Celilo, the Dnieper portage from data
+    + mechanism); the failure mode is one-sided — false REDs on
+    gentle-water gorges, no false greens on true falls except
+    borderline Sabaloka.
