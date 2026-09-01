@@ -186,7 +186,27 @@ Review corrections to the M1 build (all validated before merge):
     and touches river only on the plateau flats). Lakes stay navigable
     by definition. No gate route uses river mode, manifest unchanged.
 
-12. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+12. **The felucca physics (owner question, 2026-09-01).** Per-reach the
+    model now holds direction (used: 0.6×/1.4× down/upstream), gradient
+    (used: the 1.5 m/km navigability bar), and monthly wind — but wind
+    only acted at sea, so the Nile's famous two-way highway (drift north
+    on the current, SAIL south on the etesian northerlies) could not
+    happen. Fixed: the wind-alignment factor now applies to river craft
+    too. Measured at target, July: wind over the valley −2.7 m/s
+    (northerly, from the NCEP data); Cairo→Aswan upstream 22.8 days at
+    88% river, Aswan→Cairo downstream 13.8 days — both directions
+    viable, downstream faster, inside the historical felucca envelope.
+    STILL CRUDE, recorded for the food/economy milestones: the
+    down/upstream factors are FLAT — current SPEED does not yet scale
+    with the gradient we now compute (the lazy lower Nile and a swift
+    1.4 m/km reach get the same asymmetry). The honest refinement is a
+    Manning-class current-from-gradient model feeding directional
+    speeds (and emergent one-way rivers where current beats boat
+    speed); it needs care with instantaneous-vs-daily speed units, so
+    it lands with real freight consumers rather than as a rushed
+    constant.
+
+13. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal

@@ -3,7 +3,6 @@ use wasm_bindgen::prelude::*;
 const MODE_COUNT: usize = 6;
 const INFINITY: f64 = 1.0e300;
 const RIVER_MODE: usize = 3;
-const COASTAL_MODE: usize = 4;
 
 // The eight neighbors in the D8 rose shared with riverGen's flowDir
 // (E=0, SE=1, S=2, SW=3, W=4, NW=5, N=6, NE=7): opposite = (d + 4) % 8.
@@ -426,11 +425,14 @@ impl Router {
             } else {
                 1.0
             };
-            // The monsoon mechanism: sail modes read the month's wind. A
-            // following wind (alignment +1 at the reference speed) divides
-            // time by (1 + gain); a headwind multiplies it symmetrically.
+            // The sail mechanism: river craft and sea modes read the month's
+            // wind. A following wind (alignment +1 at the reference speed)
+            // divides time by (1 + gain); a headwind multiplies it
+            // symmetrically. Rivers included is the felucca physics: on the
+            // Nile the current runs north while the etesian wind blows south,
+            // so the sail carries you upstream and the drift brings you back.
             // dy = +1 is south, hence the negated north component above.
-            let wind_factor = if mode >= COASTAL_MODE && self.wind_gain > 0.0 {
+            let wind_factor = if mode >= RIVER_MODE && self.wind_gain > 0.0 {
                 let wu = (self.wind_u[cell] + self.wind_u[next_cell]) * 0.5;
                 let wv = (self.wind_v[cell] + self.wind_v[next_cell]) * 0.5;
                 let alignment =
