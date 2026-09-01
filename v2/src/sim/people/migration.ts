@@ -1,6 +1,5 @@
 import {
   MATH_NEGATIVE_ONE,
-  MATH_THREE,
   MONTHS_PER_YEAR,
   PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR,
   PEOPLE_MIGRATION_MAX_SHARE,
@@ -9,35 +8,8 @@ import {
 import { fillMigrationDaysPerKm, migrationEdgeLengths } from "../travel/cost";
 import type { PeopleWorld } from "./types";
 
-const DX = [1, MATH_NEGATIVE_ONE, 0, 0] as const;
-const DY = [0, 0, 1, MATH_NEGATIVE_ONE] as const;
-
 function peopled(world: PeopleWorld, cell: number): boolean {
   return world._peopledMask[cell] === 1;
-}
-
-/**
- * Cached per-tick conductance: bit-identical to cost.ts migrationConductance
- * (same factor order), with days/km paid once per cell per tick and the
- * 4-neighbor edge lengths from per-row tables.
- */
-function conductance(world: PeopleWorld, from: number, to: number): number {
-  const fromY = Math.floor(from / world.width);
-  const toY = Math.floor(to / world.width);
-  const length = fromY === toY
-    ? world._migrationEdgeH[fromY] ?? 0
-    : world._migrationEdgeV;
-  const cost = (world._migrationDaysPerKm[to] ?? Number.POSITIVE_INFINITY) * length;
-  return Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0;
-}
-
-function neighbor(world: PeopleWorld, cell: number, direction: number): number {
-  const y = Math.floor(cell / world.width);
-  const x = cell - y * world.width;
-  const targetY = y + (DY[direction] ?? 0);
-  if (targetY < 0 || targetY >= world.height) return MATH_NEGATIVE_ONE;
-  return targetY * world.width
-    + ((x + (DX[direction] ?? 0) + world.width) % world.width);
 }
 
 function migrationShareForArea(area_: number): number {
@@ -75,33 +47,40 @@ function cohortShareOf(
   return flow * (sourceMass[source] ?? 0) / migrationSource;
 }
 
-function incomingFrom(
-  world: PeopleWorld,
-  source: number,
-  target: number,
-  month: number,
-  targetSpare: number,
-): number {
-  const amount = world._migrationOut[source] ?? 0;
-  const weight = world._migrationWeight[source] ?? 0;
-  if (amount <= 0 || weight <= 0 || targetSpare <= 0) return 0;
-  return amount * conductance(world, source, target) * targetSpare / weight;
-}
-
 /**
  * Capacity-gradient diffusion. The source scan records every outflow first;
  * the target scan then gathers the frozen records, making migration
  * order-independent and keeping the migration channel balanced.
+ *
+ * Hot-loop form (M2 review): neighbor indices and conductances are computed
+ * with row-local integer arithmetic — the same VALUES in the same
+ * accumulation ORDER as the original neighbor()/conductance() helpers (the
+ * world hash is byte-identical), without a Math.floor and modulo per edge
+ * visit. Days/km fields are cached per month; climate is periodic, so the
+ * cost model is paid twelve fills total.
  */
 export function migrate(world: PeopleWorld, month: number): number {
+  const width = world.width;
   if (world._migrationEdgeH === undefined || world._migrationEdgeH.length !== world.height) {
     const lengths = migrationEdgeLengths(world.substrate);
     world._migrationEdgeH = lengths.horizontal;
     world._migrationEdgeV = lengths.vertical;
   }
-  fillMigrationDaysPerKm(world.substrate, month, world._migrationDaysPerKm);
+  const monthIndex = ((month % MONTHS_PER_YEAR) + MONTHS_PER_YEAR) % MONTHS_PER_YEAR;
+  let days = world._migrationDaysPerKmByMonth[monthIndex];
+  if (!days) {
+    days = new Float64Array(world.N);
+    fillMigrationDaysPerKm(world.substrate, monthIndex, days);
+    world._migrationDaysPerKmByMonth[monthIndex] = days;
+  }
+  world._migrationDaysPerKm = days;
   fillMigrationShareRows(world);
-  const people = world.people;
+  const edgeH = world._migrationEdgeH;
+  const edgeV = world._migrationEdgeV;
+  const landMask = world.substrate.landMask;
+  const peopledMask = world._peopledMask;
+  const capField = world.capField;
+  const areas = world.cellAreaKm2;
   const next = world._peopleNext;
   const out = world._migrationOut;
   const weights = world._migrationWeight;
@@ -116,20 +95,53 @@ export function migrate(world: PeopleWorld, month: number): number {
   workingNext.set(world._workingMass);
   elderNext.set(world._eldersMass);
 
+  // Source scan, direction order E, W, S, N (the original DX/DY order).
   for (const cell of world._landCells) {
     const population = next[cell] ?? 0;
     if (population <= 0) continue;
-    const area = world.cellAreaKm2[cell] ?? 0;
+    const area = areas[cell] ?? 0;
     if (area <= 0) continue;
-    const share = world._migrationShareRow[Math.floor(cell / world.width)] ?? 0;
+    const y = (cell / width) | 0;
+    const x = cell - y * width;
+    const share = world._migrationShareRow[y] ?? 0;
+    const rowLength = edgeH[y] ?? 0;
     let sumWeight = 0;
-    for (let direction = 0; direction < DX.length; direction++) {
-      const target = neighbor(world, cell, direction);
-      if (target < 0 || !world.substrate.landMask[target] || !peopled(world, target)) continue;
-      const spare = Math.max(0, (world.capField[target] ?? 0) - (next[target] ?? 0))
-        * (world.cellAreaKm2[target] ?? 0);
-      if (spare <= 0) continue;
-      sumWeight += conductance(world, cell, target) * spare;
+
+    const east = y * width + (x + 1 === width ? 0 : x + 1);
+    if (landMask[east] && peopledMask[east] === 1) {
+      const spare = Math.max(0, (capField[east] ?? 0) - (next[east] ?? 0)) * (areas[east] ?? 0);
+      if (spare > 0) {
+        const cost = (days[east] ?? Number.POSITIVE_INFINITY) * rowLength;
+        sumWeight += (Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0) * spare;
+      }
+    }
+    const west = y * width + (x === 0 ? width - 1 : x - 1);
+    if (landMask[west] && peopledMask[west] === 1) {
+      const spare = Math.max(0, (capField[west] ?? 0) - (next[west] ?? 0)) * (areas[west] ?? 0);
+      if (spare > 0) {
+        const cost = (days[west] ?? Number.POSITIVE_INFINITY) * rowLength;
+        sumWeight += (Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0) * spare;
+      }
+    }
+    if (y + 1 < world.height) {
+      const south = cell + width;
+      if (landMask[south] && peopledMask[south] === 1) {
+        const spare = Math.max(0, (capField[south] ?? 0) - (next[south] ?? 0)) * (areas[south] ?? 0);
+        if (spare > 0) {
+          const cost = (days[south] ?? Number.POSITIVE_INFINITY) * edgeV;
+          sumWeight += (Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0) * spare;
+        }
+      }
+    }
+    if (y > 0) {
+      const north = cell - width;
+      if (landMask[north] && peopledMask[north] === 1) {
+        const spare = Math.max(0, (capField[north] ?? 0) - (next[north] ?? 0)) * (areas[north] ?? 0);
+        if (spare > 0) {
+          const cost = (days[north] ?? Number.POSITIVE_INFINITY) * edgeV;
+          sumWeight += (Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0) * spare;
+        }
+      }
     }
     if (sumWeight > 0) {
       out[cell] = population * area * share;
@@ -142,8 +154,8 @@ export function migrate(world: PeopleWorld, month: number): number {
     const amount = out[cell] ?? 0;
     if (amount <= 0) continue;
     total += amount;
-    next[cell] = Math.max(0, (next[cell] ?? 0) - amount / (world.cellAreaKm2[cell] ?? 1));
-    const densityMoved = amount / (world.cellAreaKm2[cell] ?? 1);
+    next[cell] = Math.max(0, (next[cell] ?? 0) - amount / (areas[cell] ?? 1));
+    const densityMoved = amount / (areas[cell] ?? 1);
     const population = migrationPopulation[cell] ?? 0;
     if (population > 0) {
       childNext[cell] = Math.max(
@@ -161,24 +173,58 @@ export function migrate(world: PeopleWorld, month: number): number {
     }
   }
 
+  // Gather, flow order N, S, W, E (the original explicit sequence). A source's
+  // per-edge conductance uses the SOURCE row's horizontal length — for
+  // horizontal edges the rows coincide, exactly as before.
   let receivedTotal = 0;
   for (const target of world._landCells) {
-    if (!peopled(world, target)) continue;
-    const targetArea = world.cellAreaKm2[target] ?? 0;
+    if (peopledMask[target] !== 1) continue;
+    const targetArea = areas[target] ?? 0;
     if (targetArea <= 0) continue;
     const targetSpare = Math.max(
       0,
-      (world.capField[target] ?? 0) - (migrationPopulation[target] ?? 0),
+      (capField[target] ?? 0) - (migrationPopulation[target] ?? 0),
     ) * targetArea;
     if (targetSpare <= 0) continue;
-    const north = neighbor(world, target, MATH_THREE);
-    const south = neighbor(world, target, 2);
-    const west = neighbor(world, target, 1);
-    const east = neighbor(world, target, 0);
-    const northFlow = north >= 0 ? incomingFrom(world, north, target, month, targetSpare) : 0;
-    const southFlow = south >= 0 ? incomingFrom(world, south, target, month, targetSpare) : 0;
-    const westFlow = west >= 0 ? incomingFrom(world, west, target, month, targetSpare) : 0;
-    const eastFlow = east >= 0 ? incomingFrom(world, east, target, month, targetSpare) : 0;
+    const y = (target / width) | 0;
+    const x = target - y * width;
+    const rowLength = edgeH[y] ?? 0;
+    const targetDays = days[target] ?? Number.POSITIVE_INFINITY;
+    const north = y > 0 ? target - width : MATH_NEGATIVE_ONE;
+    const south = y + 1 < world.height ? target + width : MATH_NEGATIVE_ONE;
+    const west = y * width + (x === 0 ? width - 1 : x - 1);
+    const east = y * width + (x + 1 === width ? 0 : x + 1);
+
+    const verticalCost = targetDays * edgeV;
+    const verticalConductance = Number.isFinite(verticalCost) && verticalCost >= 0
+      ? 1 / (1 + verticalCost) : 0;
+    const horizontalCost = targetDays * rowLength;
+    const horizontalConductance = Number.isFinite(horizontalCost) && horizontalCost >= 0
+      ? 1 / (1 + horizontalCost) : 0;
+    let northFlow = 0;
+    if (north >= 0) {
+      const amount = out[north] ?? 0;
+      const weight = weights[north] ?? 0;
+      if (amount > 0 && weight > 0) northFlow = amount * verticalConductance * targetSpare / weight;
+    }
+    let southFlow = 0;
+    if (south >= 0) {
+      const amount = out[south] ?? 0;
+      const weight = weights[south] ?? 0;
+      if (amount > 0 && weight > 0) southFlow = amount * verticalConductance * targetSpare / weight;
+    }
+    let westFlow = 0;
+    {
+      const amount = out[west] ?? 0;
+      const weight = weights[west] ?? 0;
+      if (amount > 0 && weight > 0) westFlow = amount * horizontalConductance * targetSpare / weight;
+    }
+    let eastFlow = 0;
+    {
+      const amount = out[east] ?? 0;
+      const weight = weights[east] ?? 0;
+      if (amount > 0 && weight > 0) eastFlow = amount * horizontalConductance * targetSpare / weight;
+    }
     let received = 0;
     received += northFlow;
     received += southFlow;
@@ -189,18 +235,18 @@ export function migrate(world: PeopleWorld, month: number): number {
     childNext[target] = (childNext[target] ?? 0)
       + (north >= 0 ? cohortShareOf(world, northFlow, north, world._childrenMass) : 0) / targetArea
       + (south >= 0 ? cohortShareOf(world, southFlow, south, world._childrenMass) : 0) / targetArea
-      + (west >= 0 ? cohortShareOf(world, westFlow, west, world._childrenMass) : 0) / targetArea
-      + (east >= 0 ? cohortShareOf(world, eastFlow, east, world._childrenMass) : 0) / targetArea;
+      + cohortShareOf(world, westFlow, west, world._childrenMass) / targetArea
+      + cohortShareOf(world, eastFlow, east, world._childrenMass) / targetArea;
     workingNext[target] = (workingNext[target] ?? 0)
       + (north >= 0 ? cohortShareOf(world, northFlow, north, world._workingMass) : 0) / targetArea
       + (south >= 0 ? cohortShareOf(world, southFlow, south, world._workingMass) : 0) / targetArea
-      + (west >= 0 ? cohortShareOf(world, westFlow, west, world._workingMass) : 0) / targetArea
-      + (east >= 0 ? cohortShareOf(world, eastFlow, east, world._workingMass) : 0) / targetArea;
+      + cohortShareOf(world, westFlow, west, world._workingMass) / targetArea
+      + cohortShareOf(world, eastFlow, east, world._workingMass) / targetArea;
     elderNext[target] = (elderNext[target] ?? 0)
       + (north >= 0 ? cohortShareOf(world, northFlow, north, world._eldersMass) : 0) / targetArea
       + (south >= 0 ? cohortShareOf(world, southFlow, south, world._eldersMass) : 0) / targetArea
-      + (west >= 0 ? cohortShareOf(world, westFlow, west, world._eldersMass) : 0) / targetArea
-      + (east >= 0 ? cohortShareOf(world, eastFlow, east, world._eldersMass) : 0) / targetArea;
+      + cohortShareOf(world, westFlow, west, world._eldersMass) / targetArea
+      + cohortShareOf(world, eastFlow, east, world._eldersMass) / targetArea;
   }
 
   // The gather uses the same frozen weights as the source scan. Deposit the
@@ -214,7 +260,7 @@ export function migrate(world: PeopleWorld, month: number): number {
       break;
     }
   }
-  const remainderArea = remainderCell >= 0 ? world.cellAreaKm2[remainderCell] ?? 0 : 0;
+  const remainderArea = remainderCell >= 0 ? areas[remainderCell] ?? 0 : 0;
   const remainderPopulation = remainderCell >= 0
     ? migrationPopulation[remainderCell] ?? 0 : 0;
   if (remainderCell >= 0 && remainderArea > 0) {
@@ -235,4 +281,3 @@ export function migrate(world: PeopleWorld, month: number): number {
 
   return total;
 }
-

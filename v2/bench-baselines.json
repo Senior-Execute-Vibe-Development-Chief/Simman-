@@ -5,7 +5,7 @@
     "customizeMilliseconds": 45,
     "queryMilliseconds": 95,
     "distanceMapMilliseconds": 75,
-    "tickMilliseconds": 27
+    "tickMilliseconds": 20
   },
   "target": {
     "substrateMilliseconds": 68000,
@@ -13,7 +13,7 @@
     "customizeMilliseconds": 2600,
     "queryMilliseconds": 3600,
     "distanceMapMilliseconds": 3800,
-    "tickMilliseconds": 640
+    "tickMilliseconds": 470
   },
-  "notes": "M2 review baseline (seed 42042, earth_sim). 10-tick averages on the review runner: dev ~20 ms (JIT-warmup dominated; 120-tick steady state ~6.5 ms), target ~479 ms after the hash-identical review optimization pass (pre-optimization: ~1564 ms on the same runner). Values carry headroom for runner variance; CI fails above 120% of these. The target-grid long-horizon run remains the recorded performance finding (QUESTIONS.md #30/#32) pending the banded/wasm kernel drop-in behind the same typed-array API."
+  "notes": "M2 review baseline (seed 42042, earth_sim). 10-tick cold averages on the review runner: dev ~14.5 ms, target ~361 ms; 24-tick warm steady state ~210 ms/tick at target after the second hash-identical optimization round (row-local edge math, per-month cost-field caches, static habitability LUTs; world hashes byte-equal to the pre-optimization tree at both grids). Values carry headroom for runner variance; CI fails above 120%. The target-grid long-horizon run remains the recorded performance finding (QUESTIONS.md #30/#32) pending the banded/wasm kernel drop-in."
 }

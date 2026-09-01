@@ -95,6 +95,8 @@ export function foragerCapacity(world: PeopleWorld, cell: number): number {
 export function fillStaticHabitability(world: PeopleWorld): void {
   for (let cell = 0; cell < world.N; cell++) {
     world._diseaseBurden[cell] = diseaseBurden(world, cell);
+    world._waterAccess[cell] = waterAccess(world, cell);
+    world._reliefMult[cell] = reliefMultiplier(world, cell);
     world._foragerCapacity[cell] = world.substrate.landMask[cell]
       ? foragerCapacity(world, cell)
       : 0;

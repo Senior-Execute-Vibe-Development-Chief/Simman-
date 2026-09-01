@@ -42,6 +42,11 @@ export interface PeopleWorld extends World {
   _migrationEdgeV: number;
   /** Per-cell foot days/km for the tick's month (migration conductance numerator). */
   _migrationDaysPerKm: Float64Array;
+  /** Lazy per-month days/km caches — climate is periodic, so 12 fills total. */
+  _migrationDaysPerKmByMonth: Array<Float64Array | undefined>;
+  /** Static water-access and relief multipliers (annual land properties). */
+  _waterAccess: Float64Array;
+  _reliefMult: Float64Array;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;
   _diseaseBurden: Float64Array;

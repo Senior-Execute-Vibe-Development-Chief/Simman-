@@ -338,24 +338,39 @@ export function stepTechnique(world: PeopleWorld): number {
   if (world._techniqueEdgeH === undefined || world._techniqueEdgeH.length !== world.height) {
     fillTechniqueEdgeLengths(world);
   }
+  const width = world.width;
+  const landMask = world.substrate.landMask;
+  const edgeH = world._techniqueEdgeH;
+  const edgeV = world._techniqueEdgeV;
   for (const cell of world._landCells) {
-    if (!peopled(world, cell)) continue;
-    const cellY = Math.floor(cell / world.width);
+    if (world._peopledMask[cell] !== 1) continue;
+    const y = (cell / width) | 0;
+    const x = cell - y * width;
     const current = technique[cell] ?? 0;
     let candidate = Math.max(current, next[cell] ?? 0);
+    // Direction order N, S, W, E — the original NEIGHBOR_DX/DY order — with
+    // row-local index math producing the same values as neighbor()/edgeKm.
     for (let direction = 0; direction < NEIGHBOR_DX.length; direction++) {
-      const source = neighbor(
-        world,
-        cell,
-        NEIGHBOR_DX[direction] ?? 0,
-        NEIGHBOR_DY[direction] ?? 0,
-      );
-      if (source < 0 || !world.substrate.landMask[source]) continue;
+      let source: number;
+      let distance: number;
+      if (direction === 0) {
+        if (y === 0) continue;
+        source = cell - width;
+        distance = edgeV;
+      } else if (direction === 1) {
+        if (y + 1 >= world.height) continue;
+        source = cell + width;
+        distance = edgeV;
+      } else if (direction === 2) {
+        source = y * width + (x === 0 ? width - 1 : x - 1);
+        distance = edgeH[y] ?? 0;
+      } else {
+        source = y * width + (x + 1 === width ? 0 : x + 1);
+        distance = edgeH[y] ?? 0;
+      }
+      if (!landMask[source]) continue;
       const sourceTechnique = technique[source] ?? 0;
       if (sourceTechnique <= current) continue;
-      const distance = (NEIGHBOR_DY[direction] ?? 0) === 0
-        ? world._techniqueEdgeH[Math.floor(source / world.width)] ?? 0
-        : world._techniqueEdgeV;
       const progress = Math.min(
         1,
         PEOPLE_TECHNIQUE_WAVE_KMPY / MONTHS_PER_YEAR / Math.max(1, distance),

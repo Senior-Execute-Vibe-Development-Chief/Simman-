@@ -98,6 +98,10 @@ try {
 } catch { peopleMisses = []; }
 const acknowledged = new Map(peopleMisses.map((miss) => [miss.id, miss.reason]));
 const failures: string[] = [];
+// Only checks the CURRENT arm actually concludes participate in the
+// stale-ratchet: the fast trajectory arm must not read the long-horizon
+// manifest rows as stale merely because it cannot measure them.
+const measured = new Set<string>();
 const findings: Record<string, unknown> = {};
 
 {
@@ -148,6 +152,7 @@ const findings: Record<string, unknown> = {};
     }
   }
   for (const point of curve) {
+    measured.add(`population:${point.year}`);
     if (!point.inBand) failures.push(`population:${point.year}`);
   }
   findings.curve = curve;
@@ -160,6 +165,7 @@ const findings: Record<string, unknown> = {};
   findings.arrivals = arrivals;
   if (longArm) {
     for (const arrival of arrivals) {
+      measured.add(`arrival:${arrival.id}`);
       if (!arrival.inWindow) failures.push(`arrival:${arrival.id}`);
     }
     // Density ordering at the -3000 checkpoint class boundaries, measured on
@@ -180,6 +186,7 @@ const findings: Record<string, unknown> = {};
     const rainfed = rainfedArea > 0 ? rainfedPeople / rainfedArea : 0;
     const forager = foragerArea > 0 ? foragerPeople / foragerArea : 0;
     findings.densityOrdering = { river, rainfed, forager };
+    measured.add("density-ordering");
     if (!(river > rainfed && rainfed > forager)) failures.push("density-ordering");
   } else {
     // Trajectory arm: at 3000 years the first hearths must have ignited and
@@ -187,12 +194,13 @@ const findings: Record<string, unknown> = {};
     let ignited = 0;
     for (const hearth of world.hearths) if (hearth.ignited) ignited++;
     findings.ignitedAt3000Years = ignited;
+    measured.add("no-hearth-ignition-by-3000y");
     if (ignited < 1) failures.push("no-hearth-ignition-by-3000y");
   }
 }
 
 const unacknowledged = failures.filter((id) => !acknowledged.has(id));
-const stale = [...acknowledged.keys()].filter((id) => !failures.includes(id));
+const stale = [...acknowledged.keys()].filter((id) => measured.has(id) && !failures.includes(id));
 // Print the measurements BEFORE asserting: an honest failure must still
 // report what it measured, or the miss cannot be reasoned into the manifest.
 if (unacknowledged.length > 0 || stale.length > 0) {

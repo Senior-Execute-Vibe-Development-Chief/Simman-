@@ -1,5 +1,6 @@
 import {
   MATH_NEGATIVE_ONE,
+  MONTHS_PER_YEAR,
   PEOPLE_COHORT_CHILD_FRACTION,
   PEOPLE_COHORT_ELDER_FRACTION,
   PEOPLE_COHORT_WORKING_FRACTION,
@@ -46,6 +47,9 @@ function allocatePeopleScratch(world: PeopleWorld): void {
     world._peopledMask[cell] = peopled ? 1 : 0;
   }
   world._migrationDaysPerKm = new Float64Array(length);
+  world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR).fill(undefined);
+  world._waterAccess = new Float64Array(length);
+  world._reliefMult = new Float64Array(length);
   world._foragerCapacity = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
   world._migrationShareRow = new Float64Array(world.height);
