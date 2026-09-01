@@ -14,9 +14,11 @@ const canvas = document.querySelector<HTMLCanvasElement>("#map")!;
 const lens = document.querySelector<HTMLSelectElement>("#lens")!;
 const month = document.querySelector<HTMLInputElement>("#month")!;
 const monthLabel = document.querySelector<HTMLElement>("#month-label")!;
+const zoomInput = document.querySelector<HTMLInputElement>("#zoom")!;
+const zoomLabel = document.querySelector<HTMLElement>("#zoom-label")!;
 const status = document.querySelector<HTMLElement>("#status")!;
 const route = document.querySelector<HTMLElement>("#route")!;
-if (!canvas || !lens || !month || !monthLabel || !status || !route) {
+if (!canvas || !lens || !month || !monthLabel || !zoomInput || !zoomLabel || !status || !route) {
   throw new Error("M1 shell markup is incomplete.");
 }
 
@@ -54,7 +56,9 @@ let lastRoute: TravelRoute | undefined;
 const MODE_NAMES = ["foot", "pack", "cart", "river", "coastal", "open-sea"] as const;
 const MODE_COLORS = ["#ffd166", "#f4a259", "#e07a5f", "#5fd0c5", "#6ab6ff", "#3d7dff"] as const;
 
-// Viewport: wheel to zoom (cursor-anchored), drag to pan, click to route.
+// Viewport: wheel or pinch to zoom (anchored), drag to pan, tap to route,
+// and the zoom slider for one-handed control. The slider is log-scaled
+// (value = log2(zoom)).
 let zoom = 1;
 let viewX = 0;
 let viewY = 0;
@@ -67,6 +71,18 @@ function clampView(): void {
   zoom = clamp(zoom, 1, 64);
   viewX = clamp(viewX, 0, substrate.width - substrate.width / zoom);
   viewY = clamp(viewY, 0, substrate.height - substrate.height / zoom);
+}
+
+/** Set zoom keeping the map point under (fx, fy) — canvas fractions — fixed. */
+function setZoom(next: number, fx = 0.5, fy = 0.5): void {
+  const anchorX = viewX + fx * substrate.width / zoom;
+  const anchorY = viewY + fy * substrate.height / zoom;
+  zoom = clamp(next, 1, 64);
+  viewX = anchorX - fx * substrate.width / zoom;
+  viewY = anchorY - fy * substrate.height / zoom;
+  zoomInput.value = String(Math.log2(zoom));
+  zoomLabel.textContent = `Zoom ${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×`;
+  draw();
 }
 
 function pixelColor(cell: number, selectedMonth: number): [number, number, number] {
@@ -190,28 +206,61 @@ async function queryRoute(start: number, goal: number): Promise<void> {
   draw();
 }
 
-let pointerDown: { x: number; y: number } | undefined;
+// Pointer tracking supports one-finger pan/tap AND two-finger pinch. The
+// canvas carries touch-action:none so the browser never turns these
+// gestures into page scroll/zoom.
+const pointers = new Map<number, { x: number; y: number }>();
 let dragged = false;
+let pinchStart: { distance: number; zoom: number } | undefined;
+
+function pinchState(): { distance: number; midX: number; midY: number } | undefined {
+  if (pointers.size !== 2) return undefined;
+  const [a, b] = [...pointers.values()];
+  if (!a || !b) return undefined;
+  return {
+    distance: Math.hypot(a.x - b.x, a.y - b.y),
+    midX: (a.x + b.x) / 2,
+    midY: (a.y + b.y) / 2,
+  };
+}
 
 canvas.addEventListener("pointerdown", (event) => {
-  pointerDown = { x: event.clientX, y: event.clientY };
-  dragged = false;
+  canvas.setPointerCapture(event.pointerId);
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pointers.size === 1) dragged = false;
+  const pinch = pinchState();
+  if (pinch) {
+    pinchStart = { distance: pinch.distance, zoom };
+    dragged = true; // a pinch is never a route tap
+  }
 });
 canvas.addEventListener("pointermove", (event) => {
-  if (!pointerDown || event.buttons === 0) return;
-  const dx = event.clientX - pointerDown.x;
-  const dy = event.clientY - pointerDown.y;
-  if (Math.abs(dx) + Math.abs(dy) > 4) dragged = true;
-  if (!dragged) return;
+  const previous = pointers.get(event.pointerId);
+  if (!previous) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   const bounds = canvas.getBoundingClientRect();
+  const pinch = pinchState();
+  if (pinch && pinchStart && pinchStart.distance > 0) {
+    const fx = (pinch.midX - bounds.left) / bounds.width;
+    const fy = (pinch.midY - bounds.top) / bounds.height;
+    setZoom(pinchStart.zoom * (pinch.distance / pinchStart.distance), fx, fy);
+    return;
+  }
+  if (pointers.size !== 1) return;
+  const dx = event.clientX - previous.x;
+  const dy = event.clientY - previous.y;
+  if (Math.abs(event.clientX - previous.x) + Math.abs(event.clientY - previous.y) > 4) dragged = true;
+  if (!dragged) return;
   viewX -= dx / bounds.width * substrate.width / zoom;
   viewY -= dy / bounds.height * substrate.height / zoom;
-  pointerDown = { x: event.clientX, y: event.clientY };
   draw();
 });
-canvas.addEventListener("pointerup", (event) => {
+function releasePointer(event: PointerEvent): void {
+  const had = pointers.delete(event.pointerId);
+  if (pointers.size < 2) pinchStart = undefined;
+  if (!had) return;
+  if (event.type !== "pointerup" || pointers.size > 0) return;
   const wasDrag = dragged;
-  pointerDown = undefined;
   dragged = false;
   if (wasDrag) return;
   const cell = cellFromPointer(event);
@@ -223,19 +272,19 @@ canvas.addEventListener("pointerup", (event) => {
   }
   void queryRoute(startCell, cell);
   startCell = undefined;
-});
+}
+canvas.addEventListener("pointerup", releasePointer);
+canvas.addEventListener("pointercancel", releasePointer);
 canvas.addEventListener("wheel", (event) => {
   event.preventDefault();
   const bounds = canvas.getBoundingClientRect();
   const fx = (event.clientX - bounds.left) / bounds.width;
   const fy = (event.clientY - bounds.top) / bounds.height;
-  const anchorX = viewX + fx * substrate.width / zoom;
-  const anchorY = viewY + fy * substrate.height / zoom;
-  zoom = clamp(zoom * (event.deltaY < 0 ? 1.25 : 0.8), 1, 64);
-  viewX = anchorX - fx * substrate.width / zoom;
-  viewY = anchorY - fy * substrate.height / zoom;
-  draw();
+  setZoom(zoom * (event.deltaY < 0 ? 1.25 : 0.8), fx, fy);
 }, { passive: false });
+zoomInput.addEventListener("input", () => {
+  setZoom(Math.pow(2, Number(zoomInput.value)));
+});
 
 lens.addEventListener("change", draw);
 month.addEventListener("input", draw);
