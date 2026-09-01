@@ -5,7 +5,7 @@ export interface HearthState {
   readonly id: string;
   readonly cell: number;
   readonly packageId: string;
-  readonly lagYears: number;
+  lagYears: number;
   readonly score: number;
   armedYears: number;
   ignited: boolean;
