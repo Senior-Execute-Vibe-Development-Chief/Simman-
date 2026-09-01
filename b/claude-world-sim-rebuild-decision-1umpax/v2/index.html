@@ -16,7 +16,7 @@
       #status, #route { min-height: 20px; color: #8fd3c7; }
       input[type="range"] { accent-color: #e5b65c; }
     </style>
-    <script type="module" crossorigin src="./assets/index-3HRdfLyI.js"></script>
+    <script type="module" crossorigin src="./assets/index-B809Z6PV.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-CbXtAM7H.js">
     <link rel="modulepreload" crossorigin href="./assets/global_precip-CdgUZ06r.js">
     <link rel="modulepreload" crossorigin href="./assets/global_airtemp-BXRRf8jQ.js">
@@ -33,6 +33,8 @@
             <option value="climate">Climate</option>
             <option value="fertility">Fertility</option>
             <option value="crops">Crop suitability</option>
+            <option value="population">Population density</option>
+            <option value="technique">Farming technique</option>
             <option value="wind">Wind</option>
             <option value="rivers">River passability</option>
           </select>
@@ -47,7 +49,7 @@
         <label><input data-capability="navigation" type="checkbox" checked /> navigation</label>
         <button id="run" type="button">Pause</button>
         <label>Speed <span id="speed-label">1×</span></label>
-        <input id="speed" type="range" min="0" max="4" step="1" value="0" />
+        <input id="speed" type="range" min="0" max="6" step="1" value="0" />
         <span id="population">Population: waiting for worker…</span>
       </div>
       <canvas id="map" width="900" height="450"></canvas>
