@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/v2-w1-water-9109",
+      "sha": "4df8422204a66022fa6e35316d3b7c86de534e19",
+      "slug": "cursor-v2-w1-water-9109",
+      "builtAt": "2026-09-01T08:43:37.063Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-v2-w1-water-9109/"
+    },
+    {
       "branch": "claude/world-sim-rebuild-decision-1umpax",
       "sha": "6fe0d3fbe023c36d701f83f013a22f6ec1031109",
       "slug": "claude-world-sim-rebuild-decision-1umpax",
