@@ -137,7 +137,24 @@ Review corrections to the M1 build (all validated before merge):
   shell now draws the route path; bench times the placeholder tick
   again; wind sampling bulk-indexed (~10 s off the target substrate).
 
-9. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+9. **Fertility is climate-only (owner play-report, 2026-09-01).**
+   Measured region means: Sahel/Guinea savanna crop 0.91 / fert 0.87 ≈
+   the US corn belt (0.91/0.89); cerrado 0.90. The crop field is a
+   RAIN-FED CLIMATE envelope (defensible: the FAO rates the Guinea
+   savanna a top underused reserve; sorghum/millet were domesticated in
+   the Sahel; and the Nile honestly scores 0.15 — rain-fed Egypt IS
+   desert, its miracle is M3's floodwater works). But the model carries
+   NO soil-chemistry data: corn-belt mollisols vs leached savanna
+   alfisols vs the cerrado's aluminum-toxic acids are invisible to a
+   climate proxy, so those regions' FERT is overstated. Ruled: do not
+   dial the map (R2). The honest fix is a real soil dataset as a data
+   input (R7 — Earthness in data), a candidate for the M3 fertility
+   re-founding when the food economy lands; meanwhile the wet-tropic
+   demographic realism (disease brakes, package biogeography,
+   storability) arrives at M2/M3 by design, and M2's density-ordering
+   gate measures the outcome.
+
+10. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal
