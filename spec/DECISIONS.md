@@ -317,6 +317,10 @@ lawyered.
     Implementation begins: M0 handed off (spec/handoffs/M0.md).
     M0 merged and gate-passed 2026-08-31 (tri-engine CI green on
     4a416a3e); M1 handed off (spec/handoffs/M1.md).
+    M1 merged and gate-passed 2026-09-01 (b6f12df4; review wave
+    c5870631: real monthly climate+wind, wind-alignment monsoon, datan2,
+    edge geometry, measured gate + known-miss ratchet; corner-cutting
+    fix 47cb49a8); M2 handed off (spec/handoffs/M2.md).
 
 ## Proposed — working design, awaiting explicit ratification
 

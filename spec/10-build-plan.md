@@ -48,6 +48,7 @@ ported, re-founded in real units); the technique wave with real hearths;
 conservation audits live.
 See: the world fills from the Younger Dryas; the population lens.
 Gate: 04's table — population curve shape, density ordering, wave timing.
+Handoff: spec/handoffs/M2.md.
 
 ## M3 — Surplus, storage, bad years
 
