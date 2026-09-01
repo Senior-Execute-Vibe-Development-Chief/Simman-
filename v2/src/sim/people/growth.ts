@@ -35,6 +35,10 @@ export function grow(world: PeopleWorld): GrowthResult {
   const childMass = world._childrenMass;
   const workingMass = world._workingMass;
   const elderMass = world._eldersMass;
+  next.fill(0);
+  childMass.fill(0);
+  workingMass.fill(0);
+  elderMass.fill(0);
   let births = 0;
   let deaths = 0;
   for (const cell of world._landCells) {

@@ -30,9 +30,9 @@ function totalChannels(channels: Record<string, number>): number {
 }
 
 /**
- * A small balance-sheet engine. M0's placeholder field is deliberately
- * non-physical, but every write still has a named source or sink so the
- * conservation wiring is exercised before real matter is introduced.
+ * A small balance-sheet engine. A pass declares its accounting channels once,
+ * then aggregates their totals while the field is updated. Weighted fields
+ * (the people density) are measured in their real conserved unit.
  */
 export class ConservationLedger {
   private readonly sheets = new Map<string, BalanceSheet>();

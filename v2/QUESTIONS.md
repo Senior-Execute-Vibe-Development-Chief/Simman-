@@ -633,3 +633,30 @@ Review corrections to the M1 build (all validated before merge):
     adaptation, disease resistance) are chapters 07 and 16, later
     milestones — nothing is lost by waiting, because the divergence
     geography they need is already banked in the ancestry fields.
+
+## M2 implementation findings
+
+28. **People units and the opening condition are now live.** The M2 field is
+   stored as persons/km² and all conservation accounting is area-weighted to
+   persons. Initial density is forager capacity × the ledgered opening fill,
+   masked by `ancestry.lineage` and `ancestry.arrival`; unpeopled substrate
+   cells remain exactly zero. Save format 3 carries the people, technique,
+   cohorts, and hearth progress while the substrate remains rebuildable.
+
+29. **The first people gate arm is intentionally mechanical and short.** A
+   full YD→1 CE target-grid run is not yet a practical per-commit gate with
+   the current JavaScript field loops (the existing target substrate itself is
+   already a minute-scale build). `gate-people.ts` therefore hard-checks the
+   opening population envelope, zero peopling leakage, monotone opening
+   growth, conservation, and dev/target opening parity, while recording the
+   archaeological arrival fixture and the long-horizon requirement as an
+   explicit warning. The next performance milestone must add the long arm
+   behind the same pass API; no timing shortcut is a simulation mechanic.
+
+30. **Worker substrate loading remains a shell placeholder.** The worker
+   receives the immutable typed substrate built by the shell and runs the
+   people pass there, with a real population/technique snapshot and progress
+   status. Moving substrate construction itself into staged worker messages
+   requires chunking the existing synchronous worldgen supplier; that is
+   deferred rather than pretending a status label makes the current build
+   asynchronous.

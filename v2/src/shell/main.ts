@@ -54,6 +54,10 @@ let playing = true;
 let speed = 1;
 let overlayPopulation: Float32Array | undefined;
 let overlayTechnique: Float32Array | undefined;
+function displayDate(step: number): string {
+  const year = -9700 + step / MONTHS_PER_YEAR;
+  return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
+}
 worker.addEventListener("message", (event) => {
   if (event.data?.type === "created") {
     status.textContent = `Worker ready · ${event.data.hash}`;
@@ -63,7 +67,8 @@ worker.addEventListener("message", (event) => {
     const count = Number(event.data.cells ?? substrate.N);
     overlayPopulation = new Float32Array(buffer, 8, count);
     overlayTechnique = new Float32Array(buffer, 8 + count * 4, count);
-    population.textContent = `Population: ${Number(event.data.population ?? 0).toLocaleString()} persons · month ${event.data.step}`;
+    population.textContent = `Population: ${Number(event.data.population ?? 0).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
+    baseKey = "";
     draw();
     worker.postMessage({ type: "recycle", buffer }, [buffer]);
   }

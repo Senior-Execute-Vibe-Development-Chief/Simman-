@@ -56,12 +56,6 @@ export const MATH_FOUR = 4; // spec/09-constants-ledger.md §Units — M0 determ
 export const MATH_NEGATIVE_ONE = -1; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_NEGATIVE_TWO = -2; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 
-// M0 placeholder tick. These values make the bench observable without
-// pretending to be v2 physics; M1 deletes this field and its coefficients.
-export const PLACEHOLDER_NOISE_DECAY = 0.99; // spec/09-constants-ledger.md §Units — M0 placeholder harness
-export const PLACEHOLDER_NOISE_AMPLITUDE = 0.01; // spec/09-constants-ledger.md §Units — M0 placeholder harness
-export const PLACEHOLDER_NOISE_FREQUENCY = 0.0001; // spec/09-constants-ledger.md §Units — M0 placeholder harness
-export const PLACEHOLDER_STEP_PHASE = 0.01; // spec/09-constants-ledger.md §Units — M0 placeholder harness
 export const CONSERVATION_EPSILON = 1e-10; // spec/09-constants-ledger.md §Units — M0 conservation assertion
 export const M0_DETERMINISM_TICKS = 500; // spec/09-constants-ledger.md §Units — M0 smoke horizon
 export const M0_DEFAULT_SEED = 42042; // spec/09-constants-ledger.md §Units — M0 smoke seed

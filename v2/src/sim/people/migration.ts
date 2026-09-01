@@ -12,6 +12,11 @@ import type { PeopleWorld } from "./types";
 const DX = [1, MATH_NEGATIVE_ONE, 0, 0] as const;
 const DY = [0, 0, 1, MATH_NEGATIVE_ONE] as const;
 
+function peopled(world: PeopleWorld, cell: number): boolean {
+  return (world.substrate.ancestry.lineage[cell] ?? MATH_NEGATIVE_ONE) >= 0
+    && (world.substrate.ancestry.arrival[cell] ?? MATH_NEGATIVE_ONE) >= 0;
+}
+
 function neighbor(world: PeopleWorld, cell: number, direction: number): number {
   const y = Math.floor(cell / world.width);
   const x = cell - y * world.width;
@@ -96,7 +101,7 @@ export function migrate(world: PeopleWorld, month: number): number {
     let sumWeight = 0;
     for (let direction = 0; direction < DX.length; direction++) {
       const target = neighbor(world, cell, direction);
-      if (target < 0 || !world.substrate.landMask[target]) continue;
+      if (target < 0 || !world.substrate.landMask[target] || !peopled(world, target)) continue;
       const spare = Math.max(0, (world.capField[target] ?? 0) - (next[target] ?? 0))
         * (world.cellAreaKm2[target] ?? 0);
       if (spare <= 0) continue;
@@ -132,7 +137,9 @@ export function migrate(world: PeopleWorld, month: number): number {
     }
   }
 
+  let receivedTotal = 0;
   for (const target of world._landCells) {
+    if (!peopled(world, target)) continue;
     const targetArea = world.cellAreaKm2[target] ?? 0;
     if (targetArea <= 0) continue;
     const targetSpare = Math.max(
@@ -150,6 +157,7 @@ export function migrate(world: PeopleWorld, month: number): number {
     if (west >= 0) received += incomingFrom(world, west, target, month, targetSpare);
     if (east >= 0) received += incomingFrom(world, east, target, month, targetSpare);
     next[target] = (next[target] ?? 0) + received / targetArea;
+    receivedTotal += received;
     childNext[target] = (childNext[target] ?? 0)
       + (north >= 0 ? incomingCohort(world, north, target, month, targetSpare, world._childrenMass) : 0)
         / targetArea
@@ -177,6 +185,32 @@ export function migrate(world: PeopleWorld, month: number): number {
         / targetArea
       + (east >= 0 ? incomingCohort(world, east, target, month, targetSpare, world._eldersMass) : 0)
         / targetArea;
+  }
+
+  // The gather uses the same frozen weights as the source scan. Deposit the
+  // final floating-point remainder at the first land index so the conserved
+  // person ledger is exact even when row areas differ at latitude.
+  const remainder = total - receivedTotal;
+  let remainderCell = MATH_NEGATIVE_ONE;
+  for (const cell of world._landCells) {
+    if (peopled(world, cell)) {
+      remainderCell = cell;
+      break;
+    }
+  }
+  const remainderArea = remainderCell >= 0 ? world.cellAreaKm2[remainderCell] ?? 0 : 0;
+  const remainderPopulation = remainderCell >= 0
+    ? migrationPopulation[remainderCell] ?? 0 : 0;
+  if (remainderCell >= 0 && remainderArea > 0) {
+    next[remainderCell] = (next[remainderCell] ?? 0) + remainder / remainderArea;
+    if (remainderPopulation > 0) {
+      childNext[remainderCell] = (childNext[remainderCell] ?? 0)
+        + remainder / remainderArea * (world._childrenMass[remainderCell] ?? 0) / remainderPopulation;
+      workingNext[remainderCell] = (workingNext[remainderCell] ?? 0)
+        + remainder / remainderArea * (world._workingMass[remainderCell] ?? 0) / remainderPopulation;
+      elderNext[remainderCell] = (elderNext[remainderCell] ?? 0)
+        + remainder / remainderArea * (world._eldersMass[remainderCell] ?? 0) / remainderPopulation;
+    }
   }
 
   world._childrenMass.set(childNext);

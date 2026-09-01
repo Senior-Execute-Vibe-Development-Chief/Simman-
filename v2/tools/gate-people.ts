@@ -40,7 +40,10 @@ function measure(grid: GridPreset): GridResult {
     land++;
     if ((world.technique[cell] ?? 0) >= 0.01) covered++;
     const ancestry = substrate.ancestry.lineage[cell] ?? -1;
-    if (ancestry < 0 && (world.people[cell] ?? 0) !== 0) emptyUnpeopledCells++;
+    const arrival = substrate.ancestry.arrival[cell] ?? -1;
+    if ((ancestry < 0 || arrival < 0) && (world.people[cell] ?? 0) !== 0) {
+      emptyUnpeopledCells++;
+    }
   }
   for (const hearth of world.hearths) if (hearth.ignited) ignitedHearths++;
   const balance = world.ledger.snapshot().people;

@@ -49,6 +49,11 @@ const NEIGHBOR_DX = [0, 0, MATH_NEGATIVE_ONE, 1] as const;
 const NEIGHBOR_DY = [MATH_NEGATIVE_ONE, 1, 0, 0] as const;
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
+function peopled(world: PeopleWorld, cell: number): boolean {
+  return (world.substrate.ancestry.lineage[cell] ?? MATH_NEGATIVE_ONE) >= 0
+    && (world.substrate.ancestry.arrival[cell] ?? MATH_NEGATIVE_ONE) >= 0;
+}
+
 function cellAt(world: PeopleWorld, latitude: number, longitude: number): number {
   const x = ((longitude + EARTH_HALF_DEGREES) / EARTH_DEGREES * world.width) % world.width;
   const y = Math.max(
@@ -200,7 +205,7 @@ function scoredHearths(world: PeopleWorld, existing: readonly HearthState[]): He
   const candidates: Array<{ cell: number; score: number }> = [];
   const remaining = Math.max(0, PEOPLE_HEARTH_MAX_COUNT - existing.length);
   for (let cell = 0; cell < world.N; cell++) {
-    if (!world.substrate.landMask[cell]) continue;
+    if (!world.substrate.landMask[cell] || !peopled(world, cell)) continue;
     const score = scoreAt(world, cell);
     if (score <= 0 || remaining <= 0) continue;
     if (candidates.length < remaining) {
@@ -319,7 +324,7 @@ export function stepTechnique(world: PeopleWorld): number {
     }
   }
   for (let cell = 0; cell < world.N; cell++) {
-    if (!world.substrate.landMask[cell]) continue;
+    if (!world.substrate.landMask[cell] || !peopled(world, cell)) continue;
     const current = technique[cell] ?? 0;
     let candidate = current;
     for (let direction = 0; direction < NEIGHBOR_DX.length; direction++) {
