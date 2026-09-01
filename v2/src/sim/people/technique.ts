@@ -58,10 +58,12 @@ function fillTechniqueEdgeLengths(world: PeopleWorld): void {
   const horizontal = new Float64Array(world.height);
   const northSouth = EARTH_MERIDIONAL_KM / world.height;
   for (let y = 0; y < world.height; y++) {
+    // 90 - 180*f, matching travel/cost.ts row geometry: the ported edgeKm
+    // used the full-circle span here, zeroing horizontal edges south of 45N.
     const eastWest = EARTH_CIRCUMFERENCE_KM / world.width
       * Math.max(0, dcos(
         (EARTH_HALF_DEGREES * TRAVEL_HALF
-          - ((y + TRAVEL_HALF) / world.height) * EARTH_DEGREES) * DEG_TO_RAD,
+          - ((y + TRAVEL_HALF) / world.height) * EARTH_HALF_DEGREES) * DEG_TO_RAD,
       ));
     horizontal[y] = Math.sqrt((1 * eastWest) * (1 * eastWest) + (0 * northSouth) * (0 * northSouth));
   }
@@ -71,9 +73,12 @@ function fillTechniqueEdgeLengths(world: PeopleWorld): void {
 
 function cellAt(world: PeopleWorld, latitude: number, longitude: number): number {
   const x = ((longitude + EARTH_HALF_DEGREES) / EARTH_DEGREES * world.width) % world.width;
+  // Latitude spans 180 degrees, not 360: the original EARTH_DEGREES here put
+  // every hearth pin at HALF its real latitude (the Fertile Crescent ignited
+  // in Yemen, the Nile in the Sahara) — measured on the first YD->1 CE run.
   const y = Math.max(
     0,
-    Math.min(world.height - 1, (EARTH_HALF_DEGREES - latitude) / EARTH_DEGREES * world.height),
+    Math.min(world.height - 1, (EARTH_HALF_DEGREES * TRAVEL_HALF - latitude) / EARTH_HALF_DEGREES * world.height),
   );
   return Math.floor(y) * world.width + Math.floor((x + world.width) % world.width);
 }
@@ -268,23 +273,6 @@ function neighbor(world: PeopleWorld, cell: number, dx: number, dy: number): num
   return targetY * world.width + ((x + dx + world.width) % world.width);
 }
 
-function edgeKm(world: PeopleWorld, from: number, to: number): number {
-  const fromY = Math.floor(from / world.width);
-  const toY = Math.floor(to / world.width);
-  const dx = Math.abs((from - fromY * world.width) - (to - toY * world.width));
-  const wrappedDx = Math.min(dx, world.width - dx);
-  const eastWest = EARTH_CIRCUMFERENCE_KM / world.width
-    * Math.max(0, dcos(
-      (EARTH_HALF_DEGREES * TRAVEL_HALF
-        - ((fromY + TRAVEL_HALF) / world.height) * EARTH_DEGREES) * DEG_TO_RAD,
-    ));
-  const northSouth = EARTH_MERIDIONAL_KM / world.height;
-  return Math.sqrt(
-    (wrappedDx * eastWest) * (wrappedDx * eastWest)
-      + ((toY - fromY) * northSouth) * ((toY - fromY) * northSouth),
-  );
-}
-
 function spreadSuitability(world: PeopleWorld, cell: number): number {
   const fit = climateSuitability(world, cell);
   return fit < PEOPLE_TECHNIQUE_CLIMATE_FLOOR ? 0 : fit;
@@ -307,7 +295,13 @@ function basinFill(world: PeopleWorld, cell: number): number {
       const xx = (x + dx + world.width) % world.width;
       const index = yy * world.width + xx;
       people += (world.people[index] ?? 0) * (world.cellAreaKm2[index] ?? 0);
-      capacity += (world.capField[index] ?? 0) * (world.cellAreaKm2[index] ?? 0);
+      // Peopled-basin years measure fill against the STATIC forager capacity —
+      // a basin full of people. Measuring against current capField stalled
+      // every pin the moment a neighboring wave lifted the basin to farmed
+      // capacity (fill collapsed ~10x): measured on the first YD->1 CE run,
+      // the Fertile Crescent ignited ~6,000 years late for exactly this
+      // reason while hearths beyond the wave's reach ignited on time.
+      capacity += (world._foragerCapacity[index] ?? 0) * (world.cellAreaKm2[index] ?? 0);
     }
   }
   return capacity > 0 ? clamp01(people / capacity) : 0;

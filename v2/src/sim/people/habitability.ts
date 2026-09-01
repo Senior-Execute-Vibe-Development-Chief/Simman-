@@ -30,8 +30,11 @@ export function cellAreasKm2(width: number, height: number): Float64Array {
   const areas = new Float64Array(width * height);
   const northSouth = EARTH_MERIDIONAL_KM / height;
   for (let y = 0; y < height; y++) {
+    // 90 - 180*f (latitude spans 180 degrees): the original full-circle span
+    // gave the whole southern hemisphere ZERO cell area — south-of-equator
+    // people weighed nothing in the person-unit census and ledger.
     const latitude = (EARTH_HALF_DEGREES * TRAVEL_HALF
-      - ((y + TRAVEL_HALF) / height) * EARTH_DEGREES) * DEG_TO_RAD;
+      - ((y + TRAVEL_HALF) / height) * EARTH_HALF_DEGREES) * DEG_TO_RAD;
     const eastWest = EARTH_CIRCUMFERENCE_KM / width * Math.max(0, dcos(latitude));
     const area = northSouth * eastWest;
     for (let x = 0; x < width; x++) areas[y * width + x] = area;
