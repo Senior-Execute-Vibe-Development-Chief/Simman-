@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/setup-dev-environment-f1e8",
+      "sha": "d0b7bbeaf7af47dd8ad2f691b0c9c7d3e6d8882d",
+      "slug": "cursor-setup-dev-environment-f1e8",
+      "builtAt": "2026-09-01T08:46:20.119Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-setup-dev-environment-f1e8/"
+    },
+    {
       "branch": "cursor/v2-w1-water-9109",
       "sha": "4df8422204a66022fa6e35316d3b7c86de534e19",
       "slug": "cursor-v2-w1-water-9109",
