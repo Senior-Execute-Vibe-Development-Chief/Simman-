@@ -133,6 +133,16 @@ async function main(): Promise<void> {
   const peopleWorld = new World({ seed: 99, grid: "dev", substrate });
   const opening = populationTotal(peopleWorld);
   runSteps(peopleWorld, 24);
+  const techniqueBefore = Float64Array.from(peopleWorld.technique);
+  for (const hearth of peopleWorld.hearths) hearth.lagYears = 0;
+  runSteps(peopleWorld, 1);
+  assert.ok(peopleWorld.hearths.some((hearth) => hearth.ignited), "hearths never ignite");
+  for (let cell = 0; cell < peopleWorld.N; cell++) {
+    assert.ok(
+      peopleWorld.technique[cell] >= (techniqueBefore[cell] ?? 0),
+      "technique wave is not a ratchet",
+    );
+  }
   const peopleSave = serializeWorld(peopleWorld);
   const peopleLoaded = loadWorld(peopleSave, substrate);
   assert.ok(opening > 0, "people initial condition is empty");

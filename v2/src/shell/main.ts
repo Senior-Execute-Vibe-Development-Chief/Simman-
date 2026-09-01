@@ -65,8 +65,12 @@ worker.addEventListener("message", (event) => {
   if (event.data?.type === "snapshot" && event.data.buffer instanceof ArrayBuffer) {
     const buffer = event.data.buffer as ArrayBuffer;
     const count = Number(event.data.cells ?? substrate.N);
-    overlayPopulation = new Float32Array(buffer, 8, count);
-    overlayTechnique = new Float32Array(buffer, 8 + count * 4, count);
+    const populationView = new Float32Array(buffer, 8, count);
+    const techniqueView = new Float32Array(buffer, 8 + count * 4, count);
+    overlayPopulation = new Float32Array(count);
+    overlayTechnique = new Float32Array(count);
+    overlayPopulation.set(populationView);
+    overlayTechnique.set(techniqueView);
     population.textContent = `Population: ${Number(event.data.population ?? 0).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
     baseKey = "";
     draw();

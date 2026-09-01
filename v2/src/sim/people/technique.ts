@@ -301,8 +301,8 @@ function basinFill(world: PeopleWorld, cell: number): number {
 export function initializeTechnique(world: PeopleWorld): void {
   if (world._techniqueSuitability.length !== world.N) {
     world._techniqueSuitability = new Float64Array(world.N);
-    fillTechniqueSuitability(world);
   }
+  fillTechniqueSuitability(world);
   world.technique.fill(0);
   world._techniqueNext.fill(0);
   world.hearths = chooseHearths(world);
@@ -314,19 +314,21 @@ export function stepTechnique(world: PeopleWorld): number {
   next.set(technique);
   for (const hearth of world.hearths) {
     if (hearth.ignited) {
-      if (technique[hearth.cell] < 1) next[hearth.cell] = 1;
+      technique[hearth.cell] = 1;
+      next[hearth.cell] = 1;
       continue;
     }
     hearth.armedYears += basinFill(world, hearth.cell) / MONTHS_PER_YEAR;
     if (hearth.armedYears >= hearth.lagYears) {
       hearth.ignited = true;
+      technique[hearth.cell] = 1;
       next[hearth.cell] = 1;
     }
   }
   for (let cell = 0; cell < world.N; cell++) {
     if (!world.substrate.landMask[cell] || !peopled(world, cell)) continue;
     const current = technique[cell] ?? 0;
-    let candidate = current;
+    let candidate = Math.max(current, next[cell] ?? 0);
     for (let direction = 0; direction < NEIGHBOR_DX.length; direction++) {
       const source = neighbor(
         world,
