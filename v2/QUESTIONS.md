@@ -633,3 +633,51 @@ Review corrections to the M1 build (all validated before merge):
     adaptation, disease resistance) are chapters 07 and 16, later
     milestones — nothing is lost by waiting, because the divergence
     geography they need is already banked in the ancestry fields.
+
+28. **"Lakes don't show on the map, only African lakes count as water,
+    CCTV lines on terrain, and the Rhine is still red" (owner
+    play-report, 2026-09-01).** Four findings. (a) Lakes were invisible
+    because only the rivers lens painted them — terrainColor now paints
+    active lake cells water-blue on every terrain-derived lens. (b)
+    "Only African lakes work" was the JANUARY DEFAULT: rivers and lakes
+    below 0°C that month are closed by the freeze rule — measured:
+    Superior −9.4°C, Ladoga −9.7, Baikal −18.7 in month 1, all open in
+    July, while Victoria/Chad/Titicaca never freeze. Correct physics,
+    invisible cause — the rivers lens now paints frozen channels and
+    lakes ICE-PALE (legend updated), so a closed Baikal looks closed.
+    (c) The scanlines were terrainColor's v1 (y % 3) blue banding —
+    replaced with a per-cell hash dither. (d) The Rhine red exposed a
+    REAL general issue, worth the dig: the "1.8 km ETOPO samples" the
+    gradient bake claimed were actually a 6-ARC-MINUTE (~11 km) file —
+    at that resolution every narrow gorge smears into its walls and the
+    measurement cannot be fixed by any profile trick (a monotone
+    envelope on the smeared data made the Rhine WORSE, 2.25→5.75,
+    because the smeared massif genuinely descends). Fixed at the data
+    AND mechanism level: the true 1-arc-minute grid is now fetched in
+    latitude bands (tools/fetch-etopo1.md, ~466 MB raw), and the floor
+    is a BOUNDED-LOOKBACK monotone envelope — per-sample second-min of
+    3×3 (single-pixel pit guard), then the minimum over ~100 km
+    upstream. Bounding matters both ways, measured: a per-walk envelope
+    seeds inside gorges at wall readings (false cataracts); an
+    UNBOUNDED global envelope let one deep DEM pit erase every real
+    barrier downstream (the Fola rapids read 0.00). At ~100 km lookback
+    the 32-anchor audit (#24) reads: Middle Rhine 0.69 ORANGE
+    (towing/pilots — historically right, red gone), Volga at Samara
+    green, Iron Gates 0.94 orange (piloted), Three Gorges 1.69
+    borderline red (trackers), while Livingstone 2.88, Victoria 5.31,
+    Boyoma 9.1, Augrabies 6.3, Aswan 2.94, Fola 2.13, Celilo 2.56 all
+    stay RED. Recorded, not fixed: (i) submerged-sill cataracts
+    (Nile 2/3/5/6, St. Anthony, Falls of the Ohio) now read green —
+    their barrier was rocks in the channel, metres of drop diluted over
+    the 28 km reach scale; a DEM cannot see them, and Egypt/Nubia
+    gating is carried by Aswan RED + Merowe orange; (ii) the Ruki
+    "cataract" is a multi-pixel ETOPO1 void-fill seam (~106 m values in
+    ~320 m swamp at 0.2S 18.1E) — source-data defect, ETOPO 2022
+    refresh is the fix, no place-named patch (R2); (iii) the 1-arc-min
+    flood-fraction re-measurement is DEFERRED: with the true floor, the
+    8 m stage band cuts most of the Nile valley (SRTM-era surface
+    offsets), so the reviewed 6-arc-min RIVER_FLOOD layer ships
+    unchanged and the finer re-measurement needs its own grounded
+    stage+vertical-noise calibration wave. Gate, oracle, smoke, lint
+    green; RIVER_DIR/RIVER_FLOOD/LAKE_MASK byte-identical to the
+    reviewed bake, RIVER_GRAD alone regenerated.

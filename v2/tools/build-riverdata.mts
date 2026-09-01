@@ -296,7 +296,15 @@ if (lakePath) {
   }
   console.log(`HydroLAKES polygons rasterized: ${considered} candidates; ${lakeMask.reduce((sum, value) => sum + value, 0)} data pixels`);
 } else {
-  console.log("no HydroLAKES .shp given — LAKE_MASK emitted as empty");
+  // No polygon input: CARRY THE EXISTING BAKED LAKES FORWARD. Emitting an
+  // empty layer here would silently destroy the committed HydroLAKES bake on
+  // any gradient-only refresh (the .shp is a ~1 GB download not kept locally).
+  const existing = await import("../src/ported/worldgen/riverDirData.js");
+  if (typeof existing.LAKE_MASK === "string" && existing.LAKE_MASK.length > 0) {
+    const carried = existing.decodeRiverDir(existing.LAKE_MASK) as Uint8Array;
+    if (carried.length === lakeMask.length) lakeMask.set(carried);
+  }
+  console.log(`no HydroLAKES .shp given — LAKE_MASK carried forward (${lakeMask.reduce((sum: number, value: number) => sum + value, 0)} pixels)`);
 }
 const esri = readTiff(inputPath);
 console.log("decoded source grid");
@@ -306,10 +314,23 @@ console.log("decoded source grid");
 // profile. A 22 km cell average cannot tell a cataract field from a
 // navigable glide — the Livingstone gorge smears to its 0.77 m/km mean —
 // but 1.8 km samples near the channel resolve the real steps.
-let etopo: { data: Float64Array; w: number; h: number } | null = null;
+let etopo: { data: Float64Array | Int16Array; w: number; h: number } | null = null;
 {
+  // Raw band-assembled grid (tools/fetch-etopo1.md): int16 LE, dims in the
+  // filename, rows ascending from -90 like the ERDDAP NetCDF. The full
+  // 1-arc-min grid is ~466 MB — too big for one ERDDAP request or a
+  // Float64 copy, hence this branch.
+  const binPath = process.argv.slice(3).find((arg) => /-\d+x\d+\.bin$/.test(arg));
   const ncPath = process.argv.slice(3).find((arg) => arg.endsWith(".nc"));
-  if (ncPath) {
+  if (binPath) {
+    const dims = /-(\d+)x(\d+)\.bin$/.exec(binPath)!;
+    const w = Number(dims[1]);
+    const h = Number(dims[2]);
+    const raw = readFileSync(binPath);
+    if (raw.length !== w * h * 2) throw new Error(`etopo bin size mismatch: ${raw.length} vs ${w}x${h}x2`);
+    etopo = { data: new Int16Array(raw.buffer, raw.byteOffset, w * h), w, h };
+    console.log(`etopo floor grid ${w}×${h} (raw int16)`);
+  } else if (ncPath) {
     const nc = readNetcdfAltitude(ncPath);
     etopo = { data: nc.data, w: nc.dims[1]!, h: nc.dims[0]! };
     console.log(`etopo floor grid ${etopo.w}×${etopo.h}`);
@@ -771,31 +792,75 @@ if (etopo) {
     const lon = -180 + (fx + 0.5) / SRC_PER_DEG;
     const ey = Math.round(((lat + 90) / 180) * (eH - 1)); // ETOPO rows ascend from -90
     const ex = Math.round(((lon + 180) / 360) * (eW - 1));
+    // SECOND-smallest of the 3×3: still floor-biased, but one bad DEM pixel
+    // (an SRTM void-fill pit) cannot set the level — a pit would otherwise
+    // poison the whole downstream envelope below.
     let minimum = Infinity;
+    let second = Infinity;
     for (let dy = -1; dy <= 1; dy++) {
       const y = ey + dy;
       if (y < 0 || y >= eH) continue;
       for (let dx = -1; dx <= 1; dx++) {
         const x = Math.min(eW - 1, Math.max(0, ex + dx));
         const v = eData[y * eW + x] ?? 0;
-        if (v < minimum) minimum = v;
+        if (v < minimum) { second = minimum; minimum = v; } else if (v < second) second = v;
       }
     }
-    return Math.max(0, minimum); // the water surface never sits below sea level
+    return Math.max(0, second === Infinity ? minimum : second); // the water surface never sits below sea level
   };
   const SUB_STEPS = 3;   // ~28 km sub-reach
   const MAX_STEPS = 11;  // ~100 km walk
   const KM_PER_FINE_NS = 9.27;
+  // BOUNDED-LOOKBACK FLOOR ENVELOPE: a channel floor never rises downstream,
+  // so each cell's water-surface estimate is the minimum floor sample over
+  // its upstream ~100 km (ENV_LOOKBACK_STEPS fine steps). A per-walk
+  // envelope is not enough — a walk STARTING inside a gorge seeds itself at
+  // a wall reading and books the descent to the gorge exit as a cataract
+  // (the false-RED Middle Rhine / Three Gorges class, QUESTIONS #24/#28) —
+  // while an UNBOUNDED global envelope lets one deep DEM pit erase every
+  // real barrier downstream of it forever (measured: the Fola rapids read
+  // 0.00). Bounding the lookback to the walk's own scale gives gorges their
+  // near-upstream valley floor and caps a pit's blast radius at ~100 km.
+  const ENV_LOOKBACK_STEPS = MAX_STEPS;
+  const floorEnv = new Float32Array(SRC_W * SRC_H).fill(Infinity);
+  {
+    const previous = new Float32Array(SRC_W * SRC_H).fill(Infinity);
+    for (let fi = 0; fi < SRC_W * SRC_H; fi++) {
+      if (fineDir[fi]! > 8) continue;
+      const fy = Math.floor(fi / SRC_W);
+      previous[fi] = floorOf(fi - fy * SRC_W, fy);
+    }
+    floorEnv.set(previous);
+    // K relaxation passes: after pass k, floorEnv[cell] = min own/ancestor
+    // floor within k steps upstream.
+    for (let pass = 0; pass < ENV_LOOKBACK_STEPS; pass++) {
+      for (let fi = 0; fi < SRC_W * SRC_H; fi++) {
+        const d = fineDir[fi]!;
+        if (d > 7) continue;
+        const fy = Math.floor(fi / SRC_W);
+        const ny = fy + D8_DY[d]!;
+        if (ny < 0 || ny >= SRC_H) continue;
+        const next = ny * SRC_W + ((fi - fy * SRC_W + D8_DX[d]! + SRC_W) % SRC_W);
+        if (previous[fi]! < floorEnv[next]!) floorEnv[next] = previous[fi]!;
+      }
+      previous.set(floorEnv);
+    }
+  }
   const fineGrad = new Float32Array(SRC_W * SRC_H).fill(-1);
   for (let fi = 0; fi < SRC_W * SRC_H; fi++) {
     if (fineDir[fi]! > 7) continue;
-    // Collect the floor profile along the walk (with per-step km).
+    // Envelope profile along the walk, with a walk-local running min on top:
+    // the bounded-lookback envelope can RISE when an old low sample slides
+    // out of its window, and a rise would re-book an already-booked drop.
     const floors: number[] = [];
     const kms: number[] = [0];
     let current = fi;
+    let running = Infinity;
     for (let step = 0; step <= MAX_STEPS; step++) {
       const fy = Math.floor(current / SRC_W);
-      floors.push(floorOf(current - fy * SRC_W, fy));
+      const env = floorEnv[current]!;
+      running = Math.min(running, env === Infinity ? floorOf(current - fy * SRC_W, fy) : env);
+      floors.push(running);
       const d = fineDir[current]!;
       if (d > 7) break;
       const ny = fy + D8_DY[d]!;
@@ -806,15 +871,9 @@ if (etopo) {
       kms.push((kms[kms.length - 1] ?? 0) + Math.sqrt(ew * ew + ns * ns));
       current = ny * SRC_W + ((current - fy * SRC_W + D8_DX[d]! + SRC_W) % SRC_W);
     }
-    // ±1-step running-min smoothing.
-    const smooth = floors.map((_, index) => Math.min(
-      floors[index]!,
-      floors[index - 1] ?? Infinity,
-      floors[index + 1] ?? Infinity,
-    ));
     let worst = 0;
-    for (let start = 0; start + SUB_STEPS < smooth.length; start++) {
-      const drop = (smooth[start] ?? 0) - (smooth[start + SUB_STEPS] ?? 0);
+    for (let start = 0; start + SUB_STEPS < floors.length; start++) {
+      const drop = (floors[start] ?? 0) - (floors[start + SUB_STEPS] ?? 0);
       const km = (kms[start + SUB_STEPS] ?? 0) - (kms[start] ?? 0);
       if (drop > 0 && km > 0) worst = Math.max(worst, drop / km);
     }
@@ -845,11 +904,15 @@ const header = `/* V2 DATA — real river geometry (recorded deviation, QUESTION
  * elevation as before). Earth presets take river GEOMETRY from this data;
  * runoff, accumulation and magnitude stay emergent from climate (R7).
  *
- * RIVER_GRAD (QUESTIONS.md #22): the channel-floor reach gradient at each
- * coarse cell's dominant channel — the steepest ~28 km sub-reach of the
- * next ~100 km, measured on 1.8 km ETOPO point-samples along the HydroSHEDS
- * path (a 22 km cell average smears the Livingstone cataracts into a
- * navigable-looking mean; the fine floor profile keeps their real steps).
+ * RIVER_GRAD (QUESTIONS.md #22/#28): the channel-floor reach gradient at
+ * each coarse cell's dominant channel — the steepest ~28 km sub-reach of
+ * the next ~100 km, measured on TRUE 1-arc-minute ETOPO1 samples along the
+ * HydroSHEDS path (the first bake unknowingly used a 6-arc-minute grid —
+ * #28). Floor = bounded-lookback monotone envelope: per-sample
+ * second-smallest of the 3×3 (single-pixel pit guard), then the minimum
+ * over ~100 km upstream — a channel floor never rises downstream, so wall
+ * bounce in gorges narrower than the sampling clips away while genuine
+ * descents (Livingstone, Victoria Falls) keep their full drop.
  * Encoding: 1/16 m/km per byte (0..15.8), 255 = no data.
  *
  * RIVER_FLOOD (QUESTIONS.md #23): per-data-pixel flood-stage share, measured

@@ -2,6 +2,7 @@ import {
   M0_DEFAULT_SEED,
   MONTHS_PER_YEAR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
+  RIVER_FREEZING_TEMPERATURE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
 } from "../sim/constants";
@@ -91,12 +92,16 @@ function setZoom(next: number, fx = 0.5, fy = 0.5): void {
   draw();
 }
 
-function terrainColor(cell: number, moisture: number, y: number): [number, number, number] {
+function terrainColor(cell: number, moisture: number, _y: number): [number, number, number] {
   const elevation = substrate.elevation[cell];
+  if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [55, 135, 165];
   const river = substrate.rivers.magnitude[cell];
   const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);
   const brown = clamp(135 - elevation * 90, 40, 170);
-  return river >= 2 ? [45, 125, 155] : [brown, green, 65 + (y % 3) * 10];
+  // Per-cell hash dither, not a row stripe: the old (y % 3) blue banding read
+  // as horizontal scanlines at zoom (owner play-report).
+  const dither = ((cell * 2654435761) >>> 28) & 3;
+  return river >= 2 ? [45, 125, 155] : [brown, green, 62 + dither * 5];
 }
 
 function pixelColor(cell: number, selectedMonth: number): [number, number, number] {
@@ -117,8 +122,15 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     // grey = channel too small to navigate; everything else muted terrain.
     if (!substrate.landMask[cell]) return [16, 34, 54];
     const magnitude = substrate.rivers.magnitude[cell] ?? 0;
-    if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [80, 200, 200];
+    // Ice: below freshwater freezing this month the leg is CLOSED (the router
+    // refuses it) — show it as ice, not as an open channel (owner play-report:
+    // northern lakes read as "not water" in January with no visible cause).
+    const frozen = temperature < RIVER_FREEZING_TEMPERATURE;
+    if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) {
+      return frozen ? [205, 225, 235] : [80, 200, 200];
+    }
     if (magnitude >= 1) {
+      if (frozen && magnitude >= TRAVEL_RIVER_MIN_MAGNITUDE) return [205, 225, 235];
       if (magnitude < TRAVEL_RIVER_MIN_MAGNITUDE) return [120, 125, 135];
       const flowScale = substrate.rivers.seasonalFlowScale?.[
         climateIndex
