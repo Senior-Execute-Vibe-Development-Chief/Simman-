@@ -152,6 +152,28 @@ jobs:
             cp -a dist/. "$DEST"/
           fi
 
+      # The v2 rebuild (spec/ + v2/) ships as a static Vite page too — same
+      # stack promise as v1. It rides the same channel at <channel>/v2/,
+      # guarded so branches without a v2/ tree (main, old branches) skip it.
+      - name: Build v2 shell
+        if: ${{ hashFiles('v2/package.json') != '' }}
+        run: |
+          set -e
+          rustup target add wasm32-unknown-unknown
+          cd v2
+          npm ci
+          npm run wasm:build
+          npx tsc --noEmit
+          npx vite build --base=./
+      - name: Install v2 channel
+        if: ${{ hashFiles('v2/package.json') != '' }}
+        run: |
+          set -e
+          DEST="site/${{ steps.meta.outputs.dest }}/v2"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          cp -a v2/dist/. "$DEST"/
+
       - name: Update builds catalog + picker
         run: |
           SAVE_V=$(python3 -c "import re,pathlib; m=re.search(r'export const SAVE_VERSION\s*=\s*(\d+)', pathlib.Path('src/sim/persist.js').read_text()); print(m.group(1) if m else '')")
