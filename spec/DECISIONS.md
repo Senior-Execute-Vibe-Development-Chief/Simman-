@@ -361,9 +361,43 @@ lawyered.
     confluences, the Congo arc, the Niger bend, Volga→Caspian, ...),
     all passing at the shipped grid.
 
+## 2026-09-01 — Water round
+
+22. **Honest water: data lakes, the measured floodplain, seasonal flow.**
+    (Ratified — owner directive "i think that needs to happen now …
+    write the spec for this talked about build".) Three substrate fixes
+    before M2 calibrates against the map, specified in
+    `spec/handoffs/W1-water.md`:
+    (a) **Lakes.** v1's derived candidate placement (depressions of
+    cell-average sim elevation — the last derived geography, wrong
+    everywhere at 22 km averages) is superseded on earth presets by a
+    baked HydroLAKES mask; the WATER stays emergent (inflow validation
+    unchanged — a basin the hydrology cannot fill stays dry; Chad may
+    shrink). Procedural presets keep the v1-verbatim path.
+    (b) **Floodplain.** The three fertility painters (the
+    `HW = 0.05·√catchment` moisture-ribbon width law, whose constant is
+    annotated "~2× generous vs Earth valleys for map legibility"; the
+    `tFlood ⇒ crop = max(crop, 0.92)` stamp; the full-cell channel
+    alluvial pull) are REPLACED, not tuned, by a per-cell floodplain
+    FRACTION measured from the fine ETOPO samples already in the river
+    bake (height-above-channel within a physical flood stage). Crop
+    suitability becomes the area-weighted mix of irrigated-floodplain
+    and rain-fed land: the Nile paints one cell wide because its valley
+    IS one cell wide; valley width is local confinement, never upstream
+    catchment.
+    (c) **Seasonal flow.** Monthly emergent runoff routed through the
+    fixed channels (twelve accumulation passes) scales river
+    navigability by month — chapter 03's seasonality contract's river
+    arm (the Niger's low-water closure, the Volga freeze). Fertility and
+    crop suitability remain ANNUAL by design: they are integrated land
+    properties; the monthly signal reaches agriculture through the
+    growing-season bell and, at M3, the food economy's monthly tick.
+    (d) **Flood regime** (Nile-gentle vs Tigris-violent) is deferred to
+    M3 as a read on (c)'s output; no state ships for it now.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 21)*
+*(empty — all proposals ratified as of round 22)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

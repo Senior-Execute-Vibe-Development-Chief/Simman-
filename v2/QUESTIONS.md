@@ -471,3 +471,34 @@ Review corrections to the M1 build (all validated before merge):
     southbound couriers stands as recorded in #20 (free ports), and the
     pack leg cutting the Nubian bend is the historical Korosko road
     emerging.
+
+23. **The crop map's glowing rivers, misplaced lakes, and the month
+    slider (owner play-report, 2026-09-01: "the nile is up to 10 tiles
+    wide … EVERY river shows up as 1 tile thick bright stark green
+    lines … crop suitability and fertility don't change with the
+    month?").** Three findings, one wave. (a) The wide ribbons and the
+    worldwide 1-cell green lines come from three stacked v1 painters in
+    pipeline.js/cropGen.js: a moisture ribbon whose half-width is
+    0.05·√(discharge-equivalent catchment km²) — ~70 km for a great
+    river, 6–10 cells, with its constant self-described as "~2×
+    generous vs Earth valleys for map legibility"; a flat
+    crop=max(crop,0.92) stamp across the whole arid wetted corridor;
+    and a full-cell channel alluvial pull applied after the arid gate
+    with no area weighting. The physics error: valley width is set by
+    local bedrock confinement, not upstream catchment (the Nile: 3M km²
+    of catchment, a 5–25 km valley — ONE 22 km cell). (b) Lakes are
+    still placed by depressions of cell-average sim elevation — derived
+    geography, wrong places. (c) The static fertility/crops lenses are
+    ON PURPOSE and stay: suitability is an integrated annual land
+    property (like every real suitability product); monthly climate
+    enters through the growing-season bell, and at M3 through the food
+    economy's monthly tick — while rivers themselves SHOULD vary by
+    month and today don't (the one monthly gap in the travel model).
+    Ruling: all fixed as substrate wave W1 (spec/handoffs/W1-water.md,
+    DECISIONS 22) — lakes from HydroLAKES data with emergent water, a
+    measured per-cell floodplain FRACTION replacing all three painters
+    (area-weighted crop mix), and monthly runoff through the fixed
+    channels scaling navigability (Niger low-water closure, Volga
+    freeze). Flood regime (month-of-peak, amplitude, variance — the
+    Nile-gentle vs Tigris-violent asymmetry) is an M3 read on the
+    seasonal-flow output; no state ships for it now.

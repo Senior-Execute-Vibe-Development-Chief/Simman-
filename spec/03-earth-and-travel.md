@@ -10,7 +10,10 @@ certified portable with zero runtime backward-coupling (research/05 §1):
 Earth DEM (1920×960, carved straits), the earth_sim climate branch with
 observed NCEP climate as the default (monthly — we will consume the
 seasonality, which v1 mostly collapsed to annual), resolution-invariant
-rivers (absolute-km² classification), floodplain ribbons in physical units,
+rivers (absolute-km² classification; real channel geometry per DECISIONS
+21, data lakes + measured floodplain fraction + seasonal flow per
+DECISIONS 22 / handoff W1 — superseding v1's derived lakes and painted
+floodplain ribbons),
 biome classifier (Köppen-calibrated), crop packages with domestication lags
 and wild ranges, resources, and the deep-ancestry peopling wavefront.
 
