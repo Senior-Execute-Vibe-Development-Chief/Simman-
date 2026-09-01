@@ -112,7 +112,11 @@ export const TRAVEL_RIVER_MIN_MAGNITUDE = 2; // spec/09-constants-ledger.md §M1
 // Navigability is about FALL, not just flow: boats die in rapids. Commercial
 // navigation historically holds below ~0.5 m/km; skilled small craft manage
 // a bit more; mountain torrents (tens of m/km) are portage country.
-export const TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM = 1.5; // spec/09-constants-ledger.md §M1 proposed — navigable-gradient bar
+export const TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM = 1.5; // spec/09-constants-ledger.md §M1 proposed — downstream (raftable) gradient bar
+// Floating down and hauling up are different physics: towing/poling
+// upstream died on anything beyond canal-grade water, well below what a
+// raft could run down.
+export const TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM = 0.5; // spec/09-constants-ledger.md §M1 proposed — upstream (towing) gradient bar
 export const ELEVATION_METERS_PER_UNIT = 9400; // spec/09-constants-ledger.md §M1 proposed — elevation scale (Tibetan-plateau anchor, realClimateData)
 export const TRAVEL_MODE_COUNT = 6; // spec/09-constants-ledger.md §M1 proposed — layered routing representation
 export const TRAVEL_TRANSFER_DAYS = 0.25; // spec/09-constants-ledger.md §M1 proposed — intermodal transfer

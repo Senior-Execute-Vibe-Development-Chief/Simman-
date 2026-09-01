@@ -206,7 +206,21 @@ Review corrections to the M1 build (all validated before merge):
     it lands with real freight consumers rather than as a rushed
     constant.
 
-13. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+13. **Down is not up (owner play-report, 2026-09-01).** Boat descent of
+    Himalayan-front rivers: partly legitimate (foothill reaches under
+    the gradient bar are timber-raft country), but the diagnostic caught
+    a per-cell gate hole — a path edge between two individually
+    navigable cells climbed at 2.05 m/km — and the deeper issue that one
+    symmetric bar is wrong physics: a raft runs down water a towed barge
+    cannot climb. Navigability is now enforced PER EDGE and
+    DIRECTIONALLY: downstream to 1.5 m/km (raftable), upstream to
+    0.5 m/km (towing/poling, canal-grade) — one-way rivers emerge
+    wherever the gradient falls between the bars. Verified: Lhasa→Dhaka
+    now uses zero river edges (the descent is honestly overland); the
+    Nile keeps both directions (28.3 d up under sail / 18.7 d down,
+    every edge within bars). Gate green, manifest unchanged.
+
+14. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal

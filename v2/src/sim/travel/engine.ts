@@ -63,6 +63,8 @@ export class TravelEngine {
       field.slopeFactor,
       field.riverDownstreamFactor,
       field.riverUpstreamFactor,
+      field.riverDownGradientLimit,
+      field.riverUpGradientLimit,
       field.windGain,
       field.windRefMs,
     )) {

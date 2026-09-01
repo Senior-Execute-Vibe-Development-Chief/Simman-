@@ -31,6 +31,7 @@ import {
   TRAVEL_RIVER_UPSTREAM_FACTOR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
+  TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
   TRAVEL_SEASONAL_AMPLITUDE,
   TRAVEL_SLOPE_COST_FACTOR,
   TRAVEL_TRANSFER_DAYS,
@@ -80,6 +81,8 @@ export interface CostField {
   readonly slopeFactor: number;
   readonly riverDownstreamFactor: number;
   readonly riverUpstreamFactor: number;
+  readonly riverDownGradientLimit: number;
+  readonly riverUpGradientLimit: number;
   readonly windGain: number;
   readonly windRefMs: number;
 }
@@ -298,6 +301,10 @@ export function buildCostField(substrate: Substrate, metric: TravelMetric): Cost
     slopeFactor: TRAVEL_SLOPE_COST_FACTOR,
     riverDownstreamFactor: TRAVEL_RIVER_DOWNSTREAM_FACTOR,
     riverUpstreamFactor: TRAVEL_RIVER_UPSTREAM_FACTOR,
+    // The engine compares elevation-units per km, so convert the ledgered
+    // m/km bars through the elevation scale.
+    riverDownGradientLimit: TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM / ELEVATION_METERS_PER_UNIT,
+    riverUpGradientLimit: TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM / ELEVATION_METERS_PER_UNIT,
     windGain: TRAVEL_WIND_GAIN,
     windRefMs: TRAVEL_WIND_REF_MS,
   };

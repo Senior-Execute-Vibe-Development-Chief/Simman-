@@ -109,6 +109,10 @@ pub struct Router {
     slope_factor: f64,
     river_downstream_factor: f64,
     river_upstream_factor: f64,
+    // Directional navigability, elevation-units per km: a raft runs down
+    // steeper water than a towed barge can climb.
+    river_down_gradient_limit: f64,
+    river_up_gradient_limit: f64,
     wind_gain: f64,
     wind_ref_ms: f64,
     preprocessed: bool,
@@ -180,6 +184,8 @@ impl Router {
             slope_factor: 0.0,
             river_downstream_factor: 1.0,
             river_upstream_factor: 1.0,
+            river_down_gradient_limit: f64::INFINITY,
+            river_up_gradient_limit: f64::INFINITY,
             wind_gain: 0.0,
             wind_ref_ms: 1.0,
             preprocessed: false,
@@ -215,6 +221,8 @@ impl Router {
         slope_factor: f64,
         river_downstream_factor: f64,
         river_upstream_factor: f64,
+        river_down_gradient_limit: f64,
+        river_up_gradient_limit: f64,
         wind_gain: f64,
         wind_ref_ms: f64,
     ) -> bool {
@@ -233,6 +241,8 @@ impl Router {
         self.slope_factor = slope_factor;
         self.river_downstream_factor = river_downstream_factor;
         self.river_upstream_factor = river_upstream_factor;
+        self.river_down_gradient_limit = river_down_gradient_limit;
+        self.river_up_gradient_limit = river_up_gradient_limit;
         self.wind_gain = wind_gain;
         self.wind_ref_ms = if wind_ref_ms > 0.0 { wind_ref_ms } else { 1.0 };
         self.customized = true;
@@ -413,6 +423,15 @@ impl Router {
                 0.0
             };
             let river_factor = if mode == RIVER_MODE {
+                // Edge-level directional navigability: floating down tolerates
+                // steeper water than hauling up (and this closes the per-cell
+                // gate's meander-hop hole — M1 review, owner play-report).
+                let climb_rate = (self.elevation[next_cell] - self.elevation[cell]) / edge_km;
+                if climb_rate > self.river_up_gradient_limit
+                    || -climb_rate > self.river_down_gradient_limit
+                {
+                    continue;
+                }
                 let downstream = self.river_direction[cell] as usize;
                 let upstream = (direction + 4) % 8;
                 if downstream == direction {
