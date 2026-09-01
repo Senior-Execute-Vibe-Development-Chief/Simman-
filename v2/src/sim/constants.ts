@@ -7,8 +7,8 @@
 // The exact height and preset naming remain logged in QUESTIONS.md.
 export const DEV_GRID_WIDTH = 240; // spec/09-constants-ledger.md §Units — M0 grid convention
 export const DEV_GRID_HEIGHT = 120; // spec/09-constants-ledger.md §Units — M0 grid convention
-export const TARGET_GRID_WIDTH = 960; // spec/09-constants-ledger.md §Units — M0 target-grid convention
-export const TARGET_GRID_HEIGHT = 480; // spec/09-constants-ledger.md §Units — M0 target-grid convention
+export const TARGET_GRID_WIDTH = 1800; // spec/09-constants-ledger.md §M1 proposed — target grid convention
+export const TARGET_GRID_HEIGHT = 900; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 
 // Deterministic-math coefficients. These are numerical implementation details,
 // not mechanisms; their precision contract is recorded for the M0 bench.
@@ -44,10 +44,15 @@ export const MATH_EXP_C11 = 1 / 39916800; // spec/09-constants-ledger.md §Units
 export const MATH_LN_FIRST_ODD = 3; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_LN_STEP = 2; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_LN_LAST_ODD = 23; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_ATAN_FIRST_ODD = 3; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_ATAN_LAST_ODD = 23; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_ATAN_STEP = 2; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_TAN_EIGHTH_PI = 0.41421356237309503; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (tan(π/8), atan range reduction)
 export const MATH_EXP_MAX = 709; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_EXP_MIN = -745; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_HALF = 0.5; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_THREE = 3; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_FOUR = 4; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_NEGATIVE_ONE = -1; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_NEGATIVE_TWO = -2; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 
@@ -57,7 +62,7 @@ export const PLACEHOLDER_NOISE_DECAY = 0.99; // spec/09-constants-ledger.md §Un
 export const PLACEHOLDER_NOISE_AMPLITUDE = 0.01; // spec/09-constants-ledger.md §Units — M0 placeholder harness
 export const PLACEHOLDER_NOISE_FREQUENCY = 0.0001; // spec/09-constants-ledger.md §Units — M0 placeholder harness
 export const PLACEHOLDER_STEP_PHASE = 0.01; // spec/09-constants-ledger.md §Units — M0 placeholder harness
-export const CONSERVATION_EPSILON = 1e-5; // spec/09-constants-ledger.md §Units — M0 conservation assertion
+export const CONSERVATION_EPSILON = 1e-10; // spec/09-constants-ledger.md §Units — M0 conservation assertion
 export const M0_DETERMINISM_TICKS = 500; // spec/09-constants-ledger.md §Units — M0 smoke horizon
 export const M0_DEFAULT_SEED = 42042; // spec/09-constants-ledger.md §Units — M0 smoke seed
 export const HASH_NUMBER_BYTES = 8; // spec/09-constants-ledger.md §Units — M0 world identity hash
@@ -87,3 +92,88 @@ export const BYTE_MASK = 0xff; // spec/09-constants-ledger.md §Units — M0 RNG
 export const BYTE_SHIFT = 8; // spec/09-constants-ledger.md §Units — M0 RNG compatibility
 export const BYTE_SHIFT_2 = 16; // spec/09-constants-ledger.md §Units — M0 RNG compatibility
 export const BYTE_SHIFT_3 = 24; // spec/09-constants-ledger.md §Units — M0 RNG compatibility
+
+// M1 calendar and real-unit travel constants. Proposed rows are appended to
+// spec/09-constants-ledger.md by the M1 change.
+export const MONTHS_PER_YEAR = 12; // spec/09-constants-ledger.md §M1 proposed — monthly climate cadence
+export const EARTH_CIRCUMFERENCE_KM = 40075; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
+export const EARTH_MERIDIONAL_KM = 20004; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
+export const EARTH_DEGREES = 360; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
+export const EARTH_HALF_DEGREES = 180; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
+export const DEG_TO_RAD = 0.017453292519943295; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
+export const TRAVEL_FOOT_KM_PER_DAY = 25; // spec/09-constants-ledger.md §Travel & freight — FOOT_DAY
+export const TRAVEL_PACK_KM_PER_DAY = 35; // spec/09-constants-ledger.md §Travel & freight — RIDE_DAY
+export const TRAVEL_CART_KM_PER_DAY = 30; // spec/09-constants-ledger.md §M1 proposed — cart speed
+export const TRAVEL_RIVER_KM_PER_DAY = 45; // spec/09-constants-ledger.md §M1 proposed — river craft speed
+export const TRAVEL_COASTAL_KM_PER_DAY = 80; // spec/09-constants-ledger.md §M1 proposed — coastal sail speed
+export const TRAVEL_OPEN_SEA_KM_PER_DAY = 120; // spec/09-constants-ledger.md §M1 proposed — open-sea sail speed
+export const TRAVEL_COASTAL_BAND_KM = 150; // spec/09-constants-ledger.md §M1 proposed — coastal sailing band
+export const TRAVEL_RIVER_MIN_MAGNITUDE = 2; // spec/09-constants-ledger.md §M1 proposed — navigable river bar
+export const TRAVEL_MODE_COUNT = 6; // spec/09-constants-ledger.md §M1 proposed — layered routing representation
+export const TRAVEL_TRANSFER_DAYS = 0.25; // spec/09-constants-ledger.md §M1 proposed — intermodal transfer
+export const TRAVEL_BASE_TERRAIN = 1; // spec/09-constants-ledger.md §M1 proposed — neutral terrain factor
+export const TRAVEL_RIVER_DOWNSTREAM_FACTOR = 0.6; // spec/09-constants-ledger.md §M1 proposed — directed river cost
+export const TRAVEL_RIVER_UPSTREAM_FACTOR = 1.4; // spec/09-constants-ledger.md §M1 proposed — directed river cost
+export const TRAVEL_COST_FREIGHT_LAND = 28; // spec/09-constants-ledger.md §Travel & freight — freight ratio
+export const TRAVEL_COST_FREIGHT_RIVER = 5; // spec/09-constants-ledger.md §Travel & freight — freight ratio
+export const TRAVEL_COST_FREIGHT_SEA = 1; // spec/09-constants-ledger.md §Travel & freight — freight ratio
+export const TRAVEL_CACHE_LIMIT = 4; // spec/09-constants-ledger.md §M1 proposed — customized metric cache
+export const TRAVEL_ORBIS_TOLERANCE = 0.25; // spec/09-constants-ledger.md §Travel & freight — ORBIS gate tolerance
+export const TRAVEL_MODE_RIVER_INDEX = 3; // spec/09-constants-ledger.md §M1 proposed — layered routing representation
+export const TRAVEL_MODE_COASTAL_INDEX = 4; // spec/09-constants-ledger.md §M1 proposed — layered routing representation
+export const TRAVEL_MODE_OPEN_SEA_INDEX = 5; // spec/09-constants-ledger.md §M1 proposed — layered routing representation
+export const TRAVEL_RELIEF_THRESHOLD = 0.07; // spec/09-constants-ledger.md §M1 proposed — continuous relief cost
+export const TRAVEL_ELEVATION_FACTOR = 5; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
+export const TRAVEL_RELIEF_COST_FACTOR = 4; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
+export const TRAVEL_SLOPE_COST_FACTOR = 3; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
+export const TRAVEL_COLD_THRESHOLD = 0.35; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
+export const TRAVEL_COLD_COST_FACTOR = 2; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
+export const TRAVEL_MUD_COST_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
+export const TRAVEL_WATERLOG_THRESHOLD = 0.7; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
+export const TRAVEL_MOISTURE_FLOOR = 0.4; // spec/09-constants-ledger.md §M1 proposed — aridity cost (baseEdgeCost terrain seed)
+export const TRAVEL_LAND_MIN_FACTOR = 0.5; // spec/09-constants-ledger.md §M1 proposed — terrain factor floor
+export const TRAVEL_COASTAL_MIN_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — coastal travel factor
+export const TRAVEL_OPEN_SEA_STORM_FACTOR = 1.2; // spec/09-constants-ledger.md §M1 proposed — seasonal sea cost
+export const TRAVEL_SEASONAL_AMPLITUDE = 0.6; // spec/09-constants-ledger.md §M1 proposed — monthly climate cost response
+export const TRAVEL_HALF = 0.5; // spec/09-constants-ledger.md §M1 proposed — real-unit averaging
+export const TRAVEL_MONTH_PHASE = 0.5235987755982988; // spec/09-constants-ledger.md §M1 proposed — monthly climate phase
+export const TRAVEL_COLD_SEA_THRESHOLD = 0.3; // spec/09-constants-ledger.md §M1 proposed — sea ice response
+export const TRAVEL_INFRASTRUCTURE_FACTOR = 1; // spec/09-constants-ledger.md §M1 proposed — neutral infrastructure slot
+export const DEFAULT_OCEAN_LEVEL = 0.78; // spec/09-constants-ledger.md §M1 proposed — worldgen substrate configuration
+// The monsoon mechanism: sailing time responds to wind ALIGNMENT along the
+// route, read from the observed monthly wind field — never from a wetness
+// proxy (M1 review: the |moisture−floor| tax penalized all tropical sea
+// travel identically in both directions, which is not a monsoon).
+export const TRAVEL_WIND_GAIN = 0.4; // spec/09-constants-ledger.md §M1 proposed — sail wind-alignment response
+export const TRAVEL_WIND_REF_MS = 8; // spec/09-constants-ledger.md §M1 proposed — full-effect wind speed, m/s
+export const GRAIN_FREIGHT_EFOLD_KM = 340; // spec/09-constants-ledger.md §Travel & freight — [CONTESTED] Diocletian land-haul anchor
+export const GRAIN_SHED_EQUIVALENCE_SEA_KM = 3000; // spec/09-constants-ledger.md §M1 proposed — Mediterranean crossing reference
+export const GRAIN_SHED_MIN_KM = 75; // spec/09-constants-ledger.md §M1 proposed — sea-equivalence land-haul band
+export const GRAIN_SHED_MAX_KM = 175; // spec/09-constants-ledger.md §M1 proposed — sea-equivalence land-haul band
+export const CLIMATE_MONTHLY_RATIO_MIN = 0.05; // spec/09-constants-ledger.md §M1 proposed — observed monthly rain-ratio clamp
+export const CLIMATE_MONTHLY_RATIO_MAX = 3; // spec/09-constants-ledger.md §M1 proposed — observed monthly rain-ratio clamp
+export const DEGC_PER_TEMPERATURE_UNIT = 100; // spec/09-constants-ledger.md §M1 proposed — sim temperature scale (t = 0.6 + °C/100)
+export const ROUTING_UNREACHABLE_DAYS = 1e300; // spec/09-constants-ledger.md §M1 proposed — router unreachable sentinel
+export const ROUTING_FIXTURE_DEV_WIDTH = 12; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_DEV_HEIGHT = 6; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_TARGET_WIDTH = 24; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_TARGET_HEIGHT = 12; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_WATER_ELEVATION = -0.01; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_LAND_ELEVATION = 0.01; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_TEMPERATURE = 0.6; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_MOISTURE = 0.5; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_COAST_KM = 25; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_FIXTURE_WIND_MS = 6; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const UINT8_SENTINEL = 255; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const MAX_LAKE_AREA_KM2 = 370000; // spec/09-constants-ledger.md §M1 proposed — physical lake cap
+export const ANCESTRY_HOP_FREE_KM = 80; // spec/09-constants-ledger.md §M1 proposed — ancestry coastal hop
+export const ANCESTRY_OCEAN_EFOLD_KM = 40; // spec/09-constants-ledger.md §M1 proposed — ancestry ocean barrier
+export const LAKE_MOISTURE_RADIUS_KM = 60; // spec/09-constants-ledger.md §M1 proposed — lake moisture footprint
+export const VOLCANIC_INFLUENCE_KM = 300; // spec/09-constants-ledger.md §M1 proposed — volcanic soil influence
+export const VOLCANIC_FULL_KM = 140; // spec/09-constants-ledger.md §M1 proposed — volcanic soil falloff
+export const EARTH_SURFACE_KM2 = 510000000; // spec/09-constants-ledger.md §M1 proposed — grid real-area conversion
+export const MINE_SCATTER_RADIUS_KM = 500; // spec/09-constants-ledger.md §M1 proposed — mineral deposit footprint
+export const MINE_SCATTER_SMALL_RADIUS_KM = 375; // spec/09-constants-ledger.md §M1 proposed — mineral deposit footprint
+export const CARDINAL_NEIGHBOR_COUNT = 4; // spec/09-constants-ledger.md §M1 proposed — grid topology
+export const TRAVEL_RIVER_TEST_MAGNITUDE = 3; // spec/09-constants-ledger.md §M1 proposed — routing battery fixture
+export const ROUTING_SYMMETRY_EPSILON = 1e-9; // spec/09-constants-ledger.md §M1 proposed — routing battery tolerance

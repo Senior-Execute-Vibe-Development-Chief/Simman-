@@ -1,4 +1,4 @@
-import init, { dijkstra_test_graph } from "../wasm/router.js";
+import init, { Router } from "../wasm/router.js";
 
 let initialized: Promise<void> | undefined;
 
@@ -16,7 +16,17 @@ async function initializeRouter(): Promise<void> {
   return initialized;
 }
 
-export async function dijkstraTestGraph(): Promise<readonly number[]> {
+export type WasmRouter = Router;
+
+export async function createWasmRouter(
+  width: number,
+  height: number,
+  landMask: Uint8Array,
+  elevation: Float64Array,
+  riverDirection: Uint8Array,
+  northSouthKm: number,
+  rowEastWestKm: Float64Array,
+): Promise<WasmRouter> {
   await initializeRouter();
-  return Array.from(dijkstra_test_graph());
+  return new Router(width, height, landMask, elevation, riverDirection, northSouthKm, rowEastWestKm);
 }

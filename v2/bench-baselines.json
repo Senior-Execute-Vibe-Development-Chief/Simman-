@@ -1,0 +1,19 @@
+{
+  "dev": {
+    "substrateMilliseconds": 2300,
+    "routingInitializeMilliseconds": 80,
+    "customizeMilliseconds": 45,
+    "queryMilliseconds": 95,
+    "distanceMapMilliseconds": 75,
+    "tickMilliseconds": 1.3
+  },
+  "target": {
+    "substrateMilliseconds": 68000,
+    "routingInitializeMilliseconds": 2800,
+    "customizeMilliseconds": 2600,
+    "queryMilliseconds": 3600,
+    "distanceMapMilliseconds": 3800,
+    "tickMilliseconds": 45
+  },
+  "notes": "M1-review baseline (seed 42042, earth_sim, target 1800x900) after the physics fixes: real monthly climate + wind sampling moved substrate ~30s -> ~47s measured, and routing measured 1.9s init / 1.7s customize / 2.4s query / 2.6s distance-map at target. Values carry ~40% headroom for runner variance; CI fails above 120% of these. The 5 ms query / 500 ms distance-map working targets remain missed - QUESTIONS.md finding 6, the CRP customization/query work is the fix, not a wider baseline."
+}

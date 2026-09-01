@@ -1,7 +1,7 @@
-import { MATH_HALF, MATH_NEGATIVE_TWO, MATH_PI, MATH_THREE } from "./constants";
+import { MATH_HALF, MATH_NEGATIVE_ONE, MATH_NEGATIVE_TWO, MATH_PI, MATH_THREE } from "./constants";
 
 export interface DmathGolden {
-  readonly name: "dsin" | "dcos" | "dexp" | "dln" | "dpow";
+  readonly name: "dsin" | "dcos" | "dexp" | "dln" | "dpow" | "datan2";
   readonly args: readonly number[];
   readonly bits: string;
 }
@@ -30,4 +30,9 @@ export const DMATH_GOLDENS: readonly DmathGolden[] = [
   { name: "dpow", args: [2, MATH_THREE], bits: "4020000000000000" },
   { name: "dpow", args: [MATH_HALF, 2], bits: "3fd0000000000000" },
   { name: "dpow", args: [MATH_NEGATIVE_TWO, MATH_THREE], bits: "c020000000000000" },
+  { name: "datan2", args: [1, 2], bits: "3fddac670561be52" },
+  { name: "datan2", args: [1, MATH_NEGATIVE_TWO], bits: "40056c6e7397f54e" },
+  { name: "datan2", args: [MATH_NEGATIVE_ONE, MATH_NEGATIVE_TWO], bits: "c0056c6e7397f54e" },
+  { name: "datan2", args: [MATH_NEGATIVE_TWO, 1], bits: "bff1b6e192ebbd84" },
+  { name: "datan2", args: [1, 0], bits: "3ff921fb54442d18" },
 ];

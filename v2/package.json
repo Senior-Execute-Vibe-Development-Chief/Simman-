@@ -1,5 +1,5 @@
 {
-  "name": "simman-v2-m0",
+  "name": "simman-v2-m1",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -14,7 +14,11 @@
     "test": "npm run smoke && tsx tools/unit.test.ts",
     "presmoke": "npm run wasm:build",
     "smoke": "tsx tools/smoke.ts",
+    "prebench": "npm run wasm:build",
     "bench": "tsx tools/bench.ts",
+    "pregate": "npm run wasm:build",
+    "gate": "tsx tools/gate-travel.ts",
+    "oracle": "tsx tools/worldgen-oracle.ts",
     "browser": "npm run wasm:build && tsx tools/browser-smoke.ts"
   },
   "devDependencies": {

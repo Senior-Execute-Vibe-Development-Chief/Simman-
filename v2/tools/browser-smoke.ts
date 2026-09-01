@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium, firefox, webkit, type BrowserType } from "@playwright/test";
-import { runM0Checks, type BrowserM0Result } from "../src/sim/browserSmoke";
+import { runM1Checks, type BrowserM1Result } from "../src/sim/browserSmoke";
 import { printProvenance } from "./lib/provenance";
 import { World } from "../src/sim/world";
 
@@ -32,15 +32,15 @@ function startServer(): ChildProcess {
   });
 }
 
-async function browserResult(type: BrowserType): Promise<BrowserM0Result> {
+async function browserResult(type: BrowserType): Promise<BrowserM1Result> {
   const browser = await type.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${BASE_URL}/src/shell/index.html`, { waitUntil: "domcontentloaded" });
     return await page.evaluate(async (seed) => {
       const entry = "/src/sim/browserSmoke.ts";
       const module = await import(entry);
-      return module.runM0Checks(seed);
+      return module.runM1Checks(seed);
     }, SEED);
   } finally {
     await browser.close();
@@ -49,7 +49,7 @@ async function browserResult(type: BrowserType): Promise<BrowserM0Result> {
 
 async function main(): Promise<void> {
   printProvenance(new World({ seed: SEED, grid: "dev" }));
-  const nodeResult = await runM0Checks(SEED);
+  const nodeResult = await runM1Checks(SEED);
   const server = startServer();
   try {
     await waitForServer();
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       engines: engines.map(([name]) => name),
       worldHashes: nodeResult.worldHashes,
       dmathGoldens: nodeResult.dmathBits.length,
-      wasmDistances: nodeResult.wasmDistances,
+      routing: nodeResult.routing,
     }));
   } finally {
     server.kill();

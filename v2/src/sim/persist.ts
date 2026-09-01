@@ -2,7 +2,7 @@ import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
 import { type GridPreset, World } from "./world";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SerializedField {
   readonly length: number;
@@ -15,6 +15,7 @@ export interface SaveEnvelope {
   readonly seed: number;
   readonly grid: GridPreset;
   readonly step: number;
+  readonly calendarMonth: number;
   readonly config: Record<string, string | number | boolean>;
   readonly fields: Record<string, SerializedField>;
 }
@@ -64,6 +65,7 @@ export function saveWorld(world: World): SaveEnvelope {
     seed: world.seed,
     grid: world.grid,
     step: world.step,
+    calendarMonth: world.calendarMonth,
     config: { ...world.config },
     fields,
   };
@@ -84,6 +86,7 @@ export function loadWorld(input: string | SaveEnvelope): World {
     config: data.config,
   });
   world.step = data.step;
+  world.calendarMonth = data.calendarMonth;
   for (const definition of FIELD_LIST) {
     const serialized = data.fields[definition.name];
     if (!serialized) throw new Error(`Missing declared field ${definition.name}.`);

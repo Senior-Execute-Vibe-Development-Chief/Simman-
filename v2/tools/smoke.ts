@@ -2,16 +2,15 @@ import assert from "node:assert/strict";
 import { checkDmathGoldens } from "./lib/dmath-check";
 import { collect } from "./lib/collect";
 import { printProvenance, provenance, type Provenance } from "./lib/provenance";
-import { CONSERVATION_EPSILON, M0_DEFAULT_SEED, M0_DETERMINISM_TICKS } from "../src/sim/constants";
-import { dijkstraTestGraph } from "../src/sim/router";
+import { M0_DEFAULT_SEED, M0_DETERMINISM_TICKS } from "../src/sim/constants";
 import { loadWorld, serializeWorld } from "../src/sim/persist";
+import { runRoutingBatteries } from "../src/sim/travel/battery";
 import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
 
 const SEED = M0_DEFAULT_SEED;
 const TICKS = M0_DETERMINISM_TICKS;
 const SAVE_TICKS = 250;
 const CONTINUE_TICKS = 100;
-const EXPECTED_ROUTER = [0, 2, 3, 4, 6];
 
 interface GridSmokeResult {
   readonly grid: GridPreset;
@@ -44,8 +43,8 @@ function saveLoadRun(grid: GridPreset): void {
 
 async function main(): Promise<void> {
   const dmathGoldens = checkDmathGoldens();
-  const router = await dijkstraTestGraph();
-  assert.deepEqual(router, EXPECTED_ROUTER, "WASM Dijkstra output changed");
+  const routing = await runRoutingBatteries();
+  assert.ok(routing.every((result) => result.queries >= 72), "routing battery is incomplete");
 
   const results: GridSmokeResult[] = [];
   for (const grid of ["dev", "target"] as const) {
@@ -56,7 +55,7 @@ async function main(): Promise<void> {
     assert.equal(metrics["world.step"], TICKS, `collector missed ${grid} step`);
     const balance = deterministic.world.ledger.snapshot()["placeholder.noise"];
     assert.ok(balance, `conservation sheet missing on ${grid}`);
-    assert.ok(Math.abs(balance.unexplained) <= CONSERVATION_EPSILON, `conservation failed on ${grid}`);
+    assert.ok(Math.abs(balance.unexplained) <= balance.tolerance, `conservation failed on ${grid}`);
     results.push({
       grid,
       hash: deterministic.hash,
@@ -67,7 +66,7 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({
     smoke: "ok",
     dmathGoldens: dmathGoldens.length,
-    router,
+    routing,
     grids: results.map(({ grid, hash, provenance: stamp }) => ({ grid, hash, provenance: stamp })),
   }));
 }

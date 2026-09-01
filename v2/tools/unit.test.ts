@@ -3,9 +3,9 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { checkDmathGoldens } from "./lib/dmath-check";
 import { collect } from "./lib/collect";
-import { dijkstraTestGraph } from "../src/sim/router";
 import { entityRng, hash32, mkRng, passRng } from "../src/ported/rng";
 import { loadWorld, serializeWorld } from "../src/sim/persist";
+import { runRoutingBatteries } from "../src/sim/travel/battery";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -46,8 +46,9 @@ function tsRngVectors(): unknown {
 
 async function main(): Promise<void> {
   assert.deepEqual(tsRngVectors(), v1RngVectors(), "RNG port diverged from v1 oracle");
-  assert.equal(checkDmathGoldens().length, 21);
-  assert.deepEqual(await dijkstraTestGraph(), [0, 2, 3, 4, 6]);
+  assert.equal(checkDmathGoldens().length, 26);
+  const routing = await runRoutingBatteries();
+  assert.ok(routing.every((result) => result.queries >= 72));
 
   const world = new World({
     seed: 77,
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
   assert.equal(metrics["field.noise.n"], world.N);
   assert.equal(metrics["field.noise.sum.n"], undefined);
 
-  console.log(JSON.stringify({ tests: "ok", rng: "v1-byte-compatible", dmath: "golden", saveLoad: "byte-identical", wasm: "ok" }));
+  console.log(JSON.stringify({ tests: "ok", rng: "v1-byte-compatible", dmath: "golden", saveLoad: "byte-identical", routing: "ok" }));
 }
 
 void main().catch((error: unknown) => {

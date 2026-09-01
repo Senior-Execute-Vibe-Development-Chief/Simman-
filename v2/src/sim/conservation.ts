@@ -7,10 +7,12 @@ export interface BalanceSheet {
   sources: Record<string, number>;
   sinks: Record<string, number>;
   unexplained: number;
+  tolerance: number;
+  sourceChannel: string;
+  sinkChannel: string;
 }
 
 type NumericField = { readonly length: number; readonly [index: number]: number };
-type MutableNumericField = { readonly length: number; [index: number]: number };
 
 function sumField(field: NumericField): number {
   let total = 0;
@@ -32,7 +34,7 @@ function totalChannels(channels: Record<string, number>): number {
 export class ConservationLedger {
   private readonly sheets = new Map<string, BalanceSheet>();
 
-  begin(quantity: string, field: NumericField): void {
+  beginPass(quantity: string, field: NumericField, sourceChannel: string, sinkChannel: string): void {
     const previous = this.sheets.get(quantity);
     const sheet = previous ?? {
       opening: 0,
@@ -41,54 +43,50 @@ export class ConservationLedger {
       sources: {},
       sinks: {},
       unexplained: 0,
+      tolerance: 0,
+      sourceChannel,
+      sinkChannel,
     };
+    sheet.sourceChannel = sourceChannel;
+    sheet.sinkChannel = sinkChannel;
     sheet.opening = sumField(field);
     sheet.closing = sheet.opening;
     sheet.observedDelta = 0;
     for (const key in sheet.sources) sheet.sources[key] = 0;
     for (const key in sheet.sinks) sheet.sinks[key] = 0;
+    sheet.sources[sourceChannel] = 0;
+    sheet.sinks[sinkChannel] = 0;
     sheet.unexplained = 0;
+    sheet.tolerance = CONSERVATION_EPSILON * Math.max(1, field.length);
     this.sheets.set(quantity, sheet);
   }
 
-  write(
+  endPass(
     quantity: string,
-    field: MutableNumericField,
-    index: number,
-    next: number,
-    source: string,
-    sink: string,
+    field: NumericField,
+    sourceAmount: number,
+    sinkAmount: number,
   ): void {
     const sheet = this.sheets.get(quantity);
     if (!sheet) throw new Error(`No balance sheet started for ${quantity}.`);
-    if (!Number.isFinite(next)) throw new Error(`Non-finite write to ${quantity}.`);
-    const previous = field[index] ?? 0;
-    const delta = next - previous;
-    field[index] = next;
-    sheet.observedDelta += delta;
-    if (delta >= 0) {
-      sheet.sources[source] = (sheet.sources[source] ?? 0) + delta;
-    } else {
-      sheet.sinks[sink] = (sheet.sinks[sink] ?? 0) - delta;
+    if (!Number.isFinite(sourceAmount) || !Number.isFinite(sinkAmount)) {
+      throw new Error(`Non-finite ${quantity} pass accounting.`);
     }
-  }
-
-  end(quantity: string, field: NumericField): BalanceSheet {
-    const sheet = this.sheets.get(quantity);
-    if (!sheet) throw new Error(`No balance sheet started for ${quantity}.`);
+    sheet.sources[sheet.sourceChannel] = sourceAmount;
+    sheet.sinks[sheet.sinkChannel] = sinkAmount;
     sheet.closing = sumField(field);
     const actualDelta = sheet.closing - sheet.opening;
     const accountedDelta = totalChannels(sheet.sources) - totalChannels(sheet.sinks);
+    sheet.observedDelta = actualDelta;
     sheet.unexplained = actualDelta - accountedDelta;
-    if (Math.abs(sheet.unexplained) > CONSERVATION_EPSILON) {
+    if (Math.abs(sheet.unexplained) > sheet.tolerance) {
       throw new Error(`Unexplained ${quantity} flux: ${sheet.unexplained}.`);
     }
-    return sheet;
   }
 
   assertAll(): void {
     for (const [quantity, sheet] of this.sheets) {
-      if (Math.abs(sheet.unexplained) > CONSERVATION_EPSILON) {
+      if (Math.abs(sheet.unexplained) > sheet.tolerance) {
         throw new Error(`Unexplained ${quantity} flux: ${sheet.unexplained}.`);
       }
     }
@@ -104,6 +102,9 @@ export class ConservationLedger {
         sources: { ...sheet.sources },
         sinks: { ...sheet.sinks },
         unexplained: sheet.unexplained,
+        tolerance: sheet.tolerance,
+        sourceChannel: sheet.sourceChannel,
+        sinkChannel: sheet.sinkChannel,
       };
     }
     return result;

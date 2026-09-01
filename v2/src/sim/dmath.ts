@@ -5,6 +5,10 @@
 // important property is that Node and browsers execute the same operations.
 
 import {
+  MATH_ATAN_FIRST_ODD,
+  MATH_ATAN_LAST_ODD,
+  MATH_ATAN_STEP,
+  MATH_TAN_EIGHTH_PI,
   MATH_COS_C10,
   MATH_COS_C12,
   MATH_COS_C14,
@@ -25,6 +29,7 @@ import {
   MATH_EXP_C9,
   MATH_EXP_MAX,
   MATH_EXP_MIN,
+  MATH_FOUR,
   MATH_HALF,
   MATH_INV_LN2,
   MATH_LN2,
@@ -45,6 +50,7 @@ import {
 
 const TWO_PI = MATH_PI * 2;
 const HALF_PI = MATH_PI / 2;
+const QUARTER_PI = MATH_PI / MATH_FOUR;
 
 function reduceAngle(value: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
@@ -184,6 +190,48 @@ export function dln(value: number): number {
     series += power / odd;
   }
   return 2 * series + exponent * MATH_LN2;
+}
+
+// Alternating Maclaurin series for atan on |z| ≤ tan(π/8) ≈ 0.4142, where
+// the last kept term (z²³/23) is below 2e-11 — inside the ~1e-9 contract.
+function datanSeries(z: number): number {
+  const zSquare = z * z;
+  let power = z;
+  let series = z;
+  let sign = MATH_NEGATIVE_ONE;
+  for (let odd = MATH_ATAN_FIRST_ODD; odd <= MATH_ATAN_LAST_ODD; odd += MATH_ATAN_STEP) {
+    power *= zSquare;
+    series += sign * (power / odd);
+    sign = -sign;
+  }
+  return series;
+}
+
+function datanUnit(value: number): number {
+  let sign = 1;
+  let magnitude = value;
+  if (magnitude < 0) {
+    sign = MATH_NEGATIVE_ONE;
+    magnitude = -magnitude;
+  }
+  if (magnitude > 1) {
+    return sign * (HALF_PI - datanUnit(1 / magnitude));
+  }
+  // Range reduction keeps the series argument ≤ tan(π/8): atan(m) =
+  // π/4 + atan((m−1)/(m+1)), and for m ≤ tan(π/8) the series is direct.
+  if (magnitude > MATH_TAN_EIGHTH_PI) {
+    return sign * (QUARTER_PI + datanSeries((magnitude - 1) / (magnitude + 1)));
+  }
+  return sign * datanSeries(magnitude);
+}
+
+export function datan2(y: number, x: number): number {
+  if (Number.isNaN(x) || Number.isNaN(y)) return Number.NaN;
+  if (x > 0) return datanUnit(y / x);
+  if (x < 0) return y >= 0 ? MATH_PI + datanUnit(y / x) : -MATH_PI + datanUnit(y / x);
+  if (y > 0) return HALF_PI;
+  if (y < 0) return -HALF_PI;
+  return 0;
 }
 
 export function dpow(base: number, exponent: number): number {

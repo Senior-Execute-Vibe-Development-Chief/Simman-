@@ -6,15 +6,15 @@ import {
   M0_DEFAULT_SEED,
   M0_DETERMINISM_TICKS,
 } from "./constants";
-import { dcos, dexp, dln, dpow, dsin } from "./dmath";
+import { datan2, dcos, dexp, dln, dpow, dsin } from "./dmath";
 import { DMATH_GOLDENS } from "./dmath-goldens";
-import { dijkstraTestGraph } from "./router";
+import { runRoutingBatteries, type RoutingBatteryResult } from "./travel/battery";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
 
-export interface BrowserM0Result {
+export interface BrowserM1Result {
   readonly worldHashes: Readonly<Record<GridPreset, string>>;
   readonly dmathBits: readonly string[];
-  readonly wasmDistances: readonly number[];
+  readonly routing: readonly RoutingBatteryResult[];
 }
 
 const bitsBuffer = new ArrayBuffer(HASH_NUMBER_BYTES);
@@ -34,10 +34,11 @@ function evaluateGolden(name: string, args: readonly number[]): number {
   if (name === "dcos") return dcos(args[0] ?? 0);
   if (name === "dexp") return dexp(args[0] ?? 0);
   if (name === "dln") return dln(args[0] ?? 0);
+  if (name === "datan2") return datan2(args[0] ?? 0, args[1] ?? 0);
   return dpow(args[0] ?? 0, args[1] ?? 0);
 }
 
-export async function runM0Checks(seed = M0_DEFAULT_SEED): Promise<BrowserM0Result> {
+export async function runM1Checks(seed = M0_DEFAULT_SEED): Promise<BrowserM1Result> {
   const worldHashes = {} as Record<GridPreset, string>;
   for (const grid of ["dev", "target"] as const) {
     const first = new World({ seed, grid });
@@ -50,6 +51,6 @@ export async function runM0Checks(seed = M0_DEFAULT_SEED): Promise<BrowserM0Resu
     worldHashes[grid] = firstHash;
   }
   const dmathBits = DMATH_GOLDENS.map((golden) => float64Bits(evaluateGolden(golden.name, golden.args)));
-  const wasmDistances = await dijkstraTestGraph();
-  return { worldHashes, dmathBits, wasmDistances };
+  const routing = await runRoutingBatteries();
+  return { worldHashes, dmathBits, routing };
 }
