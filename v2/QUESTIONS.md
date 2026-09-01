@@ -171,7 +171,22 @@ Review corrections to the M1 build (all validated before merge):
     drag-pan, so leg choices are inspectable. Deep zoom with rendered
     condensations remains spec 12 (M2+ per DECISIONS 9).
 
-11. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
+11. **Boats up the Himalaya (owner play-report, 2026-09-01).** River
+    navigability gated only on SIZE (magnitude ≥ 2), never on FALL — so
+    routes rowed up the Tsangpo gorge at 32 km/day. The courses
+    themselves are right (D8 over the real DEM; big rivers really do
+    cross Tibet); navigability now also requires the reach's downstream
+    gradient ≤ 1.5 m/km (ledgered from navigable-river gradient
+    literature; computed as a rate from the cell's own flow direction
+    and real edge geometry, so it is resolution-invariant). Measured at
+    target: lowland reaches 80% navigable, hill reaches 32%, and the
+    mountain band keeps 58% — the flat PLATEAU interiors, which is the
+    historically right subtlety (coracles on the flat Tsangpo, yak
+    caravans up the gorges: Dhaka→Lhasa now goes pack over the front
+    and touches river only on the plateau flats). Lakes stay navigable
+    by definition. No gate route uses river mode, manifest unchanged.
+
+12. **Corner-cutting (owner play-report, 2026-09-01).** Land routes could
    cross a strait wherever two land cells touch only at a corner with
    water on both sides — proven with a direct 2-cell foot path over open
    water (62 such corner pairs at dev). Fixed in the engine: a diagonal

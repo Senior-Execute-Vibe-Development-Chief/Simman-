@@ -3,6 +3,7 @@ import {
   EARTH_CIRCUMFERENCE_KM,
   EARTH_HALF_DEGREES,
   EARTH_MERIDIONAL_KM,
+  ELEVATION_METERS_PER_UNIT,
   MONTHS_PER_YEAR,
   TRAVEL_BASE_TERRAIN,
   TRAVEL_COLD_COST_FACTOR,
@@ -29,6 +30,7 @@ import {
   TRAVEL_RIVER_DOWNSTREAM_FACTOR,
   TRAVEL_RIVER_UPSTREAM_FACTOR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
+  TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_SEASONAL_AMPLITUDE,
   TRAVEL_SLOPE_COST_FACTOR,
   TRAVEL_TRANSFER_DAYS,
@@ -42,6 +44,7 @@ import {
   TRAVEL_HALF,
 } from "../constants";
 import { dcos } from "../dmath";
+import { D8_DX, D8_DY } from "../../ported/worldgen/riverGen.js";
 import type { Substrate } from "../substrate";
 
 export const TRAVEL_MODES = [
@@ -157,6 +160,31 @@ function seasonalFactor(substrate: Substrate, cell: number, month: number, water
   return 1 + (cold + mud) * TRAVEL_SEASONAL_AMPLITUDE;
 }
 
+/**
+ * The river's downstream fall at this cell, m/km, from its own flow
+ * direction and the real edge geometry. Terminal cells (mouths, lakes,
+ * sinks) fall 0. Resolution-invariant: it is a RATE, so the same reach
+ * reads the same at any grid that resolves it.
+ */
+function riverGradientPerKm(substrate: Substrate, cell: number): number {
+  const direction = substrate.rivers.direction[cell];
+  if (direction === undefined || direction > 7) return 0;
+  const y = Math.floor(cell / substrate.width);
+  const dx = D8_DX[direction] ?? 0;
+  const dy = D8_DY[direction] ?? 0;
+  const ny = y + dy;
+  if (ny < 0 || ny >= substrate.height) return 0;
+  const nx = (((cell - y * substrate.width) + dx) % substrate.width + substrate.width) % substrate.width;
+  const next = ny * substrate.width + nx;
+  const dropMeters = Math.max(0, (substrate.elevation[cell] - substrate.elevation[next])) * ELEVATION_METERS_PER_UNIT;
+  const ns = dy !== 0 ? EARTH_MERIDIONAL_KM / substrate.height : 0;
+  const latitude = (EARTH_HALF_DEGREES * TRAVEL_HALF
+    - ((y + TRAVEL_HALF) / substrate.height) * EARTH_HALF_DEGREES) * DEG_TO_RAD;
+  const ew = dx !== 0 ? EARTH_CIRCUMFERENCE_KM / substrate.width * Math.max(0, dcos(latitude)) : 0;
+  const edgeKm = Math.sqrt(ew * ew + ns * ns);
+  return edgeKm > 0 ? dropMeters / edgeKm : 0;
+}
+
 function modeIsAvailable(
   substrate: Substrate,
   metric: TravelMetric,
@@ -169,10 +197,12 @@ function modeIsAvailable(
   if (mode === "pack") return land && hasCapability(metric, "packAnimals");
   if (mode === "cart") return land && hasCapability(metric, "wheelsDraft");
   if (mode === "river") {
-    return land
-      && hasCapability(metric, "boats")
-      && (substrate.rivers.magnitude[cell] >= TRAVEL_RIVER_MIN_MAGNITUDE
-        || substrate.rivers.lake[cell] >= 0);
+    if (!land || !hasCapability(metric, "boats")) return false;
+    if (substrate.rivers.lake[cell] >= 0) return true;
+    // Navigable = big enough AND gentle enough: rapids are portage country
+    // (M1 review, owner play-report — boats were rowing up Himalayan gorges).
+    return substrate.rivers.magnitude[cell] >= TRAVEL_RIVER_MIN_MAGNITUDE
+      && riverGradientPerKm(substrate, cell) <= TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM;
   }
   if (mode === "coastal") {
     return hasCapability(metric, "boats")
