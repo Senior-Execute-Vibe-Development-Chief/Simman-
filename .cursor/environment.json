@@ -1,0 +1,11 @@
+{
+  "name": "Simman",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "vite-dev",
+      "command": "npm run dev"
+    }
+  ],
+  "ports": [5173]
+}
