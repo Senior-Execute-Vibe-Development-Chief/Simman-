@@ -70,6 +70,11 @@ function dirDist(mask, W, H, dir, cap) {
 // low render/validator resolutions. Only land tiles are opened; ocean untouched.
 const EARTH_STRAITS = [
   { lat: 35.95, lon: -5.4, dLon: 1.2, dLat: 0.5 },   // Gibraltar — Mediterranean ↔ Atlantic
+  // The Dardanelles-Marmara-Bosporus chain (each strait 1-3 km, far sub-pixel;
+  // the Marmara itself falls below the enclosed-sea bar and reads as land) —
+  // without it the Black Sea is a closed lake, its rivers (the Danube!) class
+  // as TERMINAL drainage, and the desert transmission loss erases them.
+  { lat: 40.6, lon: 27.6, dLon: 1.7, dLat: 0.3 },    // Dardanelles + Marmara + Bosporus — Black Sea ↔ Aegean
 ];
 function carveStraits(elevation, W, H) {
   for (const s of EARTH_STRAITS) {

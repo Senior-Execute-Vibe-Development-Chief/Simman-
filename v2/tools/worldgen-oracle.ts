@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, copyFileSync, mkdtempSync } from "node:fs";
+import { cpSync, copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -26,6 +26,18 @@ function patchedV1SimDir(): string {
     fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
     join(dir, "earthData.js"),
   );
+  // The v2 strait table gained the Marmara chain (QUESTIONS.md #21 — without
+  // it the Black Sea is a closed lake and the Danube reads terminal); carve
+  // rows mutate elevation, which the earth arm asserts byte-exact, so the v1
+  // copy runs with the same table.
+  const worldgenPath = join(dir, "worldgen.js");
+  const worldgenSource = readFileSync(worldgenPath, "utf8");
+  const gibraltarRow = "{ lat: 35.95, lon: -5.4, dLon: 1.2, dLat: 0.5 },   // Gibraltar — Mediterranean ↔ Atlantic";
+  assert.ok(worldgenSource.includes(gibraltarRow), "v1 strait table changed shape — update the oracle patch");
+  writeFileSync(worldgenPath, worldgenSource.replace(
+    gibraltarRow,
+    `${gibraltarRow}\n  { lat: 40.6, lon: 27.6, dLon: 1.7, dLat: 0.3 },    // Dardanelles + Marmara + Bosporus — Black Sea ↔ Aegean`,
+  ));
   return dir;
 }
 const v1SimDir = patchedV1SimDir();
@@ -110,12 +122,12 @@ function summarize(values: ArrayLike<number>): FieldSummary {
   };
 }
 
-function sourceOracle(grid: GridPreset): OracleOutput {
+function sourceOracle(grid: GridPreset, preset = "earth_sim"): OracleOutput {
   const dimensions = dimensionsFor(grid);
   const source = `
     import { buildWorld } from ${JSON.stringify(pathToFileURL(join(v1SimDir, "pipeline.js")).href)};
     import { classifyBiome } from ${JSON.stringify(pathToFileURL(join(v1SimDir, "biomeClass.js")).href)};
-    const { w, ter } = buildWorld({ W: ${dimensions.width}, H: ${dimensions.height}, seed: ${SEED}, preset: "earth_sim", realWind: false });
+    const { w, ter } = buildWorld({ W: ${dimensions.width}, H: ${dimensions.height}, seed: ${SEED}, preset: ${JSON.stringify(preset)}, realWind: false });
     const fields = {
       elevation: w.elevation,
       annualTemperature: w.temperature,
@@ -206,26 +218,57 @@ function compareField(name: string, actual: FieldSummary, expected: FieldSummary
   return { name, maxSampleError, maxRelativeError, status };
 }
 
+// Earth presets take river GEOMETRY from baked HydroSHEDS data (QUESTIONS.md
+// #21), so every river-derived field deviates from v1 BY DESIGN on earth_sim:
+// reported, never asserted. The riverGen ALGORITHM stays verified by the
+// procedural arm below, where no baked data applies and these fields must
+// still match v1 exactly.
+const DATA_DEVIATION_FIELDS = new Set([
+  "riverDirection",
+  "riverMagnitude",
+  "riverFlow",
+  "floodplain",
+  "lake",
+]);
+
+function compareRun(
+  grid: GridPreset,
+  preset: string,
+  dataDeviation: ReadonlySet<string>,
+  rawRivers = false,
+): ReturnType<typeof compareField>[] {
+  const substrate = buildSubstrate(SEED, { preset, realWind: false, rawRivers }, grid);
+  const actual = substrateFields(substrate);
+  const expected = sourceOracle(grid, preset).fields;
+  const rows = Object.entries(actual).map(([name, values]) => {
+    const expectedField = expected[name];
+    assert.ok(expectedField, `oracle omitted ${name}`);
+    const row = compareField(name, summarize(values), expectedField);
+    if (dataDeviation.has(name)) return { ...row, status: "data-deviation" as never };
+    if (CLEANUP_FIELDS.has(name)) return { ...row, status: "accepted-cleanup" as const };
+    return row;
+  });
+  const exactMismatches = rows.filter((row) => row.status === "mismatch" && EXACT_FIELDS.has(row.name));
+  assert.equal(exactMismatches.length, 0,
+    `${grid}/${preset} untouched substrate fields diverged: ${exactMismatches.map((row) => `${row.name}(${row.maxSampleError})`).join(", ")}`);
+  const dmathMismatches = rows.filter((row) =>
+    row.status === "mismatch" && (row.name === "annualTemperature" || row.name === "annualMoisture" || row.name === "riverFlow"));
+  assert.equal(dmathMismatches.length, 0, `${grid}/${preset} dmath-swapped substrate fields exceeded tolerance: ${dmathMismatches.map((row) => row.name).join(", ")}`);
+  return rows;
+}
+
 async function main(): Promise<void> {
   const reports: Record<string, unknown> = {};
+  // Algorithm-fidelity arm: the earth preset with the baked river geometry
+  // DISABLED — elevation is data-exact and the river path is v1-verbatim on
+  // both sides, so riverGen (directions, accumulation, magnitudes, lakes,
+  // floodplain) must reproduce v1 EXACTLY. (A procedural preset cannot serve
+  // here: its elevation runs through dmath-swapped noise and diverges from
+  // v1 by design.)
+  reports["dev-rawRivers"] = compareRun("dev", "earth_sim", new Set(), true);
   for (const grid of ["dev", "target"] as const) {
     printProvenance(new World({ seed: SEED, grid, config: { preset: "earth_sim", oracle: true } }));
-    const substrate = buildSubstrate(SEED, { preset: "earth_sim", realWind: false }, grid);
-    const actual = substrateFields(substrate);
-    const expected = sourceOracle(grid).fields;
-    const rows = Object.entries(actual).map(([name, values]) => {
-      const expectedField = expected[name];
-      assert.ok(expectedField, `oracle omitted ${name}`);
-      const row = compareField(name, summarize(values), expectedField);
-      if (CLEANUP_FIELDS.has(name)) return { ...row, status: "accepted-cleanup" as const };
-      return row;
-    });
-    reports[grid] = rows;
-    const exactMismatches = rows.filter((row) => row.status === "mismatch" && EXACT_FIELDS.has(row.name));
-    assert.equal(exactMismatches.length, 0, `${grid} untouched substrate fields diverged`);
-    const dmathMismatches = rows.filter((row) =>
-      row.status === "mismatch" && (row.name === "annualTemperature" || row.name === "annualMoisture" || row.name === "riverFlow"));
-    assert.equal(dmathMismatches.length, 0, `${grid} dmath-swapped substrate fields exceeded tolerance: ${dmathMismatches.map((row) => row.name).join(", ")}`);
+    reports[grid] = compareRun(grid, "earth_sim", DATA_DEVIATION_FIELDS);
   }
   console.log(JSON.stringify({ oracle: "ok", seed: SEED, grids: reports }));
 }

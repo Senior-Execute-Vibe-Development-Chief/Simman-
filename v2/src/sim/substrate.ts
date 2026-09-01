@@ -35,6 +35,9 @@ import observedWind from "../../data/reality/global_wind.json";
 
 export interface SubstrateConfig {
   readonly preset?: string;
+  /** Oracle switch (QUESTIONS.md #21): derive rivers from elevation even on
+   * Earth presets, so the v1-verbatim path can be compared exactly. */
+  readonly rawRivers?: boolean;
   readonly oceanLevel?: number;
   readonly tecParams?: Readonly<Record<string, unknown>>;
   readonly realWind?: boolean;
@@ -256,6 +259,7 @@ export function buildSubstrate(
     H: height,
     seed,
     preset,
+    rawRivers: config.rawRivers ?? false,
     oceanLevel: config.oceanLevel ?? DEFAULT_OCEAN_LEVEL,
     tecParams: { ...(config.tecParams ?? {}) },
     realWind: observedClimate,

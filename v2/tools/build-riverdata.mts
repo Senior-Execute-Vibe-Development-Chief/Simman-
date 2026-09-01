@@ -1,0 +1,502 @@
+/**
+ * Bake real river GEOMETRY: src/ported/worldgen/riverDirData.js from the
+ * HydroSHEDS v1 global 5-arcmin flow-direction grid.
+ *
+ * Why (owner directive 2026-09-01, QUESTIONS.md #21): rivers were DERIVED by
+ * D8 routing over our elevation raster, whose ~20 m byte steps of cell
+ * averages carry no signal in flat basins — exactly where real rivers are
+ * decided by 1-3 m of relief. The result merged the Tigris and Euphrates
+ * into one channel, combed the Congo cuvette into parallel terraces, and
+ * fragmented the Mississippi. Per R7 the Earth's river geometry is DATA
+ * (like the coastline and the winds); only the water AMOUNTS stay emergent —
+ * the sim still accumulates moisture-driven runoff through this geometry.
+ *
+ * Source (fetch + unzip before running; pass the .tif path as argv):
+ *   https://data.hydrosheds.org/file/hydrosheds-v1-dir/hyd_glo_dir_5m.zip
+ *   HydroSHEDS v1 © World Wildlife Fund — Lehner, B., Verdin, K., Jarvis, A.
+ *   (2008), doi:10.1029/2008EO100001. License: CC-BY 4.0 (attribution above).
+ *   Grid: 4320×1680, 5 arc-min, origin 180°W 84°N (covers 84°N..56°S),
+ *   LZW-tiled GeoTIFF; ESRI D8 codes 1,2,4,8,16,32,64,128 = E,SE,S,SW,W,NW,
+ *   N,NE; 0 = terminal (river mouth or inland sink); 255 = ocean/nodata.
+ *
+ * Output raster: 1920×960 (the earthData grid), one byte per cell:
+ *   0-7  = D8 flow direction in the sim's rose (E=0,SE=1,S=2,SW=3,W=4,NW=5,
+ *          N=6,NE=7 — ESRI code 2^i maps to index i);
+ *   8    = terminal inland sink (endorheic; flow pools);
+ *   255  = no data (ocean, or beyond 84°N/56°S) — the sim falls back to
+ *          elevation-derived directions there.
+ *
+ * Downsampling is DOMINANT RIVER TRACING: each coarse cell is represented by
+ * its highest-accumulation fine cell; the fine flow path is walked until it
+ * settles in another coarse cell, which fixes the coarse direction. Cycles
+ * the projection creates are broken deterministically (next candidate along
+ * the same fine path; terminal as last resort, count reported).
+ */
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const SRC_W = 4320;
+const SRC_H = 1680;
+const SRC_LAT0 = 84; // top edge
+const SRC_PER_DEG = 12; // 5-arcmin cells
+const OUT_W = 1920;
+const OUT_H = 960;
+const TERMINAL = 8;
+const NODATA = 255;
+const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
+const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
+// ESRI code value -> our rose index (code 2^i -> i).
+const ESRI_TO_ROSE = new Map([[1, 0], [2, 1], [4, 2], [8, 3], [16, 4], [32, 5], [64, 6], [128, 7]]);
+
+// ── Minimal little-endian TIFF reader for this exact file class:
+//    single strip-less tiled IFD, 8-bit single sample, LZW, no predictor. ──
+function readTiff(path: string): Uint8Array {
+  const buf = readFileSync(path);
+  if (buf.readUInt16LE(0) !== 0x4949 || buf.readUInt16LE(2) !== 42) throw new Error("not a little-endian TIFF");
+  const ifd = buf.readUInt32LE(4);
+  const entries = buf.readUInt16LE(ifd);
+  const tag: Record<number, { type: number; count: number; value: number }> = {};
+  for (let i = 0; i < entries; i++) {
+    const off = ifd + 2 + i * 12;
+    tag[buf.readUInt16LE(off)] = {
+      type: buf.readUInt16LE(off + 2),
+      count: buf.readUInt32LE(off + 4),
+      value: buf.readUInt32LE(off + 8),
+    };
+  }
+  const width = tag[256]?.value;
+  const height = tag[257]?.value;
+  const tileW = tag[322]?.value;
+  const tileH = tag[323]?.value;
+  const tileOffsets = tag[324];
+  const tileCounts = tag[325];
+  if (width !== SRC_W || height !== SRC_H) throw new Error(`unexpected grid ${width}×${height}`);
+  if (tag[259]?.value !== 5) throw new Error("expected LZW compression");
+  if ((tag[317]?.value ?? 1) !== 1) throw new Error("expected no predictor");
+  if (!tileW || !tileH || !tileOffsets || !tileCounts) throw new Error("expected tiled layout");
+  const tilesX = Math.ceil(width / tileW);
+  const grid = new Uint8Array(width * height);
+  for (let t = 0; t < tileOffsets.count; t++) {
+    const offset = buf.readUInt32LE(tileOffsets.value + t * 4);
+    const count = buf.readUInt32LE(tileCounts.value + t * 4);
+    const raw = lzwDecode(buf.subarray(offset, offset + count), tileW * tileH);
+    const ty = Math.floor(t / tilesX);
+    const tx = t - ty * tilesX;
+    for (let r = 0; r < tileH; r++) {
+      const gy = ty * tileH + r;
+      if (gy >= height) break;
+      const gx = tx * tileW;
+      const n = Math.min(tileW, width - gx);
+      grid.set(raw.subarray(r * tileW, r * tileW + n), gy * width + gx);
+    }
+  }
+  return grid;
+}
+
+// TIFF-flavour LZW (MSB-first codes, 9→12 bits, early change).
+function lzwDecode(src: Uint8Array, expected: number): Uint8Array {
+  const out = new Uint8Array(expected);
+  let outLen = 0;
+  const prefix = new Int32Array(4096);
+  const suffix = new Uint8Array(4096);
+  const stack = new Uint8Array(4096);
+  let tableSize = 258;
+  let width = 9;
+  let prev = -1;
+  let bitBuf = 0;
+  let bitCnt = 0;
+  let pos = 0;
+  const emit = (code: number): number => {
+    let sp = 0;
+    let c = code;
+    while (c >= 256) { stack[sp++] = suffix[c]!; c = prefix[c]!; }
+    const first = c;
+    out[outLen++] = c;
+    while (sp > 0) out[outLen++] = stack[--sp]!;
+    return first;
+  };
+  for (;;) {
+    while (bitCnt < width && pos < src.length) { bitBuf = (bitBuf << 8) | src[pos++]!; bitCnt += 8; }
+    if (bitCnt < width) break;
+    const code = (bitBuf >>> (bitCnt - width)) & ((1 << width) - 1);
+    bitCnt -= width;
+    if (code === 256) { tableSize = 258; width = 9; prev = -1; continue; }
+    if (code === 257) break;
+    if (prev < 0) {
+      emit(code);
+      prev = code;
+    } else {
+      let first: number;
+      if (code < tableSize) first = emit(code);
+      else { // KwKwK
+        let c = prev, f = c;
+        while (f >= 256) f = prefix[f]!;
+        emit(prev);
+        out[outLen++] = f;
+        first = f;
+      }
+      prefix[tableSize] = prev;
+      suffix[tableSize] = first;
+      tableSize++;
+      prev = code;
+    }
+    if (tableSize + 1 >= 1 << width && width < 12) width++;
+  }
+  return out.subarray(0, outLen);
+}
+
+const inputPath = process.argv[2];
+if (!inputPath) throw new Error("usage: build-riverdata.mts <hyd_glo_dir_5m.tif>");
+const esri = readTiff(inputPath);
+console.log("decoded source grid");
+
+// Remap to rose indices; 0 → TERMINAL, 255 → NODATA, anything else invalid.
+const fineDir = new Uint8Array(SRC_W * SRC_H);
+for (let i = 0; i < esri.length; i++) {
+  const v = esri[i]!;
+  fineDir[i] = v === 255 ? NODATA : v === 0 ? TERMINAL : (ESRI_TO_ROSE.get(v) ?? NODATA);
+}
+
+// Estuary rescue: HydroSHEDS marks inland water (estuaries, lagoons, delta
+// channels) as TERMINAL blobs. A terminal cell CONNECTED to receiving water
+// through other terminal cells is estuarine WATER, not a sink — rewrite its
+// direction one step toward that water (its BFS parent), so the Amazon,
+// Mississippi, Ganges, Plata and every delta discharge instead of pooling at
+// the coast. "Receiving water" is the HydroSHEDS ocean (nodata) PLUS any cell
+// that is WATER in the shipped elevation raster (earthData bytes 0-2) — the
+// map's own sea-class basins (the Caspian) receive their rivers (the Volga)
+// even though HydroSHEDS classes them inland. A terminal blob with no such
+// contact (a playa, the Qattara floor, the Aral's dry basin) stays a true
+// sink.
+{
+  const earthModule = readFileSync(
+    fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
+    "utf8",
+  );
+  const earthMatch = earthModule.match(/export const EARTH_ELEV="([^"]+)"/);
+  if (!earthMatch) throw new Error("EARTH_ELEV not found for the rescue water mask");
+  const earth = Buffer.from(earthMatch[1]!, "base64");
+  const EARTH_W = 1920;
+  const EARTH_H = 960;
+  const shippedWater = (fx: number, fy: number): boolean => {
+    const lat = SRC_LAT0 - (fy + 0.5) / SRC_PER_DEG;
+    const lon = -180 + (fx + 0.5) / SRC_PER_DEG;
+    const ey = Math.min(EARTH_H - 1, Math.max(0, Math.floor(((90 - lat) / 180) * EARTH_H)));
+    const ex = Math.min(EARTH_W - 1, Math.max(0, Math.floor(((lon + 180) / 360) * EARTH_W)));
+    return (earth[ey * EARTH_W + ex] ?? 0) < 3;
+  };
+  // A terminal cell that is WATER in the shipped raster IS the sea for the
+  // sim's purposes — convert it to nodata outright, so walks that reach the
+  // Caspian, an estuary, or a delta lagoon read "arrived at receiving water"
+  // instead of dying inside a sink field.
+  let converted = 0;
+  for (let i = 0; i < SRC_W * SRC_H; i++) {
+    if (fineDir[i] === TERMINAL && shippedWater(i % SRC_W, Math.floor(i / SRC_W))) {
+      fineDir[i] = NODATA;
+      converted++;
+    }
+  }
+  console.log(`shipped-water terminals converted to sea: ${converted}`);
+  const queue: number[] = [];
+  const seen = new Uint8Array(SRC_W * SRC_H);
+  for (let i = 0; i < SRC_W * SRC_H; i++) {
+    if (fineDir[i] === NODATA) { seen[i] = 1; queue.push(i); }
+  }
+  let rescued = 0;
+  for (let qi = 0; qi < queue.length; qi++) {
+    const i = queue[qi]!;
+    const y = Math.floor(i / SRC_W);
+    const x = i - y * SRC_W;
+    for (let d = 0; d < 8; d++) {
+      const ny = y + D8_DY[d]!;
+      if (ny < 0 || ny >= SRC_H) continue;
+      const j = ny * SRC_W + ((x + D8_DX[d]! + SRC_W) % SRC_W);
+      if (seen[j] || fineDir[j] !== TERMINAL) continue;
+      seen[j] = 1;
+      // point j back toward i (the cell closer to the ocean): opposite rose.
+      fineDir[j] = (d + 4) % 8;
+      rescued++;
+      queue.push(j);
+    }
+  }
+  console.log(`estuary rescue: ${rescued} terminal cells rewired toward the ocean`);
+}
+
+// Optional debug window: argv[3] = "lat,lon" prints the post-rescue fine
+// neighbourhood (O = terminal, ~ = nodata, digits = rose directions).
+if (process.argv[3]) {
+  const [lat, lon] = process.argv[3].split(",").map(Number) as [number, number];
+  const fy = Math.floor((SRC_LAT0 - lat) * SRC_PER_DEG);
+  const fx = Math.floor((lon + 180) * SRC_PER_DEG);
+  console.log(`fine window around ${lat},${lon}:`);
+  for (let dy = -10; dy <= 10; dy++) {
+    let line = "";
+    for (let dx = -14; dx <= 14; dx++) {
+      const v = fineDir[(fy + dy) * SRC_W + fx + dx];
+      line += v === NODATA ? "~" : v === TERMINAL ? "O" : String(v);
+    }
+    console.log("  " + line);
+  }
+}
+
+// Fine accumulation (uniform weight — only ranks representatives for tracing).
+function accumulate(dir: Uint8Array, w: number, h: number): Float64Array {
+  const n = w * h;
+  const target = new Int32Array(n).fill(-1);
+  const indeg = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const d = dir[i]!;
+    if (d > 7) continue;
+    const y = Math.floor(i / w);
+    const ny = y + D8_DY[d]!;
+    if (ny < 0 || ny >= h) continue;
+    const j = ny * w + ((i - y * w + D8_DX[d]! + w) % w);
+    target[i] = j;
+    indeg[j]!++;
+  }
+  const acc = new Float64Array(n).fill(1);
+  const queue = new Int32Array(n);
+  let head = 0;
+  let tail = 0;
+  for (let i = 0; i < n; i++) if (indeg[i] === 0) queue[tail++] = i;
+  while (head < tail) {
+    const i = queue[head++]!;
+    const j = target[i]!;
+    if (j >= 0) {
+      acc[j]! += acc[i]!;
+      if (--indeg[j]! === 0) queue[tail++] = j;
+    }
+  }
+  if (head !== n) console.log(`warning: ${n - head} cells in source cycles`);
+  return acc;
+}
+const fineAcc = accumulate(fineDir, SRC_W, SRC_H);
+
+// Map each fine cell center to its coarse pixel.
+function coarseOf(fx: number, fy: number): number {
+  const lat = SRC_LAT0 - (fy + 0.5) / SRC_PER_DEG;
+  const lon = -180 + (fx + 0.5) / SRC_PER_DEG;
+  const oy = Math.min(OUT_H - 1, Math.max(0, Math.floor(((90 - lat) / 180) * OUT_H)));
+  const ox = Math.min(OUT_W - 1, Math.max(0, Math.floor(((lon + 180) / 360) * OUT_W)));
+  return oy * OUT_W + ox;
+}
+
+// Representative fine cell per coarse pixel = max fine accumulation.
+const rep = new Int32Array(OUT_W * OUT_H).fill(-1);
+for (let fy = 0; fy < SRC_H; fy++) {
+  for (let fx = 0; fx < SRC_W; fx++) {
+    const fi = fy * SRC_W + fx;
+    if (fineDir[fi] === NODATA) continue;
+    const o = coarseOf(fx, fy);
+    if (rep[o] < 0 || fineAcc[fi]! > fineAcc[rep[o]!]!) rep[o] = fi;
+  }
+}
+
+// Trace each representative's fine path; record up to 3 distinct coarse
+// cells it enters (candidates for the coarse direction, cycle repair uses
+// the later ones), or terminal.
+const MAX_TRACE = 64;
+const candidates: Int32Array = new Int32Array(OUT_W * OUT_H * 3).fill(-1);
+const terminalAt = new Uint8Array(OUT_W * OUT_H);
+
+// A fine TERMINAL cell is a river MOUTH when ocean (nodata) touches it — its
+// coarse cell must then point INTO the sea so the basin reads exorheic, never
+// pool as a sink (a pooling mouth marks the whole basin closed and the arid
+// transmission loss erases it — this wiped the Tigris-Euphrates). Returns the
+// fine direction of the first adjacent nodata cell, or -1 for a true sink.
+function mouthDirection(fi: number): number {
+  const fy = Math.floor(fi / SRC_W);
+  const fx = fi - fy * SRC_W;
+  for (let d = 0; d < 8; d++) {
+    const ny = fy + D8_DY[d]!;
+    if (ny < 0 || ny >= SRC_H) continue;
+    if (fineDir[ny * SRC_W + ((fx + D8_DX[d]! + SRC_W) % SRC_W)] === NODATA) return d;
+  }
+  return -1;
+}
+
+/** Strongest directed neighbour NOT flowing into `fi` (a bypassing channel), or -1. */
+function bypassNeighbor(fi: number): number {
+  const fy = Math.floor(fi / SRC_W);
+  const fx = fi - fy * SRC_W;
+  let best = -1;
+  let bestAcc = -1;
+  for (let d = 0; d < 8; d++) {
+    const ny = fy + D8_DY[d]!;
+    if (ny < 0 || ny >= SRC_H) continue;
+    const j = ny * SRC_W + ((fx + D8_DX[d]! + SRC_W) % SRC_W);
+    const jd = fineDir[j]!;
+    if (jd > 7) continue;
+    const jy = Math.floor(j / SRC_W);
+    const jny = jy + D8_DY[jd]!;
+    if (jny >= 0 && jny < SRC_H
+      && jny * SRC_W + ((j - jy * SRC_W + D8_DX[jd]! + SRC_W) % SRC_W) === fi) continue;
+    if (fineAcc[j]! > bestAcc) { bestAcc = fineAcc[j]!; best = j; }
+  }
+  return best;
+}
+
+for (let o = 0; o < OUT_W * OUT_H; o++) {
+  const start = rep[o]!;
+  if (start < 0) continue;
+  let fi = start;
+  let found = 0;
+  for (let step = 0; step < MAX_TRACE && found < 3; step++) {
+    const d = fineDir[fi]!;
+    if (d === TERMINAL || d === NODATA) {
+      const seaward = d === NODATA ? 0 : mouthDirection(fi);
+      if (seaward >= 0) {
+        // Mouth: continue seaward until the coarse cell changes, so the
+        // coarse direction discharges into the ocean.
+        let mx = fi % SRC_W;
+        let my = Math.floor(fi / SRC_W);
+        for (let extend = 0; extend < 8 && found < 3; extend++) {
+          mx = (mx + D8_DX[seaward]! + SRC_W) % SRC_W;
+          my += D8_DY[seaward]!;
+          if (my < 0 || my >= SRC_H) break;
+          const cc = coarseOf(mx, my);
+          if (cc !== o && (found === 0 || candidates[o * 3 + found - 1] !== cc)) {
+            candidates[o * 3 + found] = cc;
+            found++;
+            break;
+          }
+        }
+        break;
+      }
+      // Unrescued pocket (enclosed delta water): hop onto the strongest
+      // adjacent BYPASSING channel — a braid pond spills into the
+      // distributary beside it. A true sink never qualifies: all its
+      // directed neighbours flow INTO it.
+      const hop = bypassNeighbor(fi);
+      if (hop >= 0) {
+        fi = hop;
+        const hy = Math.floor(fi / SRC_W);
+        const cc = coarseOf(fi % SRC_W, hy);
+        if (cc !== o && (found === 0 || candidates[o * 3 + found - 1] !== cc)) {
+          candidates[o * 3 + found] = cc;
+          found++;
+        }
+        continue;
+      }
+      if (found === 0) terminalAt[o] = 2; // true inland sink
+      break;
+    }
+    const fy = Math.floor(fi / SRC_W);
+    const ny = fy + D8_DY[d]!;
+    if (ny < 0 || ny >= SRC_H) break;
+    fi = ny * SRC_W + ((fi - fy * SRC_W + D8_DX[d]! + SRC_W) % SRC_W);
+    const cc = coarseOf(fi % SRC_W, ny);
+    if (cc !== o && (found === 0 || candidates[o * 3 + found - 1] !== cc)) {
+      candidates[o * 3 + found] = cc;
+      found++;
+    }
+  }
+}
+
+// Direction from coarse cell o toward coarse cell c (nearest D8 rose index).
+function roseToward(o: number, c: number): number {
+  const oy = Math.floor(o / OUT_W);
+  const ox = o - oy * OUT_W;
+  const cy = Math.floor(c / OUT_W);
+  const cx = c - cy * OUT_W;
+  let dx = cx - ox;
+  if (dx > OUT_W / 2) dx -= OUT_W;
+  if (dx < -OUT_W / 2) dx += OUT_W;
+  const dy = cy - oy;
+  const angle = Math.atan2(dy, dx); // screen: +y south
+  const sector = Math.round(angle / (Math.PI / 4));
+  return ((sector % 8) + 8) % 8; // 0=E,1=SE,2=S,...,7=NE
+}
+
+const out = new Uint8Array(OUT_W * OUT_H).fill(NODATA);
+for (let o = 0; o < OUT_W * OUT_H; o++) {
+  if (rep[o]! < 0) continue;
+  if (terminalAt[o] === 2) { out[o] = TERMINAL; continue; }
+  const first = candidates[o * 3];
+  if (first !== undefined && first >= 0) out[o] = roseToward(o, first);
+  else out[o] = TERMINAL;
+}
+
+// The rose clamp can point at a coarse cell other than the traced one; that
+// plus projection can create cycles. Break them deterministically: follow
+// each cell's chain; a cell revisited in the same walk is in a cycle — retry
+// its later candidates; if none escapes, it becomes terminal.
+function targetOf(o: number): number {
+  const d = out[o]!;
+  if (d > 7) return -1;
+  const oy = Math.floor(o / OUT_W);
+  const ny = oy + D8_DY[d]!;
+  if (ny < 0 || ny >= OUT_H) return -1;
+  return ny * OUT_W + ((o - oy * OUT_W + D8_DX[d]! + OUT_W) % OUT_W);
+}
+let broken = 0;
+for (let round = 0; round < 5; round++) {
+  let brokenThisRound = 0;
+  const stamp = new Int32Array(OUT_W * OUT_H).fill(-1);
+  const resolved = new Uint8Array(OUT_W * OUT_H);
+  for (let s = 0; s < OUT_W * OUT_H; s++) {
+    if (out[s]! > 7 || resolved[s]) continue;
+    let o = s;
+    const path: number[] = [];
+    while (o >= 0 && !resolved[o] && out[o]! <= 7) {
+      if (stamp[o] === s) {
+        // Cycle found: repair the weakest cell that HAS an escape candidate
+        // (checking every cycle cell before ever giving up) — a terminal
+        // fallback on a mainstem dams the whole river upstream.
+        let c = targetOf(o);
+        const cycle = [o];
+        while (c !== o && c >= 0) { cycle.push(c); c = targetOf(c); }
+        cycle.sort((a, b) =>
+          (rep[a]! >= 0 ? fineAcc[rep[a]!]! : 0) - (rep[b]! >= 0 ? fineAcc[rep[b]!]! : 0));
+        let fixed = false;
+        for (const cell of cycle) {
+          for (let k = 1; k < 3 && !fixed; k++) {
+            const cand = candidates[cell * 3 + k]!;
+            if (cand >= 0 && !cycle.includes(cand)) {
+              out[cell] = roseToward(cell, cand);
+              fixed = true;
+            }
+          }
+          if (fixed) break;
+        }
+        if (!fixed) out[cycle[0]!] = TERMINAL;
+        brokenThisRound++;
+        break;
+      }
+      stamp[o] = s;
+      path.push(o);
+      o = targetOf(o);
+    }
+    for (const cell of path) resolved[cell] = 1;
+  }
+  broken += brokenThisRound;
+  if (brokenThisRound === 0) break;
+}
+console.log(`coarse cells with data: ${out.filter((v) => v !== NODATA).length}; cycles broken: ${broken}`);
+
+const header = `/* V2 DATA — real river geometry (recorded deviation, QUESTIONS.md #21)
+ * RIVER_DIR: global D8 flow directions at 1920x960 (the earthData grid),
+ * baked 2026-09-01 by tools/build-riverdata.mts from the HydroSHEDS v1
+ * 5-arcmin global flow-direction grid via dominant river tracing.
+ * HydroSHEDS v1 © World Wildlife Fund — Lehner, Verdin & Jarvis (2008),
+ * doi:10.1029/2008EO100001, https://www.hydrosheds.org (CC-BY 4.0).
+ * Bytes: 0-7 = flow direction (E=0,SE=1,S=2,SW=3,W=4,NW=5,N=6,NE=7 — the
+ * sim's D8 rose), 8 = terminal inland sink, 255 = no data (ocean, or
+ * beyond the source's 84N..56S coverage; the sim derives those from
+ * elevation as before). Earth presets take river GEOMETRY from this data;
+ * runoff, accumulation and magnitude stay emergent from climate (R7).
+ */
+export const RIVER_DIR_W = ${OUT_W}, RIVER_DIR_H = ${OUT_H};
+export const RIVER_DIR_TERMINAL = 8, RIVER_DIR_NODATA = 255;
+
+export function decodeRiverDir(b64) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+`;
+const b64 = Buffer.from(out).toString("base64");
+const targetPath = fileURLToPath(new URL("../src/ported/worldgen/riverDirData.js", import.meta.url));
+writeFileSync(targetPath, `${header}\nexport const RIVER_DIR="${b64}";\n`);
+console.log(`wrote ${targetPath}`);

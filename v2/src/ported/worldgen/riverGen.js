@@ -1,8 +1,9 @@
 /* V2 M1 PORT
- * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; hydrology otherwise remains verbatim.
+ * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; hydrology otherwise remains verbatim.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import { EARTH_SURFACE_KM2, MAX_LAKE_AREA_KM2 } from "../../sim/constants.ts";
+import { dpow } from "../../sim/dmath.ts";
 // ── River Hydrology: Conceptual River Network ──
 // D8 flow direction + priority-flood pit filling + flow accumulation.
 // Produces continent-scale rivers (Congo, Nile, Amazon scale).
@@ -82,7 +83,12 @@ const SNOWMELT_K = 3.0;
 // half-amplitude that makes a cold-winter mountain bank a snowpack the annual mean hides.
 const SNOWMELT_WINTER = 0.38;
 
-export function computeRivers(tw, th, tElev, tMoist, tTemp) {
+// `bakedDir` (optional, Uint8Array N; QUESTIONS.md #21): real river GEOMETRY
+// for Earth presets — 0-7 = D8 direction, 8 = terminal inland sink, 255 = no
+// data (derive from elevation as before). Water amounts stay emergent: runoff,
+// accumulation, transmission loss and magnitude all run through the given
+// geometry unchanged.
+export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null) {
   const N = tw * th;
 
   // ── Step 1: Priority-flood pit filling ──
@@ -251,12 +257,35 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   // ── Step 2: D8 flow direction on filled surface ──
   const flowDir = new Uint8Array(N);
   flowDir.fill(255);
+  // Cells whose direction came from DATA (baked real geometry): the endorheic
+  // evaporation pass below must not sever them — whether such a basin drains
+  // is already encoded in the data (a phantom depression of the cell-averaged
+  // DEM, like the Congo cuvette, must not pool a real through-river).
+  const dirFromData = bakedDir ? new Uint8Array(N) : null;
 
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
       const ti = ty * tw + tx;
       if (tElev[ti] <= 0) continue; // ocean = sink
       if (tTemp[ti] < 0.12) continue; // permanent ice / ice sheet — no surface rivers
+
+      if (bakedDir) {
+        const bd = bakedDir[ti];
+        if (bd <= 7) { flowDir[ti] = bd; dirFromData[ti] = 1; continue; }
+        if (bd === 8) {
+          // Terminal sink — but a "sink" on the COASTLINE is the sea: if any
+          // neighbour is ocean in the shipped mask, fall through to the
+          // elevation-derived choice, which discharges into it.
+          let coastal = false;
+          for (let d = 0; d < 8 && !coastal; d++) {
+            const nx = (tx + D8_DX[d] + tw) % tw;
+            const ny = ty + D8_DY[d];
+            if (ny >= 0 && ny < th && tElev[ny * tw + nx] <= 0) coastal = true;
+          }
+          if (!coastal) { dirFromData[ti] = 1; continue; } // true inland sink: dir stays 255, flow pools
+        }
+        // 255 (no data): fall through to the elevation-derived choice below.
+      }
 
       let bestDir = 255;
       let bestScore = 0;
@@ -278,6 +307,46 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       }
 
       flowDir[ti] = bestDir;
+    }
+  }
+
+  // Mixed-source edges can close loops the pure steepest-descent field never
+  // could (a DATA direction into a fallback cell whose steepest drop points
+  // back). Downstream code assumes an acyclic field, so sweep once and break
+  // every cycle at its lowest cell — the pit, where the water would pool.
+  if (bakedDir) {
+    let sweepBreaks = 0;
+    const state = new Uint8Array(N); // 0 unvisited, 1 on current walk, 2 done
+    const nextOf = (ti) => {
+      const d = flowDir[ti];
+      if (d === 255) return -1;
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      const ny = ty + D8_DY[d];
+      if (ny < 0 || ny >= th) return -1;
+      return ny * tw + ((tx + D8_DX[d] + tw) % tw);
+    };
+    for (let s = 0; s < N; s++) {
+      if (state[s] !== 0 || flowDir[s] === 255) continue;
+      const path = [];
+      let ti = s;
+      while (ti >= 0 && flowDir[ti] !== 255 && state[ti] === 0) {
+        state[ti] = 1;
+        path.push(ti);
+        ti = nextOf(ti);
+      }
+      if (ti >= 0 && state[ti] === 1) {
+        let pit = ti, cur = nextOf(ti);
+        while (cur !== ti && cur >= 0) {
+          if (filled[cur] < filled[pit]) pit = cur;
+          cur = nextOf(cur);
+        }
+        flowDir[pit] = 255;
+        if (typeof process !== "undefined" && process.env && process.env.SIM_RIVER_DIAG) sweepBreaks++;
+      }
+      for (const cell of path) state[cell] = 2;
+    }
+    if (typeof process !== "undefined" && process.env && process.env.SIM_RIVER_DIAG) {
+      console.log(`[riverDiag] mixed-edge cycle sweep broke ${sweepBreaks} cells`);
     }
   }
 
@@ -422,7 +491,9 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       const dry  = 0.20 + Math.max(0, 0.42 - b.moist) * 3.0;    // humid→0.20, desert→~1.1
       const evapDemand = b.footprint * ENDO_EVAP * heat * dry;
       if (spillFlow < evapDemand) {
-        for (const ti of exits) flowDir[ti] = 255; // terminate — flow pools inside
+        // terminate — flow pools inside (but a DATA-sourced exit stays: real
+        // geometry already says whether this basin drains)
+        for (const ti of exits) if (!dirFromData || !dirFromData[ti]) flowDir[ti] = 255;
       }
     }
     // Mark every tile whose flow ENDS in a terminal land sink (rather than the ocean),
@@ -459,7 +530,22 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       if (tElev[ti] <= 0 || drainsTerminal[ti] !== 1) continue;
       const aridity = Math.max(0, Math.min(1, (0.45 - tMoist[ti]) / 0.45));        // 0 if moist≥0.45 → 1 bone-dry
       const seepEvap = 0.7 + 0.3 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // seepage floor 0.7 → +evaporation to 1.0
-      transmit[ti] = 1 - TRANS_LOSS * aridity * seepEvap;
+      if (bakedDir) {
+        // R3 fix, riding with the real-geometry deviation (QUESTIONS.md #21):
+        // the flat per-TILE loss is resolution-dependent — the same real
+        // desert costs 3x the tiles at 22 km cells as at the ~66 km cells the
+        // constant was calibrated on (tw=480), so terminal rivers crossing it
+        // were erased at fine grids (the lower Volga lost 94%). Express the
+        // SAME calibrated loss per km of channel instead: survival =
+        // (1-TRANS_LOSS)^(cellKm/REF_KM × aridity×seepEvap). Identical at the
+        // calibration grid; grid-invariant everywhere else. Procedural
+        // presets keep the verbatim v1 form (the oracle asserts them exact).
+        const cellKm = Math.sqrt(EARTH_KM2 / N);
+        const TRANS_LOSS_REF_TILE_KM = Math.sqrt(EARTH_KM2 / (480 * 240));
+        transmit[ti] = dpow(1 - TRANS_LOSS, (cellKm / TRANS_LOSS_REF_TILE_KM) * aridity * seepEvap);
+      } else {
+        transmit[ti] = 1 - TRANS_LOSS * aridity * seepEvap;
+      }
     }
     accumulate(); // final field: endorheic basins sealed + terminal-bound desert loss
   }

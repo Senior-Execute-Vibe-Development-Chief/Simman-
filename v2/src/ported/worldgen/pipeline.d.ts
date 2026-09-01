@@ -53,5 +53,6 @@ export function buildWorld(options: {
   readonly oceanLevel?: number;
   readonly tecParams?: Record<string, unknown>;
   readonly realWind?: boolean;
+  readonly rawRivers?: boolean;
   readonly realWindFns?: Record<string, unknown> | null;
 }): { readonly w: PortedWorld; readonly ter: PortedTerritory };

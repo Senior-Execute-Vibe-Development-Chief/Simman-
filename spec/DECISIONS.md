@@ -341,9 +341,29 @@ lawyered.
     raster). v1 itself is untouched. QUESTIONS.md #19 carries the full
     measurement record.
 
+## 2026-09-01 — Rivers round
+
+21. **Real river geometry; emergent water.** (Ratified — owner directive
+    "lets just get our rivers perfect".) Earth presets take river
+    GEOMETRY from baked HydroSHEDS v1 flow directions
+    (`v2/tools/build-riverdata.mts` → riverDirData.js, dominant river
+    tracing to any grid); runoff, accumulation, transmission loss and
+    magnitude stay emergent from climate (R7: Earthness in data, never
+    mechanism). Riding deviations, each recorded with reasons in
+    QUESTIONS.md #21: per-km transmission loss (R3 — the flat per-tile
+    constant erased the lower Volga at fine grids), the
+    Dardanelles-Marmara-Bosporus strait row (the Black Sea must reach
+    the ocean or the Danube reads terminal), and mouth/estuary/pocket
+    discharge rules. Procedural presets keep the v1-verbatim derived
+    path, proven EXACT by the oracle's new rawRivers arm. The reality
+    gate gains data/reality/river-network.json: 13 measured anchors
+    (twin rivers at Baghdad, Mississippi tree with its real
+    confluences, the Congo arc, the Niger bend, Volga→Caspian, ...),
+    all passing at the shipped grid.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 20)*
+*(empty — all proposals ratified as of round 21)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.

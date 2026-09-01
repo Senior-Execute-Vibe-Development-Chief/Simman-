@@ -21,7 +21,7 @@
     "check": "route",
     "id": "rome-alexandria-winter",
     "grid": "dev",
-    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (161.5 vs 161.3 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells)."
+    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (208.8 vs 214.0 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells)."
   },
   {
     "check": "route",
@@ -111,5 +111,15 @@
     "check": "crossGrid",
     "id": "london-bordeaux",
     "reason": "Dev's coarse coast IS a chord (10.9 d, passes); target's honest coastline forces the no-chords coastal model to trace every bay (17.7 d). The gap is the recorded pilotage-chord coarseness, not a physics divergence."
+  },
+  {
+    "check": "crossGrid",
+    "id": "rome-alexandria",
+    "reason": "32% dev/target split: the real-geometry rivers re-wet dev's 165 km cells along the whole Levant loop (the river moisture boost paints a coarse cell wet wherever a channel crosses it), stretching the land legs to 214 d while the shipped grid holds ~145 d. Dev-raster geometry; the absolute-days rows for this route are separately manifested as the no-roads class."
+  },
+  {
+    "check": "crossGrid",
+    "id": "rome-alexandria-winter",
+    "reason": "Same dev-raster re-wetting as the summer row (32%); the shipped grid holds ~142 d."
   }
 ]

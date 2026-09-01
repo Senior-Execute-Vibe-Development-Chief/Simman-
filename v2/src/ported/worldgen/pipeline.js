@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/sim/pipeline.js; deviations: people-sim imports are extracted to v2 modules, transcendental calls use v2 dmath, the real-units travel-cost boundary supplies baseEdgeCost, and lake/ancestry/volcanic radii are converted to km.
+ * source: src/sim/pipeline.js; deviations: people-sim imports are extracted to v2 modules, Earth presets feed computeRivers baked real flow directions (riverDirSample.js), transcendental calls use v2 dmath, the real-units travel-cost boundary supplies baseEdgeCost, and lake/ancestry/volcanic radii are converted to km.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import { dexp, dpow, dcos } from "../../sim/dmath.ts";
@@ -14,6 +14,7 @@ import { MATH_PI as PI } from "../../sim/constants.ts";
 
 import { generateWorld } from "./worldgen.js";
 import { computeRivers, RIVER_STREAM } from "./riverGen.js";
+import { sampleRiverDirections } from "./riverDirSample.js";
 import { cropSuitability } from "./cropGen.js";
 import { generateResources } from "./resourceGen.js";
 import { baseEdgeCost } from "../../sim/travel/cost.ts";
@@ -331,7 +332,11 @@ if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 
 // ── River hydrology ──
-const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
+// Earth presets take river GEOMETRY from baked real flow directions
+// (QUESTIONS.md #21); water amounts stay emergent from climate. Procedural
+// presets derive geometry from elevation as before.
+const bakedDir=(!w._rawRivers&&(w.preset==="earth"||w.preset==="earth_sim"))?sampleRiverDirections(tw,th):null;
+const rivers=computeRivers(tw,th,tElev,tMoist,tTemp,bakedDir);
 
 // ── River moisture boost: rivers raise local moisture, then fertility recalculates ──
 // This is the physically correct approach: rivers bring water → soil moisture rises →
@@ -618,8 +623,11 @@ const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOri
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,tRelief,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
-export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={},realWind=false,realWindFns=null}={}){
+export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={},realWind=false,realWindFns=null,rawRivers=false}={}){
   const w=generateWorld(W,H,seed,preset,oceanLevel,true,realWind,tecParams,realWindFns);
+  // Oracle switch (QUESTIONS.md #21): disable the baked river geometry so the
+  // v1-verbatim river path can be compared exactly on identical data.
+  w._rawRivers=rawRivers;
   const ter=buildTerritory(w,1);
   return{w,ter};
 }

@@ -30,10 +30,36 @@ interface RouteFixture {
 }
 
 interface KnownMiss {
-  readonly check: "route" | "crossGrid" | "check";
+  readonly check: "route" | "crossGrid" | "check" | "river";
   readonly id: string;
   readonly grid?: GridPreset;
   readonly reason: string;
+}
+
+// River-network anchors (QUESTIONS.md #21): factual, measured assertions on
+// the baked real river geometry — continuity to the sea, confluences, bends,
+// and channel distinctness at named real coordinates.
+interface RiverFixture {
+  readonly id: string;
+  readonly type: "reaches" | "joins" | "distinct";
+  readonly from?: { readonly lat: number; readonly lon: number };
+  readonly with?: { readonly lat: number; readonly lon: number };
+  readonly mouth?: { readonly latMin: number; readonly latMax: number; readonly lonMin: number; readonly lonMax: number };
+  readonly minPathLat?: number;
+  readonly lat?: number;
+  readonly lonMin?: number;
+  readonly lonMax?: number;
+  readonly minChannels?: number;
+  readonly minMagnitude?: number;
+  readonly grids?: readonly GridPreset[];
+  readonly source: string;
+}
+
+interface RiverMeasurement {
+  readonly id: string;
+  readonly grid: GridPreset;
+  readonly status: "pass" | "fail";
+  readonly detail: string;
 }
 
 interface RouteMeasurement {
@@ -54,6 +80,9 @@ const routes = JSON.parse(
 const knownMisses = JSON.parse(
   readFileSync(new URL("../data/reality/known-misses.json", import.meta.url), "utf8"),
 ) as readonly KnownMiss[];
+const riverFixtures = JSON.parse(
+  readFileSync(new URL("../data/reality/river-network.json", import.meta.url), "utf8"),
+) as readonly RiverFixture[];
 
 function missKey(check: string, id: string, grid?: string): string {
   return grid ? `${check}:${id}:${grid}` : `${check}:${id}`;
@@ -86,8 +115,145 @@ function metricFor(route: RouteFixture): TravelMetric {
   };
 }
 
+const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
+const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
+
+function riverCellLatLon(substrate: Substrate, cell: number): { lat: number; lon: number } {
+  const y = Math.floor(cell / substrate.width);
+  const x = cell - y * substrate.width;
+  return {
+    lat: 90 - ((y + 0.5) / substrate.height) * 180,
+    lon: ((x + 0.5) / substrate.width) * 360 - 180,
+  };
+}
+
+/** Nearest channel cell (magnitude ≥ minMag) to a real coordinate, spiral search. */
+function channelNear(substrate: Substrate, lat: number, lon: number, minMag = 2): number {
+  const { width, height } = substrate;
+  const cx = ((Math.round(((lon + 180) / 360) * width) % width) + width) % width;
+  const cy = Math.max(0, Math.min(height - 1, Math.round(((90 - lat) / 180) * height)));
+  const maxRadius = Math.max(3, Math.round((2.5 / 360) * width));
+  let best = -1;
+  let bestD = Infinity;
+  for (let dy = -maxRadius; dy <= maxRadius; dy++) {
+    const y = cy + dy;
+    if (y < 0 || y >= height) continue;
+    for (let dx = -maxRadius; dx <= maxRadius; dx++) {
+      const cell = y * width + (((cx + dx) % width) + width) % width;
+      if ((substrate.rivers.magnitude[cell] ?? 0) >= minMag) {
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = cell; }
+      }
+    }
+  }
+  return best;
+}
+
+/** Walk flowDir downstream to the first water cell (or a stall). */
+function traceDownstream(substrate: Substrate, start: number): {
+  readonly path: readonly number[];
+  readonly maxLat: number;
+  readonly waterCell: number;
+} {
+  const { width, height } = substrate;
+  const path = [start];
+  let maxLat = riverCellLatLon(substrate, start).lat;
+  let cell = start;
+  for (let step = 0; step < 4000; step++) {
+    const d = substrate.rivers.direction[cell];
+    if (d === undefined || d > 7) return { path, maxLat, waterCell: -1 };
+    const y = Math.floor(cell / width);
+    const ny = y + (D8_DY[d] ?? 0);
+    if (ny < 0 || ny >= height) return { path, maxLat, waterCell: -1 };
+    cell = ny * width + (((cell - y * width + (D8_DX[d] ?? 0)) % width) + width) % width;
+    path.push(cell);
+    const lat = riverCellLatLon(substrate, cell).lat;
+    if (lat > maxLat) maxLat = lat;
+    if (!substrate.landMask[cell]) return { path, maxLat, waterCell: cell };
+  }
+  return { path, maxLat, waterCell: -1 };
+}
+
+function riverChecks(grid: GridPreset): readonly RiverMeasurement[] {
+  const substrate = gateSubstrate(grid);
+  const rows: RiverMeasurement[] = [];
+  for (const fixture of riverFixtures) {
+    if (fixture.grids && !fixture.grids.includes(grid)) continue;
+    let status: "pass" | "fail" = "fail";
+    let detail = "";
+    if (fixture.type === "distinct") {
+      const y = Math.max(0, Math.min(substrate.height - 1,
+        Math.round(((90 - (fixture.lat ?? 0)) / 180) * substrate.height)));
+      const x1 = Math.floor((((fixture.lonMin ?? 0) + 180) / 360) * substrate.width);
+      const x2 = Math.ceil((((fixture.lonMax ?? 0) + 180) / 360) * substrate.width);
+      // Any non-channel cell between two channel runs separates them: the
+      // Tigris and Euphrates pass within ~40 km (2 cells) at Baghdad.
+      let channels = 0;
+      let gap = 1;
+      for (let x = x1; x <= x2; x++) {
+        const isChannel = (substrate.rivers.magnitude[y * substrate.width + x] ?? 0) >= (fixture.minMagnitude ?? 2);
+        if (isChannel && gap >= 1) channels++;
+        gap = isChannel ? 0 : gap + 1;
+      }
+      status = channels >= (fixture.minChannels ?? 2) ? "pass" : "fail";
+      detail = `${channels} distinct channel(s) crossing ${fixture.lat}N between ${fixture.lonMin}..${fixture.lonMax}E`;
+    } else if (fixture.type === "reaches") {
+      const start = channelNear(substrate, fixture.from?.lat ?? 0, fixture.from?.lon ?? 0);
+      if (start < 0) {
+        detail = "no channel near the source coordinate";
+      } else {
+        const trace = traceDownstream(substrate, start);
+        if (trace.waterCell < 0) {
+          const end = riverCellLatLon(substrate, trace.path[trace.path.length - 1] ?? start);
+          detail = `stalls on land at ${end.lat.toFixed(1)},${end.lon.toFixed(1)} after ${trace.path.length} cells`;
+        } else {
+          const mouth = riverCellLatLon(substrate, trace.waterCell);
+          const box = fixture.mouth;
+          const inBox = !!box && mouth.lat >= box.latMin && mouth.lat <= box.latMax
+            && mouth.lon >= box.lonMin && mouth.lon <= box.lonMax;
+          const bendOk = fixture.minPathLat === undefined || trace.maxLat >= fixture.minPathLat;
+          status = inBox && bendOk ? "pass" : "fail";
+          detail = `mouth at ${mouth.lat.toFixed(1)},${mouth.lon.toFixed(1)} after ${trace.path.length} cells`
+            + (fixture.minPathLat !== undefined ? `; northernmost point ${trace.maxLat.toFixed(1)}N` : "");
+        }
+      }
+    } else {
+      const a = channelNear(substrate, fixture.from?.lat ?? 0, fixture.from?.lon ?? 0);
+      const b = channelNear(substrate, fixture.with?.lat ?? 0, fixture.with?.lon ?? 0);
+      if (a < 0 || b < 0) {
+        detail = "no channel near a source coordinate";
+      } else {
+        const pathA = new Set(traceDownstream(substrate, a).path);
+        const traceB = traceDownstream(substrate, b);
+        const met = traceB.path.find((cell) => pathA.has(cell) && substrate.landMask[cell]);
+        if (met !== undefined) {
+          const at = riverCellLatLon(substrate, met);
+          status = "pass";
+          detail = `confluence at ${at.lat.toFixed(1)},${at.lon.toFixed(1)}`;
+        } else {
+          detail = "paths never meet on land";
+        }
+      }
+    }
+    rows.push({ id: fixture.id, grid, status, detail });
+  }
+  return rows;
+}
+
+// Tools may cache the substrate per (seed, preset, grid) within a process
+// (M2 handoff ruling 11) — the route arm and the river arm share one build.
+const substrateCache = new Map<GridPreset, Substrate>();
+function gateSubstrate(grid: GridPreset): Substrate {
+  let substrate = substrateCache.get(grid);
+  if (!substrate) {
+    substrate = buildSubstrate(M0_DEFAULT_SEED, { preset: "earth_sim" }, grid);
+    substrateCache.set(grid, substrate);
+  }
+  return substrate;
+}
+
 async function measureGrid(grid: GridPreset): Promise<readonly RouteMeasurement[]> {
-  const substrate = buildSubstrate(M0_DEFAULT_SEED, { preset: "earth_sim" }, grid);
+  const substrate = gateSubstrate(grid);
   const stamp = new World({
     seed: M0_DEFAULT_SEED,
     grid,
@@ -362,6 +528,7 @@ async function main(): Promise<void> {
   const measurements = [...dev, ...target];
   const crossGrid = checkCrossGrid(measurements);
   const checks = referenceChecks(reference, measurements);
+  const rivers = [...riverChecks("dev"), ...riverChecks("target")];
 
   const failureKeys = new Set<string>();
   for (const row of measurements) {
@@ -372,6 +539,9 @@ async function main(): Promise<void> {
   }
   for (const row of checks) {
     if (row.status === "fail") failureKeys.add(missKey("check", row.id));
+  }
+  for (const row of rivers) {
+    if (row.status === "fail") failureKeys.add(missKey("river", row.id, row.grid));
   }
   const manifestKeys = new Map(knownMisses.map((miss) => [missKey(miss.check, miss.id, miss.grid), miss.reason]));
   const unexpected = [...failureKeys].filter((key) => !manifestKeys.has(key));
@@ -386,6 +556,7 @@ async function main(): Promise<void> {
     reference,
     checks,
     crossGrid,
+    rivers,
     routes: measurements,
     knownMisses: acknowledged,
     unexpectedFailures: unexpected,

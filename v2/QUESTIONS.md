@@ -389,3 +389,50 @@ Review corrections to the M1 build (all validated before merge):
     i.e. priced by port traffic when trade exists (M7), with caravan
     logistics/security at M5+. No constant was changed; the flat 0.25 d
     stands as the recorded M1 simplification.
+
+21. **River geometry is now DATA; the water in it stays emergent (owner
+    directive, 2026-09-01: "lets just get our rivers perfect" — one river
+    through Mesopotamia, a combed Congo, a shredded Mississippi).** The
+    diagnosis: rivers were D8-derived from our elevation raster, whose
+    ~20 m byte steps of cell averages carry no signal in flat basins —
+    exactly where real rivers are decided by 1-3 m of relief. Per R7 the
+    fix is data, not tuning: tools/build-riverdata.mts bakes real flow
+    directions from HydroSHEDS v1 (5-arcmin, © WWF, Lehner et al. 2008,
+    CC-BY) onto the 1920×960 raster by dominant river tracing, and
+    riverDirSample.js projects them onto any sim grid; Earth presets
+    feed computeRivers this geometry while runoff, accumulation,
+    transmission loss and magnitude classification stay emergent from
+    climate (a desert wash still reads dry). Procedural presets keep the
+    derived path, verified EXACT against v1 by a new oracle arm that
+    runs the earth preset with baked geometry disabled (rawRivers).
+    Mechanisms this surfaced, each a physical statement:
+    (a) river mouths must discharge, not pool — a mouth read as a sink
+    marks its whole basin endorheic and the desert loss erases it (this
+    wiped the Tigris-Euphrates twice at different levels);
+    (b) HydroSHEDS marks estuaries/lagoons as terminal water — a
+    terminal blob connected to receiving water is estuary and drains
+    (139k cells), where "receiving water" includes the shipped map's
+    own sea-class basins (the Caspian receives the Volga);
+    (c) a sim cell pools only if the WHOLE cell drains inward — a
+    sub-grid playa must not swallow a through-river (terminals at the
+    480 grid fell 3835 → 973);
+    (d) walks hop enclosed braid pockets onto the bypassing distributary
+    (a true sink never qualifies: all its neighbours flow in);
+    (e) R3 fix riding with the data path: transmission loss was 30% per
+    TILE, calibrated at ~66 km tiles — at 22 km cells the same steppe
+    cost 3× the tiles and the lower Volga lost 94% of its water; the
+    loss is now per-km at the same calibration;
+    (f) the Dardanelles-Marmara-Bosporus chain joins Gibraltar in the
+    strait table — without it the Black Sea is a closed lake and the
+    Danube classes as terminal drainage.
+    Gated, not eyeballed: data/reality/river-network.json — 13 measured
+    anchors at the shipped grid, all passing: Tigris AND Euphrates
+    distinct at 33N; Mississippi continuous to the Gulf with the
+    Missouri joining at 38.9N,-90.7 (St. Louis) and the Ohio at
+    37.1N,-89.3 (Cairo, Illinois); the Congo arc; the Nile through the
+    delta; the Niger bending to 17.1N past Timbuktu; Amazon, Volga (to
+    the Caspian), Indus, Yangtze, Ganges, Danube. Two dev-raster
+    cross-grid rows manifested (the coarse grid re-wets the
+    rome-alexandria loop through the river moisture boost; the shipped
+    grid holds). QUESTIONS #15's middle-Niger finding is superseded:
+    the real inland delta geometry is now in the data.
