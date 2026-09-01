@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/sim/worldgen.js; deviations: Math transcendental calls use v2 dmath; local imports point at the copied v2 supplier.
+ * source: src/sim/worldgen.js; deviations: Math transcendental calls use v2 dmath; local imports point at the copied v2 supplier; EARTH_STRAITS carves real channel POLYLINES one cell wide instead of v1's rectangle boxes, and the table adds Malacca/Singapore, Messina and Magellan (QUESTIONS.md #25 — the boxes gouged coasts and still left the Bosporus mouth and the Singapore pinch sealed at the shipped grid; the oracle patches the same block into its v1 copy).
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import { dexp, dpow, dcos, dsin, datan2 } from "../../sim/dmath.ts";
@@ -62,27 +62,52 @@ function dirDist(mask, W, H, dir, cap) {
 // solved wind and climate are used. Each half is probed independently, so a
 // caller may supply either, both or neither. `_legacyArg` keeps the old
 // positional signature stable for the ~60 node probes in tools/.
-// Sub-pixel narrow straits seal shut on the ~20 km/pixel Earth heightmap (the
-// Strait of Gibraltar is ~14 km — finer than one pixel), turning real seas into
-// closed lakes: the Mediterranean otherwise has NO naval link to the Atlantic.
-// Carve the key ones open as shallow channels so sea connectivity matches Earth.
-// Box scaled to the strait (in degrees → tiles), min 1 tile so it still opens at
-// low render/validator resolutions. Only land tiles are opened; ocean untouched.
+// Sub-pixel narrow straits seal shut on a ~20 km/pixel heightmap (Gibraltar is
+// ~14 km, the Bosporus ~1-3 km — finer than one pixel), turning real seas into
+// closed lakes and severing real sea lanes: the Mediterranean loses its
+// Atlantic link, the Black Sea closes (its rivers — the Danube! — then class
+// as TERMINAL drainage and the transmission loss erases them), the
+// Malacca/Singapore pinch plugs. Each row is COASTLINE DATA (R7): the course
+// of a real navigable sea channel as [lat, lon] waypoints along the actual
+// strait. The carve walks the polyline at any grid and opens ONLY land cells
+// the channel crosses, one cell wide — ocean untouched, coasts intact. (v1
+// carved rectangle BOXES instead: they gouged visible bites out of the Spanish
+// and Moroccan coasts and still left the Bosporus's own mouth and the
+// Singapore pinch sealed at the shipped grid — QUESTIONS.md #25.)
 const EARTH_STRAITS = [
-  { lat: 35.95, lon: -5.4, dLon: 1.2, dLat: 0.5 },   // Gibraltar — Mediterranean ↔ Atlantic
-  // The Dardanelles-Marmara-Bosporus chain (each strait 1-3 km, far sub-pixel;
-  // the Marmara itself falls below the enclosed-sea bar and reads as land) —
-  // without it the Black Sea is a closed lake, its rivers (the Danube!) class
-  // as TERMINAL drainage, and the desert transmission loss erases them.
-  { lat: 40.6, lon: 27.6, dLon: 1.7, dLat: 0.3 },    // Dardanelles + Marmara + Bosporus — Black Sea ↔ Aegean
+  // Gibraltar — Mediterranean ↔ Atlantic (~14 km)
+  { path: [[36.0, -6.2], [35.95, -5.7], [35.95, -5.2], [36.05, -4.8]] },
+  // Dardanelles → Marmara → Bosporus — Aegean ↔ Black Sea (1-3 km channels;
+  // the Marmara itself falls below the enclosed-sea bar and reads as land)
+  { path: [[40.0, 25.9], [40.2, 26.35], [40.35, 26.7], [40.55, 27.2], [40.75, 27.9], [40.9, 28.6], [41.05, 29.0], [41.25, 29.15], [41.45, 29.4]] },
+  // Malacca → Singapore strait — Indian Ocean ↔ South China Sea (~16 km pinch
+  // between Singapore and the Riau islands; history's busiest sea lane)
+  { path: [[2.4, 101.8], [1.9, 102.8], [1.5, 103.4], [1.2, 103.85], [1.1, 104.35], [1.3, 104.9]] },
+  // Messina — Tyrrhenian ↔ Ionian (~3 km)
+  { path: [[38.35, 15.65], [38.2, 15.63], [38.0, 15.6], [37.9, 15.6]] },
+  // Magellan — Atlantic ↔ Pacific (2-30 km winding channel through the fjords)
+  { path: [[-52.35, -68.4], [-52.6, -69.5], [-53.3, -70.8], [-53.6, -71.3], [-53.4, -72.6], [-52.9, -73.6], [-52.6, -74.7]] },
 ];
 function carveStraits(elevation, W, H) {
+  const open = (x, y) => { const i = y * W + x; if (elevation[i] > 0) elevation[i] = -0.02; };   // open the land plug as a shallow strait
   for (const s of EARTH_STRAITS) {
-    const cx = Math.round((s.lon + 180) / 360 * W), cy = Math.round((90 - s.lat) / 180 * H);
-    const wx = Math.max(1, Math.round(s.dLon / 360 * W)), wy = Math.max(1, Math.round(s.dLat / 180 * H));
-    for (let dy = -wy; dy <= wy; dy++) for (let dx = -wx; dx <= wx; dx++) {
-      const x = ((cx + dx) % W + W) % W, y = Math.min(H - 1, Math.max(0, cy + dy)), i = y * W + x;
-      if (elevation[i] > 0) elevation[i] = -0.02;   // open the land plug as a shallow strait
+    for (let p = 1; p < s.path.length; p++) {
+      const x0 = ((Math.round((s.path[p - 1][1] + 180) / 360 * W) % W) + W) % W;
+      const y0 = Math.min(H - 1, Math.max(0, Math.round((90 - s.path[p - 1][0]) / 180 * H)));
+      const x1 = ((Math.round((s.path[p][1] + 180) / 360 * W) % W) + W) % W;
+      const y1 = Math.min(H - 1, Math.max(0, Math.round((90 - s.path[p][0]) / 180 * H)));
+      let dx = x1 - x0;
+      if (dx > W / 2) dx -= W; else if (dx < -W / 2) dx += W;   // wrap-aware
+      const dy = y1 - y0, steps = Math.max(1, Math.max(Math.abs(dx), Math.abs(dy)));
+      open(x0, y0);
+      let px = x0, py = y0;
+      for (let t = 1; t <= steps; t++) {
+        const x = (((x0 + Math.round(dx * t / steps)) % W) + W) % W;
+        const y = Math.min(H - 1, Math.max(0, y0 + Math.round(dy * t / steps)));
+        if (x !== px && y !== py) open(x, py);   // 4-connect diagonal steps: a channel must hold for orthogonal flood-fills (riverGen's ocean fill) and read continuous on the map
+        open(x, y);
+        px = x; py = y;
+      }
     }
   }
 }

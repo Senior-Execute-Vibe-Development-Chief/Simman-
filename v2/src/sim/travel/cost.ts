@@ -33,6 +33,7 @@ import {
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_GRADIENT_BASELINE_KM,
   TRAVEL_RIVER_GRADIENT_MAX_STEPS,
+  TRAVEL_RIVER_GRADIENT_UNMEASURED,
   TRAVEL_SEASONAL_AMPLITUDE,
   TRAVEL_SLOPE_COST_FACTOR,
   TRAVEL_TRANSFER_DAYS,
@@ -237,7 +238,9 @@ export function riverReachGradient(substrate: Substrate): Float64Array {
   const result = new Float64Array(N);
   for (let cell = 0; cell < N; cell++) {
     if ((substrate.rivers.magnitude[cell] ?? 0) < TRAVEL_RIVER_MIN_MAGNITUDE) continue;
-    const measured = baked ? baked[cell] ?? -1 : -1;
+    const measured = baked
+      ? baked[cell] ?? TRAVEL_RIVER_GRADIENT_UNMEASURED
+      : TRAVEL_RIVER_GRADIENT_UNMEASURED;
     if (measured >= 0) {
       result[cell] = measured;
       continue;

@@ -547,3 +547,39 @@ Review corrections to the M1 build (all validated before merge):
     + mechanism); the failure mode is one-sided — false REDs on
     gentle-water gorges, no false greens on true falls except
     borderline Sabaloka.
+
+25. **The strait carve: real channel polylines, not rectangle boxes
+    (owner play-reports, 2026-09-01: "the singapore pass is blocked over
+    by a land tile … is there a way to fix it without allowing boats to
+    cross land?" and "the bosphorus and gibraltar straits SUCK, they
+    really dont look good").** Audited every world-critical narrow sea
+    passage for 4-connected water connectivity at the shipped grid:
+    Gibraltar, the Bosporus chain, Malacca/Singapore, Sunda,
+    Bab-el-Mandeb, Hormuz, Dover, the Danish straits, Messina, Kerch,
+    Palk, Magellan. Sealed: Malacca/Singapore (the ~16 km pinch between
+    Singapore and the Riau islands), Messina, Magellan — and the
+    Bosporus chain itself FOR SHIPS: the old rectangle stopped south of
+    the Bosporus mouth, so the Black Sea was river-connected (QUESTIONS
+    #21f) but not sailable from the Aegean. The boxes were also ugly and
+    dishonest the other way: Gibraltar's carved a visible rectangular
+    bite out of the Spanish and Moroccan coasts. Both problems have one
+    fix, and it is not letting boats cross land: EARTH_STRAITS rows are
+    now [lat,lon] WAYPOINTS along each real channel's course (coastline
+    data, R7 — the sea passage physically exists; the land plug is the
+    quantization error), and carveStraits walks the polyline at any
+    grid, opening ONLY land cells the channel crosses, one cell wide,
+    4-connecting diagonal steps so orthogonal flood-fills (riverGen's
+    ocean fill) hold. Table now: Gibraltar, Dardanelles→Marmara→
+    Bosporus, Malacca→Singapore, Messina, Magellan. The oracle splices
+    v2's own strait block into its v1 copy at patch time (one source of
+    truth; elevation asserts byte-exact — confirmed exact on all three
+    arms). After: all twelve passages open 4-connected at the shipped
+    grid; coasts intact. Recorded, not changed: Palk Strait reads OPEN
+    because it genuinely is water in the data — its real blocker
+    (Adam's Bridge, 1-9 m shoals; ships rounded Sri Lanka) is DEPTH,
+    which the sim does not model; Suez and Panama stay land (canals are
+    future emergent works, never terrain data). Validation: lint,
+    smoke, gate (zero manifest churn), oracle green; local browser
+    smoke chromium-identical (firefox/webkit are the CI matrix — this
+    container ships only chromium). A stray ledger-lint literal from
+    the #22 wave rides along as TRAVEL_RIVER_GRADIENT_UNMEASURED.

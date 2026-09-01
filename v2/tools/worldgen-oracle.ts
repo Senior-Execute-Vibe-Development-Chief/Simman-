@@ -26,18 +26,23 @@ function patchedV1SimDir(): string {
     fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
     join(dir, "earthData.js"),
   );
-  // The v2 strait table gained the Marmara chain (QUESTIONS.md #21 — without
-  // it the Black Sea is a closed lake and the Danube reads terminal); carve
-  // rows mutate elevation, which the earth arm asserts byte-exact, so the v1
-  // copy runs with the same table.
+  // The v2 strait carve is polyline-based and its table grew (QUESTIONS.md
+  // #21/#25 — the Black Sea link, the Singapore pinch, no rectangle bites);
+  // the carve mutates elevation, which the earth arm asserts byte-exact, so
+  // the v1 copy runs with v2's own EARTH_STRAITS + carveStraits block spliced
+  // in — one source of truth, lifted from the v2 module at patch time.
   const worldgenPath = join(dir, "worldgen.js");
   const worldgenSource = readFileSync(worldgenPath, "utf8");
-  const gibraltarRow = "{ lat: 35.95, lon: -5.4, dLon: 1.2, dLat: 0.5 },   // Gibraltar — Mediterranean ↔ Atlantic";
-  assert.ok(worldgenSource.includes(gibraltarRow), "v1 strait table changed shape — update the oracle patch");
-  writeFileSync(worldgenPath, worldgenSource.replace(
-    gibraltarRow,
-    `${gibraltarRow}\n  { lat: 40.6, lon: 27.6, dLon: 1.7, dLat: 0.3 },    // Dardanelles + Marmara + Bosporus — Black Sea ↔ Aegean`,
-  ));
+  const v2WorldgenSource = readFileSync(
+    fileURLToPath(new URL("../src/ported/worldgen/worldgen.js", import.meta.url)),
+    "utf8",
+  );
+  const straitBlock = /const EARTH_STRAITS = \[[\s\S]*?\nfunction carveStraits\(elevation, W, H\) \{[\s\S]*?\n\}/;
+  const v2Block = v2WorldgenSource.match(straitBlock)?.[0];
+  assert.ok(v2Block?.includes("path:"), "v2 strait block changed shape — update the oracle patch");
+  const v1Block = worldgenSource.match(straitBlock)?.[0];
+  assert.ok(v1Block, "v1 strait block changed shape — update the oracle patch");
+  writeFileSync(worldgenPath, worldgenSource.replace(v1Block, v2Block ?? ""));
   return dir;
 }
 const v1SimDir = patchedV1SimDir();

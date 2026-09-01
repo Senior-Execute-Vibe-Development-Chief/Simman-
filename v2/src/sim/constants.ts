@@ -123,6 +123,7 @@ export const TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM = 0.5; // spec/09-constants
 // the river's own course over this baseline instead.
 export const TRAVEL_RIVER_GRADIENT_BASELINE_KM = 100; // spec/09-constants-ledger.md §M1 proposed — reach-scale gradient baseline
 export const TRAVEL_RIVER_GRADIENT_MAX_STEPS = 64; // spec/09-constants-ledger.md §M1 proposed — reach-walk guard
+export const TRAVEL_RIVER_GRADIENT_UNMEASURED = -1; // spec/09-constants-ledger.md §M1 proposed — sentinel: no baked reach-gradient sample at this cell
 export const ELEVATION_METERS_PER_UNIT = 9400; // spec/09-constants-ledger.md §M1 proposed — elevation scale (Tibetan-plateau anchor, realClimateData)
 export const TRAVEL_MODE_COUNT = 6; // spec/09-constants-ledger.md §M1 proposed — layered routing representation
 export const TRAVEL_TRANSFER_DAYS = 0.25; // spec/09-constants-ledger.md §M1 proposed — intermodal transfer
