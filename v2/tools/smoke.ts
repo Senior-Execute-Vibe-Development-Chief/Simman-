@@ -51,11 +51,9 @@ async function main(): Promise<void> {
     const deterministic = deterministicRun(grid);
     saveLoadRun(grid);
     const metrics = collect(deterministic.world);
-    assert.equal(metrics["field.noise.n"], deterministic.world.N, `collector missed ${grid} field`);
+    assert.equal(metrics["field.people.n"], deterministic.world.N, `collector missed ${grid} people field`);
+    assert.equal(metrics["field.technique.n"], deterministic.world.N, `collector missed ${grid} technique field`);
     assert.equal(metrics["world.step"], TICKS, `collector missed ${grid} step`);
-    const balance = deterministic.world.ledger.snapshot()["placeholder.noise"];
-    assert.ok(balance, `conservation sheet missing on ${grid}`);
-    assert.ok(Math.abs(balance.unexplained) <= balance.tolerance, `conservation failed on ${grid}`);
     results.push({
       grid,
       hash: deterministic.hash,

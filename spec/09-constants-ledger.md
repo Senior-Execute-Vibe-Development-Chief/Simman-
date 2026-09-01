@@ -178,3 +178,35 @@ they are not hidden outcome-fitting levers.
 | `LAKE_RASTER_SUBSAMPLES` | 4×4 | subpixel coverage samples; representation rule for the majority-filled data-pixel bar |
 | `LAKE_SOURCE_MIN_AREA_KM2` | 100 | square kilometres; bake-time parsing floor below the shipped-pixel scale, retained only to skip sub-grid HydroLAKES texture |
 | `SEASONAL_SNOW_RELEASE_BAND` | 0.08 | sim temperature units; minimal monthly thaw band used by the snow-store fallback for cold-season runoff |
+
+## M2 — proposed (review pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `PEOPLE_R_GROWTH_PER_YEAR` | 0.0028 | intrinsic annual natural increase; pre-modern recovery band |
+| `PEOPLE_FORAGER_CAPACITY_PER_KM2` | 0.12 | persons/km²; mobile forager carrying density, HYDE/McEvedy opening-envelope scale |
+| `PEOPLE_INITIAL_FILL_FRACTION` | 0.35 | share of forager capacity at the Younger Dryas opening |
+| `PEOPLE_FARM_CAPACITY_PER_KM2` | 12 | persons/km²; rainfed farming capacity scale |
+| `PEOPLE_FARM_TECHNIQUE_BASE / GAIN` | 0.45 / 1.65 | first-tech to advanced-farming capacity differential |
+| `PEOPLE_WATER_ACCESS_GAIN` | 1.4 | capacity lift from water access |
+| `PEOPLE_RIVER_ACCESS_DIVISOR / WEIGHT / LAKE_WEIGHT` | 4 / 0.35 / 0.25 | river-magnitude normalization and channel/lake access weights |
+| `PEOPLE_FORAGER_FERTILITY_BASE / GAIN` | 0.35 / 0.65 | forager response to static fertility |
+| `PEOPLE_FLOODPLAIN_ACCESS_WEIGHT` | 1.5 | measured fractional floodplain access weight |
+| `PEOPLE_RELIEF_PENALTY` | 3 | relief-to-capacity penalty |
+| `PEOPLE_DISEASE_RATE` | 0.35 | tropical climate-state growth brake |
+| `PEOPLE_GROWTH_FORAGER_FACTOR / TECHNIQUE_GAIN` | 0.35 / 1.3 | forager-to-advanced farming growth regime |
+| `PEOPLE_GRAVEYARD_RATE / DENSITY / GAMMA` | 0.0014 / 30 / 0.5 | density-graded urban excess mortality; literature exponent |
+| `PEOPLE_CAPACITY_FLOOR_PER_KM2` | 0.001 | numerical density floor |
+| `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR` | 1200 | real pre-modern mobility correction |
+| `PEOPLE_MIGRATION_MAX_SHARE / SUBSTEPS` | 0.5 / 16 | explicit diffusion stability bound and safety cap |
+| `PEOPLE_TECHNIQUE_WAVE_KMPY` | 1 | Neolithic wave of advance |
+| `PEOPLE_TECHNIQUE_PRESENT / CLIMATE_FLOOR` | 0.01 / 0.05 | reached-technique visibility and package-envelope floor |
+| `PEOPLE_HEARTH_MIN_SEPARATION_KM / BASIN_RADIUS_KM / MAX_COUNT` | 1000 / 500 / 8 | independent-origin spacing, maturity basin, and archaeological count |
+| `PEOPLE_HEARTH_SEARCH_FRACTION / ELEVATION_SCALE / SCORE_REFERENCE` | 0.03 / 0.4 / 5 | coordinate-pin snap window, lowland score scale, fallback score reference |
+| `PEOPLE_HEARTH_FALLBACK_LAG / LAG_RANGE` | 900 / 3600 | wheat anchor and scored-site fallback domestication span in years |
+| `PEOPLE_HEARTH_SCORE_*` | 1.5 / 2 / 1 / 1 | river, fertility, enclosure, and sea terms in the emergent cradle score |
+| `PEOPLE_HEARTH_SUITABILITY_FLOOR` | 0.15 | minimum viable wild-package climate fit |
+| `PEOPLE_COHORT_CHILD / WORKING / ELDER_FRACTION` | 0.35 / 0.60 / 0.05 | opening age-structure fractions |
+| `PEOPLE_CHILD / WORKING_AGE_YEARS` | 15 / 45 | fixed compartment cohort spans |
+| `PEOPLE_*_MORTALITY_FACTOR` | 1.2 / 0.8 / 2.4 | child, working, elder mortality weights |
+| `SAVE_VERSION_M2` | 3 | additive people-field persistence format |

@@ -9,17 +9,14 @@ import {
   HASH_OFFSET_BASIS,
   HASH_PRIME,
   MONTHS_PER_YEAR,
-  PLACEHOLDER_NOISE_AMPLITUDE,
-  PLACEHOLDER_NOISE_DECAY,
-  PLACEHOLDER_NOISE_FREQUENCY,
-  PLACEHOLDER_STEP_PHASE,
   TARGET_GRID_HEIGHT,
   TARGET_GRID_WIDTH,
 } from "./constants";
 import { ConservationLedger } from "./conservation";
 import { allocateFields, fieldEntries, type NumericField } from "./fields";
-import { dsin } from "./dmath";
-import { passRng } from "../ported/rng";
+import type { Substrate } from "./substrate";
+import { initializePeople, stepPeople } from "./people/index";
+import type { HearthState } from "./people/types";
 
 export type GridPreset = "dev" | "target";
 
@@ -32,6 +29,7 @@ export interface WorldOptions {
   readonly seed: number;
   readonly grid: GridPreset;
   readonly config?: Readonly<Record<string, string | number | boolean>>;
+  readonly substrate?: Substrate;
 }
 
 export interface WorldConfig extends Record<string, string | number | boolean> {
@@ -44,6 +42,10 @@ export interface WorldConfig extends Record<string, string | number | boolean> {
 export interface WorldDebug {
   ticks: number;
   conservationChecks: number;
+  peoplePasses: number;
+  peopleBirths: number;
+  peopleDeaths: number;
+  peopleMigration: number;
 }
 
 export class World {
@@ -55,7 +57,16 @@ export class World {
   readonly config: WorldConfig;
   readonly ledger: ConservationLedger;
   readonly debug: WorldDebug;
-  noise!: Float64Array;
+  readonly substrate?: Substrate;
+  people!: Float64Array;
+  technique!: Float64Array;
+  children!: Float64Array;
+  working!: Float64Array;
+  elders!: Float64Array;
+  peopleInitialized = false;
+  hearths: HearthState[] = [];
+  cellAreaKm2: Float64Array;
+  capField: Float64Array;
   step = 0;
   calendarMonth = 0;
 
@@ -66,6 +77,11 @@ export class World {
     this.width = dimensions.width;
     this.height = dimensions.height;
     this.N = this.width * this.height;
+    if (options.substrate
+      && (options.substrate.width !== this.width || options.substrate.height !== this.height)) {
+      throw new Error("World grid and substrate dimensions must match.");
+    }
+    this.substrate = options.substrate;
     this.config = {
       ...(options.config ?? {}),
       seed: this.seed,
@@ -74,8 +90,18 @@ export class World {
       height: this.height,
     };
     this.ledger = new ConservationLedger();
-    this.debug = { ticks: 0, conservationChecks: 0 };
+    this.debug = {
+      ticks: 0,
+      conservationChecks: 0,
+      peoplePasses: 0,
+      peopleBirths: 0,
+      peopleDeaths: 0,
+      peopleMigration: 0,
+    };
+    this.cellAreaKm2 = new Float64Array(this.N);
+    this.capField = new Float64Array(this.N);
     allocateFields(this as unknown as Record<string, unknown>, this.N);
+    if (this.substrate) initializePeople(this);
   }
 }
 
@@ -84,42 +110,8 @@ export function dimensionsFor(grid: GridPreset): GridDimensions {
   return { width: TARGET_GRID_WIDTH, height: TARGET_GRID_HEIGHT };
 }
 
-/**
- * M0 placeholder tick. It is intentionally not simulation physics: it only
- * proves that a deterministic pass can read RNG, write dmath output through
- * the balance sheet, and advance the world without allocating field buffers.
- */
 export function stepWorld(world: World): void {
-  const field = world.noise;
-  if (!(field instanceof Float64Array)) throw new Error("The placeholder field is unavailable.");
-
-  world.ledger.beginPass(
-    "placeholder.noise",
-    field,
-    "placeholder.input",
-    "placeholder.decay",
-  );
-  const random = passRng(world.seed, "m0.placeholder", world.step);
-  const phase = random();
-  const signal = dsin(
-    phase
-    + world.step * PLACEHOLDER_NOISE_FREQUENCY
-    + world.step * PLACEHOLDER_STEP_PHASE,
-  );
-  let sourceAmount = 0;
-  let sinkAmount = 0;
-  for (let index = 0; index < field.length; index++) {
-    const oldValue = field[index] ?? 0;
-    const nextValue = oldValue * PLACEHOLDER_NOISE_DECAY
-      + signal * PLACEHOLDER_NOISE_AMPLITUDE;
-    field[index] = nextValue;
-    const delta = nextValue - oldValue;
-    if (delta >= 0) sourceAmount += delta;
-    else sinkAmount -= delta;
-  }
-  world.ledger.endPass("placeholder.noise", field, sourceAmount, sinkAmount);
-  world.ledger.assertAll();
-  world.debug.conservationChecks++;
+  if (world.substrate) stepPeople(world);
   world.step++;
   world.calendarMonth = (world.calendarMonth + 1) % MONTHS_PER_YEAR;
   world.debug.ticks++;
@@ -181,6 +173,10 @@ export function hashWorld(world: World): string {
   hash = hashText(hash, stableStringify(world.config));
   hash = hashNumber(hash, world.step);
   hash = hashNumber(hash, world.calendarMonth);
+  hash = hashText(hash, stableStringify({
+    peopleInitialized: world.peopleInitialized,
+    hearths: world.hearths,
+  }));
   for (const { definition, field } of fieldEntries(world as unknown as Record<string, unknown>)) {
     hash = hashText(hash, definition.name);
     hash = hashNumber(hash, field.length);

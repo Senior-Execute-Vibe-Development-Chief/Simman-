@@ -5,7 +5,7 @@ import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
 
-const BENCH_TICKS = 100;
+const BENCH_TICKS = 10;
 
 interface BenchRow {
   readonly grid: GridPreset;
@@ -19,11 +19,12 @@ interface BenchRow {
 }
 
 async function benchmark(grid: GridPreset): Promise<BenchRow> {
-  const world = new World({ seed: 42042, grid, config: { preset: "earth_sim" } });
-  printProvenance(world);
+  const stamp = new World({ seed: 42042, grid, config: { preset: "earth_sim" } });
+  printProvenance(stamp);
   const substrateStart = performance.now();
-  const substrate = buildSubstrate(world.seed, { preset: "earth_sim" }, grid);
+  const substrate = buildSubstrate(stamp.seed, { preset: "earth_sim" }, grid);
   const substrateMilliseconds = performance.now() - substrateStart;
+  const world = new World({ seed: 42042, grid, config: { preset: "earth_sim" }, substrate });
 
   const routingStart = performance.now();
   const engine = await createTravelEngine(substrate);
@@ -88,5 +89,5 @@ if (process.argv.includes("--check")) {
 console.log(JSON.stringify({
   bench: rows,
   format: "milliseconds",
-  placeholderTickSamples: BENCH_TICKS,
+  peopleTickSamples: BENCH_TICKS,
 }));

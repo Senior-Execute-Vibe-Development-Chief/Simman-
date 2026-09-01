@@ -26,3 +26,9 @@ raster of the polygon layer; HydroLAKES is © WWF/Lehner et al. and licensed
 CC-BY 4.0. `floodplain.json` and `river-seasons.json` record the W1 gates for
 ETOPO channel-floor cross-sections and monthly runoff derived from observed
 climate. These fixtures contain checks and citations, not runtime state.
+
+`hearths.json`, `population-curve.json`, and `farming-arrivals.json` are the
+M2 hand-curated reality fixtures. Hearth coordinates and domestication lags
+are archaeological inputs; pins seed known Earth hearths but do not suppress
+the emergent cradle scorer. Population bands and farming-arrival windows are
+validation references, not simulation rails.

@@ -1,11 +1,14 @@
 import { HASH_NUMBER_BYTES } from "./constants";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
+import { populationTotal } from "./people";
+import type { Substrate } from "./substrate";
 
 interface CreateMessage {
   readonly type: "create";
   readonly seed: number;
   readonly grid: GridPreset;
   readonly config?: Readonly<Record<string, string | number | boolean>>;
+  readonly substrate?: Substrate;
 }
 
 interface TickMessage {
@@ -40,13 +43,21 @@ export function handleWorkerMessage(message: WorkerMessage): Record<string, unkn
   }
   if (!world) throw new Error("The worker world has not been created.");
   runSteps(world, message.steps);
-  const buffer = snapshotPool.pop() ?? new ArrayBuffer(HASH_NUMBER_BYTES);
-  new Float64Array(buffer)[0] = world.step;
+  const bytes = HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * 2;
+  const recycled = snapshotPool.pop();
+  const buffer = recycled?.byteLength === bytes ? recycled : new ArrayBuffer(bytes);
+  new Float64Array(buffer, 0, 1)[0] = world.step;
+  const people = new Float32Array(buffer, HASH_NUMBER_BYTES, world.N);
+  const technique = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT, world.N);
+  people.set(world.people);
+  technique.set(world.technique);
   return {
     type: "snapshot",
     hash: hashWorld(world),
     step: world.step,
     version: snapshotVersion++,
+    cells: world.N,
+    population: world.substrate ? populationTotal(world) : 0,
     buffer,
   };
 }
