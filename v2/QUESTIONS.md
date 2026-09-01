@@ -326,3 +326,40 @@ Review corrections to the M1 build (all validated before merge):
     length/colour by speed, decimated to screen density) so the felucca
     physics is visible: July shows the etesian northerlies running
     straight up the Nile against its flow.
+
+19. **The source DEM drowned every low coastal plain — Sumer was underwater
+    (owner play-report, 2026-09-01: "the Nile STILL goes to the Red Sea on
+    the way up"; owner ruling: fix now).** Chasing why only the Nile
+    resisted ascent led past the travel engine entirely: the inherited
+    v1 elevation raster derived its land/sea mask from a byte-quantized
+    heightmap whose first land step sat ~20 m above sea level, so its
+    ocean flood-fill claimed every coastal plain lower than that step.
+    Decoded at the source: the Nile delta ocean to ~30.4°N, ALL of
+    Bangladesh ocean, Mesopotamia ocean to ~32.5°N (Ur, Uruk, Basra —
+    the first urban hearth — underwater, the Persian Gulf near Baghdad),
+    the Indus delta, the Bohai coast, the Netherlands. These are the
+    cradle basins M2's HYDE gates measure, so the defect blocked M2
+    honestly passing at all. FIX AT THE SOURCE (R2): v2's EARTH_ELEV
+    regenerated from real ETOPO1 (NOAA ERDDAP, 6-arcmin stride) by
+    tools/build-earthdata.mts — mask = altitude>0 by sample majority
+    BEFORE quantization; ocean = border flood-fill plus enclosed basins
+    ≥ 100k km² (sea-sized: Caspian/Black/Baltic emerge via the size
+    rule, no names in code); smaller enclosed depressions stay land;
+    land bytes linear at the v1 decode ramp (20.52 m/byte) so climate
+    and gradient calibrations carry. Encoding contract unchanged. The
+    port-fidelity oracle now feeds v1's algorithms the SAME data
+    (recorded deviation — it verifies the algorithm port, not the v1
+    raster). Measured: +20,036 land pixels (~6M km² of real plains);
+    target-grid Nile delta channel to 31.2°N at 9 m / reach 0.42 m/km;
+    Aswan→sea 15.4 d at 93% river; Gibraltar resolves naturally
+    (Cadiz→Rome 100% open-sea); gate re-run — the real coastline FIXED
+    two manifested rows (alexandria-antioch dev route,
+    rome-alexandria-winter cross-grid) and exposed three new honest
+    dev-raster/coastal-model rows (manifest 19→20 with reasons).
+    Remaining honest residue: upstream couriers still ride/walk the
+    valley road while boats float down (93% river) — historically
+    correct (upstream sail ~20-27 km/day < walking; the felucca's
+    dominance is FREIGHT, M7); cell-average reaches still show ~1 m/km
+    phantom steps where the valley is narrower than the 22 km cell
+    (Cairo), and 0.70 m/km at Aswan — where the First Cataract actually
+    was.

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { cpSync, copyFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { MONTHS_PER_YEAR } from "../src/sim/constants";
 import { buildSubstrate, type Substrate } from "../src/sim/substrate";
 import { dimensionsFor, type GridPreset, World } from "../src/sim/world";
@@ -8,6 +11,24 @@ import { printProvenance } from "./lib/provenance";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const SEED = 42042;
+
+// The M1 earth-data deviation (QUESTIONS.md #19): v2 regenerated EARTH_ELEV
+// from real ETOPO1 (the inherited raster drowned every low coastal plain), so
+// v1's baked raster no longer matches v2's. This oracle verifies the ALGORITHM
+// port, so the v1 side must run on the SAME data: its sim tree is copied and
+// earthData.js swapped for v2's before the comparison run. The swap is sound
+// because v2's earthData.js is v1's module with only the data string replaced
+// — decode/sample code identical.
+function patchedV1SimDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "v1-sim-oracle-"));
+  cpSync(join(repoRoot, "src", "sim"), dir, { recursive: true });
+  copyFileSync(
+    fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
+    join(dir, "earthData.js"),
+  );
+  return dir;
+}
+const v1SimDir = patchedV1SimDir();
 const SAMPLE_COUNT = 1024;
 // Tolerance for fields downstream of a dmath swap. These are Float32 fields
 // produced by ITERATIVE solvers, so a handful of f64-intermediate ULP
@@ -92,8 +113,8 @@ function summarize(values: ArrayLike<number>): FieldSummary {
 function sourceOracle(grid: GridPreset): OracleOutput {
   const dimensions = dimensionsFor(grid);
   const source = `
-    import { buildWorld } from "./src/sim/pipeline.js";
-    import { classifyBiome } from "./src/sim/biomeClass.js";
+    import { buildWorld } from ${JSON.stringify(pathToFileURL(join(v1SimDir, "pipeline.js")).href)};
+    import { classifyBiome } from ${JSON.stringify(pathToFileURL(join(v1SimDir, "biomeClass.js")).href)};
     const { w, ter } = buildWorld({ W: ${dimensions.width}, H: ${dimensions.height}, seed: ${SEED}, preset: "earth_sim", realWind: false });
     const fields = {
       elevation: w.elevation,

@@ -3,7 +3,7 @@
     "check": "route",
     "id": "london-bordeaux",
     "grid": "target",
-    "reason": "27% over a 25% band: coastal mode traces the water-cell lattice around every Breton headland \u2014 it cannot chord across the mouth of a bay the way real fair-wind coastal passages did. A known M1 coarseness of the coastal model, not a data or speed error; the dev row and both cross-grid rows this route once held were FIXED by the overland-sailing ban and have been ratcheted out."
+    "reason": "48% over: coastal mode traces the water-cell lattice around every Breton headland and estuary \u2014 it cannot chord across bay mouths the way real fair-wind coastal passages did. The ETOPO coastline resolves MORE real bays (Loire, Gironde), so the recorded no-chords coarseness measures larger than the pre-regeneration 27%; the pilotage-chord coastal model is the scheduled fix."
   },
   {
     "check": "route",
@@ -39,7 +39,7 @@
     "check": "route",
     "id": "rome-paris",
     "grid": "target",
-    "reason": "26% over \u2014 the marginal no-roads effect on a pure land route; inside tolerance once infrastructure exists."
+    "reason": "28% over \u2014 the marginal no-roads effect on a pure land route crossing honest ETOPO Alpine foothill cells; inside tolerance once infrastructure exists (M7)."
   },
   {
     "check": "route",
@@ -52,12 +52,6 @@
     "id": "chang-an-dunhuang",
     "grid": "target",
     "reason": "Same no-infrastructure miss at the shipped grid (76 vs 45 days)."
-  },
-  {
-    "check": "route",
-    "id": "alexandria-antioch",
-    "grid": "dev",
-    "reason": "Passes at the shipped grid (35.7 vs 35); the dev 165 km raster stretches the Levant coast road. Dev-raster geometry, QUESTIONS.md finding 7."
   },
   {
     "check": "route",
@@ -85,7 +79,7 @@
   {
     "check": "crossGrid",
     "id": "alexandria-antioch",
-    "reason": "Dev-raster geometry (see the dev route entry)."
+    "reason": "10.0% vs the 10% band: dev's 165 km Levant coast road is marginally stretched. Dev-raster geometry (its dev route row was FIXED by the ETOPO coastline and ratcheted out)."
   },
   {
     "check": "crossGrid",
@@ -103,8 +97,19 @@
     "reason": "Dev-raster sea-lane zigzag."
   },
   {
+    "check": "route",
+    "id": "rome-paris",
+    "grid": "dev",
+    "reason": "Dev's 7-cell diagonal must cross a 165 km cell that now averages 1231 m of honest ETOPO Alpine relief \u2014 the raster cannot resolve the Rhone corridor around it. Target takes the corridor (28%, the no-roads class). Dev-raster geometry."
+  },
+  {
     "check": "crossGrid",
-    "id": "rome-alexandria-winter",
-    "reason": "11% vs the 10% band \u2014 the marginal dev-raster stretch on the long land loop."
+    "id": "rome-paris",
+    "reason": "Dev crosses the Alps in one coarse cell; target resolves the Rhone corridor. Dev-raster geometry over honest ETOPO relief."
+  },
+  {
+    "check": "crossGrid",
+    "id": "london-bordeaux",
+    "reason": "Dev's coarse coast IS a chord (10.9 d, passes); target's honest coastline forces the no-chords coastal model to trace every bay (17.7 d). The gap is the recorded pilotage-chord coarseness, not a physics divergence."
   }
 ]

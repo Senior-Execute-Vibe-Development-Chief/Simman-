@@ -322,9 +322,28 @@ lawyered.
     edge geometry, measured gate + known-miss ratchet; corner-cutting
     fix 47cb49a8); M2 handed off (spec/handoffs/M2.md).
 
+## 2026-09-01 — Shoreline round
+
+20. **Real-ETOPO earth data; the drowned-plains fix.** (Ratified — owner
+    picked "fix it now" 2026-09-01.) The inherited v1 elevation raster's
+    byte-quantized mask drowned every low coastal plain (the Nile delta,
+    Sumer to ~32.5°N, all of Bangladesh, the Indus delta, the Bohai
+    coast, the Netherlands) — the cradle basins the M2+ gates measure.
+    v2's `EARTH_ELEV` is regenerated from real ETOPO1 by
+    `v2/tools/build-earthdata.mts`: mask = altitude>0 by sample majority
+    before quantization; ocean = border flood-fill plus enclosed basins
+    ≥ 100k km² (sea-sized — the Caspian class — no names in code);
+    smaller enclosed depressions stay land; land bytes linear at the v1
+    decode ramp (≈20.52 m/byte) so climate/gradient calibrations carry;
+    encoding contract otherwise unchanged. This is a RECORDED DATA
+    DEVIATION from the v1 port: the worldgen oracle now runs v1's
+    algorithms on v2's data (it verifies the algorithm port, not the v1
+    raster). v1 itself is untouched. QUESTIONS.md #19 carries the full
+    measurement record.
+
 ## Proposed — working design, awaiting explicit ratification
 
-*(empty — all proposals ratified as of round 19)*
+*(empty — all proposals ratified as of round 20)*
 
 These are in the specs as the working design; the owner has not explicitly
 ruled on them. Veto or amend freely; specs will follow.
