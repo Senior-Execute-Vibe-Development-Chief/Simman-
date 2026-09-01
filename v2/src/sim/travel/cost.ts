@@ -218,7 +218,13 @@ export function riverReachGradient(substrate: Substrate): Float64Array {
       if (!substrate.landMask[current]) break;
     }
     if (km > 0) {
-      const drop = Math.max(0, (substrate.elevation[cell] - substrate.elevation[current]))
+      // A river's fall ends at the receiving water's SURFACE: a walk that
+      // terminates in the ocean must not count the drop to the sea FLOOR
+      // (bathymetry is negative elevation), or every mouth reads as a scarp.
+      const endElevation = substrate.landMask[current]
+        ? substrate.elevation[current]
+        : Math.max(0, substrate.elevation[current]);
+      const drop = Math.max(0, (substrate.elevation[cell] - endElevation))
         * ELEVATION_METERS_PER_UNIT;
       result[cell] = drop / km;
     }

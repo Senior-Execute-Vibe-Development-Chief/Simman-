@@ -85,11 +85,25 @@ function setZoom(next: number, fx = 0.5, fy = 0.5): void {
   draw();
 }
 
+function terrainColor(cell: number, moisture: number, y: number): [number, number, number] {
+  const elevation = substrate.elevation[cell];
+  const river = substrate.rivers.magnitude[cell];
+  const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);
+  const brown = clamp(135 - elevation * 90, 40, 170);
+  return river >= 2 ? [45, 125, 155] : [brown, green, 65 + (y % 3) * 10];
+}
+
 function pixelColor(cell: number, selectedMonth: number): [number, number, number] {
   const y = Math.floor(cell / substrate.width);
   const climateIndex = cell * MONTHS_PER_YEAR + selectedMonth;
   const temperature = substrate.temperature[climateIndex];
   const moisture = substrate.moisture[climateIndex];
+  if (lens.value === "wind") {
+    // Muted geography so the arrow glyphs carry the signal over land and sea alike.
+    if (!substrate.landMask[cell]) return [16, 34, 54];
+    const [red, green, blue] = terrainColor(cell, moisture, y);
+    return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
+  }
   if (!substrate.landMask[cell]) return [25, 55, 86];
   if (lens.value === "climate") {
     return [Math.round(210 * temperature + 25), Math.round(180 * moisture + 30), Math.round(210 * (1 - temperature) + 25)];
@@ -101,11 +115,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const v = clamp(value, 0, 1);
     return [Math.round(60 + 40 * v), Math.round(45 + 175 * v), Math.round(40 + 25 * (1 - v))];
   }
-  const elevation = substrate.elevation[cell];
-  const river = substrate.rivers.magnitude[cell];
-  const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);
-  const brown = clamp(135 - elevation * 90, 40, 170);
-  return river >= 2 ? [45, 125, 155] : [brown, green, 65 + (y % 3) * 10];
+  return terrainColor(cell, moisture, y);
 }
 
 function renderBase(selectedMonth: number): void {
@@ -126,6 +136,53 @@ function renderBase(selectedMonth: number): void {
 
 function toScreenXY(x: number, y: number): [number, number] {
   return [(x + 0.5 - viewX) * zoom, (y + 0.5 - viewY) * zoom];
+}
+
+// Wind glyphs: one downwind arrow per block of visible cells, decimated to a
+// steady on-screen density; length and colour ramp with speed (cool → warm,
+// saturating at WIND_ARROW_FULL_MS). v is northward; screen y grows south.
+const WIND_ARROW_SPACING_DISPLAY_PX = 26;
+const WIND_ARROW_FULL_MS = 10;
+
+function drawWindArrows(selectedMonth: number): void {
+  const bounds = canvas.getBoundingClientRect();
+  const displayScale = bounds.width > 0 ? bounds.width / canvas.width : 1;
+  const stride = Math.max(1, Math.round(WIND_ARROW_SPACING_DISPLAY_PX / (zoom * displayScale)));
+  const startX = Math.floor(viewX / stride) * stride;
+  const startY = Math.max(0, Math.floor(viewY / stride) * stride);
+  const endX = viewX + substrate.width / zoom;
+  const endY = Math.min(substrate.height - 1, viewY + substrate.height / zoom);
+  context.lineCap = "round";
+  context.lineWidth = Math.max(0.5, 1.4 / displayScale);
+  for (let y = startY; y <= endY; y += stride) {
+    for (let x = startX; x <= endX; x += stride) {
+      const cx = ((x % substrate.width) + substrate.width) % substrate.width;
+      const cell = y * substrate.width + cx;
+      const index = cell * MONTHS_PER_YEAR + selectedMonth;
+      const u = substrate.wind.u[index] ?? 0;
+      const v = substrate.wind.v[index] ?? 0;
+      const speed = Math.hypot(u, v);
+      if (speed < 0.05) continue;
+      const warm = Math.min(1, speed / WIND_ARROW_FULL_MS);
+      const glyph = stride * zoom * (0.25 + 0.6 * warm);
+      const dx = (u / speed) * glyph;
+      const dy = (-v / speed) * glyph;
+      const [sx, sy] = toScreenXY(x, y);
+      const headX = sx + dx / 2;
+      const headY = sy + dy / 2;
+      const head = glyph * 0.3;
+      const angle = Math.atan2(dy, dx);
+      context.strokeStyle = `rgba(${Math.round(140 + 115 * warm)}, ${Math.round(190 + 40 * warm)}, ${Math.round(255 - 150 * warm)}, 0.9)`;
+      context.beginPath();
+      context.moveTo(sx - dx / 2, sy - dy / 2);
+      context.lineTo(headX, headY);
+      context.moveTo(headX, headY);
+      context.lineTo(headX - head * Math.cos(angle - 0.5), headY - head * Math.sin(angle - 0.5));
+      context.moveTo(headX, headY);
+      context.lineTo(headX - head * Math.cos(angle + 0.5), headY - head * Math.sin(angle + 0.5));
+      context.stroke();
+    }
+  }
 }
 
 function draw(): void {
@@ -172,6 +229,7 @@ function draw(): void {
       context.stroke();
     }
   }
+  if (lens.value === "wind") drawWindArrows(selectedMonth);
   if (startCell !== undefined) {
     const y = Math.floor(startCell / substrate.width);
     const [sx, sy] = toScreenXY(startCell - y * substrate.width, y);

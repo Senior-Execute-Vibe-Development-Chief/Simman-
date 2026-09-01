@@ -296,3 +296,33 @@ Review corrections to the M1 build (all validated before merge):
    does not yet distinguish modes — a lens candidate for M2's shell.
    The shell also gained `?grid=target` (full 1800×900 rendering via
    ImageData; dev stays the fast default).
+
+18. **Rivers plunged to the sea FLOOR; the Nile delta is underwater
+    (owner play-report, 2026-09-01: sea-end of the Nile → its base
+    routed via the Red Sea).** The reach-gradient walk ended its
+    profile at the receiving OCEAN cell's elevation — which is
+    bathymetry (−376 m off the Nile) — so every river mouth read as a
+    phantom scarp: the target-grid lower Nile measured 17.9 m/km
+    (reality ~0.06), sealing the river's sea connection and pushing
+    sea→upstream routes onto the Red Sea detour. Fixed as one physical
+    statement: a river's fall ends at the receiving water's SURFACE
+    (water endpoints clamp to sea level; the mechanism, not the Nile,
+    is named in the code). Measured: target mouth reaches 17.9 → 0.97
+    m/km; Aswan→sea downstream 17.2 d → 14.8 d at 85% river (dev:
+    Dongola→sea becomes 100% river); the Congo seal SURVIVES and now
+    stands on real physics — 371 m of true Livingstone-Falls drop reads
+    1.57 m/km ≥ 1.5 (was partly bathymetry; note the dev margin is only
+    4% — watch it). Gate: zero unexpected failures, zero stale entries.
+    Two findings recorded, not dialed: (a) the worldgen shoreline
+    submerges the entire Nile delta (land ends ~30.4°N vs the real
+    31.5°N coast), so the lowest ~2 target cells still read ~1 m/km
+    (>0.5 towing bar) and boarding from the sea needs a short land leg
+    — with the delta present, Cairo's reach would read ~0.26 and the
+    felucca run would open; joins the middle-Niger substrate-hydrology
+    pass (finding 15). (b) Full-capability sea→Khartoum still
+    legitimately prefers the Red Sea (44.1 d vs 61.5 d boats-only) —
+    couriers rode and sailed; the river's dominance is freight (M7).
+    The shell gained a WIND lens (monthly arrows over muted terrain,
+    length/colour by speed, decimated to screen density) so the felucca
+    physics is visible: July shows the etesian northerlies running
+    straight up the Nile against its flow.
