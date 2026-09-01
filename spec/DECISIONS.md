@@ -395,6 +395,24 @@ lawyered.
     (d) **Flood regime** (Nile-gentle vs Tigris-violent) is deferred to
     M3 as a read on (c)'s output; no state ships for it now.
 
+## 2026-09-01 — Kernel round
+
+23. **W2: the banded wasm people kernel** (Ratified — owner: "make a
+    spec for cursor to do this", after playing M2 at ~5 sim-years per
+    5 s). Performance only, zero physics: the people pass moves to a
+    Rust/wasm band kernel behind the existing typed-array API, with
+    people state in wasm linear memory (JS views, never mirrored),
+    a FIXED grid-derived band layout so the world hash is identical
+    for any worker count and to the TS reference (which stays in-tree
+    as the parity oracle, byte-exact acceptance), dmath's dpow ported
+    under the bit-golden discipline, and worker banding via
+    SharedArrayBuffer (COOP/COEP in the shell; single-thread wasm
+    fallback). Closes the ≤30-minute full-Phase-1 ceiling (currently
+    6.8 h at 210 ms/tick × 116k ticks) and promotes the full YD→1 CE
+    gate arm to the SHIPPED grid with its own grid-scoped manifest
+    rows. Spec: `spec/handoffs/W2-kernel.md`. Annual-cadence stride
+    stays unbuilt pending separate ratification.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
