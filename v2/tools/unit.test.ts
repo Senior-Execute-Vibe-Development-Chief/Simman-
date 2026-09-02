@@ -10,6 +10,8 @@ import { runRoutingBatteries } from "../src/sim/travel/battery";
 import type { Substrate } from "../src/sim/substrate";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
+import { passDtMonths, passFires, resolveSchedule } from "../src/sim/scheduler";
+import { PEOPLE_GROWTH_STRIDE_MONTHS } from "../src/sim/constants";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const rngInputs = {
@@ -132,7 +134,12 @@ async function main(): Promise<void> {
   assert.equal(metrics["field.people.sum.n"], undefined);
 
   const substrate = peopleFixture();
-  const peopleWorld = new World({ seed: 99, grid: "dev", substrate });
+  const peopleWorld = new World({
+    seed: 99,
+    grid: "dev",
+    config: { peopleKernel: "wasm", peopleWorkers: 1 },
+    substrate,
+  });
   const opening = populationTotal(peopleWorld);
   runSteps(peopleWorld, 24);
   const techniqueBefore = Float64Array.from(peopleWorld.technique);
@@ -156,7 +163,56 @@ async function main(): Promise<void> {
   assert.ok(peopleBalance, "people conservation sheet missing");
   assert.equal(peopleBalance?.sources.migration, peopleBalance?.sinks.migration);
 
-  console.log(JSON.stringify({ tests: "ok", rng: "v1-byte-compatible", dmath: "golden", saveLoad: "byte-identical", routing: "ok" }));
+  for (const stride of [1, 3, 12]) {
+    for (const phase of [0, 1, stride - 1]) {
+      const hits: number[] = [];
+      for (let step = 0; step < stride * 4; step++) {
+        if (passFires({ step }, { stride, phase })) hits.push(step);
+      }
+      assert.equal(hits[0], ((phase % stride) + stride) % stride);
+      assert.ok(hits.every((step) => ((step - phase) % stride + stride) % stride === 0));
+      assert.equal(hits.length, 4);
+      assert.equal(passDtMonths({ stride }), stride);
+    }
+  }
+  // v1 SETT_STRIDE lcm scar: a slower rhythm is a second pass, never step%N
+  // inside an already-strided pass. stride 12 fires January; a 24-month
+  // companion is its own schedule row, not `fires && step % 24`.
+  const annual: number[] = [];
+  const biennial: number[] = [];
+  for (let step = 0; step < 48; step++) {
+    if (passFires({ step }, { stride: 12, phase: 0 })) annual.push(step);
+    if (passFires({ step }, { stride: 24, phase: 0 })) biennial.push(step);
+  }
+  assert.deepEqual(annual, [0, 12, 24, 36]);
+  assert.deepEqual(biennial, [0, 24]);
+  assert.ok(annual.every((step) => step % 12 === 0));
+  assert.ok(!annual.filter((step) => step % 24 !== 0).every((step) => biennial.includes(step)));
+
+  const devWorld = new World({ seed: 1, grid: "dev" });
+  const targetWorld = new World({ seed: 1, grid: "target" });
+  const named = (world: World, name: string) => resolveSchedule(world).find((row) => row.name === name);
+  assert.equal(named(devWorld, "people.growth")?.stride, PEOPLE_GROWTH_STRIDE_MONTHS);
+  assert.equal(named(targetWorld, "people.growth")?.stride, PEOPLE_GROWTH_STRIDE_MONTHS);
+  // Unpeopled poles are excluded from derivation; a world with every row
+  // treated as peopled (no substrate mask) must pick 1, matching target.
+  assert.equal(named(targetWorld, "people.migration")?.stride, 1);
+  assert.equal(named(devWorld, "people.migration")?.stride, 1);
+  const forced = new World({
+    seed: 1,
+    grid: "target",
+    config: { peopleGrowthStride: 12, peopleMigrationStride: 12 },
+  });
+  assert.equal(named(forced, "people.migration")?.stride, 12);
+
+  console.log(JSON.stringify({
+    tests: "ok",
+    rng: "v1-byte-compatible",
+    dmath: "golden",
+    saveLoad: "byte-identical",
+    routing: "ok",
+    scheduler: "ok",
+  }));
 }
 
 void main().catch((error: unknown) => {

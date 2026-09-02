@@ -787,7 +787,76 @@ Review corrections to the M1 build (all validated before merge):
     annual-cadence stride — the ≤30-minute ceiling is unmet either way
     until one lands.
 
-34. **Equal Earth display projection (2026-09-02, owner: "greenland is
+34. **W3 cadence and threads (2026-09-02).** The monthly clock is unchanged;
+    `passFires` in `src/sim/scheduler.ts` is the only cadence check. Growth,
+    technique, capacity, and cohorts default to stride 12; migration is
+    derived from `PEOPLE_MIGRATION_MAX_SHARE` at the grid (Earth peopled
+    rows: dev 12 / target 1). `dtMonths` scales rates as `rate × dt / 12`.
+    **Identity.** After rebuilding wasm (real rustc/wasm-pack, pinned
+    `nightly-2025-02-01` for the shared-memory artifact), TS, serial wasm,
+    and the threaded pool are byte-identical on the kernel-parity harness.
+    The previous 1-tick remainder mismatch at people[1263] was the migration
+    conservation remainder using a band-fold / reconstructed total instead of
+    the oracle's land-cell sum of per-cell received; `migration_received_cell`
+    plus coordinator-side serial reduction closes it. Workers call free
+    `people_dispatch_*` functions on the kernel pointer so they do not take
+    wasm-bindgen's `&mut self` borrow. A phase-idle barrier was required:
+    waiting only on per-band done flags let a worker still in the claim loop
+    steal the next phase's claim counter. Save/load continuation across
+    migration-only months needed two mechanical follow-throughs of the
+    phase split: reconstruct `_childrenMass` with the fractions (debit still
+    reads the mass buffers), and re-derive capacity after load (annual
+    capacity would otherwise leave the seed capField in place for eleven
+    monthly migrations).
+    **Threads.** Node `worker_threads` instantiate the shared-memory module
+    against one `WebAssembly.Memory`. Default worker count is
+    `min(cpus−1, 16)`. A 1-worker threaded probe matches serial and TS.
+    Shared-memory initial pages are 1024 (64 MiB) and grow; a 1.5 GiB
+    initial allocation OOMed the target kernel constructor (dlmalloc
+    doubling). Kernel-parity is green: 240 dev / 24 target ticks, TS ↔
+    serial wasm ↔ 1-worker threads byte-identical, 2- and 8-worker hashes
+    identical to serial.
+    **Schedule on Earth (seed 42042).** dev growth/migration 12; target
+    growth 12 / migration 1. Worlds without a peopled mask treat every
+    row as peopled, so polar cells force migration 1 — that is the
+    derivation working, not a content gate.
+    **Stride arm (dev, 3000-year horizon, this runner).** All-strides-1 vs
+    shipped: population at −8000 is 5,265,868 vs 5,265,657 (relative
+    Δ 4.0e-5, well under 0.02). Arrival deltas: Fertile Crescent / Nile /
+    Yellow River 0 years; Indus 10 years (under 25); Mesoamerica and Andes
+    not yet reached in either arm. Five hearths ignited by 3000 years on
+    the shipped schedule. Gate: pass.
+    **Phase split (target, 12-tick year, serial stride-1, this 4-core
+    runner).** Per firing: technique 13.4 ms, capacity 5.8 ms, growth
+    25.8 ms, migration 54.5 ms, cohorts 3.3 ms, ledger 3.3 ms. So
+    g ≈ 48.3 ms (technique+capacity+growth+cohorts), m ≈ 54.5 ms,
+    ℓ ≈ 3.3 ms. The review-runner W2 tick was 169 ms cold / 122 ms warm;
+    this box is faster (110.4 ms/tick all-monthly). Cohort normalize still
+    runs after every commit, so it is not in the annual g/12 term.
+    **Cadence × threads (target, 12-tick year, 116,412-tick YD→1 CE
+    projection, ceiling 15.5 ms/tick):**
+
+    | config | ms/tick | idle-barrier ms/tick | YD→1 CE min |
+    |---|---:|---:|---:|
+    | serial stride-1 | 110.4 | 0 | 214 |
+    | serial shipped | 73.0 | 0 | 142 |
+    | 3 threads stride-1 | 96.2 | 0.008 | 187 |
+    | 3 threads shipped | 70.0 | 0.005 | 136 |
+    | 8 threads stride-1 (oversub on 4 cores) | 86.5 | 0.047 | 168 |
+    | 8 threads shipped (oversub) | 62.7 | 0.009 | 122 |
+
+    Dev is tiny: serial shipped 0.18 ms/tick, 3 threads 0.18, 8 threads
+    0.22 — threads lose or tie. `barrierMilliseconds` is the idle tail
+    after every band is marked done, not the coordinator's wait for work.
+    **Ceiling finding.** W3a is the real win (110 → 73 ms). Threads are
+    hash-identical but migration barely scales (serial m 54.5 ms → 56.3
+    ms at 3 workers, 49.4 ms at 8). Capacity is the only phase that
+    clearly shortens. The ≤15.5 ms / 30 min line is not met at 3 workers
+    or at an oversubscribed 8 on this 4-core box; remaining cost is
+    monthly migration plus per-commit cohort/ledger. Do not re-anchor
+    `bench-baselines.json` downward from this faster runner (W2 lesson);
+    `--check` still passes against the review-runner 220 ms target cap.
+35. **Equal Earth display projection (2026-09-02, owner: "greenland is
     heavily distorted").** Measured at dev before changing anything: a
     flood fill over Greenland's land cells sums to 2.40M km² of real
     area against 2.17M km² true (1.11×, coastal rounding plus a sliver

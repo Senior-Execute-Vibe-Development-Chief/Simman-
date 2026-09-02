@@ -44,38 +44,57 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
   assert.equal(hashWorld(candidate), hashWorld(reference), `${grid} hash diverged at tick ${step}`);
 }
 
+function makeWorld(
+  grid: GridPreset,
+  substrate: ReturnType<typeof buildSubstrate>,
+  config: Record<string, string | number | boolean>,
+): World {
+  return new World({ seed: 42042, grid, config: { preset: "earth_sim", ...config }, substrate });
+}
+
 function runParity(grid: GridPreset, steps: number): void {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
-  const reference = new World({
-    seed: 42042,
-    grid,
-    config: { preset: "earth_sim", peopleKernel: "ts" },
-    substrate,
-  });
-  const wasm = new World({
-    seed: 42042,
-    grid,
-    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1 },
-    substrate,
-  });
+  const reference = makeWorld(grid, substrate, { peopleKernel: "ts" });
+  const wasm = makeWorld(grid, substrate, { peopleKernel: "wasm", peopleWorkers: 1 });
   assert.ok((wasm as PeopleWorld)._wasmPeopleKernel, `${grid} did not select the WASM kernel`);
+  assert.equal((wasm as PeopleWorld)._wasmPeopleKernel?.usesThreads, false);
   comparePeopleState(reference, wasm, grid, 0);
   for (let step = 1; step <= steps; step++) {
     runSteps(reference, 1);
     runSteps(wasm, 1);
     comparePeopleState(reference, wasm, grid, step);
   }
+  const serialHash = hashWorld(wasm);
   (wasm as PeopleWorld)._wasmPeopleKernel?.dispose();
 
-  const hashes: Record<number, string> = {};
-  for (const workerCount of [1, 2, 8]) {
-    const workerWorld = new World({
-      seed: 42042,
-      grid,
-      config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: workerCount },
-      substrate,
+  const threadedReference = makeWorld(grid, substrate, { peopleKernel: "ts" });
+  const threadedOne = makeWorld(grid, substrate, {
+    peopleKernel: "wasm",
+    peopleWorkers: 1,
+    peopleThreads: true,
+  });
+  const threadedKernel = (threadedOne as PeopleWorld)._wasmPeopleKernel;
+  assert.ok(threadedKernel?.usesThreads, `${grid} 1-worker threaded path did not use the worker pool`);
+  assert.equal(threadedKernel.workerCount, 1);
+  comparePeopleState(threadedReference, threadedOne, grid, 0);
+  for (let step = 1; step <= steps; step++) {
+    runSteps(threadedReference, 1);
+    runSteps(threadedOne, 1);
+    comparePeopleState(threadedReference, threadedOne, grid, step);
+  }
+  (threadedOne as PeopleWorld)._wasmPeopleKernel?.dispose();
+
+  const hashes: Record<number, string> = { 1: serialHash };
+  for (const workerCount of [2, 8]) {
+    const workerWorld = makeWorld(grid, substrate, {
+      peopleKernel: "wasm",
+      peopleWorkers: workerCount,
     });
     assert.equal((workerWorld as PeopleWorld)._wasmPeopleKernel?.workerCount, workerCount);
+    assert.ok(
+      (workerWorld as PeopleWorld)._wasmPeopleKernel?.usesThreads,
+      `${grid} ${workerCount}-worker path did not use the worker pool`,
+    );
     runSteps(workerWorld, steps);
     hashes[workerCount] = hashWorld(workerWorld);
     (workerWorld as PeopleWorld)._wasmPeopleKernel?.dispose();

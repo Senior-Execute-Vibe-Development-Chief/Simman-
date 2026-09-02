@@ -3,9 +3,14 @@ import populationCurve from "../data/reality/population-curve.json";
 import farmingArrivals from "../data/reality/farming-arrivals.json";
 import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
+import type { PeopleWorld } from "../src/sim/people/types";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
 import { provenance } from "./lib/provenance";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
+import {
+  CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS,
+  CADENCE_TRAJECTORY_POP_TOLERANCE,
+} from "../src/sim/constants";
 
 interface GridResult {
   readonly grid: GridPreset;
@@ -23,12 +28,16 @@ const FAST_MONTHS = 12;
 
 if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 
+function disposePeople(world: World): void {
+  (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+}
+
 function measure(grid: GridPreset): GridResult {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const world = new World({
     seed: 42042,
     grid,
-    config: { preset: "earth_sim", horizon: "YD-to-1CE" },
+    config: { preset: "earth_sim", horizon: "YD-to-1CE", peopleKernel: "wasm", peopleWorkers: 1 },
     substrate,
   });
   const initialPeople = populationTotal(world);
@@ -50,7 +59,7 @@ function measure(grid: GridPreset): GridResult {
   }
   for (const hearth of world.hearths) if (hearth.ignited) ignitedHearths++;
   const balance = world.ledger.snapshot().people;
-  return {
+  const result = {
     grid,
     initialPeople,
     finalPeople,
@@ -61,6 +70,8 @@ function measure(grid: GridPreset): GridResult {
     conservationError: balance?.unexplained ?? Number.POSITIVE_INFINITY,
     provenance: provenance(world),
   };
+  disposePeople(world);
+  return result;
 }
 
 const dev = measure("dev");
@@ -102,12 +113,27 @@ const failures: string[] = [];
 const measured = new Set<string>();
 const findings: Record<string, unknown> = {};
 
-function runTrajectory(grid: GridPreset): void {
+interface TrajectorySample {
+  readonly curve: Array<{ year: number; people: number; inBand: boolean }>;
+  readonly arrivalStep: Map<string, number>;
+  readonly world: World;
+}
+
+function collectTrajectory(
+  grid: GridPreset,
+  config: Record<string, string | number | boolean> = {},
+): TrajectorySample {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const world = new World({
     seed: 42042,
     grid,
-    config: { preset: "earth_sim", horizon: "YD-to-1CE", peopleKernel: "wasm" },
+    config: {
+      preset: "earth_sim",
+      horizon: "YD-to-1CE",
+      peopleKernel: "wasm",
+      peopleWorkers: 1,
+      ...config,
+    },
     substrate,
   });
   const checkpointSteps = populationCurve.bands
@@ -149,6 +175,58 @@ function runTrajectory(grid: GridPreset): void {
       }
     }
   }
+  return { curve, arrivalStep, world };
+}
+
+function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
+  const reference = collectTrajectory(grid, {
+    peopleGrowthStride: 1,
+    peopleMigrationStride: 1,
+  });
+  const popDeltas = reference.curve.map((point, index) => {
+    const shippedPoint = shipped.curve[index];
+    const people = shippedPoint?.people ?? 0;
+    const relative = point.people > 0 ? Math.abs(people - point.people) / point.people : 0;
+    return {
+      year: point.year,
+      reference: point.people,
+      shipped: people,
+      relative,
+    };
+  });
+  const arrivalDeltas = farmingArrivals.regions.map((region) => {
+    const refStep = reference.arrivalStep.get(region.id);
+    const shippedStep = shipped.arrivalStep.get(region.id);
+    const refYear = refStep === undefined ? null : YD_START_YEAR + refStep / 12;
+    const shippedYear = shippedStep === undefined ? null : YD_START_YEAR + shippedStep / 12;
+    const deltaYears = refYear !== null && shippedYear !== null
+      ? Math.abs(shippedYear - refYear)
+      : null;
+    return { id: region.id, reference: refYear, shipped: shippedYear, deltaYears };
+  });
+  const popFail = popDeltas.filter((row) => row.relative > CADENCE_TRAJECTORY_POP_TOLERANCE);
+  const arrivalFail = arrivalDeltas.filter((row) => (
+    row.deltaYears !== null && row.deltaYears > CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS
+  ));
+  findings.cadence = {
+    ...(findings.cadence as Record<string, unknown> ?? {}),
+    [grid]: {
+      schedule: shipped.world.schedule,
+      referenceSchedule: reference.world.schedule,
+      population: popDeltas,
+      arrivals: arrivalDeltas,
+    },
+  };
+  measured.add(`cadence-trajectory:${grid}`);
+  if (popFail.length > 0 || arrivalFail.length > 0) {
+    failures.push(`cadence-trajectory:${grid}`);
+  }
+  disposePeople(reference.world);
+}
+
+function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
+  const { curve, arrivalStep, world } = shipped ?? collectTrajectory(grid);
+  const substrate = world.substrate!;
   const scope = `${grid}`;
   for (const point of curve) {
     const id = `population:${point.year}:${scope}`;
@@ -202,10 +280,13 @@ function runTrajectory(grid: GridPreset): void {
     measured.add(id);
     if (ignited < 1) failures.push(id);
   }
+  disposePeople(world);
 }
 
 for (const grid of longArm ? (["dev", "target"] as const) : (["dev"] as const)) {
-  runTrajectory(grid);
+  const shipped = collectTrajectory(grid);
+  runCadenceArm(grid, shipped);
+  runTrajectory(grid, shipped);
 }
 
 const unacknowledged = failures.filter((id) => !acknowledged.has(id));
@@ -233,3 +314,4 @@ console.log(JSON.stringify({
     "The long horizon is primary at the shipped target grid; dev is retained as a cross-grid comparison.",
   ],
 }));
+process.exit(0);

@@ -48,6 +48,7 @@ import {
   TRAVEL_HALF,
 } from "../constants";
 import { dcos } from "../dmath";
+import { monthIndex } from "../scheduler";
 import { D8_DX, D8_DY } from "../../ported/worldgen/riverGen.js";
 import type { Substrate } from "../substrate";
 import { sampleRiverReachGradients } from "../../ported/worldgen/riverDirSample.js";
@@ -115,8 +116,7 @@ function hasCapability(metric: TravelMetric, capability: Capability): boolean {
 }
 
 function monthAt(month: number): number {
-  const normalized = month % MONTHS_PER_YEAR;
-  return normalized < 0 ? normalized + MONTHS_PER_YEAR : normalized;
+  return monthIndex(month);
 }
 
 function climateIndex(cell: number, month: number): number {

@@ -5,9 +5,16 @@ import { printProvenance, provenance } from "./lib/provenance";
 import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
-import { ensurePeopleWasm } from "../src/sim/peopleKernel";
+import { ensurePeopleWasm, defaultPeopleWorkers } from "../src/sim/peopleKernel";
+import {
+  peoplePhaseMilliseconds,
+  resetPeoplePhaseMilliseconds,
+} from "../src/sim/people";
+import type { PeopleWorld } from "../src/sim/people/types";
+import os from "node:os";
 
 const BENCH_TICKS = 10;
+const CADENCE_TICKS = 12;
 
 interface BenchRow {
   readonly grid: GridPreset;
@@ -27,7 +34,12 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
   const substrateStart = performance.now();
   const substrate = buildSubstrate(stamp.seed, { preset: "earth_sim" }, grid);
   const substrateMilliseconds = performance.now() - substrateStart;
-  const world = new World({ seed: 42042, grid, config: { preset: "earth_sim" }, substrate });
+  const world = new World({
+    seed: 42042,
+    grid,
+    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1 },
+    substrate,
+  });
 
   const routingStart = performance.now();
   const engine = await createTravelEngine(substrate);
@@ -60,7 +72,7 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
       return performance.now() - start;
     })()
     : undefined;
-  return {
+  const result = {
     grid,
     substrateMilliseconds,
     routingInitializeMilliseconds,
@@ -71,10 +83,76 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     ...(longRunMilliseconds === undefined ? {} : { longRunMilliseconds }),
     provenance: provenance(world),
   };
+  (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+  return result;
+}
+
+const TARGET_HORIZON_TICKS = 116412;
+
+async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> {
+  const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
+  const workers = defaultPeopleWorkers();
+  const configs: Array<{
+    name: string;
+    peopleWorkers: number;
+    peopleGrowthStride?: number;
+    peopleMigrationStride?: number;
+    peopleThreads?: boolean;
+  }> = [
+    { name: "serial-stride1", peopleWorkers: 1, peopleGrowthStride: 1, peopleMigrationStride: 1 },
+    { name: "serial-shipped", peopleWorkers: 1 },
+    { name: `threads${workers}-stride1`, peopleWorkers: workers, peopleGrowthStride: 1, peopleMigrationStride: 1, peopleThreads: workers === 1 },
+    { name: `threads${workers}-shipped`, peopleWorkers: workers, peopleThreads: workers === 1 },
+  ];
+  if (workers !== 8) {
+    configs.push(
+      { name: "threads8-stride1", peopleWorkers: 8, peopleGrowthStride: 1, peopleMigrationStride: 1 },
+      { name: "threads8-shipped", peopleWorkers: 8 },
+    );
+  }
+  const rows: Record<string, unknown>[] = [];
+  for (const config of configs) {
+    const world = new World({
+      seed: 42042,
+      grid,
+      config: { preset: "earth_sim", peopleKernel: "wasm", ...config },
+      substrate,
+    });
+    runSteps(world, CADENCE_TICKS);
+    resetPeoplePhaseMilliseconds();
+    const kernel = (world as PeopleWorld)._wasmPeopleKernel;
+    const barrierBefore = kernel?.barrierMilliseconds ?? 0;
+    const started = performance.now();
+    runSteps(world, CADENCE_TICKS);
+    const elapsed = performance.now() - started;
+    const barrier = (kernel?.barrierMilliseconds ?? 0) - barrierBefore;
+    const phases = { ...peoplePhaseMilliseconds };
+    const workerCount = kernel?.workerCount ?? 1;
+    const usesThreads = kernel?.usesThreads ?? false;
+    kernel?.dispose();
+    const perTick = elapsed / CADENCE_TICKS;
+    rows.push({
+      name: config.name,
+      workers: workerCount,
+      usesThreads,
+      schedule: world.schedule,
+      tickMilliseconds: perTick,
+      barrierMilliseconds: barrier / CADENCE_TICKS,
+      phases,
+      projectedYdTo1CeMinutes: perTick * TARGET_HORIZON_TICKS / 60000,
+    });
+  }
+  return {
+    grid,
+    cpus: os.cpus().length,
+    defaultWorkers: workers,
+    rows,
+  };
 }
 
 if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 const rows = [await benchmark("dev"), await benchmark("target")];
+const cadence = [await cadenceBench("dev"), await cadenceBench("target")];
 if (process.argv.includes("--check")) {
   const baselines = JSON.parse(
     readFileSync(new URL("../bench-baselines.json", import.meta.url), "utf8"),
@@ -100,9 +178,14 @@ if (process.argv.includes("--check")) {
 }
 console.log(JSON.stringify({
   bench: rows,
+  cadence,
   format: "milliseconds",
   peopleTickSamples: BENCH_TICKS,
+  cadenceTickSamples: CADENCE_TICKS,
+  ceilingMilliseconds: 15.5,
+  horizonTicks: TARGET_HORIZON_TICKS,
   longRun: process.env.BENCH_LONG === "1"
     ? `target ${PEOPLE_BENCH_LONG_YEARS} years`
     : "disabled (set BENCH_LONG=1)",
 }));
+process.exit(0);

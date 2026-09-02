@@ -37,7 +37,12 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
   if (message.type === "create") {
     if (message.config?.peopleKernel !== "ts") await ensurePeopleWasm();
     world = new World(message);
-    const peopleKernel = (world as unknown as { _wasmPeopleKernel?: { workerCount: number } })._wasmPeopleKernel;
+    const peopleKernel = (world as unknown as {
+      _wasmPeopleKernel?: { workerCount: number; usesThreads: boolean; control: { shared: boolean } };
+    })._wasmPeopleKernel;
+    const growth = world.schedule.find((row) => row.name === "people.growth")?.stride ?? 1;
+    const migration = world.schedule.find((row) => row.name === "people.migration")?.stride ?? 1;
+    const isolated = typeof crossOriginIsolated === "undefined" || crossOriginIsolated;
     return {
       type: "created",
       hash: hashWorld(world),
@@ -45,9 +50,10 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
       step: world.step,
       kernel: peopleKernel ? "wasm" : "ts",
       workerCount: peopleKernel?.workerCount ?? 1,
-      sharedBands: peopleKernel
-        ? (world as unknown as { _wasmPeopleKernel: { control: { shared: boolean } } })._wasmPeopleKernel.control.shared
-        : false,
+      usesThreads: peopleKernel?.usesThreads === true,
+      isolated,
+      scheduleLabel: `growth ${growth} · migration ${migration}`,
+      sharedBands: peopleKernel?.control.shared === true,
     };
   }
   if (message.type === "recycle") {

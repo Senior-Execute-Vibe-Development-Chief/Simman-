@@ -34,8 +34,10 @@ hearth ignitions, curve checkpoints inside the window). The full YD→1 CE
 dev and shipped target batteries — population checkpoint bands, farming arrival
 order and timing, density ordering — run with
 `GATE_PEOPLE_LONG=1 npm run gate:people`; misses are acknowledged in
-`data/reality/known-misses-people.json` or fail the gate. The target-grid long
-battery is the primary W2 verdict; the dev battery is retained for comparison.
+`data/reality/known-misses-people.json` or fail the gate. The default gate
+also runs a cadence stride arm (all-strides-1 vs shipped schedule) at the
+dev 3000-year horizon. The target-grid long battery is the primary
+verdict; the dev battery is retained for comparison.
 
 The W1 water bake is reproducible with `npx tsx tools/build-waterdata.mts
 <etopo.nc> <HydroLAKES_polys_v10.shp>` when refreshing the committed
@@ -84,15 +86,22 @@ fudge factors.
   in the per-pass conservation sheet.
 - The farming technique field is monotone, climate-tolerated, and driven by
   hearth maturity measured in peopled-basin years rather than calendar gates.
-- Save format v3 persists people, technique, cohorts, and hearth progress;
-  terrain remains immutable substrate rebuilt from its identity.
+- Save format v4 persists people, technique, cohorts, hearth progress, and
+  the resolved pass schedule; terrain remains immutable substrate rebuilt
+  from its identity.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
-  technique coverage, and weighted cohort shares.
+  technique coverage, weighted cohort shares, and per-pass firing counts.
 - Every people field pass uses aggregated named source/sink accounting.
-- The wasm people kernel uses 16 fixed grid-derived row bands dispatched
-  serially (W2 shipped single-thread wasm; parallel band execution is the
-  open W2b item). Band order is fixed by the grid, so a future worker count
-  cannot alter the field or world hash.
+- People cadence is derived, not scripted: growth/technique/capacity/cohorts
+  fire annually; migration's stride is the largest divisor of 12 whose
+  per-firing share stays inside the diffusion bound (dev 12, target 1).
+- The wasm people kernel uses 16 fixed grid-derived row bands. Node
+  `worker_threads` and cross-origin-isolated browsers run those bands on a
+  shared-memory pool; hashes are identical for 1, 2, and N workers and
+  identical to the serial TypeScript oracle. Hosts without isolation fall
+  back to serial wasm, logged in the status line. The ≤15.5 ms Phase-1
+  ceiling is not met on a 4-core runner; QUESTIONS #34 has the measured
+  serial/N-thread table.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,

@@ -10,6 +10,7 @@ export interface Provenance {
   readonly grid: string;
   readonly step: number;
   readonly configDigest: string;
+  readonly schedule: World["schedule"];
 }
 
 function gitValue(args: string[]): string {
@@ -32,6 +33,7 @@ export function provenance(world: World): Provenance {
     grid: world.grid,
     step: world.step,
     configDigest,
+    schedule: world.schedule,
   };
 }
 

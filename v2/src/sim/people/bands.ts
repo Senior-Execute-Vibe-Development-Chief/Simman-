@@ -6,6 +6,10 @@
  */
 import { PEOPLE_BAND_COUNT } from "../constants";
 
+export const BAND_CONTROL_PHASE = 0;
+export const BAND_CONTROL_CLAIM = 1;
+export const BAND_CONTROL_DONE_OFFSET = 2;
+
 export interface PeopleBand {
   readonly index: number;
   readonly rowLo: number;
@@ -41,18 +45,46 @@ export interface BandControl {
   readonly shared: boolean;
   readonly storage?: SharedArrayBuffer;
   readonly claims: Int32Array;
+  readonly phase: Int32Array;
+  readonly done: Int32Array;
 }
 
 export function createBandControl(workerCount = 1): BandControl {
   const count = Math.max(1, Math.floor(workerCount));
+  const words = BAND_CONTROL_DONE_OFFSET + PEOPLE_BAND_COUNT;
   const shared = typeof SharedArrayBuffer !== "undefined"
     && (typeof crossOriginIsolated === "undefined" || crossOriginIsolated);
-  const storage = shared ? new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2) : undefined;
+  const storage = shared
+    ? new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * words)
+    : undefined;
+  const state = new Int32Array(
+    storage ?? new ArrayBuffer(Int32Array.BYTES_PER_ELEMENT * words),
+  );
   return {
     workerCount: count,
     shared,
     storage,
-    claims: new Int32Array(storage ?? new ArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2)),
+    claims: state.subarray(BAND_CONTROL_CLAIM, BAND_CONTROL_CLAIM + 1),
+    phase: state.subarray(BAND_CONTROL_PHASE, BAND_CONTROL_PHASE + 1),
+    done: state.subarray(BAND_CONTROL_DONE_OFFSET),
   };
+}
+
+export function beginBandPhase(control: BandControl): void {
+  Atomics.store(control.claims, 0, 0);
+  for (let index = 0; index < control.done.length; index++) {
+    Atomics.store(control.done, index, 0);
+  }
+  Atomics.add(control.phase, 0, 1);
+  Atomics.notify(control.phase, 0);
+}
+
+export function claimBand(control: BandControl): number {
+  return Atomics.add(control.claims, 0, 1);
+}
+
+export function finishBand(control: BandControl, bandIndex: number): void {
+  Atomics.store(control.done, bandIndex, 1);
+  Atomics.notify(control.done, bandIndex);
 }
 

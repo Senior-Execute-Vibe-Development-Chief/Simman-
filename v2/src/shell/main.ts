@@ -115,9 +115,17 @@ function displayDate(step: number): string {
 }
 worker.addEventListener("message", (event) => {
   if (event.data?.type === "created") {
-    const kernel = event.data.kernel === "wasm" ? "WASM people bands" : "TypeScript people fallback";
-    const bands = event.data.sharedBands ? " · shared control" : "";
-    status.textContent = `Worker ready · ${kernel}${bands} · ${event.data.hash}`;
+    const isolated = event.data.isolated === true;
+    const threaded = event.data.usesThreads === true;
+    const kernel = event.data.kernel !== "wasm"
+      ? "TypeScript people fallback"
+      : threaded
+        ? `WASM ${event.data.workerCount} threads`
+        : isolated
+          ? "serial WASM"
+          : "serial WASM · host is not cross-origin isolated";
+    const schedule = typeof event.data.scheduleLabel === "string" ? ` · ${event.data.scheduleLabel}` : "";
+    status.textContent = `Worker ready · ${kernel}${schedule} · ${event.data.hash}`;
   }
   if (event.data?.type === "snapshot" && event.data.buffer instanceof ArrayBuffer) {
     tickPending = false;

@@ -5,6 +5,7 @@ import {
   PEOPLE_MIGRATION_MAX_SHARE,
   PEOPLE_MIGRATION_MAX_SUBSTEPS,
 } from "../constants";
+import { monthIndex } from "../scheduler";
 import { fillMigrationDaysPerKm, migrationEdgeLengths } from "../travel/cost";
 import type { PeopleWorld } from "./types";
 
@@ -12,10 +13,12 @@ function peopled(world: PeopleWorld, cell: number): boolean {
   return world._peopledMask[cell] === 1;
 }
 
-export function migrationShareForArea(area_: number): number {
+export function migrationShareForArea(area_: number, dtMonths = 1): number {
   const area = Math.max(1, area_);
   const annualShare = PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR / area;
-  const rawShare = annualShare / MONTHS_PER_YEAR;
+  const rawShare = dtMonths === 1
+    ? annualShare / MONTHS_PER_YEAR
+    : annualShare * dtMonths / MONTHS_PER_YEAR;
   const substeps = Math.max(
     1,
     Math.min(
@@ -30,9 +33,12 @@ export function migrationShareForArea(area_: number): number {
 }
 
 /** Cell area is a row property, so the substepped share is too. */
-export function fillMigrationShareRows(world: PeopleWorld): void {
+export function fillMigrationShareRows(world: PeopleWorld, dtMonths = 1): void {
   for (let y = 0; y < world.height; y++) {
-    world._migrationShareRow[y] = migrationShareForArea(world.cellAreaKm2[y * world.width] ?? 0);
+    world._migrationShareRow[y] = migrationShareForArea(
+      world.cellAreaKm2[y * world.width] ?? 0,
+      dtMonths,
+    );
   }
 }
 
@@ -59,10 +65,15 @@ function cohortShareOf(
  * visit. Days/km fields are cached per month; climate is periodic, so the
  * cost model is paid twelve fills total.
  */
-export function migrate(world: PeopleWorld, month: number): number {
+export function migrate(
+  world: PeopleWorld,
+  month: number,
+  dtMonths = 1,
+  growthPrepared = true,
+): number {
   const wasm = world._wasmPeopleKernel;
   if (wasm) {
-    wasm.beginMigration(month);
+    wasm.beginMigration(month, dtMonths, growthPrepared);
     wasm.migrateSources();
     wasm.debitMigration();
     wasm.gatherMigration();
@@ -75,15 +86,15 @@ export function migrate(world: PeopleWorld, month: number): number {
     world._migrationEdgeH = lengths.horizontal;
     world._migrationEdgeV = lengths.vertical;
   }
-  const monthIndex = ((month % MONTHS_PER_YEAR) + MONTHS_PER_YEAR) % MONTHS_PER_YEAR;
-  let days = world._migrationDaysPerKmByMonth[monthIndex];
+  const cycleMonth = monthIndex(month);
+  let days = world._migrationDaysPerKmByMonth[cycleMonth];
   if (!days) {
     days = new Float64Array(world.N);
-    fillMigrationDaysPerKm(world.substrate, monthIndex, days);
-    world._migrationDaysPerKmByMonth[monthIndex] = days;
+    fillMigrationDaysPerKm(world.substrate, cycleMonth, days);
+    world._migrationDaysPerKmByMonth[cycleMonth] = days;
   }
   world._migrationDaysPerKm = days;
-  fillMigrationShareRows(world);
+  fillMigrationShareRows(world, dtMonths);
   const edgeH = world._migrationEdgeH;
   const edgeV = world._migrationEdgeV;
   const landMask = world.substrate.landMask;
@@ -99,10 +110,24 @@ export function migrate(world: PeopleWorld, month: number): number {
   const elderNext = world._eldersNext;
   out.fill(0);
   weights.fill(0);
-  migrationPopulation.set(next);
-  childNext.set(world._childrenMass);
-  workingNext.set(world._workingMass);
-  elderNext.set(world._eldersMass);
+  if (growthPrepared) {
+    migrationPopulation.set(next);
+    childNext.set(world._childrenMass);
+    workingNext.set(world._workingMass);
+    elderNext.set(world._eldersMass);
+  } else {
+    next.set(world.people);
+    migrationPopulation.set(world.people);
+    for (const cell of world._landCells) {
+      const population = world.people[cell] ?? 0;
+      childNext[cell] = population * (world.children[cell] ?? 0);
+      workingNext[cell] = population * (world.working[cell] ?? 0);
+      elderNext[cell] = population * (world.elders[cell] ?? 0);
+    }
+    world._childrenMass.set(childNext);
+    world._workingMass.set(workingNext);
+    world._eldersMass.set(elderNext);
+  }
 
   // Source scan, direction order E, W, S, N (the original DX/DY order).
   for (const cell of world._landCells) {

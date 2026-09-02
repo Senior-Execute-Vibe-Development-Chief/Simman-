@@ -1,10 +1,13 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_M2 } from "./constants";
+import { SAVE_VERSION_W3 } from "./constants";
 import { type GridPreset, World } from "./world";
 import type { HearthState } from "./people/types";
+import { sameSchedule, type PassSchedule } from "./scheduler";
+import { deriveCapacity } from "./people/capacity";
+import { asPeopleWorld } from "./people/types";
 
-export const SAVE_VERSION = SAVE_VERSION_M2;
+export const SAVE_VERSION = SAVE_VERSION_W3;
 
 export interface SerializedField {
   readonly length: number;
@@ -18,6 +21,7 @@ export interface SaveEnvelope {
   readonly grid: GridPreset;
   readonly step: number;
   readonly calendarMonth: number;
+  readonly schedule: readonly PassSchedule[];
   readonly config: Record<string, string | number | boolean>;
   readonly fields: Record<string, SerializedField>;
   readonly people: {
@@ -72,6 +76,7 @@ export function saveWorld(world: World): SaveEnvelope {
     grid: world.grid,
     step: world.step,
     calendarMonth: world.calendarMonth,
+    schedule: world.schedule,
     config: { ...world.config },
     fields,
     people: {
@@ -96,6 +101,9 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
     config: data.config,
     substrate,
   });
+  if (!Array.isArray(data.schedule) || !sameSchedule(world.schedule, data.schedule)) {
+    throw new Error("Save schedule does not match the world schedule.");
+  }
   world.step = data.step;
   world.calendarMonth = data.calendarMonth;
   for (const definition of FIELD_LIST) {
@@ -111,6 +119,10 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   }
   world.peopleInitialized = data.people.initialized;
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
+  // Capacity is derived scratch. Annual cadence means a loaded world can
+  // run many migration-only months before the next capacity firing, so
+  // re-derive from the restored technique rather than keeping the seed.
+  if (world.substrate && world.peopleInitialized) deriveCapacity(asPeopleWorld(world));
   return world;
 }
 
