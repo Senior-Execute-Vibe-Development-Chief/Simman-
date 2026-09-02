@@ -1,0 +1,36 @@
+{
+  "source": "W1 measured flood-stage fractions from ETOPO point samples along HydroSHEDS channels",
+  "globalShareMin": 0.002,
+  "globalShareMax": 0.08,
+  "corridors": [
+    {
+      "id": "nile-mid-valley",
+      "latMin": 24,
+      "latMax": 30,
+      "lonMin": 30,
+      "lonMax": 34,
+      "highFraction": 0.2,
+      "maxWidthCells": 2,
+      "source": "Nile floodplain width 5–25 km; pre-dam Aswan flood stage"
+    },
+    {
+      "id": "mesopotamian-plain",
+      "latMin": 29,
+      "latMax": 34,
+      "lonMin": 42,
+      "lonMax": 48,
+      "highFraction": 0.2,
+      "minWidthCells": 3,
+      "source": "Tigris–Euphrates alluvial plain"
+    },
+    {
+      "id": "yangtze-lower-plain",
+      "latMin": 28,
+      "latMax": 32,
+      "lonMin": 110,
+      "lonMax": 122,
+      "highFraction": 0.2,
+      "source": "Lower Yangtze floodplain"
+    }
+  ]
+}

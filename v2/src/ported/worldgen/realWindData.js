@@ -1,0 +1,241 @@
+/* V2 M1 PORT
+ * source: src/realWindData.js; deviations: dataset import path points at v2/data/reality; data injection remains caller-owned; adds sampleMonthlyWind (M1 review) — a bulk cell×12 sampler with precomputed row/column indices (the per-call sampleRealWind scans lat/lon per invocation, which is O(N·12·latlon) when filling a whole grid).
+ * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
+ */
+// ── Real Wind Data Loader ──
+// Loads NCEP/NCAR Reanalysis climatological wind data from data/global_wind.json
+// and provides bilinear sampling functions for use in Earth (Sim) mode.
+//
+// To generate the data file, run: python3 tools/convert_wind_data.py
+
+let windData = null;
+let loadPromise = null;
+let loadFailed = false;
+
+export function isRealWindAvailable() {
+  return windData !== null;
+}
+
+export function isRealWindLoading() {
+  return loadPromise !== null && windData === null && !loadFailed;
+}
+
+export async function loadRealWindData() {
+  if (windData) return true;
+  if (loadFailed) return false;
+  if (loadPromise) return loadPromise;
+
+  loadPromise = (async () => {
+    try {
+      // Vite handles JSON imports at build time
+      const mod = await import("../../../data/reality/global_wind.json");
+      const d = mod.default || mod;
+      // Validate: must have lat/lon arrays and at least month "0"
+      if (!d.lat || !d.lon || !d["0"]) {
+        console.warn("Real wind data file exists but is empty/invalid (run: python3 tools/convert_wind_data.py)");
+        loadFailed = true;
+        return false;
+      }
+      windData = d;
+      console.log(`Real wind data loaded: ${windData.lat.length} lat × ${windData.lon.length} lon, 12 months`);
+      return true;
+    } catch {
+      console.warn("Real wind data not available (run: python3 tools/convert_wind_data.py)");
+      // Allow a real retry: clear the cached promise too, or every later call
+      // would return this same settled-false promise and never re-attempt.
+      loadPromise = null;
+      return false;
+    }
+  })();
+  return loadPromise;
+}
+
+// Try loading eagerly (non-blocking)
+loadRealWindData();
+
+/**
+ * Hand the module its data directly, bypassing the bundler-specific JSON import — the
+ * same Node entry point realClimateData has, so the probes in tools/ can exercise the
+ * real-wind path instead of reimplementing it.
+ * @param {object} json parsed data/global_wind.json
+ */
+export function provideRealWindData(json) {
+  windData = json;
+  loadFailed = false;
+}
+
+/**
+ * Bulk-sample the monthly wind climatology onto a W×H grid (M1 review
+ * addition). Returns u/v in m/s, indexed cell × 12. Same bilinear scheme and
+ * dateline offset as sampleRealWind, with the lat/lon index search hoisted
+ * out of the per-cell loop.
+ * @returns {{u: Float32Array, v: Float32Array}|null}
+ */
+export function sampleMonthlyWind(W, H) {
+  if (!windData) return null;
+  const lats = windData.lat, lons = windData.lon;
+  const nLat = lats.length, nLon = lons.length;
+  const descending = lats[0] > lats[nLat - 1];
+  const jIdx = new Int32Array(H), jFrac = new Float32Array(H);
+  for (let y = 0; y < H; y++) {
+    const lat = 90 - (y / (H - 1)) * 180;
+    let j0 = 0;
+    if (descending) {
+      for (let i = 0; i < nLat - 1; i++) {
+        if (lats[i] >= lat && lats[i + 1] < lat) { j0 = i; break; }
+      }
+    } else {
+      for (let i = 0; i < nLat - 1; i++) {
+        if (lats[i] <= lat && lats[i + 1] > lat) { j0 = i; break; }
+      }
+    }
+    const j1 = Math.min(nLat - 1, j0 + 1);
+    const range = lats[j1] - lats[j0];
+    jIdx[y] = j0;
+    jFrac[y] = range !== 0 ? Math.max(0, Math.min(1, (lat - lats[j0]) / range)) : 0;
+  }
+  const iIdx = new Int32Array(W), iFrac = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    const lon = ((x / W) * 360 + 180) % 360;
+    let i0 = 0;
+    for (let i = 0; i < nLon - 1; i++) {
+      if (lons[i] <= lon && lons[i + 1] > lon) { i0 = i; break; }
+      if (i === nLon - 2) i0 = i;
+    }
+    const i1 = (i0 + 1) % nLon;
+    const range = i1 > i0 ? lons[i1] - lons[i0] : (360 - lons[i0] + lons[i1]);
+    iIdx[x] = i0;
+    iFrac[x] = range !== 0 ? Math.max(0, Math.min(1, ((lon - lons[i0] + 360) % 360) / range)) : 0;
+  }
+  const u = new Float32Array(W * H * 12);
+  const v = new Float32Array(W * H * 12);
+  for (let m = 0; m < 12; m++) {
+    const md = windData[String(m)];
+    if (!md) continue;
+    for (let y = 0; y < H; y++) {
+      const j0 = jIdx[y], jf = jFrac[y], j1 = Math.min(nLat - 1, j0 + 1);
+      const u0 = md.u[j0], u1 = md.u[j1], v0 = md.v[j0], v1 = md.v[j1];
+      for (let x = 0; x < W; x++) {
+        const i0 = iIdx[x], i1 = (i0 + 1) % nLon, xf = iFrac[x];
+        const cell = y * W + x;
+        u[cell * 12 + m] = (u0[i0] * (1 - xf) + u0[i1] * xf) * (1 - jf)
+          + (u1[i0] * (1 - xf) + u1[i1] * xf) * jf;
+        v[cell * 12 + m] = (v0[i0] * (1 - xf) + v0[i1] * xf) * (1 - jf)
+          + (v1[i0] * (1 - xf) + v1[i1] * xf) * jf;
+      }
+    }
+  }
+  return { u, v };
+}
+
+/**
+ * Sample real wind data at a given pixel position, returning U/V in m/s.
+ * @param {number} x - pixel x (0 to W-1)
+ * @param {number} y - pixel y (0 to H-1)
+ * @param {number} W - map width
+ * @param {number} H - map height
+ * @param {number} month - 0-11 (default: annual mean via averaging)
+ * @returns {{u: number, v: number}} wind components in m/s
+ */
+export function sampleRealWind(x, y, W, H, month) {
+  if (!windData) return { u: 0, v: 0 };
+
+  const lats = windData.lat;
+  const lons = windData.lon;
+  const nLat = lats.length;
+  const nLon = lons.length;
+
+  // Convert pixel to lat/lon
+  // Map: y=0 → 90°N, y=H-1 → 90°S (equirectangular)
+  const lat = 90 - (y / (H - 1)) * 180;
+  // Map: x=0 → 180°W (dateline), x=W/2 → 0°E (Greenwich), x=W → 180°E
+  // Earth heightmap starts at the International Date Line, but NCEP wind
+  // data starts at Greenwich (0°E). Offset by 180°.
+  const lon = ((x / W) * 360 + 180) % 360;
+
+  // Find bounding lat indices (lats may be descending: 90 to -90)
+  let latIdx0 = 0;
+  if (lats[0] > lats[nLat - 1]) {
+    // Descending (90 → -90)
+    for (let i = 0; i < nLat - 1; i++) {
+      if (lats[i] >= lat && lats[i + 1] < lat) { latIdx0 = i; break; }
+    }
+  } else {
+    // Ascending (-90 → 90)
+    for (let i = 0; i < nLat - 1; i++) {
+      if (lats[i] <= lat && lats[i + 1] > lat) { latIdx0 = i; break; }
+    }
+  }
+  const latIdx1 = Math.min(nLat - 1, latIdx0 + 1);
+  const latRange = lats[latIdx1] - lats[latIdx0];
+  const latFrac = latRange !== 0 ? (lat - lats[latIdx0]) / latRange : 0;
+
+  // Find bounding lon indices (lons ascending: 0 → 358.x)
+  let lonIdx0 = 0;
+  for (let i = 0; i < nLon - 1; i++) {
+    if (lons[i] <= lon && lons[i + 1] > lon) { lonIdx0 = i; break; }
+    if (i === nLon - 2) lonIdx0 = i; // wrap case
+  }
+  const lonIdx1 = (lonIdx0 + 1) % nLon;
+  const lonRange = lonIdx1 > lonIdx0
+    ? lons[lonIdx1] - lons[lonIdx0]
+    : (360 - lons[lonIdx0] + lons[lonIdx1]);
+  const lonFrac = lonRange !== 0 ? ((lon - lons[lonIdx0] + 360) % 360) / lonRange : 0;
+
+  // Get month data (or compute annual mean)
+  let u00, u10, u01, u11, v00, v10, v01, v11;
+
+  if (month !== undefined && windData[String(month)]) {
+    const md = windData[String(month)];
+    u00 = md.u[latIdx0][lonIdx0]; u10 = md.u[latIdx0][lonIdx1];
+    u01 = md.u[latIdx1][lonIdx0]; u11 = md.u[latIdx1][lonIdx1];
+    v00 = md.v[latIdx0][lonIdx0]; v10 = md.v[latIdx0][lonIdx1];
+    v01 = md.v[latIdx1][lonIdx0]; v11 = md.v[latIdx1][lonIdx1];
+  } else {
+    // Annual mean: average all 12 months
+    u00 = u10 = u01 = u11 = v00 = v10 = v01 = v11 = 0;
+    for (let m = 0; m < 12; m++) {
+      const md = windData[String(m)];
+      if (!md) continue;
+      u00 += md.u[latIdx0][lonIdx0]; u10 += md.u[latIdx0][lonIdx1];
+      u01 += md.u[latIdx1][lonIdx0]; u11 += md.u[latIdx1][lonIdx1];
+      v00 += md.v[latIdx0][lonIdx0]; v10 += md.v[latIdx0][lonIdx1];
+      v01 += md.v[latIdx1][lonIdx0]; v11 += md.v[latIdx1][lonIdx1];
+    }
+    const inv12 = 1 / 12;
+    u00 *= inv12; u10 *= inv12; u01 *= inv12; u11 *= inv12;
+    v00 *= inv12; v10 *= inv12; v01 *= inv12; v11 *= inv12;
+  }
+
+  // Bilinear interpolation
+  const lf = Math.max(0, Math.min(1, latFrac));
+  const xf = Math.max(0, Math.min(1, lonFrac));
+  const u = (u00 * (1 - xf) + u10 * xf) * (1 - lf) + (u01 * (1 - xf) + u11 * xf) * lf;
+  const v = (v00 * (1 - xf) + v10 * xf) * (1 - lf) + (v01 * (1 - xf) + v11 * xf) * lf;
+
+  return { u, v };
+}
+
+/**
+ * Fill full-resolution wind arrays from real data.
+ * Converts from m/s to the internal wind scale used by the solver.
+ * @param {number} W - map width
+ * @param {number} H - map height
+ * @param {Float32Array} windX - output array (W*H)
+ * @param {Float32Array} windY - output array (W*H)
+ * @param {number} [month] - specific month (0-11), omit for annual mean
+ * @param {number} [scale=0.008] - conversion from m/s to internal units
+ */
+export function fillRealWind(W, H, windX, windY, month, scale = 0.008) {
+  if (!windData) return false;
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const { u, v } = sampleRealWind(x, y, W, H, month);
+      const i = y * W + x;
+      windX[i] = u * scale;
+      windY[i] = v * scale;
+    }
+  }
+  return true;
+}

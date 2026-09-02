@@ -1,0 +1,24 @@
+{
+  "misses": [
+    {
+      "id": "population:-5000:dev",
+      "reason": "Measured 226M vs band max 60M on dev: without famine variance, harvest failure, plagues, or exhausted soil, intrinsic growth runs toward farmed capacity. M3/M7 mortality physics owns this miss; no rate is dialed."
+    },
+    {
+      "id": "population:-3000:dev",
+      "reason": "Measured 438M vs band max 100M on dev: the same missing-mortality physics as population:-5000."
+    },
+    {
+      "id": "population:-1000:dev",
+      "reason": "Measured 739M vs band max 200M on dev: the same missing-mortality physics as population:-5000."
+    },
+    {
+      "id": "population:1:dev",
+      "reason": "Measured 908M vs band max 400M on dev: the curve saturates against farmed capacity (Malthus via ceiling only, no famine variance), the same missing-mortality physics as population:-5000."
+    },
+    {
+      "id": "arrival:indus:dev",
+      "reason": "Measured -8070 vs earliest -7000 (-7800 with the \u00b1800 grace) on dev: under the peopled-basin-years law the Indus floodplain basin arms as fast as the Fertile Crescent's. Real Mehrgarh package adaptation and monsoon-margin factors are not yet modeled; a physics finding, not a dial."
+    }
+  ]
+}

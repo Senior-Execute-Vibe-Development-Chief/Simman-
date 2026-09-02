@@ -1,0 +1,36 @@
+{
+  "name": "simman-v2-m1",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "wasm:build": "wasm-pack build rust/router --target web --out-dir ../../src/wasm/router --release && wasm-pack build rust/people --target web --out-dir ../../src/wasm/people --release && node tools/build-people-threads.mjs",
+    "build": "npm run wasm:build && tsc --noEmit && vite build",
+    "lint": "eslint . && tsx tools/ledger-lint.ts",
+    "test": "npm run smoke && tsx tools/unit.test.ts && tsx tools/kernel-parity.ts",
+    "presmoke": "npm run wasm:build",
+    "smoke": "tsx tools/smoke.ts",
+    "prebench": "npm run wasm:build",
+    "bench": "tsx tools/bench.ts",
+    "pregate": "npm run wasm:build",
+    "gate": "npm run gate:travel && npm run gate:people",
+    "gate:travel": "tsx tools/gate-travel.ts",
+    "gate:people": "tsx tools/gate-people.ts",
+    "oracle": "tsx tools/worldgen-oracle.ts",
+    "browser": "npm run wasm:build && tsx tools/browser-smoke.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/node": "latest",
+    "eslint": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vite": "latest",
+    "wasm-pack": "latest"
+  }
+}

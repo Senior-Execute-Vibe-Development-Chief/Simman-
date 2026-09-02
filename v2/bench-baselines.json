@@ -1,0 +1,19 @@
+{
+  "dev": {
+    "substrateMilliseconds": 2100,
+    "routingInitializeMilliseconds": 20,
+    "customizeMilliseconds": 50,
+    "queryMilliseconds": 45,
+    "distanceMapMilliseconds": 32,
+    "tickMilliseconds": 12
+  },
+  "target": {
+    "substrateMilliseconds": 52000,
+    "routingInitializeMilliseconds": 2500,
+    "customizeMilliseconds": 1800,
+    "queryMilliseconds": 2100,
+    "distanceMapMilliseconds": 2200,
+    "tickMilliseconds": 220
+  },
+  "notes": "W2 baseline re-measured on the review runner (seed 42042, earth_sim), 10-tick cold averages: dev 8.9 ms/tick, target 169 ms/tick with the single-thread wasm kernel (pre-W2 on the same runner: 361 cold / 210 warm at target). Cursor's runner measured 2.6 / 122 ms; cross-runner numbers are not comparable, so baselines always come from the review runner. Values carry headroom; CI fails above 120%. Worker banding is NOT yet parallel (QUESTIONS #33 review note): 116,412 ticks x ~169 ms is ~5.5 h here, so the <=30-minute Phase-1 ceiling remains open. BENCH_LONG=1 adds the 1000-year target arm."
+}

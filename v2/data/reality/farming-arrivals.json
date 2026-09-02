@@ -1,0 +1,12 @@
+{
+  "source": "Ammerman–Cavalli-Sforza tradition; radiocarbon syntheses",
+  "unit": "year",
+  "regions": [
+    { "id": "fertile-crescent", "latitude": 32, "longitude": 44, "earliest": -9500, "latest": -7000 },
+    { "id": "nile", "latitude": 30, "longitude": 31, "earliest": -8500, "latest": -5000 },
+    { "id": "yellow-river", "latitude": 35, "longitude": 112, "earliest": -8000, "latest": -5500 },
+    { "id": "indus", "latitude": 28, "longitude": 70, "earliest": -7000, "latest": -3500 },
+    { "id": "mesoamerica", "latitude": 19, "longitude": -99, "earliest": -7000, "latest": -2500 },
+    { "id": "andes", "latitude": -13, "longitude": -72, "earliest": -5000, "latest": -2500 }
+  ]
+}

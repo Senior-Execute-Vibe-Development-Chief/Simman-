@@ -1,0 +1,110 @@
+[
+  {
+    "id": "tigris-euphrates-twins",
+    "type": "distinct",
+    "lat": 33.0,
+    "lonMin": 38.0,
+    "lonMax": 47.0,
+    "minChannels": 2,
+    "minMagnitude": 2,
+    "grids": ["target"],
+    "source": "The owner's founding complaint: Mesopotamia must carry TWO rivers at Baghdad's latitude — the Euphrates and the Tigris — not one merged channel."
+  },
+  {
+    "id": "mississippi-to-gulf",
+    "type": "reaches",
+    "from": { "lat": 45.0, "lon": -93.2 },
+    "mouth": { "latMin": 28.0, "latMax": 31.0, "lonMin": -92.0, "lonMax": -88.0 },
+    "grids": ["target"],
+    "source": "Continuous trunk from Minnesota to the Gulf delta."
+  },
+  {
+    "id": "missouri-joins-mississippi",
+    "type": "joins",
+    "from": { "lat": 46.5, "lon": -100.5 },
+    "with": { "lat": 45.0, "lon": -93.2 },
+    "grids": ["target"],
+    "source": "The Missouri is a tributary of the Mississippi, not a separate outlet."
+  },
+  {
+    "id": "ohio-joins-mississippi",
+    "type": "joins",
+    "from": { "lat": 40.5, "lon": -81.0 },
+    "with": { "lat": 45.0, "lon": -93.2 },
+    "grids": ["target"],
+    "source": "The Ohio joins at Cairo, Illinois."
+  },
+  {
+    "id": "congo-arc-to-atlantic",
+    "type": "reaches",
+    "from": { "lat": 0.5, "lon": 25.2 },
+    "mouth": { "latMin": -8.0, "latMax": -4.0, "lonMin": 11.0, "lonMax": 14.0 },
+    "grids": ["target"],
+    "source": "Kisangani to the Atlantic through the cuvette arc — no parallel-terrace combing."
+  },
+  {
+    "id": "nile-to-mediterranean",
+    "type": "reaches",
+    "from": { "lat": 15.6, "lon": 32.5 },
+    "mouth": { "latMin": 30.5, "latMax": 32.2, "lonMin": 29.0, "lonMax": 33.0 },
+    "grids": ["target"],
+    "source": "Khartoum to the Mediterranean through the restored delta."
+  },
+  {
+    "id": "niger-bend",
+    "type": "reaches",
+    "from": { "lat": 11.0, "lon": -7.5 },
+    "mouth": { "latMin": 3.5, "latMax": 6.5, "lonMin": 4.5, "lonMax": 8.5 },
+    "minPathLat": 15.5,
+    "grids": ["target"],
+    "source": "The Niger rises near the Atlantic, bends inland past Timbuktu (~16.7N), and discharges in the Gulf of Guinea."
+  },
+  {
+    "id": "amazon-to-atlantic",
+    "type": "reaches",
+    "from": { "lat": -4.4, "lon": -73.5 },
+    "mouth": { "latMin": -2.5, "latMax": 1.5, "lonMin": -53.0, "lonMax": -48.0 },
+    "grids": ["target"],
+    "source": "Iquitos to the Atlantic estuary."
+  },
+  {
+    "id": "volga-to-caspian",
+    "type": "reaches",
+    "from": { "lat": 55.0, "lon": 45.0 },
+    "mouth": { "latMin": 44.0, "latMax": 48.5, "lonMin": 45.5, "lonMax": 50.5 },
+    "grids": ["target"],
+    "source": "The Volga ends in the Caspian (ocean-class inland sea), not the world ocean."
+  },
+  {
+    "id": "indus-to-arabian-sea",
+    "type": "reaches",
+    "from": { "lat": 28.5, "lon": 70.0 },
+    "mouth": { "latMin": 23.0, "latMax": 25.5, "lonMin": 66.0, "lonMax": 69.0 },
+    "grids": ["target"],
+    "source": "The Indus reaches the Arabian Sea through Sindh."
+  },
+  {
+    "id": "yangtze-to-east-china-sea",
+    "type": "reaches",
+    "from": { "lat": 30.5, "lon": 111.0 },
+    "mouth": { "latMin": 30.0, "latMax": 33.0, "lonMin": 119.0, "lonMax": 123.0 },
+    "grids": ["target"],
+    "source": "The Yangtze discharges near Shanghai."
+  },
+  {
+    "id": "ganges-to-bengal",
+    "type": "reaches",
+    "from": { "lat": 25.3, "lon": 83.0 },
+    "mouth": { "latMin": 21.0, "latMax": 24.0, "lonMin": 88.0, "lonMax": 92.0 },
+    "grids": ["target"],
+    "source": "The Ganges discharges into the Bay of Bengal through the restored delta."
+  },
+  {
+    "id": "danube-to-black-sea",
+    "type": "reaches",
+    "from": { "lat": 48.0, "lon": 16.5 },
+    "mouth": { "latMin": 43.5, "latMax": 46.0, "lonMin": 28.0, "lonMax": 30.5 },
+    "grids": ["target"],
+    "source": "Vienna to the Black Sea delta."
+  }
+]
