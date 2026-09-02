@@ -12,11 +12,11 @@
       p { color: #adbaa9; }
       .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 14px 0; }
       label { color: #d4c8a9; }
-      #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
+      #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; background: #0c1218; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
       #status, #route { min-height: 20px; color: #8fd3c7; }
       input[type="range"] { accent-color: #e5b65c; }
     </style>
-    <script type="module" crossorigin src="./assets/index-C0BhbKP4.js"></script>
+    <script type="module" crossorigin src="./assets/index-BlAU-SB8.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-CbXtAM7H.js">
     <link rel="modulepreload" crossorigin href="./assets/global_precip-CdgUZ06r.js">
     <link rel="modulepreload" crossorigin href="./assets/global_airtemp-BXRRf8jQ.js">
@@ -37,6 +37,12 @@
             <option value="technique">Farming technique</option>
             <option value="wind">Wind</option>
             <option value="rivers">River passability</option>
+          </select>
+        </label>
+        <label>Projection
+          <select id="projection">
+            <option value="equal-earth">Equal Earth (true areas)</option>
+            <option value="plate-carree">Lat-lon grid (data alignment)</option>
           </select>
         </label>
         <label id="month-label">Month 1</label>
