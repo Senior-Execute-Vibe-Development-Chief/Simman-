@@ -92,12 +92,24 @@ const TARGET_HORIZON_TICKS = 116412;
 async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const workers = defaultPeopleWorkers();
-  const configs = [
+  const configs: Array<{
+    name: string;
+    peopleWorkers: number;
+    peopleGrowthStride?: number;
+    peopleMigrationStride?: number;
+    peopleThreads?: boolean;
+  }> = [
     { name: "serial-stride1", peopleWorkers: 1, peopleGrowthStride: 1, peopleMigrationStride: 1 },
     { name: "serial-shipped", peopleWorkers: 1 },
     { name: `threads${workers}-stride1`, peopleWorkers: workers, peopleGrowthStride: 1, peopleMigrationStride: 1, peopleThreads: workers === 1 },
     { name: `threads${workers}-shipped`, peopleWorkers: workers, peopleThreads: workers === 1 },
-  ] as const;
+  ];
+  if (workers !== 8) {
+    configs.push(
+      { name: "threads8-stride1", peopleWorkers: 8, peopleGrowthStride: 1, peopleMigrationStride: 1 },
+      { name: "threads8-shipped", peopleWorkers: 8 },
+    );
+  }
   const rows: Record<string, unknown>[] = [];
   for (const config of configs) {
     const world = new World({

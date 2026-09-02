@@ -826,6 +826,33 @@ Review corrections to the M1 build (all validated before merge):
     Yellow River 0 years; Indus 10 years (under 25); Mesoamerica and Andes
     not yet reached in either arm. Five hearths ignited by 3000 years on
     the shipped schedule. Gate: pass.
-    **Still to print after the bench run:** phase-split milliseconds and
-    the serial/N-thread × stride-1/shipped tick table with the YD→1 CE
-    projection.
+    **Phase split (target, 12-tick year, serial stride-1, this 4-core
+    runner).** Per firing: technique 13.4 ms, capacity 5.8 ms, growth
+    25.8 ms, migration 54.5 ms, cohorts 3.3 ms, ledger 3.3 ms. So
+    g ≈ 48.3 ms (technique+capacity+growth+cohorts), m ≈ 54.5 ms,
+    ℓ ≈ 3.3 ms. The review-runner W2 tick was 169 ms cold / 122 ms warm;
+    this box is faster (110.4 ms/tick all-monthly). Cohort normalize still
+    runs after every commit, so it is not in the annual g/12 term.
+    **Cadence × threads (target, 12-tick year, 116,412-tick YD→1 CE
+    projection, ceiling 15.5 ms/tick):**
+
+    | config | ms/tick | idle-barrier ms/tick | YD→1 CE min |
+    |---|---:|---:|---:|
+    | serial stride-1 | 110.4 | 0 | 214 |
+    | serial shipped | 73.0 | 0 | 142 |
+    | 3 threads stride-1 | 96.2 | 0.008 | 187 |
+    | 3 threads shipped | 70.0 | 0.005 | 136 |
+    | 8 threads stride-1 (oversub on 4 cores) | 86.5 | 0.047 | 168 |
+    | 8 threads shipped (oversub) | 62.7 | 0.009 | 122 |
+
+    Dev is tiny: serial shipped 0.18 ms/tick, 3 threads 0.18, 8 threads
+    0.22 — threads lose or tie. `barrierMilliseconds` is the idle tail
+    after every band is marked done, not the coordinator's wait for work.
+    **Ceiling finding.** W3a is the real win (110 → 73 ms). Threads are
+    hash-identical but migration barely scales (serial m 54.5 ms → 56.3
+    ms at 3 workers, 49.4 ms at 8). Capacity is the only phase that
+    clearly shortens. The ≤15.5 ms / 30 min line is not met at 3 workers
+    or at an oversubscribed 8 on this 4-core box; remaining cost is
+    monthly migration plus per-commit cohort/ledger. Do not re-anchor
+    `bench-baselines.json` downward from this faster runner (W2 lesson);
+    `--check` still passes against the review-runner 220 ms target cap.

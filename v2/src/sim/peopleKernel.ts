@@ -169,16 +169,16 @@ class PeopleBandWorkerPool {
       phase: Atomics.load(this.control.phase, 0),
     };
     for (const worker of this.workers) worker.postMessage(message);
-    const waitStart = performance.now();
     for (let index = 0; index < bands.length; index++) {
       while (Atomics.load(this.control.done, index) === 0) {
         Atomics.wait(this.control.done, index, 0, PEOPLE_WORKER_WAIT_MS);
       }
     }
+    const barrierStart = performance.now();
     while (Atomics.load(this.idle, 0) < this.workers.length) {
       Atomics.wait(this.idle, 0, Atomics.load(this.idle, 0), PEOPLE_WORKER_WAIT_MS);
     }
-    this.barrierMilliseconds += performance.now() - waitStart;
+    this.barrierMilliseconds += performance.now() - barrierStart;
   }
 
   dispose(): void {

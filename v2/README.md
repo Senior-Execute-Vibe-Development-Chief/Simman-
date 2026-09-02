@@ -99,7 +99,9 @@ fudge factors.
   `worker_threads` and cross-origin-isolated browsers run those bands on a
   shared-memory pool; hashes are identical for 1, 2, and N workers and
   identical to the serial TypeScript oracle. Hosts without isolation fall
-  back to serial wasm, logged in the status line.
+  back to serial wasm, logged in the status line. The ≤15.5 ms Phase-1
+  ceiling is not met on a 4-core runner; QUESTIONS #34 has the measured
+  serial/N-thread table.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,
