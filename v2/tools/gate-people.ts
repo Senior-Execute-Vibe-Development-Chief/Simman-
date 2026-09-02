@@ -283,7 +283,9 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
   disposePeople(world);
 }
 
-for (const grid of longArm ? (["dev", "target"] as const) : (["dev"] as const)) {
+// W4 measures the cadence trajectory at both grids: the packed kernel is
+// resolution-sensitive, so a dev-only stride result is insufficient.
+for (const grid of ["dev", "target"] as const) {
   const shipped = collectTrajectory(grid);
   runCadenceArm(grid, shipped);
   runTrajectory(grid, shipped);
