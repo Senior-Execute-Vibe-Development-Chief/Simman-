@@ -1,13 +1,14 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W3 } from "./constants";
+import { SAVE_VERSION_M3A } from "./constants";
 import { type GridPreset, World } from "./world";
 import type { HearthState } from "./people/types";
 import { sameSchedule, type PassSchedule } from "./scheduler";
 import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
+import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W3;
+export const SAVE_VERSION = SAVE_VERSION_M3A;
 
 export interface SerializedField {
   readonly length: number;
@@ -27,6 +28,9 @@ export interface SaveEnvelope {
   readonly people: {
     readonly initialized: boolean;
     readonly hearths: readonly HearthState[];
+    readonly farmerFields: Record<string, SerializedField>;
+    readonly peopledMask: string;
+    readonly dominantPackage: string;
   };
 }
 
@@ -39,6 +43,22 @@ function base64FromField(field: NumericField): string {
     for (let index = offset; index < end; index++) binary += String.fromCharCode(bytes[index] ?? 0);
   }
   return globalThis.btoa(binary);
+}
+
+function base64FromBytes(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
+    const end = Math.min(bytes.length, offset + BASE64_CHUNK_SIZE);
+    for (let index = offset; index < end; index++) binary += String.fromCharCode(bytes[index] ?? 0);
+  }
+  return globalThis.btoa(binary);
+}
+
+function bytesFromBase64(data: string): Uint8Array {
+  const binary = globalThis.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function fieldFromBase64(
@@ -70,6 +90,23 @@ export function saveWorld(world: World): SaveEnvelope {
       data: base64FromField(field),
     };
   }
+  const farmerFields: Record<string, SerializedField> = {};
+  let peopledMask = "";
+  let dominantPackage = "";
+  if (world.substrate) {
+    const peopleWorld = asPeopleWorld(world);
+    for (const packageId of Object.keys(peopleWorld.farmers).sort()) {
+      const field = peopleWorld.farmers[packageId];
+      if (!field) continue;
+      farmerFields[packageId] = {
+        length: field.length,
+        encoding: "base64-float64-le",
+        data: base64FromField(field),
+      };
+    }
+    peopledMask = base64FromBytes(peopleWorld._peopledMask);
+    dominantPackage = base64FromBytes(peopleWorld._dominantPackage);
+  }
   return {
     version: SAVE_VERSION,
     seed: world.seed,
@@ -82,6 +119,9 @@ export function saveWorld(world: World): SaveEnvelope {
     people: {
       initialized: world.peopleInitialized,
       hearths: world.hearths.map((hearth) => ({ ...hearth })),
+      farmerFields,
+      peopledMask,
+      dominantPackage,
     },
   };
 }
@@ -119,6 +159,35 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   }
   world.peopleInitialized = data.people.initialized;
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
+  if (world.substrate) for (const [packageId, current] of Object.entries(asPeopleWorld(world).farmers)) {
+    const serialized = data.people.farmerFields?.[packageId];
+    if (!serialized) throw new Error(`Missing farmer field ${packageId}.`);
+    const field = fieldFromBase64(serialized, {
+      name: `farmers.${packageId}`,
+      defaultValue: 0,
+      allocate: (length) => new Float64Array(length),
+    });
+    if (field.length !== current.length) throw new Error(`Invalid farmer field length for ${packageId}.`);
+    current.set(field);
+    if (field.some((value) => value > 0)) {
+      const packageIndex = Object.keys(asPeopleWorld(world).farmers).indexOf(packageId);
+      markPackageActive(asPeopleWorld(world), packageIndex);
+    }
+  }
+  if (world.substrate) {
+    const mask = bytesFromBase64(data.people.peopledMask);
+    if (mask.length !== asPeopleWorld(world)._peopledMask.length) {
+      throw new Error("Invalid peopled mask length.");
+    }
+    asPeopleWorld(world)._peopledMask.set(mask);
+    const dominant = bytesFromBase64(data.people.dominantPackage);
+    if (dominant.length !== asPeopleWorld(world)._dominantPackage.length) {
+      throw new Error("Invalid dominant package length.");
+    }
+    asPeopleWorld(world)._dominantPackage.set(dominant);
+    rebuildFarmerTotals(asPeopleWorld(world));
+    refreshTechniqueShare(asPeopleWorld(world));
+  }
   // Capacity is derived scratch. Annual cadence means a loaded world can
   // run many migration-only months before the next capacity firing, so
   // re-derive from the restored technique rather than keeping the seed.

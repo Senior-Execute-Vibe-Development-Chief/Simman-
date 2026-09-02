@@ -110,8 +110,6 @@ function runBand(payload, band, index) {
   const pointer = payload.kernelPointer;
   if (payload.operation === "capacity") {
     wasm.people_dispatch_capacity(pointer, band.rawLo, band.rawHi);
-  } else if (payload.operation === "technique") {
-    wasm.people_dispatch_technique(pointer, band.rawLo, band.rawHi, payload.dtMonths);
   } else if (payload.operation === "growth") {
     wasm.people_dispatch_growth(pointer, band.rawLo, band.rawHi, index);
   } else if (payload.operation === "migration-prepare") {

@@ -1058,3 +1058,56 @@ Review corrections to the M1 build (all validated before merge):
     trajectory (two runs) into the per-commit gate — ~1 h on a 4-core box;
     it runs under `GATE_PEOPLE_LONG=1` or `GATE_PEOPLE_TARGET=1` and its
     deltas above stand as the W4 measurement.
+
+## M3a implementation findings
+
+37. **The wave is now carried by farmer populations (2026-09-02).** The crop
+    catalogue lives in `data/reality/crop-packages.json` and is rasterized
+    alongside the wild-progenitor range data in
+    `data/reality/crop-ranges.json`. Each land cell has a packed can-grow
+    mask and native-range mask for every package; the can-grow test counts
+    monthly climate-bell months above that package's base temperature and
+    rejects short seasons. The old technique-speed constant and pin/scored
+    hearth machinery are gone.
+
+    Farmer masses are authoritative land-packed state, persisted in save v5
+    and included in the world hash. Technique is derived as the farmer share,
+    with the dominant package exposed to the shell. Farmers and foragers have
+    separate logistic growth and share the existing cohort and conservation
+    ledgers. Conversion is an annual scheduled pass using travel-weighted
+    contact and the farmed-versus-forager capacity advantage; negative
+    advantage returns farmers to foraging.
+
+    Migration now uses the fixed eight-neighbour relation with true edge
+    lengths. Coastal land cells add a first-land hop through at most the
+    ledgered crossing distance, priced at coastal days/km; the same LUT is
+    used by adoption contact, and a successful arrival extends the peopled
+    mask. The TS oracle and serial/threaded Rust kernel carry identical farmer
+    arrays and pass state; `tools/kernel-parity.ts` covers them at both grids.
+    The new `neolithic-arrivals.json` fixture is wired into the long people
+    gate beside the existing regional arrival table. The target-grid long
+    arm remains environment-gated because it is the established multi-minute
+    review measurement.
+
+    Post-range dev probe (seed 42042, 3000 years after the Younger Dryas)
+    measured the first threshold crossings at Fertile Crescent −8230,
+    Balkans −7210, Indus −6870, and Rhine −6720; Yellow River and the
+    lower-latitude package checks were not reached in that arm. The new
+    short gate remains green: opening cross-grid relative difference
+    0.0374, conservation error −1.18e−8 persons (dev) and
+    −1.12e−8 persons (target), and seven hearths ignited by the 3000-year
+    dev endpoint. The full radiocarbon table, front-speed band, isotropy,
+    and south-of-barrier checks are intentionally only measured by the
+    long-arm environment gate.
+
+    **M3a phase/performance arm (target, this runner).** After pruning
+    inactive packages and maintaining a packed total farmer mass, the
+    `bench -- --check` arm measured 239.32 ms/tick for serial shipped
+    schedule, 98.84 ms/tick with three workers, and 83.04 ms/tick with
+    eight workers on four cores. The eight-worker projection is 161.12
+    minutes for the YD→1 CE monthly horizon; migration remains dominant
+    at 55.28 ms/tick, followed by annual technique and conversion at
+    about 5.19 ms/tick each amortized. The target benchmark remains under
+    the existing 264 ms ratchet cap; M3a's package/contact work adds more
+    than the handoff's provisional +8 ms budget, recorded as a
+    mechanism-cost finding rather than a physics change.

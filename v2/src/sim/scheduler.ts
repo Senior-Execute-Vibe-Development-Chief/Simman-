@@ -21,6 +21,7 @@ export interface PassSchedule {
 const DEFAULT_PHASE = 0;
 const SCHEDULE_NAMES = [
   "people.technique",
+  "people.conversion",
   "people.capacity",
   "people.growth",
   "people.migration",
@@ -142,8 +143,9 @@ export function resolveSchedule(world: World): readonly PassSchedule[] {
     scheduleEntry(world, SCHEDULE_NAMES[0], growthStride),
     scheduleEntry(world, SCHEDULE_NAMES[1], growthStride),
     scheduleEntry(world, SCHEDULE_NAMES[2], growthStride),
-    scheduleEntry(world, SCHEDULE_NAMES[3], migrationStride),
-    scheduleEntry(world, SCHEDULE_NAMES[4], growthStride),
+    scheduleEntry(world, SCHEDULE_NAMES[3], growthStride),
+    scheduleEntry(world, SCHEDULE_NAMES[4], migrationStride),
+    scheduleEntry(world, SCHEDULE_NAMES[5], growthStride),
   ]);
 }
 

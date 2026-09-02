@@ -17,6 +17,8 @@ export interface PeopleWorld extends World {
   readonly substrate: Substrate;
   peopleInitialized: boolean;
   hearths: HearthState[];
+  /** Authoritative per-package farmer masses, in persons/km² over land order. */
+  farmers: Record<string, Float64Array>;
   capField: Float64Array;
   cellAreaKm2: Float64Array;
   _peopleNext: Float64Array;
@@ -27,6 +29,13 @@ export interface PeopleWorld extends World {
   _childrenNext: Float64Array;
   _workingNext: Float64Array;
   _eldersNext: Float64Array;
+  _farmersNext: Record<string, Float64Array>;
+  _farmersMigration: Record<string, Float64Array>;
+  _farmerTotal: Float64Array;
+  _farmerTotalNext: Float64Array;
+  _farmerMigrationTotal: Float64Array;
+  /** Package activity bitset, maintained from farmer labels for hot-pass pruning. */
+  _activePackage: Uint8Array;
   _migrationOut: Float64Array;
   _migrationWeight: Float64Array;
   _migrationPopulation: Float64Array;
@@ -41,6 +50,12 @@ export interface PeopleWorld extends World {
   _annualTemperature: Float64Array;
   _annualMoisture: Float64Array;
   _techniqueSuitability: Float64Array;
+  /** Per-package annual climate/season admissibility, packed to land. */
+  _canGrow: readonly Uint8Array[];
+  /** Per-package native wild-progenitor ranges, packed to land. */
+  _nativeRanges: readonly Uint8Array[];
+  /** Dominant farmer package index, derived for lenses and capacity diagnostics. */
+  _dominantPackage: Uint8Array;
   /** Static peopling mask (ancestry extent) — hoisted from two array reads per call. */
   _peopledMask: Uint8Array;
   /** Per-row horizontal / constant vertical 4-neighbor edge lengths, technique's exact expression. */
@@ -49,6 +64,10 @@ export interface PeopleWorld extends World {
   /** Per-row horizontal / constant vertical edge lengths, migration's exact expression. */
   _migrationEdgeH: Float64Array;
   _migrationEdgeV: number;
+  /** Eight-neighbour source/target LUT, row-major packed land order. */
+  _neighborTargets: Int32Array;
+  _neighborDistanceKm: Float64Array;
+  _neighborMode: Uint8Array;
   /** Per-cell foot days/km for the tick's month (migration conductance numerator). */
   _migrationDaysPerKm: Float64Array;
   /** Lazy per-month days/km caches — climate is periodic, so 12 fills total. */

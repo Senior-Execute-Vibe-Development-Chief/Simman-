@@ -64,6 +64,8 @@ export class World {
   children!: Float64Array;
   working!: Float64Array;
   elders!: Float64Array;
+  /** Authoritative per-package farmer masses; allocated by the people layer. */
+  farmers: Record<string, Float64Array> = {};
   peopleInitialized = false;
   hearths: HearthState[] = [];
   cellAreaKm2: Float64Array;
@@ -189,6 +191,21 @@ export function hashWorld(world: World): string {
     peopleInitialized: world.peopleInitialized,
     hearths: world.hearths,
   }));
+  const peopleState = world as unknown as {
+    farmers?: Record<string, Float64Array>;
+    _peopledMask?: Uint8Array;
+  };
+  for (const packageId of Object.keys(peopleState.farmers ?? {}).sort()) {
+    const field = peopleState.farmers?.[packageId];
+    if (!field) continue;
+    hash = hashText(hash, `farmers.${packageId}`);
+    hash = hashNumber(hash, field.length);
+    hash = hashField(hash, field);
+  }
+  if (peopleState._peopledMask) {
+    hash = hashText(hash, "peopledMask");
+    for (const value of peopleState._peopledMask) hash = hashByte(hash, value);
+  }
   for (const { definition, field } of fieldEntries(world as unknown as Record<string, unknown>)) {
     hash = hashText(hash, definition.name);
     hash = hashNumber(hash, field.length);

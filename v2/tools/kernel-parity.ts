@@ -5,6 +5,7 @@ import { ensurePeopleWasm, resizePeoplePool, wasmDpowValue } from "../src/sim/pe
 import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
 import { float64Bits } from "./lib/dmath-check";
+import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 
 const PEOPLE_FIELDS = [
   "people",
@@ -28,6 +29,8 @@ const PEOPLE_SCRATCH = [
   "_migrationWeight",
   "_migrationPopulation",
   "_migrationReceived",
+  "_farmerTotal",
+  "_farmerTotalNext",
 ] as const;
 
 function bytes(value: unknown): Buffer {
@@ -58,6 +61,20 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
     }
     assert.deepEqual(bytes(right), bytes(left), `${grid} ${name} diverged at tick ${step}`);
   }
+  for (const pkg of CROP_PACKAGES) {
+    for (const name of ["farmers", "_farmersNext"] as const) {
+      const left = (reference as PeopleWorld)[name === "farmers" ? "farmers" : "_farmersNext"][pkg.id];
+      const right = (candidate as PeopleWorld)[name === "farmers" ? "farmers" : "_farmersNext"][pkg.id];
+      assert.ok(left instanceof Float64Array, `${grid} TS ${name}.${pkg.id} missing at ${step}`);
+      assert.ok(right instanceof Float64Array, `${grid} WASM ${name}.${pkg.id} missing at ${step}`);
+      assert.deepEqual(bytes(right), bytes(left), `${grid} ${name}.${pkg.id} diverged at tick ${step}`);
+    }
+  }
+  assert.deepEqual(
+    Buffer.from((candidate as PeopleWorld)._peopledMask),
+    Buffer.from((reference as PeopleWorld)._peopledMask),
+    `${grid} peopled mask diverged at tick ${step}`,
+  );
   assert.equal(hashWorld(candidate), hashWorld(reference), `${grid} hash diverged at tick ${step}`);
 }
 

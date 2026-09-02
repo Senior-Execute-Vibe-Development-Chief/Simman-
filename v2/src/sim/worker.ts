@@ -1,8 +1,13 @@
-import { HASH_NUMBER_BYTES } from "./constants";
+import {
+  HASH_NUMBER_BYTES,
+  MATH_NEGATIVE_ONE,
+  PEOPLE_SNAPSHOT_FIELD_COUNT,
+} from "./constants";
 import { ensurePeopleWasm } from "./peopleKernel";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
 import { populationTotal } from "./people";
 import type { Substrate } from "./substrate";
+import type { PeopleWorld } from "./people/types";
 
 interface CreateMessage {
   readonly type: "create";
@@ -62,14 +67,31 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
   }
   if (!world) throw new Error("The worker world has not been created.");
   runSteps(world, message.steps);
-  const bytes = HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * 2;
+  const bytes = HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * PEOPLE_SNAPSHOT_FIELD_COUNT;
   const recycled = snapshotPool.pop();
   const buffer = recycled?.byteLength === bytes ? recycled : new ArrayBuffer(bytes);
   new Float64Array(buffer, 0, 1)[0] = world.step;
   const people = new Float32Array(buffer, HASH_NUMBER_BYTES, world.N);
   const technique = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT, world.N);
+  const packageView = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * 2, world.N);
+  const canGrowView = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * (2 + 1), world.N);
+  const nativeView = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * (2 + 2), world.N);
   people.set(world.people);
   technique.set(world.technique);
+  if (world.substrate) {
+    const peopleWorld = world as PeopleWorld;
+    for (let cell = 0; cell < world.N; cell++) {
+      const packageIndex = peopleWorld._dominantPackage[cell] ?? 0;
+      packageView[cell] = packageIndex;
+      const packed = peopleWorld._packedOf[cell] ?? MATH_NEGATIVE_ONE;
+      canGrowView[cell] = packed >= 0
+        ? peopleWorld._canGrow[packageIndex]?.[packed] ?? 0
+        : 0;
+      nativeView[cell] = packed >= 0
+        ? peopleWorld._nativeRanges[packageIndex]?.[packed] ?? 0
+        : 0;
+    }
+  }
   // No world hash per snapshot: hashWorld walks every field with BigInt
   // arithmetic (5.3 s at the target grid — measured, review W3), which
   // made every tick batch take seconds regardless of the kernel. The hash

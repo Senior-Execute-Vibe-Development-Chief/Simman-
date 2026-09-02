@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import populationCurve from "../data/reality/population-curve.json";
 import farmingArrivals from "../data/reality/farming-arrivals.json";
+import neolithicArrivals from "../data/reality/neolithic-arrivals.json";
 import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
 import type { PeopleWorld } from "../src/sim/people/types";
@@ -51,9 +52,7 @@ function measure(grid: GridPreset): GridResult {
     if (!substrate.landMask[cell]) continue;
     land++;
     if ((world.technique[cell] ?? 0) >= 0.01) covered++;
-    const ancestry = substrate.ancestry.lineage[cell] ?? -1;
-    const arrival = substrate.ancestry.arrival[cell] ?? -1;
-    if ((ancestry < 0 || arrival < 0) && (world.people[cell] ?? 0) !== 0) {
+    if ((world as PeopleWorld)._peopledMask[cell] !== 1 && (world.people[cell] ?? 0) !== 0) {
       emptyUnpeopledCells++;
     }
   }
@@ -116,6 +115,8 @@ const findings: Record<string, unknown> = {};
 interface TrajectorySample {
   readonly curve: Array<{ year: number; people: number; inBand: boolean }>;
   readonly arrivalStep: Map<string, number>;
+  readonly detailedArrivalStep: Map<string, number>;
+  readonly southOfClimateBarrierBeforeWindow: boolean;
   readonly world: World;
 }
 
@@ -140,8 +141,13 @@ function collectTrajectory(
     .map((band) => ({ band, step: monthsFromYear(band.year) }))
     .filter(({ step }) => step >= 0 && step <= monthsFromYear(YD_START_YEAR + horizonYears));
   const arrivalStep = new Map<string, number>();
+  const detailedArrivalStep = new Map<string, number>();
   const regionCells = new Map<string, readonly number[]>();
-  for (const region of farmingArrivals.regions) {
+  const regionTables = [
+    ...farmingArrivals.regions,
+    ...neolithicArrivals.regions,
+  ];
+  for (const region of regionTables) {
     const cells: number[] = [];
     for (let cell = 0; cell < world.N; cell++) {
       if (!substrate.landMask[cell]) continue;
@@ -154,6 +160,7 @@ function collectTrajectory(
     regionCells.set(region.id, cells);
   }
   const curve: Array<{ year: number; people: number; inBand: boolean }> = [];
+  let southOfClimateBarrierBeforeWindow = false;
   let nextCheckpoint = 0;
   const totalSteps = monthsFromYear(YD_START_YEAR + horizonYears);
   for (let step = 0; step <= totalSteps; step++) {
@@ -173,9 +180,31 @@ function collectTrajectory(
           if ((world.technique[cell] ?? 0) >= 0.5) { arrivalStep.set(region.id, step); break; }
         }
       }
+      for (const region of neolithicArrivals.regions) {
+        if (detailedArrivalStep.has(region.id)) continue;
+        const cells = regionCells.get(region.id) ?? [];
+        for (const cell of cells) {
+          if ((world.technique[cell] ?? 0) >= 0.5) {
+            detailedArrivalStep.set(region.id, step);
+            break;
+          }
+        }
+      }
+    }
+    const barrier = neolithicArrivals.regions.find((region) => region.limitLatitude !== undefined);
+    if (barrier && step === monthsFromYear(barrier.earliest)) {
+      for (let cell = 0; cell < world.N; cell++) {
+        if (!substrate.landMask[cell]) continue;
+        const y = Math.floor(cell / world.width);
+        const latitude = 90 - ((y + 0.5) / world.height) * 180;
+        if (latitude < (barrier.limitLatitude ?? 0) && (world.technique[cell] ?? 0) >= 0.5) {
+          southOfClimateBarrierBeforeWindow = true;
+          break;
+        }
+      }
     }
   }
-  return { curve, arrivalStep, world };
+  return { curve, arrivalStep, detailedArrivalStep, southOfClimateBarrierBeforeWindow, world };
 }
 
 function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
@@ -224,8 +253,51 @@ function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
   disposePeople(reference.world);
 }
 
+function frontAspect(world: World): number | null {
+  const substrate = world.substrate;
+  if (!substrate) return null;
+  let minX = world.width;
+  let maxX = 0;
+  let minY = world.height;
+  let maxY = 0;
+  let count = 0;
+  for (let cell = 0; cell < world.N; cell++) {
+    if ((world.technique[cell] ?? 0) < 0.5) continue;
+    const y = Math.floor(cell / world.width);
+    const x = cell - y * world.width;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    count++;
+  }
+  if (count === 0) return null;
+  const horizontal = Math.max(1, maxX - minX + 1);
+  const vertical = Math.max(1, maxY - minY + 1);
+  return Math.max(horizontal / vertical, vertical / horizontal);
+}
+
+function arrivalSpeed(
+  first: { readonly latitude: number; readonly longitude: number },
+  second: { readonly latitude: number; readonly longitude: number },
+  firstStep: number | undefined,
+  secondStep: number | undefined,
+): number | null {
+  if (firstStep === undefined || secondStep === undefined || firstStep === secondStep) return null;
+  const dx = (second.longitude - first.longitude) * 111 * Math.cos((first.latitude * Math.PI) / 180);
+  const dy = (second.latitude - first.latitude) * 111;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return distance / Math.abs(secondStep - firstStep) * 12;
+}
+
 function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
-  const { curve, arrivalStep, world } = shipped ?? collectTrajectory(grid);
+  const {
+    curve,
+    arrivalStep,
+    detailedArrivalStep,
+    southOfClimateBarrierBeforeWindow,
+    world,
+  } = shipped ?? collectTrajectory(grid);
   const substrate = world.substrate!;
   const scope = `${grid}`;
   for (const point of curve) {
@@ -240,13 +312,53 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
     return { id: region.id, year, earliest: region.earliest, latest: region.latest, inWindow };
   });
   const trajectory = (findings.trajectory ?? {}) as Record<string, unknown>;
-  trajectory[grid] = { curve, arrivals };
+  const detailedArrivals = neolithicArrivals.regions.map((region) => {
+    const step = detailedArrivalStep.get(region.id);
+    const year = step === undefined ? null : YD_START_YEAR + step / 12;
+    const inWindow = year !== null && year >= region.earliest - 800 && year <= region.latest + 800;
+    return { id: region.id, year, earliest: region.earliest, latest: region.latest, inWindow };
+  });
+  trajectory[grid] = { curve, arrivals, detailedArrivals };
   findings.trajectory = trajectory;
   if (longArm) {
     for (const arrival of arrivals) {
       const id = `arrival:${arrival.id}:${scope}`;
       measured.add(id);
       if (!arrival.inWindow) failures.push(id);
+    }
+    for (const arrival of detailedArrivals) {
+      const id = `arrival:${arrival.id}:${scope}`;
+      measured.add(id);
+      if (!arrival.inWindow) failures.push(id);
+    }
+    const detailedById = new Map(neolithicArrivals.regions.map((region) => [region.id, region]));
+    const europeanSpeed = arrivalSpeed(
+      detailedById.get("balkans")!,
+      detailedById.get("rhine")!,
+      detailedArrivalStep.get("balkans"),
+      detailedArrivalStep.get("rhine"),
+    );
+    const meanSpeed = europeanSpeed;
+    findings.front = {
+      meanSpeedKmPerYear: meanSpeed,
+      frontAspect: frontAspect(world),
+      southOfClimateBarrierBeforeWindow,
+    };
+    if (meanSpeed !== null && (meanSpeed < 0.6 || meanSpeed > 1.3)) {
+      const id = `europe-front-speed:${scope}`;
+      measured.add(id);
+      failures.push(id);
+    }
+    const aspect = frontAspect(world);
+    if (aspect !== null && aspect > 1.3) {
+      const id = `front-isotropy:${scope}`;
+      measured.add(id);
+      failures.push(id);
+    }
+    if (southOfClimateBarrierBeforeWindow) {
+      const id = `climate-barrier:${scope}`;
+      measured.add(id);
+      failures.push(id);
     }
     // Density ordering at the final primary-horizon state.
     let riverPeople = 0; let riverArea = 0;

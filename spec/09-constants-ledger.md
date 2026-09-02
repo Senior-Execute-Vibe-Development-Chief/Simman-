@@ -199,13 +199,8 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_CAPACITY_FLOOR_PER_KM2` | 0.001 | numerical density floor |
 | `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR` | 1200 | real pre-modern mobility correction |
 | `PEOPLE_MIGRATION_MAX_SHARE / SUBSTEPS` | 0.5 / 16 | explicit diffusion stability bound and safety cap |
-| `PEOPLE_TECHNIQUE_WAVE_KMPY` | 1 | Neolithic wave of advance |
 | `PEOPLE_TECHNIQUE_PRESENT / CLIMATE_FLOOR` | 0.01 / 0.05 | reached-technique visibility and package-envelope floor |
-| `PEOPLE_HEARTH_MIN_SEPARATION_KM / BASIN_RADIUS_KM / MAX_COUNT` | 1000 / 500 / 8 | independent-origin spacing, maturity basin, and archaeological count |
-| `PEOPLE_HEARTH_SEARCH_FRACTION / ELEVATION_SCALE / SCORE_REFERENCE` | 0.03 / 0.4 / 5 | coordinate-pin snap window, lowland score scale, fallback score reference |
-| `PEOPLE_HEARTH_FALLBACK_LAG / LAG_RANGE` | 900 / 3600 | wheat anchor and scored-site fallback domestication span in years |
-| `PEOPLE_HEARTH_SCORE_*` | 1.5 / 2 / 1 / 1 | river, fertility, enclosure, and sea terms in the emergent cradle score |
-| `PEOPLE_HEARTH_SUITABILITY_FLOOR` | 0.15 | minimum viable wild-package climate fit |
+| `PEOPLE_HEARTH_MIN_SEPARATION_KM / BASIN_RADIUS_KM` | 1000 / 500 | same-package condensation spacing and maturity-basin radius |
 | `PEOPLE_COHORT_CHILD / WORKING / ELDER_FRACTION` | 0.35 / 0.60 / 0.05 | opening age-structure fractions |
 | `PEOPLE_CHILD / WORKING_AGE_YEARS` | 15 / 45 | fixed compartment cohort spans |
 | `PEOPLE_*_MORTALITY_FACTOR` | 1.2 / 0.8 / 2.4 | child, working, elder mortality weights |
@@ -234,10 +229,13 @@ they are not hidden outcome-fitting levers.
 
 | Constant | Value | Unit / grounding |
 |---|---:|---|
-| `PEOPLE_ADOPTION_RATE_PER_YEAR` | `[DERIVE]` | forager→farmer conversion per unit contact × advantage; grounded on the measured European Neolithic front (0.6–1.3 km/yr, Pinhasi et al. 2005) — if only an implausible value fits, the mechanism is wrong |
-| `PEOPLE_COASTAL_HOP_KM` | `[DERIVE]` (tens of km) | longest foot-and-raft water crossing; Cardial coast vs inland arrivals as the check |
-| `PEOPLE_HEARTH_SEED_FRACTION` | `[DERIVE]` | share of a hearth cell's people farming at ignition |
-| `PEOPLE_FORAGER_DENSITY_BAR` | `[DERIVE]` | peopled-basin density the hearth-maturity law already implies, made explicit |
+| `PEOPLE_ADOPTION_RATE_PER_YEAR` | 0.08 | forager→farmer conversion per unit contact × advantage; provisional mechanism value grounded on the measured European Neolithic front (0.6–1.3 km/yr, Pinhasi et al. 2005); the front gate can falsify it |
+| `PEOPLE_COASTAL_HOP_KM` | 40 | km; longest foot-and-raft water crossing, checked by Cardial coast vs inland arrivals |
+| `PEOPLE_HEARTH_SEED_FRACTION` | 0.2 | share of a hearth cell's people farming at ignition; a founding sub-population rather than a whole-cell relabel |
+| `PEOPLE_FORAGER_DENSITY_BAR` | `0.12 × 0.35 × 0.35 = 0.0147` | persons/km²; derived from the opening forager capacity's fertility floor and initial fill fraction |
+| `PEOPLE_CROP_NEIGHBOR_COUNT` | 8 | neighbours; eight-direction travel/contact stencil with true edge lengths |
+| `SAVE_VERSION_M3A` | 5 | additive farmer-mass persistence format |
+| `PEOPLE_SNAPSHOT_FIELD_COUNT` | 5 | float32 overlay planes in a shell snapshot: population, technique, package, can-grow, native |
 | crop packages (data) | per package | climate bell + growing-season minimum + storability + yield + domestication lag; `cropPackages.js` promoted to `data/reality/crop-packages.json` |
 | wild ranges (data) | raster per package | crop biogeography, baked to both grids like `LAKE_MASK` |
 | deleted | — | `PEOPLE_TECHNIQUE_WAVE_KMPY`, `PEOPLE_HEARTH_SEARCH_FRACTION`, `PEOPLE_HEARTH_SCORE_*`, `PEOPLE_HEARTH_FALLBACK_LAG_YEARS`, `PEOPLE_HEARTH_LAG_RANGE_YEARS`, `PEOPLE_HEARTH_MAX_COUNT` |

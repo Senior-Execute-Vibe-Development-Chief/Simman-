@@ -7,6 +7,7 @@ import {
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
 } from "../sim/constants";
 import { buildSubstrate, type Substrate } from "../sim/substrate";
+import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
 import { riverReachGradient, type Capability, type TravelMetric } from "../sim/travel/cost";
 import type { GridPreset } from "../sim/world";
@@ -109,6 +110,9 @@ let playing = true;
 let speed = 1;
 let overlayPopulation: Float32Array | undefined;
 let overlayTechnique: Float32Array | undefined;
+let overlayPackage: Float32Array | undefined;
+let overlayCanGrow: Float32Array | undefined;
+let overlayNative: Float32Array | undefined;
 function displayDate(step: number): string {
   const year = -9700 + step / MONTHS_PER_YEAR;
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
@@ -142,10 +146,19 @@ worker.addEventListener("message", (event) => {
     const count = Number(event.data.cells ?? substrate.N);
     const populationView = new Float32Array(buffer, 8, count);
     const techniqueView = new Float32Array(buffer, 8 + count * 4, count);
+    const packageView = new Float32Array(buffer, 8 + count * 8, count);
+    const canGrowView = new Float32Array(buffer, 8 + count * 12, count);
+    const nativeView = new Float32Array(buffer, 8 + count * 16, count);
     overlayPopulation = new Float32Array(count);
     overlayTechnique = new Float32Array(count);
+    overlayPackage = new Float32Array(count);
+    overlayCanGrow = new Float32Array(count);
+    overlayNative = new Float32Array(count);
     overlayPopulation.set(populationView);
     overlayTechnique.set(techniqueView);
+    overlayPackage.set(packageView);
+    overlayCanGrow.set(canGrowView);
+    overlayNative.set(nativeView);
     population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
     baseKey = "";
     lastFrameKey = "";
@@ -295,6 +308,22 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   if (lens.value === "technique") {
     const value = Math.max(0, Math.min(1, overlayTechnique?.[cell] ?? 0));
     return [Math.round(45 + 190 * value), Math.round(70 + 140 * value), Math.round(105 - 70 * value)];
+  }
+  if (lens.value === "package") {
+    const index = Math.floor(overlayPackage?.[cell] ?? 0);
+    const color = CROP_PACKAGES[index]?.color ?? [80, 80, 80];
+    const farmed = Math.max(0, Math.min(1, overlayTechnique?.[cell] ?? 0));
+    return [
+      Math.round(color[0] * (0.35 + 0.65 * farmed)),
+      Math.round(color[1] * (0.35 + 0.65 * farmed)),
+      Math.round(color[2] * (0.35 + 0.65 * farmed)),
+    ];
+  }
+  if (lens.value === "can-grow" || lens.value === "native") {
+    const value = lens.value === "can-grow"
+      ? overlayCanGrow?.[cell] ?? 0
+      : overlayNative?.[cell] ?? 0;
+    return value > 0 ? [220, 180, 65] : [35, 45, 55];
   }
   if (lens.value === "climate") {
     return [Math.round(210 * temperature + 25), Math.round(180 * moisture + 30), Math.round(210 * (1 - temperature) + 25)];

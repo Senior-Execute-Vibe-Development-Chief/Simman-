@@ -1,9 +1,9 @@
-# Simman v2 — M2 people
+# Simman v2 — M3a wave and crops
 
-M2 builds on the immutable Earth substrate and seasonal multimodal travel field
-with one real-unit population field. Population grows toward derived
-carrying capacity, migrates through the travel field's local costs, and learns
-farming through a climate-tolerated wave from real and emergent hearths.
+M3a builds on the immutable Earth substrate and seasonal multimodal travel
+field with one real-unit population field. Population grows toward derived
+carrying capacity, migrates through the travel field's local costs, and farming
+emerges as per-package farmer populations carried by that migration.
 
 ## Setup and commands
 
@@ -15,7 +15,7 @@ npm ci
 npm run lint       # ESLint restrictions plus constants-ledger lint
 npm run test       # smoke gate plus unit checks
 npm run smoke      # M0 integrity plus layered WASM routing battery
-npm run gate       # travel reality gate followed by M2 people gate
+npm run gate       # travel reality gate followed by M3a people gate
                    # (hard-fails on any failure NOT acknowledged in
                    #  data/reality/known-misses.json, and on any stale
                    #  manifest entry that now passes — a one-way ratchet)
@@ -57,7 +57,7 @@ src/ported/    byte-compatible RNG and copied v1 worldgen supplier
 src/shell/     terrain/climate/travel demo (Equal Earth display projection; sim grid stays lat-lon)
 rust/router/   wasm-bindgen layered routing engine
 rust/people/   wasm-bindgen banded people kernel
-data/reality/  cited travel reality fixture
+data/reality/  cited travel, crop-package, range, and arrival fixtures
 tools/         smoke, gate, oracle, bench, browser runner, collector
 ```
 
@@ -67,7 +67,7 @@ The first reality-table landing is allowed to fail its hard route rows; such
 failures are findings for the next mechanism revision, never route-specific
 fudge factors.
 
-## M2 guarantees
+## M3a guarantees
 
 - The v1 worldgen chain is copied under `src/ported/worldgen` and only
   consumed through the typed `buildSubstrate` boundary.
@@ -84,10 +84,12 @@ fudge factors.
   and the three cohort fractions ride the same field.
 - Births and deaths are named sources/sinks; migration is a balanced channel
   in the per-pass conservation sheet.
-- The farming technique field is monotone, climate-tolerated, and driven by
-  hearth maturity measured in peopled-basin years rather than calendar gates.
-- Save format v4 persists people, technique, cohorts, hearth progress, and
-  the resolved pass schedule; terrain remains immutable substrate rebuilt
+- Farming is a derived share of per-package farmer masses. Climate bells,
+  growing-season minima, wild ranges, contact, and travel costs determine
+  where the demic wave can move; no speed constant or hearth pin drives it.
+- Save format v5 persists people, farmer masses, derived technique, cohorts,
+  peopled arrivals, hearth progress, and the resolved pass schedule; terrain
+  remains immutable substrate rebuilt
   from its identity.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
   technique coverage, weighted cohort shares, and per-pass firing counts.
@@ -112,6 +114,12 @@ fudge factors.
   for YD→1 CE); the ≤15.5 ms ceiling remains open. QUESTIONS #34 has the
   W3 thread table and review corrections, #36 the W4 traffic ledger, the
   false-sharing finding and the measurements.
+- M3a adds a catalogue-backed crop system: one can-grow LUT and one native
+  wild-range mask per package, farmer masses in the same land-packed order as
+  the kernel's cohort state, and a contact/adoption pass. Migration uses an
+  eight-neighbour true-distance stencil with coastal hops capped by the
+  grounded crossing length. The package, can-grow, and native overlays are
+  available in the shell.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,
