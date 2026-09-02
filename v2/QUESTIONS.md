@@ -820,6 +820,12 @@ Review corrections to the M1 build (all validated before merge):
     growth 12 / migration 1. Worlds without a peopled mask treat every
     row as peopled, so polar cells force migration 1 — that is the
     derivation working, not a content gate.
-    **Still to print after the gate/bench run:** phase-split milliseconds,
-    stride-arm population/arrival deltas, and the serial/N-thread ×
-    stride-1/shipped tick table with the YD→1 CE projection.
+    **Stride arm (dev, 3000-year horizon, this runner).** All-strides-1 vs
+    shipped: population at −8000 is 5,265,868 vs 5,265,657 (relative
+    Δ 4.0e-5, well under 0.02). Arrival deltas: Fertile Crescent / Nile /
+    Yellow River 0 years; Indus 10 years (under 25); Mesoamerica and Andes
+    not yet reached in either arm. Five hearths ignited by 3000 years on
+    the shipped schedule. Gate: pass.
+    **Still to print after the bench run:** phase-split milliseconds and
+    the serial/N-thread × stride-1/shipped tick table with the YD→1 CE
+    projection.

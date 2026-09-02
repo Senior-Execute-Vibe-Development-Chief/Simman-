@@ -3,6 +3,7 @@ import populationCurve from "../data/reality/population-curve.json";
 import farmingArrivals from "../data/reality/farming-arrivals.json";
 import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
+import type { PeopleWorld } from "../src/sim/people/types";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
 import { provenance } from "./lib/provenance";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
@@ -27,12 +28,16 @@ const FAST_MONTHS = 12;
 
 if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 
+function disposePeople(world: World): void {
+  (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+}
+
 function measure(grid: GridPreset): GridResult {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const world = new World({
     seed: 42042,
     grid,
-    config: { preset: "earth_sim", horizon: "YD-to-1CE" },
+    config: { preset: "earth_sim", horizon: "YD-to-1CE", peopleKernel: "wasm", peopleWorkers: 1 },
     substrate,
   });
   const initialPeople = populationTotal(world);
@@ -54,7 +59,7 @@ function measure(grid: GridPreset): GridResult {
   }
   for (const hearth of world.hearths) if (hearth.ignited) ignitedHearths++;
   const balance = world.ledger.snapshot().people;
-  return {
+  const result = {
     grid,
     initialPeople,
     finalPeople,
@@ -65,6 +70,8 @@ function measure(grid: GridPreset): GridResult {
     conservationError: balance?.unexplained ?? Number.POSITIVE_INFINITY,
     provenance: provenance(world),
   };
+  disposePeople(world);
+  return result;
 }
 
 const dev = measure("dev");
@@ -214,6 +221,7 @@ function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
   if (popFail.length > 0 || arrivalFail.length > 0) {
     failures.push(`cadence-trajectory:${grid}`);
   }
+  disposePeople(reference.world);
 }
 
 function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
@@ -272,6 +280,7 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
     measured.add(id);
     if (ignited < 1) failures.push(id);
   }
+  disposePeople(world);
 }
 
 for (const grid of longArm ? (["dev", "target"] as const) : (["dev"] as const)) {
@@ -305,3 +314,4 @@ console.log(JSON.stringify({
     "The long horizon is primary at the shipped target grid; dev is retained as a cross-grid comparison.",
   ],
 }));
+process.exit(0);
