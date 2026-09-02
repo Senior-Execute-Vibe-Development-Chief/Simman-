@@ -926,6 +926,10 @@ Review corrections to the M1 build (all validated before merge):
     existing 240 dev / 24 target byte-parity arm now also checks
     `capField` remains full-grid and `migrationReceived` is packed; serial
     wasm, one real worker, two workers, and eight workers are identical.
+    The measured dev summation-order delta between the old row-major packed
+    land-list fold and the W4 ascending band fold is +2.91e-11 persons for
+    migration out and −1.75e-10 persons for migration received on the
+    12-tick probe. The target probe is included with the gate measurements.
     The W4 stride arm is running at both grids (dev and target, 3000-year
     horizon); its population and farming-arrival deltas will be appended
     here with the gate result.
