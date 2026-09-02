@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { buildSubstrate } from "../src/sim/substrate";
 import { DMATH_GOLDENS } from "../src/sim/dmath-goldens";
-import { ensurePeopleWasm, wasmDpowValue } from "../src/sim/peopleKernel";
+import { ensurePeopleWasm, resizePeoplePool, wasmDpowValue } from "../src/sim/peopleKernel";
 import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
 import { float64Bits } from "./lib/dmath-check";
@@ -12,6 +12,7 @@ const PEOPLE_FIELDS = [
   "children",
   "working",
   "elders",
+  "capField",
 ] as const;
 
 const PEOPLE_SCRATCH = [
@@ -26,6 +27,7 @@ const PEOPLE_SCRATCH = [
   "_migrationOut",
   "_migrationWeight",
   "_migrationPopulation",
+  "_migrationReceived",
 ] as const;
 
 function bytes(value: unknown): Buffer {
@@ -39,6 +41,21 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
     const right = (candidate as unknown as Record<string, unknown>)[name];
     assert.ok(left instanceof Float64Array, `${grid} TS ${name} missing at ${step}`);
     assert.ok(right instanceof Float64Array, `${grid} WASM ${name} missing at ${step}`);
+    if (name.startsWith("_")) {
+      assert.equal(
+        right.length,
+        (candidate as PeopleWorld)._landCells.length,
+        `${grid} WASM ${name} was not land-packed at ${step}`,
+      );
+      assert.equal(
+        left.length,
+        (reference as PeopleWorld)._landCells.length,
+        `${grid} TS ${name} was not land-packed at ${step}`,
+      );
+    } else {
+      assert.equal(left.length, (reference as PeopleWorld).N, `${grid} TS ${name} lost full-grid view`);
+      assert.equal(right.length, (candidate as PeopleWorld).N, `${grid} WASM ${name} lost full-grid view`);
+    }
     assert.deepEqual(bytes(right), bytes(left), `${grid} ${name} diverged at tick ${step}`);
   }
   assert.equal(hashWorld(candidate), hashWorld(reference), `${grid} hash diverged at tick ${step}`);
@@ -52,7 +69,7 @@ function makeWorld(
   return new World({ seed: 42042, grid, config: { preset: "earth_sim", ...config }, substrate });
 }
 
-function runParity(grid: GridPreset, steps: number): void {
+async function runParity(grid: GridPreset, steps: number): Promise<void> {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const reference = makeWorld(grid, substrate, { peopleKernel: "ts" });
   const wasm = makeWorld(grid, substrate, { peopleKernel: "wasm", peopleWorkers: 1 });
@@ -68,6 +85,7 @@ function runParity(grid: GridPreset, steps: number): void {
   (wasm as PeopleWorld)._wasmPeopleKernel?.dispose();
 
   const threadedReference = makeWorld(grid, substrate, { peopleKernel: "ts" });
+  assert.ok(await resizePeoplePool(1), `${grid} could not start a 1-worker pool`);
   const threadedOne = makeWorld(grid, substrate, {
     peopleKernel: "wasm",
     peopleWorkers: 1,
@@ -86,6 +104,7 @@ function runParity(grid: GridPreset, steps: number): void {
 
   const hashes: Record<number, string> = { 1: serialHash };
   for (const workerCount of [2, 8]) {
+    assert.ok(await resizePeoplePool(workerCount), `${grid} could not start a ${workerCount}-worker pool`);
     const workerWorld = makeWorld(grid, substrate, {
       peopleKernel: "wasm",
       peopleWorkers: workerCount,
@@ -120,8 +139,8 @@ async function main(): Promise<void> {
     throw new Error("People kernel parity requires a built WASM module.");
   }
   const dmathGoldens = checkWasmDmath();
-  runParity("dev", 240);
-  runParity("target", 24);
+  await runParity("dev", 240);
+  await runParity("target", 24);
   console.log(JSON.stringify({
     parity: "ok",
     grids: { dev: 240, target: 24 },

@@ -856,3 +856,205 @@ Review corrections to the M1 build (all validated before merge):
     monthly migration plus per-commit cohort/ledger. Do not re-anchor
     `bench-baselines.json` downward from this faster runner (W2 lesson);
     `--check` still passes against the review-runner 220 ms target cap.
+    **Review note (merge, 2026-09-02).** Delivered as specified: the
+    scheduler, derived strides (target 1 / dev 12, re-derived here), the
+    stride arm (dev deltas reproduced: population 4.0e-5, arrivals
+    0/0/0/10 years), real `worker_threads` with hash identity across
+    1/2/8 workers, and — checked cross-branch — stride 1 byte-identical
+    to the pre-wave kernels at both grids (240 dev / 24 target ticks).
+    Review corrections, all mechanisms not patches:
+    (a) **The shell never ran wasm.** Since W2 the sim worker had been on
+    the TypeScript kernels: the loader tested `typeof window` to detect
+    Node, a browser worker has no `window` either, `fs.readFile` threw
+    and the failure was swallowed. Node is now detected by `process.
+    versions.node`; loader failures are logged, never silent. This is
+    most of the owner's "5 years per 5 s" play-test slowness.
+    (b) **Pool start-up was a structural hang.** The pool constructor
+    waited for worker readiness with `Atomics.wait`; a worker that failed
+    to start could only report through an event, which a blocked thread
+    never receives — the shell's sim worker hung on exactly this once wasm
+    actually loaded. Pool creation is now asynchronous (readiness via
+    message events with a timeout), pre-warmed by `ensurePeopleWasm({
+    workers })` as one process-level pool that kernels borrow (dispatch
+    carries the kernel pointer); harnesses resize it with
+    `resizePeoplePool(n)`. Node workers are `unref`'d so a pool never
+    keeps a process alive (the reason gate/bench needed `process.exit`).
+    (c) **Mid-phase worker failures propagate.** A worker that throws
+    inside a band writes the error into shared memory; the coordinator's
+    barriers check the flag and throw with the text instead of waiting
+    forever (the `post({type:"error"})` it used was unreadable by a
+    thread blocked in Atomics.wait). The worker script also takes its
+    stack size and control-word layout from the coordinator rather than
+    restating ledger constants.
+    (d) **Shell tick race.** Ticks were posted before "create" finished,
+    the worker threw "world has not been created", the error was dropped
+    and `tickPending` stayed set — "waiting for worker" forever. Worker
+    messages are now handled strictly in order and the shell posts no
+    ticks until "created"; worker errors surface in the status line.
+    Verified in Chromium: `Worker ready · WASM 3 threads · growth 12 ·
+    migration 12`, population advancing. Note for W4: the tri-engine
+    browser smoke runs on the page's main thread, where `Atomics.wait` is
+    forbidden, so it exercises serial wasm only; a worker-side identity
+    check is needed to cover the threaded browser path.
+    (e) **The barrier stalls were lost futex wakeups, and they are the
+    platform's.** A bare `Atomics.wait`/`notify` barrier between Node's
+    main thread and three workers — no wasm, no sim — missed 26 wakeups
+    in 30,000 rounds on the review runner; each cost the full 10 s wait
+    slice, and W3's cadence bench showed exactly that (one 10 s stall in
+    the dev 3-thread row; the very first parity run hung outright). The
+    dispatch now lives entirely in shared memory (operation, kernel
+    pointer, dt, band ranges in the control plane; workers wait on the
+    phase word, never on a message), and every barrier waits in
+    `PEOPLE_BARRIER_WAIT_MS` = 1 ms slices so a lost wake costs a
+    millisecond: 3000 monthly dev ticks on 3 workers now take 14.4 s
+    against 13.9 s serial with a worst tick of 51 ms (was 10,012 ms),
+    hash identical.
+    (f) **The sim worker hashed the world on every snapshot.** `hashWorld`
+    walks every field with BigInt arithmetic: 87 ms at dev, **5.3 s at
+    the target grid** — per tick batch, whatever the kernel did. Removed
+    from the snapshot (reported once at creation; harnesses hash on
+    demand). Together with (a) this is the owner's play-test slowness.
+35. **Equal Earth display projection (2026-09-02, owner: "greenland is
+    heavily distorted").** Measured at dev before changing anything: a
+    flood fill over Greenland's land cells sums to 2.40M km² of real
+    area against 2.17M km² true (1.11×, coastal rounding plus a sliver
+    of Ellesmere) — 1.6% of the world's land by AREA, matching the real
+    1.45%, but 3.3% by TILE COUNT. The sim was right and the
+    equirectangular screen was painting Greenland ~2.3× too large. Fix
+    is display only: `src/shell/projection.ts` builds a per-pixel
+    inverse-projection table (Equal Earth, Šavrič et al. 2018, Newton
+    inverse) from the lat-lon sim grid; every lens samples through it,
+    picking runs the table in reverse, routes across the antimeridian
+    are drawn to each edge, and a graticule + globe outline are drawn
+    from the forward projection. A plate-carrée option stays for
+    checking data alignment. No world state, hash, save, or gate is
+    touched. Side finding from the same probe: at dev Greenland is
+    fused to Ellesmere Island (Nares Strait, 20–40 km, closes at 170 km
+    cells; an unbounded fill walks into Canada) — harmless for people
+    (the Thule crossed it on sea ice), noted with the resolution-scale
+    straits should boats ever need it; expected open at the 22 km grid.
+    **Movable central meridian (same day, owner: "australia looks a bit
+    squished").** No flat map keeps both shape and area; Equal Earth
+    keeps area exact and puts the shear at the edges, so the centre is
+    now draggable: at zoom 1 a horizontal drag spins the world about its
+    polar axis (live rebuild of the table when it is under 40 ms, on
+    release otherwise — the target grid's 1.6M-pixel table), the seam
+    and graticule follow, routes split at the seam wherever it is.
+    Verified in headless Chromium at 144°E with a Brazil→West Africa
+    route crossing the Atlantic seam.
+
+36. **W4 land-packed people kernel (2026-09-02).** This wave starts from
+    the W3 merge `32974aac4e80b0004032d303a97f858d51cd9f20`; no W3 code was
+    restarted. The target substrate at seed 42042 has 1,620,000 cells and
+    558,091 land cells (34.4501%); dev has 28,800 cells and 9,752 land
+    cells. The land list is row-major and the 16 bands are the same
+    grid-derived row ranges as W3, with their endpoints converted to
+    contiguous land-list offsets. The inverse is −1 on ocean.
+
+    **Traffic ledger, measured before/after.** The pre-wave row uses the W3
+    #34 implementation and its same-runner phase measurement. Bytes count
+    `Float64` array reads plus writes (`8 B` each); branch bytes and scalar
+    partial slots are immaterial and omitted. `N` is the full target grid
+    and `L` is its land count.
+
+    | target operation | W3 pre-wave | W4 land-packed | organization |
+    |---|---:|---:|---|
+    | migration clears: out, weight, received | 38.880 MB | 13.394 MB | W3 serial full-grid fills → W4 packed band fills |
+    | growth-prepared migration setup: 4 arrays, read + write | 103.680 MB | 35.718 MB | serial full-grid copies → packed preparation band |
+    | migration finish: 3 cohort copies, read + write | 77.760 MB | 26.788 MB | packed copy; no physics change |
+    | migration total/received sums | 22.324 MB | 0 | two full-grid sums → 16 ascending band partials |
+    | commit population, read + write | 25.920 MB | 8.929 MB | full-grid copy → packed-to-full-grid scatter |
+    | ledger begin + end: people and area reads | 51.840 MB | 17.859 MB | full-grid sums → land-list sums |
+    | **counted array traffic** | **320.404 MB** | **102.689 MB** | **3.12× less, 69.24% reduction** |
+
+    The 13.394 MB W4 clear is split by phase: out/weight are cleared in
+    migration preparation (8.929 MB) and received is cleared in the target
+    phase (4.465 MB). Every growth slot is written, so its old four
+    full-grid fills were removed entirely; the setup row counts the four
+    required frozen-state read/write assignments. Source, debit, gather,
+    normalization, and ledger iteration domains changed from raw `N` scans
+    to `L` packed scans. W4 leaves only packed cohort copying,
+    packed-to-full-grid commit, the remainder deposit, and barriers in the
+    serial tail; no whole-grid migration sum remains.
+
+    The timing confirmation is a warm target serial run (12 ticks after a
+    12-tick warm-up): migration preparation 3.774 ms/tick, source 12.460,
+    debit 4.701, gather 15.677, finish 1.031, for 37.64 ms total. The
+    bench phase aggregate is 37.40 ms/tick for migration. W3's same-runner
+    migration phase was 54.5 ms/firing.
+
+    **Cadence × threads, target, same 4-core runner.** The table is the
+    shipped 12-month schedule unless the name says stride-1. It uses the
+    existing 116,412-tick horizon and 15.5 ms/tick ceiling.
+
+    | config | ms/tick | idle-barrier ms/tick | projected YD→1 CE |
+    |---|---:|---:|---:|
+    | serial stride-1 | 74.59 | 0 | 144.7 min |
+    | serial shipped | 46.73 | 0 | 90.7 min |
+    | 3 threads stride-1 | 77.20 | 0.009 | 149.8 min |
+    | 3 threads shipped | 47.67 | 0.002 | 92.5 min |
+    | 8 threads stride-1 | 66.66 | 0.015 | 129.3 min |
+    | 8 threads shipped | 43.33 | 0.053 | 84.1 min |
+
+    Dev measurements were 1.370 / 0.118 ms/tick for serial stride-1 /
+    shipped, 1.688 / 0.135 for 3 threads, and 835.43 / 0.172 for 8
+    threads (the stride-1 eight-worker sample hit a 833.63 ms barrier
+    outlier). The target result is a 73.0 → 46.7 ms shipped-schedule
+    reduction from W3, but the ≤15.5 ms ceiling remains unmet even with
+    eight workers on four cores. The remaining dominant target costs are
+    monthly migration (37.4 ms) and the per-commit cohort/ledger tail
+    (~4.25 ms); oversubscribed eight-worker migration is 33.35 ms. The
+    optional f32-storage experiment was not taken: W4 already meets the
+    land-packing objective with f64 scratch and f64 arithmetic, so no
+    tolerance or arithmetic contract was changed.
+
+    **Parity and stride arm.** Rust and TS use the same land order, packed
+    neighbor inverse, phase order, and ascending partial fold. The
+    existing 240 dev / 24 target byte-parity arm now also checks
+    `capField` remains full-grid and `migrationReceived` is packed; serial
+    wasm, one real worker, two workers, and eight workers are identical.
+    The measured dev summation-order delta between the old row-major packed
+    land-list fold and the W4 ascending band fold is +2.91e-11 persons for
+    migration out and −1.75e-10 persons for migration received on the
+    12-tick probe. The target values are −8.38e-9 and +2.11e-8 persons.
+    The W4 3000-year stride arm passed at both grids. Dev population
+    reference/shipped at −8000 was 5,265,868.263 / 5,265,657.124
+    (relative Δ 4.01e-5); arrival deltas were 0 years for the Fertile
+    Crescent, Nile, and Yellow River, 10 years for the Indus, and both
+    Mesoamerica/Andes were unreached in both arms. Target population
+    reference/shipped was 5,547,996.562 / 5,548,029.649 (relative Δ
+    5.96e-6); Fertile Crescent, Nile, Yellow River, and Indus arrival
+    deltas were all 0 years, with Mesoamerica/Andes unreached. The gate
+    reported five dev and six target hearths ignited by 3000 years and
+    `gate: pass` with no unexpected or stale misses.
+    **Review note (merge, 2026-09-02).** Delivered as specified: packed
+    scratch and iteration in both kernels, the migration prepare phase
+    folded into the bands, band-ordered partials, the traffic ledger, the
+    stride arm at both grids. Cursor branched from main (PR #122), so the
+    merge re-applied W4's kernel deltas onto the W3 review pool (shared-
+    memory dispatch, 1 ms slices, async pre-warm). Parity: dev 240 / target
+    24 ticks, TS ↔ serial ↔ 1/2/8 workers, byte-exact after the merge.
+    **The reason threads did not scale — false sharing, not bandwidth.**
+    On the review runner the merged kernel measured target shipped 84.8
+    ms/tick serial and 80.8 on three threads; growth at stride 1, pure
+    per-cell arithmetic, went 30 → 26 → 43 ms (3 → 8 workers). Every band
+    accumulated its births, deaths and migration totals with a per-cell
+    read-modify-write into adjacent f64 slots of one 128-byte array, so
+    the cache line bounced between cores on every cell. Accumulating in a
+    local and storing once per band (same addition order, bit-identical,
+    parity re-run) gives, at target, shipped schedule:
+
+    | config | ms/tick | migration | growth (stride 1) | YD→1 CE |
+    |---|---:|---:|---:|---:|
+    | serial | 88.0 | 71.9 | 30.6 | 171 min |
+    | 3 threads | 40.4 | 26.9 | 11.5 | 78 min |
+    | 8 threads (4 cores) | 40.4 | 26.3 | 10.4 | 78 min |
+
+    The remaining serial tail is cohorts + ledger at ~7.9 ms/tick (normalize
+    and the per-pass sums run on the coordinator) plus the scatter commit;
+    those are the next packed-and-banded candidates, and the ceiling
+    (15.5 ms) now needs roughly a 2.6× box or that tail banded plus more
+    cores. **Gate default restored:** W4 had put the target 3000-year
+    trajectory (two runs) into the per-commit gate — ~1 h on a 4-core box;
+    it runs under `GATE_PEOPLE_LONG=1` or `GATE_PEOPLE_TARGET=1` and its
+    deltas above stand as the W4 measurement.

@@ -283,7 +283,14 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
   disposePeople(world);
 }
 
-for (const grid of longArm ? (["dev", "target"] as const) : (["dev"] as const)) {
+// The stride arm and trajectory run at dev by default; the target grid
+// (two 3000-year runs, ~1 h on a 4-core box) joins under GATE_PEOPLE_LONG=1
+// or GATE_PEOPLE_TARGET=1 — the W4 review ran it once and recorded the
+// deltas (QUESTIONS #36), the per-commit gate stays minutes.
+const trajectoryGrids = longArm || process.env.GATE_PEOPLE_TARGET === "1"
+  ? (["dev", "target"] as const)
+  : (["dev"] as const);
+for (const grid of trajectoryGrids) {
   const shipped = collectTrajectory(grid);
   runCadenceArm(grid, shipped);
   runTrajectory(grid, shipped);

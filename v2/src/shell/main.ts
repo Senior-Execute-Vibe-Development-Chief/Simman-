@@ -10,6 +10,15 @@ import { buildSubstrate, type Substrate } from "../sim/substrate";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
 import { riverReachGradient, type Capability, type TravelMetric } from "../sim/travel/cost";
 import type { GridPreset } from "../sim/world";
+import {
+  buildProjectionTable,
+  globeOutline,
+  graticule,
+  degreesToRadians,
+  PROJECTIONS,
+  type ProjectionName,
+  type ProjectionTable,
+} from "./projection";
 
 // ?grid=target serves the full 1800×900 map (the shipped grid — expect a
 // ~minute of substrate building on load); the default dev grid loads in
@@ -29,8 +38,10 @@ const population = document.querySelector<HTMLElement>("#population")!;
 const runButton = document.querySelector<HTMLButtonElement>("#run")!;
 const speedInput = document.querySelector<HTMLInputElement>("#speed")!;
 const speedLabel = document.querySelector<HTMLElement>("#speed-label")!;
+const projectionSelect = document.querySelector<HTMLSelectElement>("#projection")!;
+const centreLabel = document.querySelector<HTMLElement>("#centre-label")!;
 if (!canvas || !lens || !month || !monthLabel || !zoomInput || !zoomLabel || !status || !route
-  || !population || !runButton || !speedInput || !speedLabel) {
+  || !population || !runButton || !speedInput || !speedLabel || !projectionSelect || !centreLabel) {
   throw new Error("M2 shell markup is incomplete.");
 }
 
@@ -39,15 +50,58 @@ if (!context) throw new Error("Canvas is unavailable.");
 
 const substrate = buildSubstrate(M0_DEFAULT_SEED, { preset: "earth_sim" }, GRID);
 const travel = await createTravelEngine(substrate);
-// Render at the simulation's own resolution; CSS scales the display.
-canvas.width = substrate.width;
-canvas.height = substrate.height;
+// Colours are computed per SIM cell into `frame` (grid-sized), then sampled
+// through the projection table into `projected` (map-sized); CSS scales the
+// display. The projection is display only — the sim grid is lat-lon.
 const frame = new ImageData(substrate.width, substrate.height);
 const base = document.createElement("canvas");
-base.width = substrate.width;
-base.height = substrate.height;
 const baseContext = base.getContext("2d")!;
 let baseKey = "";
+let lastFrameKey = "";
+const OFF_GLOBE: readonly [number, number, number] = [12, 18, 24];
+let table: ProjectionTable;
+let projected: ImageData | undefined;
+let outline: Array<[number, number]> = [];
+let graticuleLines: Array<Array<[number, number]>> = [];
+// Central meridian in degrees east. Dragging at zoom 1 spins the world about
+// its polar axis so the studied region sits where shapes are near-true. The
+// table is built once per projection; the centre is a column shift applied
+// while sampling, so the spin is instant at any grid.
+let centreDegrees = 0;
+
+/** The central meridian in radians, snapped to the whole-cell shift the table uses. */
+function centralMeridian(): number {
+  const shift = table.shiftFor(degreesToRadians(centreDegrees));
+  return (shift / substrate.width) * 2 * Math.PI;
+}
+
+function formatCentre(): string {
+  const degrees = (centralMeridian() / Math.PI) * 180;
+  const wrapped = ((degrees + 180) % 360 + 360) % 360 - 180;
+  return `Centre ${Math.abs(Math.round(wrapped))}°${wrapped < 0 ? "W" : "E"}`;
+}
+
+function applyCentre(): void {
+  const centre = centralMeridian();
+  outline = globeOutline(table, centre);
+  graticuleLines = graticule(table, centre);
+  centreLabel.textContent = formatCentre();
+}
+
+function applyProjection(name: ProjectionName): void {
+  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height);
+  if (!projected || projected.width !== table.width || projected.height !== table.height) {
+    projected = new ImageData(table.width, table.height);
+    canvas.width = table.width;
+    canvas.height = table.height;
+    canvas.style.aspectRatio = `${table.width} / ${table.height}`;
+    base.width = table.width;
+    base.height = table.height;
+  }
+  applyCentre();
+  baseKey = "";
+}
+applyProjection(projectionSelect.value as ProjectionName);
 
 const worker = new Worker(new URL("../sim/worker.ts", import.meta.url), { type: "module" });
 worker.postMessage({ type: "create", seed: M0_DEFAULT_SEED, grid: GRID, substrate });
@@ -60,7 +114,16 @@ function displayDate(step: number): string {
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
 }
 worker.addEventListener("message", (event) => {
+  if (event.data?.type === "error") {
+    // A worker failure used to vanish: the page just stopped updating.
+    status.textContent = `Worker error · ${String(event.data.message)}`;
+    console.error("Sim worker error:", event.data.message);
+    playing = false;
+    runButton.textContent = "Run";
+    return;
+  }
   if (event.data?.type === "created") {
+    worldReady = true;
     const isolated = event.data.isolated === true;
     const threaded = event.data.usesThreads === true;
     const kernel = event.data.kernel !== "wasm"
@@ -85,6 +148,7 @@ worker.addEventListener("message", (event) => {
     overlayTechnique.set(techniqueView);
     population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
     baseKey = "";
+    lastFrameKey = "";
     draw();
     worker.postMessage({ type: "recycle", buffer }, [buffer]);
   }
@@ -93,8 +157,9 @@ worker.addEventListener("message", (event) => {
 // returns. A fixed-interval post outran the worker on the target grid
 // (~0.5 s/tick) and queued unboundedly — the page read as frozen.
 let tickPending = false;
+let worldReady = false;
 function requestTicks(): void {
-  if (!playing || tickPending) return;
+  if (!playing || tickPending || !worldReady) return;
   tickPending = true;
   worker.postMessage({ type: "tick", steps: speed });
 }
@@ -120,19 +185,38 @@ function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
 
+// The viewport lives in projected-map pixels (table.width × table.height).
+// Horizontal movement is ALWAYS a spin of the central meridian (owner: "the
+// pan should always recenter the map"), so the viewport stays horizontally
+// centred at every zoom; only the vertical offset pans.
 function clampView(): void {
   zoom = clamp(zoom, 1, 64);
-  viewX = clamp(viewX, 0, substrate.width - substrate.width / zoom);
-  viewY = clamp(viewY, 0, substrate.height - substrate.height / zoom);
+  viewX = (table.width - table.width / zoom) / 2;
+  viewY = clamp(viewY, 0, table.height - table.height / zoom);
+}
+
+/** Absolute longitude/latitude under a canvas fraction, or undefined off the globe. */
+function lonLatAtScreen(fx: number, fy: number): [number, number] | undefined {
+  return table.pixelToLonLat(viewX + fx * table.width / zoom, viewY + fy * table.height / zoom, centralMeridian());
+}
+
+/** Spin so that the longitude `lon` sits under canvas fraction (fx, fy). */
+function spinLongitudeTo(lon: number, fx: number, fy: number): void {
+  const after = lonLatAtScreen(fx, fy);
+  if (!after) return;
+  const delta = lon - after[0];
+  centreDegrees += (Math.atan2(Math.sin(delta), Math.cos(delta)) / Math.PI) * 180;
+  applyCentre();
 }
 
 /** Set zoom keeping the map point under (fx, fy) — canvas fractions — fixed. */
 function setZoom(next: number, fx = 0.5, fy = 0.5): void {
-  const anchorX = viewX + fx * substrate.width / zoom;
-  const anchorY = viewY + fy * substrate.height / zoom;
+  const before = lonLatAtScreen(fx, fy);
+  const anchorY = viewY + fy * table.height / zoom;
   zoom = clamp(next, 1, 64);
-  viewX = anchorX - fx * substrate.width / zoom;
-  viewY = anchorY - fy * substrate.height / zoom;
+  viewY = anchorY - fy * table.height / zoom;
+  clampView();
+  if (before) spinLongitudeTo(before[0], fx, fy);
   zoomInput.value = String(Math.log2(zoom));
   zoomLabel.textContent = `Zoom ${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×`;
   draw();
@@ -226,10 +310,14 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
 }
 
 function renderBase(selectedMonth: number): void {
-  const key = `${lens.value}|${selectedMonth}`;
+  const shift = table.shiftFor(degreesToRadians(centreDegrees));
+  const frameKey = `${lens.value}|${selectedMonth}`;
+  const key = `${table.projection.name}|${shift}|${frameKey}`;
   if (key === baseKey) return;
   const pixels = frame.data;
-  for (let cell = 0; cell < substrate.N; cell++) {
+  // Per-cell colours depend on lens and month only; projection and centre
+  // are applied by sampling, so a spin never recomputes a colour.
+  if (frameKey !== lastFrameKey) for (let cell = 0; cell < substrate.N; cell++) {
     const [red, green, blue] = pixelColor(cell, selectedMonth);
     const offset = cell * 4;
     pixels[offset] = red;
@@ -237,12 +325,70 @@ function renderBase(selectedMonth: number): void {
     pixels[offset + 2] = blue;
     pixels[offset + 3] = 255;
   }
-  baseContext.putImageData(frame, 0, 0);
+  lastFrameKey = frameKey;
+  if (!projected) return;
+  const out = projected.data;
+  const { rowOf, columnOf, width, gridWidth } = table;
+  for (let py = 0, pixel = 0; py < table.height; py++) {
+    const row = rowOf[py] ?? -1;
+    for (let px = 0; px < width; px++, pixel++) {
+    const column = row < 0 ? -1 : (columnOf[pixel] ?? -1);
+    let x = column + shift;
+    if (x >= gridWidth) x -= gridWidth;
+    const cell = column < 0 ? -1 : row * gridWidth + x;
+    const offset = pixel * 4;
+    if (cell < 0) {
+      out[offset] = OFF_GLOBE[0];
+      out[offset + 1] = OFF_GLOBE[1];
+      out[offset + 2] = OFF_GLOBE[2];
+    } else {
+      const source = cell * 4;
+      out[offset] = pixels[source] ?? 0;
+      out[offset + 1] = pixels[source + 1] ?? 0;
+      out[offset + 2] = pixels[source + 2] ?? 0;
+    }
+    out[offset + 3] = 255;
+    }
+  }
+  baseContext.putImageData(projected, 0, 0);
   baseKey = key;
 }
 
+/** Sim-grid cell coordinates → canvas pixels, through the projection and viewport. */
 function toScreenXY(x: number, y: number): [number, number] {
-  return [(x + 0.5 - viewX) * zoom, (y + 0.5 - viewY) * zoom];
+  const [px, py] = table.gridToPixel(x + 0.5, y + 0.5, centralMeridian());
+  return [(px - viewX) * zoom, (py - viewY) * zoom];
+}
+
+/** The seam meridian at a sim row, on the east (+1) or west (−1) map edge, in canvas pixels. */
+function seamScreenXY(y: number, side: 1 | -1): [number, number] {
+  const lat = Math.PI / 2 - ((y + 0.5) / substrate.height) * Math.PI;
+  const centre = centralMeridian();
+  const [px, py] = table.lonLatToPixel(centre + side * (Math.PI - 1e-9), lat, centre);
+  return [(px - viewX) * zoom, (py - viewY) * zoom];
+}
+
+function mapToScreen(point: readonly [number, number]): [number, number] {
+  return [(point[0] - viewX) * zoom, (point[1] - viewY) * zoom];
+}
+
+function strokePolyline(points: ReadonlyArray<readonly [number, number]>): void {
+  context.beginPath();
+  points.forEach((point, index) => {
+    const [sx, sy] = mapToScreen(point);
+    if (index === 0) context.moveTo(sx, sy);
+    else context.lineTo(sx, sy);
+  });
+  context.stroke();
+}
+
+function drawGraticule(): void {
+  context.lineWidth = Math.max(0.5, table.width / 1800);
+  context.strokeStyle = "rgba(200, 215, 230, 0.16)";
+  for (const line of graticuleLines) strokePolyline(line);
+  context.strokeStyle = "rgba(200, 215, 230, 0.55)";
+  context.lineWidth = Math.max(1, table.width / 900);
+  strokePolyline([...outline, outline[0] ?? [0, 0]]);
 }
 
 // Wind glyphs: one downwind arrow per block of visible cells, decimated to a
@@ -255,16 +401,16 @@ function drawWindArrows(selectedMonth: number): void {
   const bounds = canvas.getBoundingClientRect();
   const displayScale = bounds.width > 0 ? bounds.width / canvas.width : 1;
   const stride = Math.max(1, Math.round(WIND_ARROW_SPACING_DISPLAY_PX / (zoom * displayScale)));
-  const startX = Math.floor(viewX / stride) * stride;
-  const startY = Math.max(0, Math.floor(viewY / stride) * stride);
-  const endX = viewX + substrate.width / zoom;
-  const endY = Math.min(substrate.height - 1, viewY + substrate.height / zoom);
   context.lineCap = "round";
   context.lineWidth = Math.max(0.5, 1.4 / displayScale);
-  for (let y = startY; y <= endY; y += stride) {
-    for (let x = startX; x <= endX; x += stride) {
-      const cx = ((x % substrate.width) + substrate.width) % substrate.width;
-      const cell = y * substrate.width + cx;
+  // Walk the sim grid at the stride and let the projection place each glyph;
+  // off-canvas glyphs are skipped (the viewport is in projected pixels).
+  const margin = stride * zoom;
+  for (let y = 0; y < substrate.height; y += stride) {
+    for (let x = 0; x < substrate.width; x += stride) {
+      const [sx, sy] = toScreenXY(x, y);
+      if (sx < -margin || sy < -margin || sx > canvas.width + margin || sy > canvas.height + margin) continue;
+      const cell = y * substrate.width + x;
       const index = cell * MONTHS_PER_YEAR + selectedMonth;
       const u = substrate.wind.u[index] ?? 0;
       const v = substrate.wind.v[index] ?? 0;
@@ -274,7 +420,6 @@ function drawWindArrows(selectedMonth: number): void {
       const glyph = stride * zoom * (0.25 + 0.6 * warm);
       const dx = (u / speed) * glyph;
       const dy = (-v / speed) * glyph;
-      const [sx, sy] = toScreenXY(x, y);
       const headX = sx + dx / 2;
       const headY = sy + dy / 2;
       const head = glyph * 0.3;
@@ -301,10 +446,11 @@ function draw(): void {
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(
     base,
-    viewX, viewY, substrate.width / zoom, substrate.height / zoom,
+    viewX, viewY, table.width / zoom, table.height / zoom,
     0, 0, canvas.width, canvas.height,
   );
-  const stroke = Math.max(1.5, substrate.width / 300);
+  drawGraticule();
+  const stroke = Math.max(1.5, table.width / 300);
   if (lastRoute && lastRoute.path.length > 1) {
     context.lineCap = "round";
     for (let index = 1; index < lastRoute.path.length; index++) {
@@ -313,25 +459,27 @@ function draw(): void {
       const ay = Math.floor(a / substrate.width);
       const by = Math.floor(b / substrate.width);
       const ax = a - ay * substrate.width;
-      let bx = b - by * substrate.width;
-      // A segment that wraps the antimeridian is drawn out through the
-      // seam, not straight across the map: shift the far endpoint by a
-      // world width and draw the mirrored piece too.
-      let wrapped = 0;
-      if (bx - ax > substrate.width / 2) { bx -= substrate.width; wrapped = -1; }
-      else if (ax - bx > substrate.width / 2) { bx += substrate.width; wrapped = 1; }
+      const bx = b - by * substrate.width;
       context.strokeStyle = MODE_COLORS[lastRoute.modes[index] ?? 0] ?? "#ffd166";
       context.lineWidth = stroke;
       context.beginPath();
       const [sax, say] = toScreenXY(ax, ay);
       const [sbx, sby] = toScreenXY(bx, by);
-      context.moveTo(sax, say);
-      context.lineTo(sbx, sby);
-      if (wrapped !== 0) {
-        const [max2, may2] = toScreenXY(ax + wrapped * substrate.width, ay);
-        const [mbx2, mby2] = toScreenXY(bx + wrapped * substrate.width, by);
-        context.moveTo(max2, may2);
-        context.lineTo(mbx2, mby2);
+      // A segment that crosses the seam is drawn out through it on both
+      // sides (each piece runs to the map edge at its own latitude), never
+      // straight across the map. The seam is wherever the centre puts it,
+      // so the test is in projected pixels.
+      if (Math.abs(sbx - sax) > table.width * zoom / 2) {
+        const aSide: 1 | -1 = sax > sbx ? 1 : -1;
+        const [eax, eay] = seamScreenXY(ay, aSide);
+        const [ebx, eby] = seamScreenXY(by, aSide === 1 ? -1 : 1);
+        context.moveTo(sax, say);
+        context.lineTo(eax, eay);
+        context.moveTo(ebx, eby);
+        context.lineTo(sbx, sby);
+      } else {
+        context.moveTo(sax, say);
+        context.lineTo(sbx, sby);
       }
       context.stroke();
     }
@@ -355,13 +503,15 @@ function capabilities(): Capability[] {
   return result;
 }
 
-function cellFromPointer(event: MouseEvent): number {
+/** The sim cell under the pointer, or undefined off the globe. */
+function cellFromPointer(event: MouseEvent): number | undefined {
   const bounds = canvas.getBoundingClientRect();
   const fx = (event.clientX - bounds.left) / bounds.width;
   const fy = (event.clientY - bounds.top) / bounds.height;
-  const x = clamp(Math.floor(viewX + fx * substrate.width / zoom), 0, substrate.width - 1);
-  const y = clamp(Math.floor(viewY + fy * substrate.height / zoom), 0, substrate.height - 1);
-  return y * substrate.width + x;
+  const px = clamp(Math.floor(viewX + fx * table.width / zoom), 0, table.width - 1);
+  const py = clamp(Math.floor(viewY + fy * table.height / zoom), 0, table.height - 1);
+  const cell = table.cellAt(px, py, table.shiftFor(degreesToRadians(centreDegrees)));
+  return cell < 0 ? undefined : cell;
 }
 
 function describeModes(result: TravelRoute): string {
@@ -433,8 +583,20 @@ canvas.addEventListener("pointermove", (event) => {
   const dy = event.clientY - previous.y;
   if (Math.abs(event.clientX - previous.x) + Math.abs(event.clientY - previous.y) > 4) dragged = true;
   if (!dragged) return;
-  viewX -= dx / bounds.width * substrate.width / zoom;
-  viewY -= dy / bounds.height * substrate.height / zoom;
+  // A horizontal drag spins the world at every zoom, scaled so the land
+  // under the pointer tracks it: one screen pixel is 360° over the width of
+  // the pointer's own parallel (rows shrink toward the poles in Equal
+  // Earth). Dragging right carries land east, so the centre moves west.
+  const fy = (event.clientY - bounds.top) / bounds.height;
+  const here = lonLatAtScreen(0.5, fy);
+  const centre = centralMeridian();
+  const lat = here ? here[1] : 0;
+  const [westX] = table.lonLatToPixel(centre - Math.PI + 1e-9, lat, centre);
+  const [eastX] = table.lonLatToPixel(centre + Math.PI - 1e-9, lat, centre);
+  const rowWidthScreen = Math.max(1, (eastX - westX) * zoom * bounds.width / canvas.width);
+  centreDegrees -= dx / rowWidthScreen * 360;
+  viewY -= dy / bounds.height * table.height / zoom;
+  applyCentre();
   draw();
 });
 function releasePointer(event: PointerEvent): void {
@@ -446,6 +608,7 @@ function releasePointer(event: PointerEvent): void {
   dragged = false;
   if (wasDrag) return;
   const cell = cellFromPointer(event);
+  if (cell === undefined) return;
   if (startCell === undefined) {
     startCell = cell;
     route.textContent = "Start selected — choose a destination.";
@@ -479,6 +642,15 @@ speedInput.addEventListener("input", () => {
 const riverLegend = document.querySelector<HTMLElement>("#river-legend");
 lens.addEventListener("change", () => {
   if (riverLegend) riverLegend.hidden = lens.value !== "rivers";
+  draw();
+});
+projectionSelect.addEventListener("change", () => {
+  applyProjection(projectionSelect.value as ProjectionName);
+  zoom = 1;
+  viewX = 0;
+  viewY = 0;
+  zoomInput.value = "0";
+  zoomLabel.textContent = "Zoom 1.0×";
   draw();
 });
 month.addEventListener("input", draw);

@@ -54,7 +54,7 @@ Node and three browser results.
 ```text
 src/sim/       world, substrate adapter, people fields, travel engine, dmath, worker
 src/ported/    byte-compatible RNG and copied v1 worldgen supplier
-src/shell/     terrain/climate/travel demo
+src/shell/     terrain/climate/travel demo (Equal Earth display projection; sim grid stays lat-lon)
 rust/router/   wasm-bindgen layered routing engine
 rust/people/   wasm-bindgen banded people kernel
 data/reality/  cited travel reality fixture
@@ -95,13 +95,23 @@ fudge factors.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
   fire annually; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
-- The wasm people kernel uses 16 fixed grid-derived row bands. Node
-  `worker_threads` and cross-origin-isolated browsers run those bands on a
-  shared-memory pool; hashes are identical for 1, 2, and N workers and
-  identical to the serial TypeScript oracle. Hosts without isolation fall
-  back to serial wasm, logged in the status line. The ≤15.5 ms Phase-1
-  ceiling is not met on a 4-core runner; QUESTIONS #34 has the measured
-  serial/N-thread table.
+- The wasm people kernel uses a row-major land index and 16 fixed,
+  grid-derived row bands. Only scratch and iteration are land-packed; the
+  saved people, technique, cohort, and capacity views remain full-grid.
+  Node `worker_threads` and cross-origin-isolated browsers run those bands
+  on a shared-memory pool: one per process, pre-warmed asynchronously by
+  `ensurePeopleWasm({ workers })` and borrowed by kernels; the dispatch
+  descriptor lives in shared memory and barriers wait in 1 ms slices;
+  hashes are identical for 1, 2, and N workers and identical to the serial
+  TypeScript oracle. Hosts without isolation fall back to serial wasm,
+  logged in the status line; a worker that fails mid-phase raises an error
+  through shared memory rather than hanging the coordinator. Band partials
+  accumulate in locals (per-cell writes to adjacent slots false-shared a
+  cache line and threads gave no speedup). On the review runner the target
+  shipped tick is 88 ms serial and 40 ms on three threads (78 min projected
+  for YD→1 CE); the ≤15.5 ms ceiling remains open. QUESTIONS #34 has the
+  W3 thread table and review corrections, #36 the W4 traffic ledger, the
+  false-sharing finding and the measurements.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,

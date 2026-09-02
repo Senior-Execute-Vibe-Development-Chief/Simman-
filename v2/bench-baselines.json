@@ -3,17 +3,17 @@
     "substrateMilliseconds": 2100,
     "routingInitializeMilliseconds": 20,
     "customizeMilliseconds": 50,
-    "queryMilliseconds": 45,
+    "queryMilliseconds": 60,
     "distanceMapMilliseconds": 32,
     "tickMilliseconds": 12
   },
   "target": {
     "substrateMilliseconds": 52000,
     "routingInitializeMilliseconds": 2500,
-    "customizeMilliseconds": 1800,
-    "queryMilliseconds": 2100,
-    "distanceMapMilliseconds": 2200,
+    "customizeMilliseconds": 2300,
+    "queryMilliseconds": 2600,
+    "distanceMapMilliseconds": 2700,
     "tickMilliseconds": 220
   },
-  "notes": "W2 baseline re-measured on the review runner (seed 42042, earth_sim), 10-tick cold averages: dev 8.9 ms/tick, target 169 ms/tick with the single-thread wasm kernel (pre-W2 on the same runner: 361 cold / 210 warm at target). Cursor's runner measured 2.6 / 122 ms; cross-runner numbers are not comparable, so baselines always come from the review runner. Values carry headroom; CI fails above 120%. Worker banding is NOT yet parallel (QUESTIONS #33 review note): 116,412 ticks x ~169 ms is ~5.5 h here, so the <=30-minute Phase-1 ceiling remains open. BENCH_LONG=1 adds the 1000-year target arm."
+  "notes": "W3 review re-anchor (2026-09-02) of the ROUTING rows only, upward: the router is untouched by W2/W3 but today's review container measures the target customize/query/distance-map phases ~20% above the W2 numbers (2183/2515/2626 ms vs 1800/2100/2200) and dev query fluctuates 43-72 ms; runner drift, not a regression, so the caps follow the measurement. People-tick rows unchanged: target 206 ms/tick serial cold here (W2: 169 cold / 210 pre-W2), dev 1.6 ms. Cursor's runner measured 2.6 / 122 ms; cross-runner numbers are not comparable, so baselines always come from the review runner. Values carry headroom; CI fails above 120%. Threads are real since W3 (shared-memory dispatch, 1 ms barrier slices); the cadence table in the bench output carries the per-config numbers and the <=30-minute Phase-1 ceiling remains open (W4). BENCH_LONG=1 adds the 1000-year target arm."
 }

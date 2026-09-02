@@ -223,7 +223,21 @@ they are not hidden outcome-fitting levers.
 | `CADENCE_TRAJECTORY_POP_TOLERANCE` | 0.02 | relative population delta, shipped schedule vs all-strides-1, at every checkpoint — gate tolerance, never a mechanism input |
 | `CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS` | 25 | farming-arrival delta bound, same comparison |
 | `SAVE_VERSION_W3` | 4 | saves carry the resolved schedule |
-| `PEOPLE_WORKER_WAIT_MS` | 10000 | Atomics.wait slice for band-done and worker-idle barriers |
+| `PEOPLE_WORKER_WAIT_MS` | 10000 | timeout for a worker to report ready at pool start |
+| `PEOPLE_BARRIER_WAIT_MS` | 1 | Atomics.wait slice for the band-done, worker-idle and phase barriers; a lost futex wakeup (measured: ~1 per 1000 rounds on the review runner, Node main thread ↔ workers, no wasm) then costs one slice instead of hanging |
 | `PEOPLE_WASM_MEMORY_INITIAL_PAGES` | 1024 | shared-memory people kernel initial pages (64 MiB); grows toward the max |
 | `PEOPLE_WASM_MEMORY_MAXIMUM_PAGES` | 32768 | shared-memory cap, 2 GiB, matching the threaded link `--max-memory` |
 | `PEOPLE_THREAD_STACK_BYTES` | 1048576 | per-worker shadow stack allocated at instance init |
+| `PEOPLE_WORKER_ERROR_BYTES` | 1024 | shared-memory text capacity through which a band worker reports a failure to a coordinator blocked in Atomics.wait |
+
+## M3a — proposed (review pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `PEOPLE_ADOPTION_RATE_PER_YEAR` | `[DERIVE]` | forager→farmer conversion per unit contact × advantage; grounded on the measured European Neolithic front (0.6–1.3 km/yr, Pinhasi et al. 2005) — if only an implausible value fits, the mechanism is wrong |
+| `PEOPLE_COASTAL_HOP_KM` | `[DERIVE]` (tens of km) | longest foot-and-raft water crossing; Cardial coast vs inland arrivals as the check |
+| `PEOPLE_HEARTH_SEED_FRACTION` | `[DERIVE]` | share of a hearth cell's people farming at ignition |
+| `PEOPLE_FORAGER_DENSITY_BAR` | `[DERIVE]` | peopled-basin density the hearth-maturity law already implies, made explicit |
+| crop packages (data) | per package | climate bell + growing-season minimum + storability + yield + domestication lag; `cropPackages.js` promoted to `data/reality/crop-packages.json` |
+| wild ranges (data) | raster per package | crop biogeography, baked to both grids like `LAKE_MASK` |
+| deleted | — | `PEOPLE_TECHNIQUE_WAVE_KMPY`, `PEOPLE_HEARTH_SEARCH_FRACTION`, `PEOPLE_HEARTH_SCORE_*`, `PEOPLE_HEARTH_FALLBACK_LAG_YEARS`, `PEOPLE_HEARTH_LAG_RANGE_YEARS`, `PEOPLE_HEARTH_MAX_COUNT` |

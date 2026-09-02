@@ -70,9 +70,12 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
   const technique = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT, world.N);
   people.set(world.people);
   technique.set(world.technique);
+  // No world hash per snapshot: hashWorld walks every field with BigInt
+  // arithmetic (5.3 s at the target grid — measured, review W3), which
+  // made every tick batch take seconds regardless of the kernel. The hash
+  // is reported once at creation; harnesses hash on demand.
   return {
     type: "snapshot",
-    hash: hashWorld(world),
     step: world.step,
     version: snapshotVersion++,
     cells: world.N,
@@ -82,9 +85,13 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
 }
 
 const scope = globalThis as unknown as Partial<WorkerScope>;
+// Messages are handled strictly in order: "create" awaits the wasm load, and
+// a "tick" that arrived meanwhile must wait for it, not throw (it did — the
+// shell then sat on "waiting for worker" forever; review, W3).
+let queue: Promise<unknown> = Promise.resolve();
 if (typeof scope.addEventListener === "function" && typeof scope.postMessage === "function") {
   scope.addEventListener("message", (event) => {
-    void handleWorkerMessage(event.data).then((response) => {
+    queue = queue.then(() => handleWorkerMessage(event.data)).then((response) => {
       const transfer = response.type === "snapshot" && response.buffer instanceof ArrayBuffer
         ? [response.buffer]
         : [];

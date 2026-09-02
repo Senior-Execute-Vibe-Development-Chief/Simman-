@@ -437,6 +437,43 @@ lawyered.
     ceiling closes with threads, not cadence alone. Spec:
     `spec/handoffs/W3-cadence.md`.
 
+## 2026-09-02 — Layout round
+
+25. **W4: the land-packed people kernel.** (Ratified — owner: "create the
+    spec", after the W3 review found that real threads barely scaled.)
+    W3 measured migration at 54.5 ms serial → 49.4 ms on eight threads:
+    the pass is bound by memory traffic, not arithmetic — six full-grid
+    fills/copies and three whole-grid sums per firing over arrays that
+    are 71% ocean. W4 packs every SCRATCH array and every iteration to
+    the land list (saved fields keep their full-grid views; the peopled
+    mask and band doctrine unchanged), folds the serial preludes and
+    totals into the banded phases with per-band partials combined in
+    band order (the one allowed result change — a summation order,
+    proved harmless by the stride arm), and optionally narrows cleared
+    scratch to f32 storage with f64 arithmetic in lockstep with the TS
+    oracle. Byte-exact parity remains the acceptance instrument. Spec:
+    `spec/handoffs/W4-layout.md`. Branches from the W3 merge.
+
+## 2026-09-02 — Wave-and-crops round
+
+26. **M3a: the wave and the crops.** (Ratified — owner: "yes, write the
+    spec", after the 4400 BCE play-report: Europe unfarmed, the Near
+    Eastern package across the Sahel, all India farmed, a Chaco blob,
+    diamond fronts.) M3 splits in two. M3a makes the spread of farming a
+    prediction: crop packages with climate bells and a growing-season
+    minimum; wild-progenitor RANGES as data replacing the hearth pins
+    (hearths condense where a peopled basin sits on a range for the
+    package's lag; pins become the reality check); farmers as a
+    sub-population per package carried by migration, so the front's speed
+    is 2√(rD) of the farmer group and the 1 km/yr constant is deleted;
+    conversion by contact × (farmed − forager) advantage, which is the
+    forager-resistance and the climate wall in one expression; spread
+    over the travel field with 8 neighbours and coastal hops of tens of
+    km; the European radiocarbon front as the reality table. M3b (food,
+    storage, bad years, herds, fish, communities) follows on the map M3a
+    produces. Spec: `spec/handoffs/M3a-wave.md`. Branches from the merge
+    of the working branch into main.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
@@ -448,6 +485,17 @@ lawyered.
   physics. Bake-side only — no live sea level; replaces dials with data
   (R2/R7). Not needed for M2: the proxies already yield the correct
   peopling extents and ordering that its gates consume.
+- **P10. Paleoclimate anomaly track** (review, 2026-09-02). The sim
+  applies today's climatology from 9700 BCE; the Sahara was green from
+  ~9000 to ~4000 BCE, with lakes, herders, and the first Nile settlers
+  pushed out of it as it dried, and the 8200 BCE cold event pushed
+  farmers into Europe. A dated anomaly track (temperature/precipitation
+  deltas by region and millennium, from paleoclimate reconstructions) is
+  an exogenous forcing under R1 — a boundary condition like the observed
+  climate, never a gate — but it breaks the immutable-substrate doctrine
+  the same way P9 does, so the shape is epoch-staged rebuilds (can-grow
+  LUTs and capacity recomputed at a stage). Wanted before M3b: famine
+  geography in North Africa depends on it.
 - **P9. Holocene sea-rise epoch staging (Phase 2+).** The YD→6kya rise
   falls inside the simulated window (the Persian Gulf fills; Doggerland
   and Sundaland drown ~8kya). A sea-level track is a legitimate
