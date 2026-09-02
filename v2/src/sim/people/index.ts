@@ -46,7 +46,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   }
   world._landCells = world._landCells.slice(0, landCount);
   world._packedOf = new Int32Array(length);
-  world._packedOf.fill(-1);
+  world._packedOf.fill(MATH_NEGATIVE_ONE);
   for (let packed = 0; packed < landCount; packed++) {
     const cell = world._landCells[packed] ?? 0;
     world._packedOf[cell] = packed;
