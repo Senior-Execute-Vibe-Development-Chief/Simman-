@@ -86,9 +86,13 @@ milestone makes it come out of ours.
 ### 0. Baseline
 
 Before any change, at the target grid: the technique map at −8000, −6000,
-−4000 and the arrival table (the target long-arm rows in
-`known-misses-people.json` are the baseline; QUESTIONS #36 has the dev
-numbers). This is what the wave is judged against, before and after.
+−4000 and the arrival table. The target long-arm rows in
+`known-misses-people.json` are the baseline; if they are still absent
+when you start, run `GATE_PEOPLE_LONG=1 npm run gate:people` once at the
+target grid (~35 min on a 4-core box with the packed threaded kernel) and
+write them with physical reasons before touching the wave. QUESTIONS #36
+has the dev numbers. This is what the wave is judged against, before and
+after.
 
 ### 1. The package catalogue and two overlays (data)
 
