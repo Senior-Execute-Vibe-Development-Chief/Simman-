@@ -13,7 +13,11 @@
  * Shape distortion in a pseudocylindrical projection grows with distance
  * from the central meridian, so the centre is movable: dragging at zoom 1
  * spins the world about its polar axis and whatever is studied sits where
- * shapes are near-true (owner request 2026-09-02).
+ * shapes are near-true (owner request 2026-09-02). Both projections are
+ * pseudocylindrical — every output row is one latitude — so recentring is
+ * a pure horizontal shift of source columns: the table is built ONCE per
+ * projection and the centre is applied at sampling time, which makes the
+ * spin instant at any grid (owner: "make the scroll instant").
  */
 
 export type ProjectionName = "equal-earth" | "plate-carree";
@@ -38,6 +42,7 @@ const M = Math.sqrt(3) / 2;
 const NEWTON_ITERATIONS = 12;
 const NEWTON_EPSILON = 1e-11;
 const DEGREES_PER_HALF_TURN = 180;
+const SEAM_INSET = 1e-9;
 
 function equalEarthY(theta: number): number {
   const t2 = theta * theta;
@@ -93,29 +98,38 @@ export const PROJECTIONS: Record<ProjectionName, Projection> = {
   "plate-carree": PLATE_CARREE,
 };
 
-function wrapLongitude(lon: number): number {
+export function wrapLongitude(lon: number): number {
   let result = lon;
   while (result > Math.PI) result -= 2 * Math.PI;
   while (result < -Math.PI) result += 2 * Math.PI;
   return result;
 }
 
-/** A projection instantiated for one grid and one central meridian. */
+export function degreesToRadians(degrees: number): number {
+  return (degrees / DEGREES_PER_HALF_TURN) * Math.PI;
+}
+
+/**
+ * A projection instantiated for one grid. The central meridian is NOT
+ * baked in: every accessor takes it (radians, east positive), and
+ * `cellAt` applies it as a column shift snapped to whole source cells.
+ */
 export interface ProjectionTable {
   readonly projection: Projection;
-  readonly centralMeridian: number; // radians, east positive
   readonly gridWidth: number;
   readonly gridHeight: number;
   readonly width: number;
   readonly height: number;
-  /** Source cell index per output pixel, or −1 off the globe. */
-  readonly cellOf: Int32Array;
-  /** (λ, φ) absolute, radians → output pixel coordinates. */
-  lonLatToPixel(lon: number, lat: number): [number, number];
-  /** Fractional sim-grid coordinates → output pixel coordinates. */
-  gridToPixel(x: number, y: number): [number, number];
-  /** Output pixel → (λ, φ) absolute, or undefined off the globe. */
-  pixelToLonLat(px: number, py: number): [number, number] | undefined;
+  /** Source row per output row (one latitude per row), or −1 above/below the globe. */
+  readonly rowOf: Int32Array;
+  /** Source column per output pixel at centre 0°, or −1 off the globe. */
+  readonly columnOf: Int32Array;
+  /** Whole-cell column shift for a central meridian (snapped). */
+  shiftFor(centralMeridian: number): number;
+  /** Source cell under an output pixel for a given column shift, or −1. */
+  cellAt(px: number, py: number, shift: number): number;
+  lonLatToPixel(lon: number, lat: number, centralMeridian: number): [number, number];
+  gridToPixel(x: number, y: number, centralMeridian: number): [number, number];
 }
 
 export function projectedSize(projection: Projection, gridWidth: number): { width: number; height: number } {
@@ -125,95 +139,104 @@ export function projectedSize(projection: Projection, gridWidth: number): { widt
   };
 }
 
-/** Build the per-pixel sampling table once per (projection, grid, centre). */
+/** Build the per-pixel sampling table once per (projection, grid). */
 export function buildProjectionTable(
   projection: Projection,
   gridWidth: number,
   gridHeight: number,
-  centralMeridianDegrees = 0,
 ): ProjectionTable {
-  const centralMeridian = (centralMeridianDegrees / DEGREES_PER_HALF_TURN) * Math.PI;
   const { width, height } = projectedSize(projection, gridWidth);
-  const cellOf = new Int32Array(width * height).fill(-1);
-  const pixelToLonLat = (px: number, py: number): [number, number] | undefined => {
-    const x = (px / width) * 2 * projection.halfWidth - projection.halfWidth;
-    const y = projection.halfHeight - (py / height) * 2 * projection.halfHeight;
-    const relative = projection.unproject(x, y);
-    if (!relative) return undefined;
-    return [wrapLongitude(relative[0] + centralMeridian), relative[1]];
-  };
-  const lonLatToPixel = (lon: number, lat: number): [number, number] => {
+  const rowOf = new Int32Array(height).fill(-1);
+  const columnOf = new Int32Array(width * height).fill(-1);
+  for (let py = 0; py < height; py++) {
+    const y = projection.halfHeight - ((py + 0.5) / height) * 2 * projection.halfHeight;
+    const centre = projection.unproject(0, y);
+    if (!centre) continue;
+    const gy = ((Math.PI / 2 - centre[1]) / Math.PI) * gridHeight;
+    rowOf[py] = Math.min(gridHeight - 1, Math.max(0, Math.floor(gy)));
+    for (let px = 0; px < width; px++) {
+      const x = ((px + 0.5) / width) * 2 * projection.halfWidth - projection.halfWidth;
+      const lonLat = projection.unproject(x, y);
+      if (!lonLat) continue;
+      const gx = ((lonLat[0] + Math.PI) / (2 * Math.PI)) * gridWidth;
+      columnOf[py * width + px] = Math.min(gridWidth - 1, Math.max(0, Math.floor(gx)));
+    }
+  }
+  const lonLatToPixel = (lon: number, lat: number, centralMeridian: number): [number, number] => {
     const [x, y] = projection.project(wrapLongitude(lon - centralMeridian), lat);
     return [
       ((x + projection.halfWidth) / (2 * projection.halfWidth)) * width,
       ((projection.halfHeight - y) / (2 * projection.halfHeight)) * height,
     ];
   };
-  const gridToPixel = (x: number, y: number): [number, number] => lonLatToPixel(
-    (x / gridWidth) * 2 * Math.PI - Math.PI,
-    Math.PI / 2 - (y / gridHeight) * Math.PI,
-  );
-  for (let py = 0; py < height; py++) {
-    for (let px = 0; px < width; px++) {
-      const lonLat = pixelToLonLat(px + 0.5, py + 0.5);
-      if (!lonLat) continue;
-      const gx = ((lonLat[0] + Math.PI) / (2 * Math.PI)) * gridWidth;
-      const gy = ((Math.PI / 2 - lonLat[1]) / Math.PI) * gridHeight;
-      const x = Math.min(gridWidth - 1, Math.max(0, Math.floor(gx)));
-      const y = Math.min(gridHeight - 1, Math.max(0, Math.floor(gy)));
-      cellOf[py * width + px] = y * gridWidth + x;
-    }
-  }
   return {
     projection,
-    centralMeridian,
     gridWidth,
     gridHeight,
     width,
     height,
-    cellOf,
+    rowOf,
+    columnOf,
+    shiftFor(centralMeridian) {
+      const cells = Math.round((centralMeridian / (2 * Math.PI)) * gridWidth);
+      return ((cells % gridWidth) + gridWidth) % gridWidth;
+    },
+    cellAt(px, py, shift) {
+      const row = rowOf[py] ?? -1;
+      const column = columnOf[py * width + px] ?? -1;
+      if (row < 0 || column < 0) return -1;
+      let x = column + shift;
+      if (x >= gridWidth) x -= gridWidth;
+      return row * gridWidth + x;
+    },
     lonLatToPixel,
-    gridToPixel,
-    pixelToLonLat,
+    gridToPixel(x, y, centralMeridian) {
+      return lonLatToPixel(
+        (x / gridWidth) * 2 * Math.PI - Math.PI,
+        Math.PI / 2 - (y / gridHeight) * Math.PI,
+        centralMeridian,
+      );
+    },
   };
 }
 
 /** Outline of the globe (the seam meridian, both sides) as output-pixel points, clockwise from the north pole. */
-export function globeOutline(table: ProjectionTable, samples = 90): Array<[number, number]> {
+export function globeOutline(table: ProjectionTable, centralMeridian: number, samples = 90): Array<[number, number]> {
   const points: Array<[number, number]> = [];
-  const east = table.centralMeridian + Math.PI;
-  const west = table.centralMeridian - Math.PI;
+  const east = centralMeridian + Math.PI - SEAM_INSET;
+  const west = centralMeridian - Math.PI + SEAM_INSET;
   for (let index = 0; index <= samples; index++) {
-    points.push(table.lonLatToPixel(east - 1e-9, Math.PI / 2 - (index / samples) * Math.PI));
+    points.push(table.lonLatToPixel(east, Math.PI / 2 - (index / samples) * Math.PI, centralMeridian));
   }
   for (let index = samples; index >= 0; index--) {
-    points.push(table.lonLatToPixel(west + 1e-9, Math.PI / 2 - (index / samples) * Math.PI));
+    points.push(table.lonLatToPixel(west, Math.PI / 2 - (index / samples) * Math.PI, centralMeridian));
   }
   return points;
 }
 
-/** Graticule lines every `stepDegrees` of absolute longitude/latitude, as output-pixel polylines; meridians break at the seam. */
+/** Graticule lines every `stepDegrees` of absolute longitude/latitude, as output-pixel polylines. */
 export function graticule(
   table: ProjectionTable,
+  centralMeridian: number,
   stepDegrees = 30,
   samples = 60,
 ): Array<Array<[number, number]>> {
   const lines: Array<Array<[number, number]>> = [];
-  const step = (stepDegrees / DEGREES_PER_HALF_TURN) * Math.PI;
+  const step = degreesToRadians(stepDegrees);
   for (let lon = -Math.PI + step; lon < Math.PI - step / 2; lon += step) {
     const line: Array<[number, number]> = [];
     for (let index = 0; index <= samples; index++) {
-      line.push(table.lonLatToPixel(lon, Math.PI / 2 - (index / samples) * Math.PI));
+      line.push(table.lonLatToPixel(lon, Math.PI / 2 - (index / samples) * Math.PI, centralMeridian));
     }
     lines.push(line);
   }
   for (let lat = -Math.PI / 2 + step; lat < Math.PI / 2 - step / 2; lat += step) {
-    // A parallel is drawn from the western seam to the eastern seam so it
-    // never jumps across the map when the centre is not 0°.
+    // A parallel runs from the western seam to the eastern seam so it never
+    // jumps across the map when the centre is not 0°.
     const line: Array<[number, number]> = [];
     for (let index = 0; index <= samples; index++) {
-      const lon = table.centralMeridian - Math.PI + 1e-9 + (index / samples) * (2 * Math.PI - 2e-9);
-      line.push(table.lonLatToPixel(lon, lat));
+      const lon = centralMeridian - Math.PI + SEAM_INSET + (index / samples) * (2 * Math.PI - 2 * SEAM_INSET);
+      line.push(table.lonLatToPixel(lon, lat, centralMeridian));
     }
     lines.push(line);
   }

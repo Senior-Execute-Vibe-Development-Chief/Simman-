@@ -14,6 +14,7 @@ import {
   buildProjectionTable,
   globeOutline,
   graticule,
+  degreesToRadians,
   PROJECTIONS,
   type ProjectionName,
   type ProjectionTable,
@@ -56,29 +57,39 @@ const frame = new ImageData(substrate.width, substrate.height);
 const base = document.createElement("canvas");
 const baseContext = base.getContext("2d")!;
 let baseKey = "";
+let lastFrameKey = "";
 const OFF_GLOBE: readonly [number, number, number] = [12, 18, 24];
 let table: ProjectionTable;
 let projected: ImageData | undefined;
 let outline: Array<[number, number]> = [];
 let graticuleLines: Array<Array<[number, number]>> = [];
 // Central meridian in degrees east. Dragging at zoom 1 spins the world about
-// its polar axis so the studied region sits where shapes are near-true.
+// its polar axis so the studied region sits where shapes are near-true. The
+// table is built once per projection; the centre is a column shift applied
+// while sampling, so the spin is instant at any grid.
 let centreDegrees = 0;
-let tableBuildMs = 0;
-// Rebuild the table live while dragging only when it is cheap (the dev
-// grid); the target grid's 1.6M-pixel table rebuilds on release instead.
-const LIVE_ROTATE_BUDGET_MS = 40;
-let rotateDirty = false;
+
+/** The central meridian in radians, snapped to the whole-cell shift the table uses. */
+function centralMeridian(): number {
+  const shift = table.shiftFor(degreesToRadians(centreDegrees));
+  return (shift / substrate.width) * 2 * Math.PI;
+}
 
 function formatCentre(): string {
-  const wrapped = ((centreDegrees + 180) % 360 + 360) % 360 - 180;
+  const degrees = (centralMeridian() / Math.PI) * 180;
+  const wrapped = ((degrees + 180) % 360 + 360) % 360 - 180;
   return `Centre ${Math.abs(Math.round(wrapped))}°${wrapped < 0 ? "W" : "E"}`;
 }
 
+function applyCentre(): void {
+  const centre = centralMeridian();
+  outline = globeOutline(table, centre);
+  graticuleLines = graticule(table, centre);
+  centreLabel.textContent = formatCentre();
+}
+
 function applyProjection(name: ProjectionName): void {
-  const started = performance.now();
-  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height, centreDegrees);
-  tableBuildMs = performance.now() - started;
+  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height);
   if (!projected || projected.width !== table.width || projected.height !== table.height) {
     projected = new ImageData(table.width, table.height);
     canvas.width = table.width;
@@ -87,10 +98,7 @@ function applyProjection(name: ProjectionName): void {
     base.width = table.width;
     base.height = table.height;
   }
-  outline = globeOutline(table);
-  graticuleLines = graticule(table);
-  centreLabel.textContent = formatCentre();
-  rotateDirty = false;
+  applyCentre();
   baseKey = "";
 }
 applyProjection(projectionSelect.value as ProjectionName);
@@ -123,6 +131,7 @@ worker.addEventListener("message", (event) => {
     overlayTechnique.set(techniqueView);
     population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
     baseKey = "";
+    lastFrameKey = "";
     draw();
     worker.postMessage({ type: "recycle", buffer }, [buffer]);
   }
@@ -265,10 +274,14 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
 }
 
 function renderBase(selectedMonth: number): void {
-  const key = `${table.projection.name}|${lens.value}|${selectedMonth}`;
+  const shift = table.shiftFor(degreesToRadians(centreDegrees));
+  const frameKey = `${lens.value}|${selectedMonth}`;
+  const key = `${table.projection.name}|${shift}|${frameKey}`;
   if (key === baseKey) return;
   const pixels = frame.data;
-  for (let cell = 0; cell < substrate.N; cell++) {
+  // Per-cell colours depend on lens and month only; projection and centre
+  // are applied by sampling, so a spin never recomputes a colour.
+  if (frameKey !== lastFrameKey) for (let cell = 0; cell < substrate.N; cell++) {
     const [red, green, blue] = pixelColor(cell, selectedMonth);
     const offset = cell * 4;
     pixels[offset] = red;
@@ -276,11 +289,17 @@ function renderBase(selectedMonth: number): void {
     pixels[offset + 2] = blue;
     pixels[offset + 3] = 255;
   }
+  lastFrameKey = frameKey;
   if (!projected) return;
   const out = projected.data;
-  const cellOf = table.cellOf;
-  for (let pixel = 0; pixel < cellOf.length; pixel++) {
-    const cell = cellOf[pixel] ?? -1;
+  const { rowOf, columnOf, width, gridWidth } = table;
+  for (let py = 0, pixel = 0; py < table.height; py++) {
+    const row = rowOf[py] ?? -1;
+    for (let px = 0; px < width; px++, pixel++) {
+    const column = row < 0 ? -1 : (columnOf[pixel] ?? -1);
+    let x = column + shift;
+    if (x >= gridWidth) x -= gridWidth;
+    const cell = column < 0 ? -1 : row * gridWidth + x;
     const offset = pixel * 4;
     if (cell < 0) {
       out[offset] = OFF_GLOBE[0];
@@ -293,6 +312,7 @@ function renderBase(selectedMonth: number): void {
       out[offset + 2] = pixels[source + 2] ?? 0;
     }
     out[offset + 3] = 255;
+    }
   }
   baseContext.putImageData(projected, 0, 0);
   baseKey = key;
@@ -300,14 +320,15 @@ function renderBase(selectedMonth: number): void {
 
 /** Sim-grid cell coordinates → canvas pixels, through the projection and viewport. */
 function toScreenXY(x: number, y: number): [number, number] {
-  const [px, py] = table.gridToPixel(x + 0.5, y + 0.5);
+  const [px, py] = table.gridToPixel(x + 0.5, y + 0.5, centralMeridian());
   return [(px - viewX) * zoom, (py - viewY) * zoom];
 }
 
 /** The seam meridian at a sim row, on the east (+1) or west (−1) map edge, in canvas pixels. */
 function seamScreenXY(y: number, side: 1 | -1): [number, number] {
   const lat = Math.PI / 2 - ((y + 0.5) / substrate.height) * Math.PI;
-  const [px, py] = table.lonLatToPixel(table.centralMeridian + side * (Math.PI - 1e-9), lat);
+  const centre = centralMeridian();
+  const [px, py] = table.lonLatToPixel(centre + side * (Math.PI - 1e-9), lat, centre);
   return [(px - viewX) * zoom, (py - viewY) * zoom];
 }
 
@@ -453,7 +474,7 @@ function cellFromPointer(event: MouseEvent): number | undefined {
   const fy = (event.clientY - bounds.top) / bounds.height;
   const px = clamp(Math.floor(viewX + fx * table.width / zoom), 0, table.width - 1);
   const py = clamp(Math.floor(viewY + fy * table.height / zoom), 0, table.height - 1);
-  const cell = table.cellOf[py * table.width + px] ?? -1;
+  const cell = table.cellAt(px, py, table.shiftFor(degreesToRadians(centreDegrees)));
   return cell < 0 ? undefined : cell;
 }
 
@@ -530,13 +551,8 @@ canvas.addEventListener("pointermove", (event) => {
     // Nothing to pan at zoom 1: a horizontal drag spins the world instead.
     // Dragging the map right carries land east, so the centre moves west.
     centreDegrees -= dx / bounds.width * 360;
-    if (tableBuildMs < LIVE_ROTATE_BUDGET_MS) {
-      applyProjection(projectionSelect.value as ProjectionName);
-      draw();
-    } else {
-      rotateDirty = true;
-      centreLabel.textContent = `${formatCentre()} (release to redraw)`;
-    }
+    applyCentre();
+    draw();
     return;
   }
   viewX -= dx / bounds.width * table.width / zoom;
@@ -550,13 +566,7 @@ function releasePointer(event: PointerEvent): void {
   if (event.type !== "pointerup" || pointers.size > 0) return;
   const wasDrag = dragged;
   dragged = false;
-  if (wasDrag) {
-    if (rotateDirty) {
-      applyProjection(projectionSelect.value as ProjectionName);
-      draw();
-    }
-    return;
-  }
+  if (wasDrag) return;
   const cell = cellFromPointer(event);
   if (cell === undefined) return;
   if (startCell === undefined) {
