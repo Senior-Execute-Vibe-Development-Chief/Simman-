@@ -904,15 +904,16 @@ Review corrections to the M1 build (all validated before merge):
     | config | ms/tick | idle-barrier ms/tick | projected YD→1 CE |
     |---|---:|---:|---:|
     | serial stride-1 | 74.59 | 0 | 144.7 min |
-    | serial shipped | 46.20 | 0 | 89.6 min |
-    | 3 threads stride-1 | 75.12 | 0.009 | 145.7 min |
-    | 3 threads shipped | 48.84 | 0.003 | 94.8 min |
-    | 8 threads stride-1 | 65.98 | 0.069 | 128.0 min |
-    | 8 threads shipped | 41.64 | 0.008 | 80.8 min |
+    | serial shipped | 46.73 | 0 | 90.7 min |
+    | 3 threads stride-1 | 77.20 | 0.009 | 149.8 min |
+    | 3 threads shipped | 47.67 | 0.002 | 92.5 min |
+    | 8 threads stride-1 | 66.66 | 0.015 | 129.3 min |
+    | 8 threads shipped | 43.33 | 0.053 | 84.1 min |
 
-    Dev measurements were 1.393 / 0.117 ms/tick for serial stride-1 /
-    shipped, 1.644 / 0.157 for 3 threads, and 2.025 / 0.225 for 8
-    threads. The target result is a 73.0 → 46.2 ms shipped-schedule
+    Dev measurements were 1.370 / 0.118 ms/tick for serial stride-1 /
+    shipped, 1.688 / 0.135 for 3 threads, and 835.43 / 0.172 for 8
+    threads (the stride-1 eight-worker sample hit a 833.63 ms barrier
+    outlier). The target result is a 73.0 → 46.7 ms shipped-schedule
     reduction from W3, but the ≤15.5 ms ceiling remains unmet even with
     eight workers on four cores. The remaining dominant target costs are
     monthly migration (37.4 ms) and the per-commit cohort/ledger tail
@@ -929,7 +930,14 @@ Review corrections to the M1 build (all validated before merge):
     The measured dev summation-order delta between the old row-major packed
     land-list fold and the W4 ascending band fold is +2.91e-11 persons for
     migration out and −1.75e-10 persons for migration received on the
-    12-tick probe. The target probe is included with the gate measurements.
-    The W4 stride arm is running at both grids (dev and target, 3000-year
-    horizon); its population and farming-arrival deltas will be appended
-    here with the gate result.
+    12-tick probe. The target values are −8.38e-9 and +2.11e-8 persons.
+    The W4 3000-year stride arm passed at both grids. Dev population
+    reference/shipped at −8000 was 5,265,868.263 / 5,265,657.124
+    (relative Δ 4.01e-5); arrival deltas were 0 years for the Fertile
+    Crescent, Nile, and Yellow River, 10 years for the Indus, and both
+    Mesoamerica/Andes were unreached in both arms. Target population
+    reference/shipped was 5,547,996.562 / 5,548,029.649 (relative Δ
+    5.96e-6); Fertile Crescent, Nile, Yellow River, and Indus arrival
+    deltas were all 0 years, with Mesoamerica/Andes unreached. The gate
+    reported five dev and six target hearths ignited by 3000 years and
+    `gate: pass` with no unexpected or stale misses.

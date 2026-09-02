@@ -101,7 +101,7 @@ fudge factors.
   Node `worker_threads` and cross-origin-isolated browsers run those bands on
   a shared-memory pool; hashes are identical for 1, 2, and N workers and the
   serial TypeScript oracle. On the review runner, target serial shipped is
-  46.20 ms/tick and 8 workers are 41.64 ms/tick (80.8 minutes projected for
+  46.73 ms/tick and 8 workers are 43.33 ms/tick (84.1 minutes projected for
   YD→1 CE); the ≤15.5 ms ceiling remains open. QUESTIONS #35 has the traffic
   ledger, barrier, stride, and core-count findings.
 - `collect()` measures numeric leaves and distributions by default; its
