@@ -168,19 +168,37 @@ function clamp(value: number, low: number, high: number): number {
 }
 
 // The viewport lives in projected-map pixels (table.width × table.height).
+// Horizontal movement is ALWAYS a spin of the central meridian (owner: "the
+// pan should always recenter the map"), so the viewport stays horizontally
+// centred at every zoom; only the vertical offset pans.
 function clampView(): void {
   zoom = clamp(zoom, 1, 64);
-  viewX = clamp(viewX, 0, table.width - table.width / zoom);
+  viewX = (table.width - table.width / zoom) / 2;
   viewY = clamp(viewY, 0, table.height - table.height / zoom);
+}
+
+/** Absolute longitude/latitude under a canvas fraction, or undefined off the globe. */
+function lonLatAtScreen(fx: number, fy: number): [number, number] | undefined {
+  return table.pixelToLonLat(viewX + fx * table.width / zoom, viewY + fy * table.height / zoom, centralMeridian());
+}
+
+/** Spin so that the longitude `lon` sits under canvas fraction (fx, fy). */
+function spinLongitudeTo(lon: number, fx: number, fy: number): void {
+  const after = lonLatAtScreen(fx, fy);
+  if (!after) return;
+  const delta = lon - after[0];
+  centreDegrees += (Math.atan2(Math.sin(delta), Math.cos(delta)) / Math.PI) * 180;
+  applyCentre();
 }
 
 /** Set zoom keeping the map point under (fx, fy) — canvas fractions — fixed. */
 function setZoom(next: number, fx = 0.5, fy = 0.5): void {
-  const anchorX = viewX + fx * table.width / zoom;
+  const before = lonLatAtScreen(fx, fy);
   const anchorY = viewY + fy * table.height / zoom;
   zoom = clamp(next, 1, 64);
-  viewX = anchorX - fx * table.width / zoom;
   viewY = anchorY - fy * table.height / zoom;
+  clampView();
+  if (before) spinLongitudeTo(before[0], fx, fy);
   zoomInput.value = String(Math.log2(zoom));
   zoomLabel.textContent = `Zoom ${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×`;
   draw();
@@ -547,16 +565,20 @@ canvas.addEventListener("pointermove", (event) => {
   const dy = event.clientY - previous.y;
   if (Math.abs(event.clientX - previous.x) + Math.abs(event.clientY - previous.y) > 4) dragged = true;
   if (!dragged) return;
-  if (zoom <= 1) {
-    // Nothing to pan at zoom 1: a horizontal drag spins the world instead.
-    // Dragging the map right carries land east, so the centre moves west.
-    centreDegrees -= dx / bounds.width * 360;
-    applyCentre();
-    draw();
-    return;
-  }
-  viewX -= dx / bounds.width * table.width / zoom;
+  // A horizontal drag spins the world at every zoom, scaled so the land
+  // under the pointer tracks it: one screen pixel is 360° over the width of
+  // the pointer's own parallel (rows shrink toward the poles in Equal
+  // Earth). Dragging right carries land east, so the centre moves west.
+  const fy = (event.clientY - bounds.top) / bounds.height;
+  const here = lonLatAtScreen(0.5, fy);
+  const centre = centralMeridian();
+  const lat = here ? here[1] : 0;
+  const [westX] = table.lonLatToPixel(centre - Math.PI + 1e-9, lat, centre);
+  const [eastX] = table.lonLatToPixel(centre + Math.PI - 1e-9, lat, centre);
+  const rowWidthScreen = Math.max(1, (eastX - westX) * zoom * bounds.width / canvas.width);
+  centreDegrees -= dx / rowWidthScreen * 360;
   viewY -= dy / bounds.height * table.height / zoom;
+  applyCentre();
   draw();
 });
 function releasePointer(event: PointerEvent): void {

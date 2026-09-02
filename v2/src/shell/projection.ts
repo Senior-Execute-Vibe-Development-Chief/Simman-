@@ -130,6 +130,8 @@ export interface ProjectionTable {
   cellAt(px: number, py: number, shift: number): number;
   lonLatToPixel(lon: number, lat: number, centralMeridian: number): [number, number];
   gridToPixel(x: number, y: number, centralMeridian: number): [number, number];
+  /** Output pixel → absolute (λ, φ) in radians, or undefined off the globe. */
+  pixelToLonLat(px: number, py: number, centralMeridian: number): [number, number] | undefined;
 }
 
 export function projectedSize(projection: Projection, gridWidth: number): { width: number; height: number } {
@@ -196,6 +198,13 @@ export function buildProjectionTable(
         Math.PI / 2 - (y / gridHeight) * Math.PI,
         centralMeridian,
       );
+    },
+    pixelToLonLat(px, py, centralMeridian) {
+      const x = (px / width) * 2 * projection.halfWidth - projection.halfWidth;
+      const y = projection.halfHeight - (py / height) * 2 * projection.halfHeight;
+      const relative = projection.unproject(x, y);
+      if (!relative) return undefined;
+      return [wrapLongitude(relative[0] + centralMeridian), relative[1]];
     },
   };
 }
