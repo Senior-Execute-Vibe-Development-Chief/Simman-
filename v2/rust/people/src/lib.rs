@@ -223,6 +223,8 @@ pub struct PeopleKernel {
 
     // Authoritative people state and all hot-path scratch live in this
     // instance. JavaScript only keeps typed-array views onto these vectors.
+    land_cells: Vec<u32>,
+    packed_of: Vec<i32>,
     people: Vec<f64>,
     technique: Vec<f64>,
     children: Vec<f64>,
@@ -243,16 +245,14 @@ pub struct PeopleKernel {
     migration_received_cell: Vec<f64>,
 
     migration_month: usize,
+    migration_dt_months: f64,
+    migration_growth_prepared: bool,
     growth_dt_months: f64,
     births_by_band: [f64; PEOPLE_BAND_COUNT],
     deaths_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_received_by_band: [f64; PEOPLE_BAND_COUNT],
-    births_legacy: f64,
-    deaths_legacy: f64,
-    migration_legacy: f64,
-    migration_received_legacy: f64,
-    parallel_reductions: bool,
+    migration_total_value: f64,
 }
 
 #[wasm_bindgen]
@@ -279,11 +279,21 @@ impl PeopleKernel {
         migration_share_row: &[f64],
     ) -> PeopleKernel {
         let cells = width.saturating_mul(height);
+        let land = copy_u8(land, cells, 0);
+        let mut land_cells = Vec::new();
+        let mut packed_of = vec![-1; cells];
+        for cell in 0..cells {
+            if land[cell] != 0 {
+                packed_of[cell] = land_cells.len() as i32;
+                land_cells.push(cell as u32);
+            }
+        }
+        let land_count = land_cells.len();
         PeopleKernel {
             width,
             height,
             cells,
-            land: copy_u8(land, cells, 0),
+            land,
             peopled: copy_u8(peopled, cells, 0),
             fertility: copy_f64(fertility, cells),
             water_access: copy_f64(water_access, cells),
@@ -298,35 +308,35 @@ impl PeopleKernel {
             migration_edge_h: copy_f64(migration_edge_h, height),
             migration_edge_v,
             migration_share_row: copy_f64(migration_share_row, height),
+            land_cells,
+            packed_of,
             people: vec![0.0; cells],
             technique: vec![0.0; cells],
             children: vec![0.0; cells],
             working: vec![0.0; cells],
             elders: vec![0.0; cells],
             capacity: vec![0.0; cells],
-            people_next: vec![0.0; cells],
-            technique_next: vec![0.0; cells],
-            children_mass: vec![0.0; cells],
-            working_mass: vec![0.0; cells],
-            elders_mass: vec![0.0; cells],
-            children_next: vec![0.0; cells],
-            working_next: vec![0.0; cells],
-            elders_next: vec![0.0; cells],
-            migration_out: vec![0.0; cells],
-            migration_weight: vec![0.0; cells],
-            migration_population: vec![0.0; cells],
-            migration_received_cell: vec![0.0; cells],
+            people_next: vec![0.0; land_count],
+            technique_next: vec![0.0; land_count],
+            children_mass: vec![0.0; land_count],
+            working_mass: vec![0.0; land_count],
+            elders_mass: vec![0.0; land_count],
+            children_next: vec![0.0; land_count],
+            working_next: vec![0.0; land_count],
+            elders_next: vec![0.0; land_count],
+            migration_out: vec![0.0; land_count],
+            migration_weight: vec![0.0; land_count],
+            migration_population: vec![0.0; land_count],
+            migration_received_cell: vec![0.0; land_count],
             migration_month: 0,
+            migration_dt_months: 1.0,
+            migration_growth_prepared: false,
             growth_dt_months: 1.0,
             births_by_band: [0.0; PEOPLE_BAND_COUNT],
             deaths_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_received_by_band: [0.0; PEOPLE_BAND_COUNT],
-            births_legacy: 0.0,
-            deaths_legacy: 0.0,
-            migration_legacy: 0.0,
-            migration_received_legacy: 0.0,
-            parallel_reductions: false,
+            migration_total_value: 0.0,
         }
     }
 
@@ -336,10 +346,6 @@ impl PeopleKernel {
 
     pub fn kernel_ptr(&self) -> usize {
         self as *const PeopleKernel as usize
-    }
-
-    pub fn set_parallel_reductions(&mut self, enabled: bool) {
-        self.parallel_reductions = enabled;
     }
 
     pub fn technique_ptr(&self) -> usize {
@@ -406,13 +412,14 @@ impl PeopleKernel {
         self.migration_population.as_ptr() as usize
     }
 
+    pub fn migration_received_ptr(&self) -> usize {
+        self.migration_received_cell.as_ptr() as usize
+    }
+
     pub fn derive_capacity_band(&mut self, raw_lo: usize, raw_hi: usize) {
-        let hi = raw_hi.min(self.cells);
-        for cell in raw_lo.min(hi)..hi {
-            if self.land[cell] == 0 {
-                self.capacity[cell] = 0.0;
-                continue;
-            }
+        let hi = raw_hi.min(self.land_cells.len());
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
             let fertility = clamp01(self.fertility[cell]);
             let technique = clamp01(self.technique[cell]);
             let access = self.water_access[cell];
@@ -435,19 +442,23 @@ impl PeopleKernel {
     }
 
     pub fn prepare_technique(&mut self) {
-        self.technique_next.copy_from_slice(&self.technique);
+        for packed in 0..self.land_cells.len() {
+            let cell = self.land_cells[packed] as usize;
+            self.technique_next[packed] = self.technique[cell];
+        }
     }
 
     pub fn technique_band(&mut self, raw_lo: usize, raw_hi: usize, dt_months: f64) {
-        let hi = raw_hi.min(self.cells);
-        for cell in raw_lo.min(hi)..hi {
-            if self.land[cell] == 0 || self.peopled[cell] == 0 {
+        let hi = raw_hi.min(self.land_cells.len());
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            if self.peopled[cell] == 0 {
                 continue;
             }
             let y = cell / self.width.max(1);
             let x = cell - y * self.width.max(1);
             let current = self.technique[cell];
-            let mut candidate = current.max(self.technique_next[cell]);
+            let mut candidate = current.max(self.technique_next[packed]);
 
             // Direction order N, S, W, E is part of the oracle contract.
             if y > 0 {
@@ -489,7 +500,7 @@ impl PeopleKernel {
                 dt_months,
             );
 
-            self.technique_next[cell] = current.max(candidate.min(1.0));
+            self.technique_next[packed] = current.max(candidate.min(1.0));
         }
     }
 
@@ -532,34 +543,36 @@ impl PeopleKernel {
     }
 
     pub fn commit_technique(&mut self) {
-        self.technique.copy_from_slice(&self.technique_next);
+        for packed in 0..self.land_cells.len() {
+            let cell = self.land_cells[packed] as usize;
+            self.technique[cell] = self.technique_next[packed];
+        }
     }
 
     pub fn begin_growth(&mut self, dt_months: f64) {
-        self.people_next.fill(0.0);
-        self.children_mass.fill(0.0);
-        self.working_mass.fill(0.0);
-        self.elders_mass.fill(0.0);
         self.births_by_band.fill(0.0);
         self.deaths_by_band.fill(0.0);
-        self.births_legacy = 0.0;
-        self.deaths_legacy = 0.0;
         self.growth_dt_months = dt_months;
     }
 
     pub fn growth_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
-        let hi = raw_hi.min(self.cells);
-        for cell in raw_lo.min(hi)..hi {
-            if self.land[cell] == 0 {
-                continue;
-            }
+        let hi = raw_hi.min(self.land_cells.len());
+        // Band partials accumulate in locals and are stored once: the per-band
+        // slots are adjacent f64s on one cache line, and a per-cell
+        // read-modify-write from every worker bounced that line between
+        // cores until threads gave no speedup at all (review, W4). The
+        // addition order is unchanged, so the sums are bit-identical.
+        let mut births = 0.0;
+        let mut deaths = 0.0;
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
             let population = self.people[cell].max(0.0);
             let capacity = self.capacity[cell];
             if population <= 0.0 || capacity <= 0.0 {
-                self.people_next[cell] = 0.0;
-                self.children_mass[cell] = 0.0;
-                self.working_mass[cell] = 0.0;
-                self.elders_mass[cell] = 0.0;
+                self.people_next[packed] = 0.0;
+                self.children_mass[packed] = 0.0;
+                self.working_mass[packed] = 0.0;
+                self.elders_mass[packed] = 0.0;
                 continue;
             }
             let technique = clamp01(self.technique[cell]);
@@ -588,16 +601,9 @@ impl PeopleKernel {
             let crowding_deaths = natural_births * clamp01(population / capacity);
             let cell_deaths = (graveyard_deaths + crowding_deaths).min(population + natural_births);
             let next_population = (population + natural_births - cell_deaths).max(0.0);
-            self.people_next[cell] = next_population;
-            if self.parallel_reductions {
-                self.births_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] +=
-                    natural_births * self.cell_area[cell];
-                self.deaths_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] +=
-                    cell_deaths * self.cell_area[cell];
-            } else {
-                self.births_legacy += natural_births * self.cell_area[cell];
-                self.deaths_legacy += cell_deaths * self.cell_area[cell];
-            }
+            self.people_next[packed] = next_population;
+            births += natural_births * self.cell_area[cell];
+            deaths += cell_deaths * self.cell_area[cell];
 
             let child = population * clamp01(self.children[cell]);
             let working = population * clamp01(self.working[cell]);
@@ -631,61 +637,63 @@ impl PeopleKernel {
                 working_after / (PEOPLE_WORKING_AGE_YEARS * MONTHS_PER_YEAR as f64)
                     * self.growth_dt_months
             });
-            self.children_mass[cell] = (child_after - child_to_working).max(0.0) + natural_births;
-            self.working_mass[cell] =
+            self.children_mass[packed] = (child_after - child_to_working).max(0.0) + natural_births;
+            self.working_mass[packed] =
                 (working_after - working_to_elders).max(0.0) + child_to_working;
-            self.elders_mass[cell] = elders_after + working_to_elders;
+            self.elders_mass[packed] = elders_after + working_to_elders;
         }
+        let slot = band_index.min(PEOPLE_BAND_COUNT - 1);
+        self.births_by_band[slot] += births;
+        self.deaths_by_band[slot] += deaths;
     }
 
     pub fn births(&self) -> f64 {
-        if self.parallel_reductions {
-            self.births_by_band.iter().fold(0.0, |total, value| total + value)
-        } else {
-            self.births_legacy
-        }
+        self.births_by_band.iter().fold(0.0, |total, value| total + value)
     }
 
     pub fn deaths(&self) -> f64 {
-        if self.parallel_reductions {
-            self.deaths_by_band.iter().fold(0.0, |total, value| total + value)
-        } else {
-            self.deaths_legacy
-        }
+        self.deaths_by_band.iter().fold(0.0, |total, value| total + value)
     }
 
     pub fn begin_migration(&mut self, month: usize, dt_months: f64, growth_prepared: bool) {
         self.migration_month = month % MONTHS_PER_YEAR;
-        self.migration_out.fill(0.0);
-        self.migration_weight.fill(0.0);
-        self.migration_received_cell.fill(0.0);
+        self.migration_dt_months = dt_months;
+        self.migration_growth_prepared = growth_prepared;
         self.migration_by_band.fill(0.0);
         self.migration_received_by_band.fill(0.0);
-        self.migration_legacy = 0.0;
-        self.migration_received_legacy = 0.0;
-        if growth_prepared {
-            self.migration_population.copy_from_slice(&self.people_next);
-            self.children_next.copy_from_slice(&self.children_mass);
-            self.working_next.copy_from_slice(&self.working_mass);
-            self.elders_next.copy_from_slice(&self.elders_mass);
-        } else {
-            self.people_next.copy_from_slice(&self.people);
-            self.migration_population.copy_from_slice(&self.people);
-            for cell in 0..self.cells {
-                let population = self.people[cell];
-                self.children_next[cell] = population * self.children[cell];
-                self.working_next[cell] = population * self.working[cell];
-                self.elders_next[cell] = population * self.elders[cell];
-            }
-            self.children_mass.copy_from_slice(&self.children_next);
-            self.working_mass.copy_from_slice(&self.working_next);
-            self.elders_mass.copy_from_slice(&self.elders_next);
+        self.migration_total_value = 0.0;
+    }
+
+    fn days(&self, cell: usize) -> f64 {
+        self.migration_days[self.migration_month * self.cells + cell]
+    }
+
+    fn add_source_weight(&self, target: usize, edge: f64, sum: &mut f64) {
+        let packed = self.packed_of[target];
+        if packed < 0 || self.peopled[target] == 0 {
+            return;
         }
-        if dt_months != 1.0 {
-            for row in 0..self.height {
+        let packed = packed as usize;
+        let spare =
+            (self.capacity[target] - self.people_next[packed]).max(0.0) * self.cell_area[target];
+        if spare <= 0.0 {
+            return;
+        }
+        let cost = self.days(target) * edge;
+        if cost.is_finite() && cost >= 0.0 {
+            *sum += (1.0 / (1.0 + cost)) * spare;
+        }
+    }
+
+    pub fn migration_prepare_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
+        let hi = raw_hi.min(self.land_cells.len());
+        let row_lo = band_index * self.height / PEOPLE_BAND_COUNT;
+        let row_hi = (band_index + 1) * self.height / PEOPLE_BAND_COUNT;
+        if self.migration_dt_months != 1.0 {
+            for row in row_lo..row_hi {
                 let area = self.cell_area[row * self.width].max(1.0);
                 let annual_share = PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR / area;
-                let raw_share = annual_share * dt_months / MONTHS_PER_YEAR as f64;
+                let raw_share = annual_share * self.migration_dt_months / MONTHS_PER_YEAR as f64;
                 let substeps = (raw_share / PEOPLE_MIGRATION_MAX_SHARE)
                     .ceil()
                     .max(1.0)
@@ -698,34 +706,35 @@ impl PeopleKernel {
                 self.migration_share_row[row] = effective.min(PEOPLE_MIGRATION_MAX_SHARE);
             }
         }
-    }
-
-    fn days(&self, cell: usize) -> f64 {
-        self.migration_days[self.migration_month * self.cells + cell]
-    }
-
-    fn add_source_weight(&self, target: usize, edge: f64, sum: &mut f64) {
-        if self.land[target] == 0 || self.peopled[target] == 0 {
-            return;
-        }
-        let spare =
-            (self.capacity[target] - self.people_next[target]).max(0.0) * self.cell_area[target];
-        if spare <= 0.0 {
-            return;
-        }
-        let cost = self.days(target) * edge;
-        if cost.is_finite() && cost >= 0.0 {
-            *sum += (1.0 / (1.0 + cost)) * spare;
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            self.migration_out[packed] = 0.0;
+            self.migration_weight[packed] = 0.0;
+            if self.migration_growth_prepared {
+                self.migration_population[packed] = self.people_next[packed];
+                self.children_next[packed] = self.children_mass[packed];
+                self.working_next[packed] = self.working_mass[packed];
+                self.elders_next[packed] = self.elders_mass[packed];
+            } else {
+                let population = self.people[cell];
+                self.people_next[packed] = population;
+                self.migration_population[packed] = population;
+                self.children_next[packed] = population * self.children[cell];
+                self.working_next[packed] = population * self.working[cell];
+                self.elders_next[packed] = population * self.elders[cell];
+                self.children_mass[packed] = self.children_next[packed];
+                self.working_mass[packed] = self.working_next[packed];
+                self.elders_mass[packed] = self.elders_next[packed];
+            }
         }
     }
 
     pub fn migration_source_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
-        let hi = raw_hi.min(self.cells);
-        for cell in raw_lo.min(hi)..hi {
-            if self.land[cell] == 0 {
-                continue;
-            }
-            let population = self.people_next[cell];
+        let hi = raw_hi.min(self.land_cells.len());
+        let mut moved = 0.0;
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            let population = self.people_next[packed];
             if population <= 0.0 {
                 continue;
             }
@@ -752,38 +761,36 @@ impl PeopleKernel {
             }
             if sum_weight > 0.0 {
                 let amount = population * area * share;
-                self.migration_out[cell] = amount;
-                self.migration_weight[cell] = sum_weight;
-                if self.parallel_reductions {
-                    self.migration_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += amount;
-                } else {
-                    self.migration_legacy += amount;
-                }
+                self.migration_out[packed] = amount;
+                self.migration_weight[packed] = sum_weight;
+                moved += amount;
             }
         }
+        self.migration_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += moved;
     }
 
     pub fn migration_debit_band(&mut self, raw_lo: usize, raw_hi: usize) {
-        let hi = raw_hi.min(self.cells);
-        for cell in raw_lo.min(hi)..hi {
-            let amount = self.migration_out[cell];
+        let hi = raw_hi.min(self.land_cells.len());
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            let amount = self.migration_out[packed];
             if amount <= 0.0 {
                 continue;
             }
             let area = self.cell_area[cell];
             let density_moved = amount / if area > 0.0 { area } else { 1.0 };
-            self.people_next[cell] =
-                (self.people_next[cell] - amount / if area > 0.0 { area } else { 1.0 }).max(0.0);
-            let population = self.migration_population[cell];
+            self.people_next[packed] =
+                (self.people_next[packed] - amount / if area > 0.0 { area } else { 1.0 }).max(0.0);
+            let population = self.migration_population[packed];
             if population > 0.0 {
-                self.children_next[cell] = (self.children_next[cell]
-                    - density_moved * self.children_mass[cell] / population)
+                self.children_next[packed] = (self.children_next[packed]
+                    - density_moved * self.children_mass[packed] / population)
                     .max(0.0);
-                self.working_next[cell] = (self.working_next[cell]
-                    - density_moved * self.working_mass[cell] / population)
+                self.working_next[packed] = (self.working_next[packed]
+                    - density_moved * self.working_mass[packed] / population)
                     .max(0.0);
-                self.elders_next[cell] = (self.elders_next[cell]
-                    - density_moved * self.elders_mass[cell] / population)
+                self.elders_next[packed] = (self.elders_next[packed]
+                    - density_moved * self.elders_mass[packed] / population)
                     .max(0.0);
             }
         }
@@ -793,8 +800,13 @@ impl PeopleKernel {
         let Some(source) = source else {
             return 0.0;
         };
-        let amount = self.migration_out[source];
-        let weight = self.migration_weight[source];
+        let packed = self.packed_of[source];
+        if packed < 0 {
+            return 0.0;
+        }
+        let packed = packed as usize;
+        let amount = self.migration_out[packed];
+        let weight = self.migration_weight[packed];
         if amount > 0.0 && weight > 0.0 {
             amount * conductance * target_spare / weight
         } else {
@@ -803,17 +815,27 @@ impl PeopleKernel {
     }
 
     fn cohort_share(&self, flow: f64, source: usize, mass: &[f64]) -> f64 {
-        let population = self.migration_population[source];
+        let packed = self.packed_of[source];
+        if packed < 0 {
+            return 0.0;
+        }
+        let packed = packed as usize;
+        let population = self.migration_population[packed];
         if flow <= 0.0 || population <= 0.0 {
             return 0.0;
         }
-        flow * mass[source] / population
+        flow * mass[packed] / population
     }
 
     pub fn migration_target_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
-        let hi = raw_hi.min(self.cells);
-        for target in raw_lo.min(hi)..hi {
-            if self.land[target] == 0 || self.peopled[target] == 0 {
+        let hi = raw_hi.min(self.land_cells.len());
+        for packed in raw_lo.min(hi)..hi {
+            self.migration_received_cell[packed] = 0.0;
+        }
+        let mut received_in_band = 0.0;
+        for packed in raw_lo.min(hi)..hi {
+            let target = self.land_cells[packed] as usize;
+            if self.peopled[target] == 0 {
                 continue;
             }
             let target_area = self.cell_area[target];
@@ -821,7 +843,7 @@ impl PeopleKernel {
                 continue;
             }
             let target_spare =
-                (self.capacity[target] - self.migration_population[target]).max(0.0) * target_area;
+                (self.capacity[target] - self.migration_population[packed]).max(0.0) * target_area;
             if target_spare <= 0.0 {
                 continue;
             }
@@ -861,15 +883,11 @@ impl PeopleKernel {
             received += south_flow;
             received += west_flow;
             received += east_flow;
-            self.people_next[target] += received / target_area;
-            self.migration_received_cell[target] = received;
-            if self.parallel_reductions {
-                self.migration_received_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += received;
-            } else {
-                self.migration_received_legacy += received;
-            }
+            self.people_next[packed] += received / target_area;
+            self.migration_received_cell[packed] = received;
+            received_in_band += received;
 
-            let mut child = self.children_next[target];
+            let mut child = self.children_next[packed];
             child += match north {
                 Some(source) => self.cohort_share(north_flow, source, &self.children_mass),
                 None => 0.0,
@@ -880,9 +898,9 @@ impl PeopleKernel {
             } / target_area;
             child += self.cohort_share(west_flow, west.unwrap(), &self.children_mass) / target_area;
             child += self.cohort_share(east_flow, east.unwrap(), &self.children_mass) / target_area;
-            self.children_next[target] = child;
+            self.children_next[packed] = child;
 
-            let mut working = self.working_next[target];
+            let mut working = self.working_next[packed];
             working += match north {
                 Some(source) => self.cohort_share(north_flow, source, &self.working_mass),
                 None => 0.0,
@@ -895,9 +913,9 @@ impl PeopleKernel {
                 self.cohort_share(west_flow, west.unwrap(), &self.working_mass) / target_area;
             working +=
                 self.cohort_share(east_flow, east.unwrap(), &self.working_mass) / target_area;
-            self.working_next[target] = working;
+            self.working_next[packed] = working;
 
-            let mut elders = self.elders_next[target];
+            let mut elders = self.elders_next[packed];
             elders += match north {
                 Some(source) => self.cohort_share(north_flow, source, &self.elders_mass),
                 None => 0.0,
@@ -908,72 +926,43 @@ impl PeopleKernel {
             } / target_area;
             elders += self.cohort_share(west_flow, west.unwrap(), &self.elders_mass) / target_area;
             elders += self.cohort_share(east_flow, east.unwrap(), &self.elders_mass) / target_area;
-            self.elders_next[target] = elders;
+            self.elders_next[packed] = elders;
         }
-    }
-
-    fn serial_migration_total(&self) -> f64 {
-        // Land-cell order, skip zeros — the TypeScript oracle's debit loop.
-        let mut total = 0.0;
-        for cell in 0..self.cells {
-            if self.land[cell] == 0 {
-                continue;
-            }
-            let amount = self.migration_out[cell];
-            if amount <= 0.0 {
-                continue;
-            }
-            total += amount;
-        }
-        total
-    }
-
-    fn serial_migration_received(&self) -> f64 {
-        // Same skip-order as the oracle gather: peopled land with spare.
-        // Per-cell received is written by the band; the coordinator sums.
-        let mut received_total = 0.0;
-        for target in 0..self.cells {
-            if self.land[target] == 0 || self.peopled[target] == 0 {
-                continue;
-            }
-            let target_area = self.cell_area[target];
-            if target_area <= 0.0 {
-                continue;
-            }
-            let target_spare = (self.capacity[target] - self.migration_population[target]).max(0.0)
-                * target_area;
-            if target_spare <= 0.0 {
-                continue;
-            }
-            received_total += self.migration_received_cell[target];
-        }
-        received_total
+        self.migration_received_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += received_in_band;
     }
 
     pub fn finish_migration(&mut self) {
         // Band-slot folds are ledger-only. The remainder written back onto
         // people must use the oracle's left-to-right land-cell association
         // or a 1-ulp total difference lands on the first peopled cell.
-        let migration_total = self.serial_migration_total();
-        let migration_received = self.serial_migration_received();
+        let migration_total = self
+            .migration_by_band
+            .iter()
+            .fold(0.0, |total, value| total + value);
+        let migration_received = self
+            .migration_received_by_band
+            .iter()
+            .fold(0.0, |total, value| total + value);
+        self.migration_total_value = migration_total;
         let remainder = migration_total - migration_received;
-        let mut remainder_cell = None;
-        for cell in 0..self.cells {
-            if self.land[cell] != 0 && self.peopled[cell] != 0 {
-                remainder_cell = Some(cell);
+        let mut remainder_packed = None;
+        for (packed, &cell) in self.land_cells.iter().enumerate() {
+            if self.peopled[cell as usize] != 0 {
+                remainder_packed = Some(packed);
                 break;
             }
         }
-        if let Some(cell) = remainder_cell {
+        if let Some(packed) = remainder_packed {
+            let cell = self.land_cells[packed] as usize;
             let area = self.cell_area[cell];
             if area > 0.0 {
                 let density = remainder / area;
-                self.people_next[cell] += density;
-                let population = self.migration_population[cell];
+                self.people_next[packed] += density;
+                let population = self.migration_population[packed];
                 if population > 0.0 {
-                    self.children_next[cell] += density * self.children_mass[cell] / population;
-                    self.working_next[cell] += density * self.working_mass[cell] / population;
-                    self.elders_next[cell] += density * self.elders_mass[cell] / population;
+                    self.children_next[packed] += density * self.children_mass[packed] / population;
+                    self.working_next[packed] += density * self.working_mass[packed] / population;
+                    self.elders_next[packed] += density * self.elders_mass[packed] / population;
                 }
             }
         }
@@ -983,18 +972,19 @@ impl PeopleKernel {
     }
 
     pub fn migration_total(&self) -> f64 {
-        self.serial_migration_total()
+        self.migration_total_value
     }
 
     pub fn commit_population(&mut self) {
-        self.people.copy_from_slice(&self.people_next);
+        for packed in 0..self.land_cells.len() {
+            let cell = self.land_cells[packed] as usize;
+            self.people[cell] = self.people_next[packed];
+        }
     }
 
     pub fn normalize_cohorts(&mut self) {
-        for cell in 0..self.cells {
-            if self.land[cell] == 0 {
-                continue;
-            }
+        for packed in 0..self.land_cells.len() {
+            let cell = self.land_cells[packed] as usize;
             let population = self.people[cell];
             if population <= 0.0 {
                 self.children[cell] = 0.0;
@@ -1002,8 +992,8 @@ impl PeopleKernel {
                 self.elders[cell] = 0.0;
                 continue;
             }
-            let child = clamp01(self.children_mass[cell] / population);
-            let working = clamp01(self.working_mass[cell] / population).min(1.0 - child);
+            let child = clamp01(self.children_mass[packed] / population);
+            let working = clamp01(self.working_mass[packed] / population).min(1.0 - child);
             self.children[cell] = child;
             self.working[cell] = working;
             self.elders[cell] = (1.0 - child - working).max(0.0);
@@ -1030,6 +1020,16 @@ pub fn people_dispatch_technique(pointer: usize, raw_lo: usize, raw_hi: usize, d
 #[wasm_bindgen]
 pub fn people_dispatch_growth(pointer: usize, raw_lo: usize, raw_hi: usize, band_index: usize) {
     unsafe { kernel_mut(pointer).growth_band(raw_lo, raw_hi, band_index) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_migration_prepare(
+    pointer: usize,
+    raw_lo: usize,
+    raw_hi: usize,
+    band_index: usize,
+) {
+    unsafe { kernel_mut(pointer).migration_prepare_band(raw_lo, raw_hi, band_index) }
 }
 
 #[wasm_bindgen]

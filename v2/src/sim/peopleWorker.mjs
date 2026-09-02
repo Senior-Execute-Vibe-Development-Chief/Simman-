@@ -114,6 +114,8 @@ function runBand(payload, band, index) {
     wasm.people_dispatch_technique(pointer, band.rawLo, band.rawHi, payload.dtMonths);
   } else if (payload.operation === "growth") {
     wasm.people_dispatch_growth(pointer, band.rawLo, band.rawHi, index);
+  } else if (payload.operation === "migration-prepare") {
+    wasm.people_dispatch_migration_prepare(pointer, band.rawLo, band.rawHi, index);
   } else if (payload.operation === "migration-source") {
     wasm.people_dispatch_migration_source(pointer, band.rawLo, band.rawHi, index);
   } else if (payload.operation === "migration-debit") {

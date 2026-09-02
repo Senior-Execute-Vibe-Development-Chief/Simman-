@@ -14,11 +14,21 @@ export interface BalanceSheet {
 
 type NumericField = { readonly length: number; readonly [index: number]: number };
 
-function sumField(field: NumericField, weights?: NumericField): number {
+type IndexList = { readonly length: number; readonly [index: number]: number };
+
+function sumField(field: NumericField, weights?: NumericField, indices?: IndexList): number {
   let total = 0;
-  for (let index = 0; index < field.length; index++) {
-    const value = field[index] ?? 0;
-    total += weights ? value * (weights[index] ?? 0) : value;
+  if (indices) {
+    for (let offset = 0; offset < indices.length; offset++) {
+      const index = indices[offset] ?? 0;
+      const value = field[index] ?? 0;
+      total += weights ? value * (weights[index] ?? 0) : value;
+    }
+  } else {
+    for (let index = 0; index < field.length; index++) {
+      const value = field[index] ?? 0;
+      total += weights ? value * (weights[index] ?? 0) : value;
+    }
   }
   return total;
 }
@@ -37,6 +47,7 @@ function totalChannels(channels: Record<string, number>): number {
 export class ConservationLedger {
   private readonly sheets = new Map<string, BalanceSheet>();
   private readonly weights = new Map<string, NumericField | undefined>();
+  private readonly indices = new Map<string, IndexList | undefined>();
 
   beginPass(
     quantity: string,
@@ -44,6 +55,7 @@ export class ConservationLedger {
     sourceChannel: string,
     sinkChannel: string,
     weights?: NumericField,
+    indices?: IndexList,
   ): void {
     const previous = this.sheets.get(quantity);
     const sheet = previous ?? {
@@ -59,7 +71,7 @@ export class ConservationLedger {
     };
     sheet.sourceChannel = sourceChannel;
     sheet.sinkChannel = sinkChannel;
-    sheet.opening = sumField(field, weights);
+    sheet.opening = sumField(field, weights, indices);
     sheet.closing = sheet.opening;
     sheet.observedDelta = 0;
     for (const key in sheet.sources) sheet.sources[key] = 0;
@@ -72,9 +84,11 @@ export class ConservationLedger {
     // sheet legitimately carries ~1e-6 persons of dust per pass (measured on
     // the M2 long-horizon arm; the old count-only bound tripped at a relative
     // error of 1e-13). This stays an epsilon, never a leak allowance.
-    sheet.tolerance = CONSERVATION_EPSILON * Math.max(1, field.length, sheet.opening);
+    sheet.tolerance = CONSERVATION_EPSILON
+      * Math.max(1, indices?.length ?? field.length, sheet.opening);
     this.sheets.set(quantity, sheet);
     this.weights.set(quantity, weights);
+    this.indices.set(quantity, indices);
   }
 
   /** Add an explicitly balanced channel, such as migration in/out. */
@@ -93,6 +107,7 @@ export class ConservationLedger {
     field: NumericField,
     sourceAmount: number,
     sinkAmount: number,
+    indices?: IndexList,
   ): void {
     const sheet = this.sheets.get(quantity);
     if (!sheet) throw new Error(`No balance sheet started for ${quantity}.`);
@@ -101,7 +116,11 @@ export class ConservationLedger {
     }
     sheet.sources[sheet.sourceChannel] = sourceAmount;
     sheet.sinks[sheet.sinkChannel] = sinkAmount;
-    sheet.closing = sumField(field, this.weights.get(quantity));
+    sheet.closing = sumField(
+      field,
+      this.weights.get(quantity),
+      indices ?? this.indices.get(quantity),
+    );
     const actualDelta = sheet.closing - sheet.opening;
     const accountedDelta = totalChannels(sheet.sources) - totalChannels(sheet.sinks);
     sheet.observedDelta = actualDelta;

@@ -160,3 +160,17 @@ band layout from worker count; no float atomics. No f32 arithmetic (f32
 storage with f64 arithmetic only, and only in deliverable 3). No stride
 or schedule changes. No touching travel, worldgen, substrate, router, or
 scheduler. No tolerance edits to pass the stride arm.
+
+## Status at merge (2026-09-02, review)
+
+Delivered in full: packed scratch and iteration (TS oracle and Rust),
+the migration prepare phase banded, serial sums replaced by band-ordered
+partials, the traffic ledger (320 → 103 MB per target firing, 3.1×), the
+stride arm at both grids with deltas recorded (QUESTIONS #36). The f32
+option was not taken. Review found why threads still did not scale after
+packing — false sharing on the per-band accumulator slots, fixed with
+local accumulators, bit-identical — after which three threads take the
+target shipped tick from 88 to 40 ms on the review runner (78 min
+projected YD→1 CE; the ceiling is 15.5 ms). Next candidates: the serial
+cohort/ledger tail (~8 ms) and the scatter commit. The target trajectory
+was moved out of the per-commit gate (env-gated) because it costs ~1 h.

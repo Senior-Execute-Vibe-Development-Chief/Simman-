@@ -12,6 +12,7 @@ const PEOPLE_FIELDS = [
   "children",
   "working",
   "elders",
+  "capField",
 ] as const;
 
 const PEOPLE_SCRATCH = [
@@ -26,6 +27,7 @@ const PEOPLE_SCRATCH = [
   "_migrationOut",
   "_migrationWeight",
   "_migrationPopulation",
+  "_migrationReceived",
 ] as const;
 
 function bytes(value: unknown): Buffer {
@@ -39,6 +41,21 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
     const right = (candidate as unknown as Record<string, unknown>)[name];
     assert.ok(left instanceof Float64Array, `${grid} TS ${name} missing at ${step}`);
     assert.ok(right instanceof Float64Array, `${grid} WASM ${name} missing at ${step}`);
+    if (name.startsWith("_")) {
+      assert.equal(
+        right.length,
+        (candidate as PeopleWorld)._landCells.length,
+        `${grid} WASM ${name} was not land-packed at ${step}`,
+      );
+      assert.equal(
+        left.length,
+        (reference as PeopleWorld)._landCells.length,
+        `${grid} TS ${name} was not land-packed at ${step}`,
+      );
+    } else {
+      assert.equal(left.length, (reference as PeopleWorld).N, `${grid} TS ${name} lost full-grid view`);
+      assert.equal(right.length, (candidate as PeopleWorld).N, `${grid} WASM ${name} lost full-grid view`);
+    }
     assert.deepEqual(bytes(right), bytes(left), `${grid} ${name} diverged at tick ${step}`);
   }
   assert.equal(hashWorld(candidate), hashWorld(reference), `${grid} hash diverged at tick ${step}`);

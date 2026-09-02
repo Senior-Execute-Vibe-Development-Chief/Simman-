@@ -1,6 +1,7 @@
 import type { Substrate } from "../substrate";
 import type { World } from "../world";
 import type { PeopleKernelRuntime } from "../peopleKernel";
+import type { PeopleBand } from "./bands";
 
 export interface HearthState {
   readonly id: string;
@@ -29,7 +30,14 @@ export interface PeopleWorld extends World {
   _migrationOut: Float64Array;
   _migrationWeight: Float64Array;
   _migrationPopulation: Float64Array;
+  _migrationReceived: Float64Array;
+  _birthsByBand: Float64Array;
+  _deathsByBand: Float64Array;
+  _migrationByBand: Float64Array;
+  _migrationReceivedByBand: Float64Array;
   _landCells: Int32Array;
+  _packedOf: Int32Array;
+  _peopleBands: readonly PeopleBand[];
   _annualTemperature: Float64Array;
   _annualMoisture: Float64Array;
   _techniqueSuitability: Float64Array;

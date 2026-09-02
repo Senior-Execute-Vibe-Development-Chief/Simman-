@@ -20,7 +20,6 @@ import {
   BAND_CONTROL_STOP,
   beginBandPhase,
   createBandControl,
-  fixedPeopleBands,
   type BandControl,
   type PeopleBand,
 } from "./people/bands";
@@ -63,7 +62,6 @@ interface WorkerLike {
 interface PeopleKernelLike {
   free(): void;
   kernel_ptr(): number;
-  set_parallel_reductions(enabled: boolean): void;
   people_ptr(): number;
   technique_ptr(): number;
   children_ptr(): number;
@@ -81,6 +79,7 @@ interface PeopleKernelLike {
   migration_out_ptr(): number;
   migration_weight_ptr(): number;
   migration_population_ptr(): number;
+  migration_received_ptr(): number;
   derive_capacity_band(rawLo: number, rawHi: number): void;
   prepare_technique(): void;
   technique_band(rawLo: number, rawHi: number, dtMonths: number): void;
@@ -90,6 +89,7 @@ interface PeopleKernelLike {
   births(): number;
   deaths(): number;
   begin_migration(month: number, dtMonths: number, growthPrepared: boolean): void;
+  migration_prepare_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_source_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_debit_band(rawLo: number, rawHi: number): void;
   migration_target_band(rawLo: number, rawHi: number, bandIndex: number): void;
@@ -103,6 +103,7 @@ type BandOperation =
   | "capacity"
   | "technique"
   | "growth"
+  | "migration-prepare"
   | "migration-source"
   | "migration-debit"
   | "migration-target";
@@ -112,6 +113,7 @@ const BAND_OPERATIONS: readonly BandOperation[] = [
   "capacity",
   "technique",
   "growth",
+  "migration-prepare",
   "migration-source",
   "migration-debit",
   "migration-target",
@@ -436,6 +438,7 @@ export interface PeopleKernelRuntime {
   beginGrowth(dtMonths?: number): void;
   grow(): void;
   beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
+  prepareMigration(): void;
   migrateSources(): void;
   debitMigration(): void;
   gatherMigration(): void;
@@ -465,7 +468,8 @@ type KernelFieldName =
   | "_eldersNext"
   | "_migrationOut"
   | "_migrationWeight"
-  | "_migrationPopulation";
+  | "_migrationPopulation"
+  | "_migrationReceived";
 
 class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   readonly bands: readonly PeopleBand[];
@@ -485,10 +489,8 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     kernel: PeopleKernelLike = new WasmPeopleKernel(...kernelArguments(world)),
     memoryOverride?: WebAssembly.Memory,
     workerPool?: PeopleBandWorkerPool,
-    parallelReductions = false,
   ) {
     this.kernel = kernel;
-    if (parallelReductions) this.kernel.set_parallel_reductions(true);
     const memory = memoryOverride ?? wasmMemory() as WebAssembly.Memory;
     if (!(memory instanceof WebAssembly.Memory)) {
       throw new Error("People WASM did not expose linear memory.");
@@ -497,7 +499,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.memoryBuffer = memory.buffer;
     this.memoryBytes = memory.buffer.byteLength;
     this.world = world;
-    this.bands = fixedPeopleBands(world.width, world.height);
+    this.bands = world._peopleBands;
     this.workerCount = Math.max(1, Math.floor(workerCount));
     this.workerPool = workerPool;
     this.usesThreads = workerPool !== undefined;
@@ -545,10 +547,20 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       _migrationOut: this.kernel.migration_out_ptr(),
       _migrationWeight: this.kernel.migration_weight_ptr(),
       _migrationPopulation: this.kernel.migration_population_ptr(),
+      _migrationReceived: this.kernel.migration_received_ptr(),
     };
+    const fullGrid = new Set<KernelFieldName>([
+      "people",
+      "technique",
+      "children",
+      "working",
+      "elders",
+      "capField",
+    ]);
     const target = world as unknown as Record<string, unknown>;
     for (const [name, pointer] of Object.entries(pointers)) {
-      target[name] = this.view(pointer, world.N);
+      target[name] = this.view(pointer, fullGrid.has(name as KernelFieldName)
+        ? world.N : world._landCells.length);
     }
     world._migrationDaysPerKm = new Float64Array(world.N);
     world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR).fill(undefined);
@@ -566,6 +578,8 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
         this.kernel.technique_band(band.rawLo, band.rawHi, dtMonths);
       } else if (operation === "growth") {
         this.kernel.growth_band(band.rawLo, band.rawHi, band.index);
+      } else if (operation === "migration-prepare") {
+        this.kernel.migration_prepare_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-source") {
         this.kernel.migration_source_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-debit") {
@@ -609,6 +623,11 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
     this.assertMemoryStable();
     this.kernel.begin_migration(month, dtMonths, growthPrepared);
+  }
+
+  prepareMigration(): void {
+    this.assertMemoryStable();
+    this.dispatchBands("migration-prepare");
   }
 
   migrateSources(): void {
@@ -679,8 +698,7 @@ export function createPeopleKernel(
     let kernel: ThreadedPeopleKernel | undefined;
     try {
       kernel = new ThreadedPeopleKernel(...kernelArguments(world));
-      kernel.set_parallel_reductions(true);
-      return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool, true);
+      return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool);
     } catch (error) {
       kernel?.free();
       console.error("Threaded people kernel unavailable; using serial wasm.", error);
