@@ -11,18 +11,29 @@ import { CROP_PACKAGES, pkgClimateBell } from "../../ported/worldgen/cropPackage
 import { sampleCropRanges } from "../../ported/worldgen/cropRangeData.js";
 import type { PeopleWorld } from "./types";
 
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+/**
+ * The farmed capacity of package p in a cell: persons per km² the land
+ * supports when farmed with p. It does not depend on how many farmers are
+ * there now — the first family to arrive grows toward the same land as the
+ * last. (Review, M3a: scaling it by the farmer share made every founding
+ * group's advantage negative, so arrivals reverted and the wave could only
+ * cross a cell by out-migrating its own reversion.) The technique regime,
+ * base + gain × farmed share, is the state-keyed maturity term M2 already
+ * carried: a cell where most people farm has cleared, worked land.
+ */
 export function packageCapacity(world: PeopleWorld, cell: number, packageIndex: number): number {
   const pkg = CROP_PACKAGES[packageIndex];
   const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
   if (!pkg || packed < 0) return 0;
   if ((world._canGrow[packageIndex]?.[packed] ?? 0) === 0) return 0;
-  const fertility = Math.max(0, Math.min(1, world.substrate.fertility[cell] ?? 0));
-  const technique = Math.max(0, Math.min(1, world.technique[cell] ?? 0));
+  const fertility = clamp01(world.substrate.fertility[cell] ?? 0);
+  const technique = clamp01(world.technique[cell] ?? 0);
   const access = world._waterAccess[cell] ?? 0;
   return fertility
     * PEOPLE_FARM_CAPACITY_PER_KM2
     * (pkg.yield ?? 1)
-    * technique
     * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
     * (1 + access * PEOPLE_WATER_ACCESS_GAIN)
     * (world._reliefMult[cell] ?? 0);
@@ -32,21 +43,26 @@ export function packageCapacity(world: PeopleWorld, cell: number, packageIndex: 
  * Build the annual climate and native-range overlays once at initialization.
  * The monthly test is intentionally local: a crop can be admissible in an
  * annual climate bell yet fail because the growing season is too short.
+ * The native cells of each package are listed once; the hearth law accrues
+ * peopled-basin years on exactly that list.
  */
 export function initializeCropFields(world: PeopleWorld): void {
   const landCount = world._landCells.length;
   const sourceRanges = world.substrate.cropNativeRanges
     ?? sampleCropRanges(world.width, world.height);
   const nativeRanges: Uint8Array[] = [];
+  const nativeCells: Int32Array[] = [];
   const canGrow: Uint8Array[] = [];
   for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
     const pkg = CROP_PACKAGES[packageIndex];
     const source = sourceRanges[packageIndex];
     const native = new Uint8Array(landCount);
     const grow = new Uint8Array(landCount);
+    const listed: number[] = [];
     for (let packed = 0; packed < landCount; packed++) {
       const cell = world._landCells[packed] ?? 0;
       native[packed] = source?.[cell] ?? 0;
+      if (native[packed] === 1) listed.push(packed);
       let season = 0;
       for (let month = 0; month < MONTHS_PER_YEAR; month++) {
         const climateIndex = cell * MONTHS_PER_YEAR + month;
@@ -60,13 +76,16 @@ export function initializeCropFields(world: PeopleWorld): void {
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;
     }
     nativeRanges.push(native);
+    nativeCells.push(Int32Array.from(listed));
     canGrow.push(grow);
   }
   world._nativeRanges = nativeRanges;
+  world._nativeCells = nativeCells;
   world._canGrow = canGrow;
+  world._hearthYears = nativeCells.map((cells) => new Float64Array(cells.length));
 }
 
-/** Derive the compatibility technique cache and the package lens index. */
+/** Derive the compatibility technique cache: the farmed share of each cell. */
 export function refreshTechniqueShare(world: PeopleWorld): void {
   for (const cell of world._landCells) {
     const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
@@ -90,12 +109,31 @@ export function markPackageActive(world: PeopleWorld, packageIndex: number): voi
   }
 }
 
+/**
+ * The dominant package of a cell: the largest farmer mass among the active
+ * packages, index order breaking ties, package 0 where nobody farms. Both
+ * kernels compute it with this rule wherever capacity is derived.
+ */
+export function dominantPackageOf(world: PeopleWorld, packed: number, active: readonly number[]): number {
+  let dominant = 0;
+  let dominantMass = 0;
+  for (const packageIndex of active) {
+    const mass = Math.max(0, world.farmers[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0);
+    if (mass > dominantMass) {
+      dominantMass = mass;
+      dominant = packageIndex;
+    }
+  }
+  return dominant;
+}
+
+/** The farmer total is the package sum in package order; inactive packages are zero. */
 export function rebuildFarmerTotals(world: PeopleWorld): void {
-  for (const cell of world._landCells) {
-    const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
+  const active = activePackageIndices(world);
+  for (let packed = 0; packed < world._landCells.length; packed++) {
     let total = 0;
-    for (const pkg of CROP_PACKAGES) {
-      total += Math.max(0, world.farmers[pkg.id]?.[packed] ?? 0);
+    for (const packageIndex of active) {
+      total += Math.max(0, world.farmers[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0);
     }
     world._farmerTotal[packed] = total;
   }
@@ -105,16 +143,7 @@ export function deriveTechniqueFromFarmers(world: PeopleWorld): void {
   const active = activePackageIndices(world);
   for (const cell of world._landCells) {
     const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
-    let dominant = 0;
-    let dominantMass = 0;
-    for (const packageIndex of active) {
-      const mass = Math.max(0, world.farmers[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0);
-      if (mass > dominantMass) {
-        dominantMass = mass;
-        dominant = packageIndex;
-      }
-    }
-    world._dominantPackage[cell] = dominant;
+    world._dominantPackage[cell] = dominantPackageOf(world, packed, active);
   }
   rebuildFarmerTotals(world);
   refreshTechniqueShare(world);

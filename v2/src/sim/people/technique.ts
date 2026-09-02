@@ -3,16 +3,13 @@ import {
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_ADOPTION_RATE_PER_YEAR,
-  PEOPLE_FORAGER_DENSITY_BAR,
   PEOPLE_HEARTH_BASIN_RADIUS_KM,
   PEOPLE_HEARTH_MIN_SEPARATION_KM,
   PEOPLE_HEARTH_SEED_FRACTION,
-  PEOPLE_CROP_NEIGHBOR_COUNT,
   PEOPLE_TECHNIQUE_PRESENT,
 } from "../constants";
-import { fillMigrationDaysPerKm, migrationEdgeLengths } from "../travel/cost";
+import { migrationEdgeLengths } from "../travel/cost";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
-import { buildPeopleNeighborTable, coastalHopCost } from "./neighbors";
 import {
   activePackageIndices,
   deriveTechniqueFromFarmers,
@@ -40,176 +37,190 @@ function separated(world: PeopleWorld, candidate: number, chosen: readonly numbe
   return true;
 }
 
-function basinFill(world: PeopleWorld, cell: number): number {
-  const radius = Math.max(
+function basinRadiusCells(world: PeopleWorld): number {
+  return Math.max(
     1,
     Math.round(PEOPLE_HEARTH_BASIN_RADIUS_KM / (EARTH_CIRCUMFERENCE_KM / world.width)),
   );
-  const y = Math.floor(cell / world.width);
-  const x = cell - y * world.width;
-  let people = 0;
-  let area = 0;
-  for (let dy = -radius; dy <= radius; dy++) {
-    const yy = y + dy;
-    if (yy < 0 || yy >= world.height) continue;
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > radius * radius) continue;
-      const xx = (x + dx + world.width) % world.width;
-      const index = yy * world.width + xx;
-      people += (world.people[index] ?? 0) * (world.cellAreaKm2[index] ?? 0);
-      area += world.cellAreaKm2[index] ?? 0;
-    }
-  }
-  const density = area > 0 ? people / area : 0;
-  return clamp01(density / PEOPLE_FORAGER_DENSITY_BAR);
 }
 
-function packageIndex(packageId: string): number {
+/**
+ * Summed-area table of value × cell area over the full grid, (width+1) ×
+ * (height+1) so a window sum is four reads. Basins are square windows of
+ * the basin radius; the table does not wrap at the dateline, and no native
+ * range sits within a basin radius of it.
+ */
+function fillSummedArea(world: PeopleWorld, values: ArrayLike<number>, out: Float64Array): void {
+  const width = world.width;
+  const stride = width + 1;
+  out.fill(0, 0, stride);
+  for (let y = 0; y < world.height; y++) {
+    let rowSum = 0;
+    const rowBase = (y + 1) * stride;
+    out[rowBase] = 0;
+    for (let x = 0; x < width; x++) {
+      const cell = y * width + x;
+      rowSum += (values[cell] ?? 0) * (world.cellAreaKm2[cell] ?? 0);
+      out[rowBase + x + 1] = (out[rowBase - stride + x + 1] ?? 0) + rowSum;
+    }
+  }
+}
+
+function windowSum(world: PeopleWorld, table: Float64Array, cell: number, radius: number): number {
+  const width = world.width;
+  const stride = width + 1;
+  const y = Math.floor(cell / width);
+  const x = cell - y * width;
+  const x0 = Math.max(0, x - radius);
+  const x1 = Math.min(width - 1, x + radius) + 1;
+  const y0 = Math.max(0, y - radius);
+  const y1 = Math.min(world.height - 1, y + radius) + 1;
+  return (table[y1 * stride + x1] ?? 0)
+    - (table[y0 * stride + x1] ?? 0)
+    - (table[y1 * stride + x0] ?? 0)
+    + (table[y0 * stride + x0] ?? 0);
+}
+
+/**
+ * Peopled-basin fill: people in the basin against the basin's STATIC forager
+ * capacity — the M2 law, unchanged. Measuring against the live capacity
+ * stalled every hearth the moment a neighbouring wave lifted the basin to
+ * farmed capacity (M2 finding); measuring against a global density bar
+ * clamped every peopled basin to "full" from the opening tick (M3a review),
+ * which reduced the maturity law to the catalogue lag alone.
+ */
+function basinFill(world: PeopleWorld, cell: number, radius: number): number {
+  const capacity = windowSum(world, world._basinCapacitySum, cell, radius);
+  if (capacity <= 0) return 0;
+  return clamp01(windowSum(world, world._basinPeopleSum, cell, radius) / capacity);
+}
+
+function packageIndexOf(packageId: string): number {
   for (let index = 0; index < CROP_PACKAGES.length; index++) {
     if (CROP_PACKAGES[index]?.id === packageId) return index;
   }
   return MATH_NEGATIVE_ONE;
 }
 
-function canGrowAt(world: PeopleWorld, packageIndex_: number, cell: number): boolean {
+function canGrowAt(world: PeopleWorld, packageIndex: number, cell: number): boolean {
   const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
-  return packed >= 0 && (world._canGrow[packageIndex_]?.[packed] ?? 0) !== 0;
-}
-
-function findCandidate(world: PeopleWorld, packageIndex_: number): HearthState | undefined {
-  const pkg = CROP_PACKAGES[packageIndex_];
-  if (!pkg) return undefined;
-  const existingPending = world.hearths.some(
-    (hearth) => !hearth.ignited && hearth.packageId === pkg.id,
-  );
-  if (existingPending) return undefined;
-  const chosen = world.hearths
-    .filter((hearth) => hearth.ignited && hearth.packageId === pkg.id)
-    .map((hearth) => hearth.cell);
-  const native = world._nativeRanges[packageIndex_];
-  for (let packed = 0; packed < world._landCells.length; packed++) {
-    const cell = world._landCells[packed] ?? 0;
-    if (native?.[packed] !== 1 || world._peopledMask[cell] !== 1) continue;
-    if (!canGrowAt(world, packageIndex_, cell)) continue;
-    if (basinFill(world, cell) <= 0 || !separated(world, cell, chosen)) continue;
-    return {
-      id: `hearth-${pkg.id}-${cell}`,
-      cell,
-      packageId: pkg.id,
-      lagYears: pkg.domLagY,
-      score: basinFill(world, cell),
-      armedYears: 0,
-      ignited: false,
-    };
-  }
-  return undefined;
+  return packed >= 0 && (world._canGrow[packageIndex]?.[packed] ?? 0) !== 0;
 }
 
 function seedHearth(world: PeopleWorld, hearth: HearthState): void {
-  const packageIndex_ = packageIndex(hearth.packageId);
-  if (packageIndex_ < 0) return;
+  const packageIndex = packageIndexOf(hearth.packageId);
+  if (packageIndex < 0) return;
   const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
   const farmers = world.farmers[hearth.packageId];
-  if (packed < 0 || !farmers || !canGrowAt(world, packageIndex_, hearth.cell)) return;
+  if (packed < 0 || !farmers || !canGrowAt(world, packageIndex, hearth.cell)) return;
   const people = Math.max(0, world.people[hearth.cell] ?? 0);
   const current = Math.max(0, farmers[packed] ?? 0);
   const available = foragerDensity(world, hearth.cell);
   const amount = Math.min(available, Math.max(0, people * PEOPLE_HEARTH_SEED_FRACTION - current));
   farmers[packed] = current + amount;
   world._farmerTotal[packed] += amount;
-  markPackageActive(world, packageIndex_);
-}
-
-function updateHearths(world: PeopleWorld, dtMonths: number): void {
-  for (let packageIndex_ = 0; packageIndex_ < CROP_PACKAGES.length; packageIndex_++) {
-    const candidate = findCandidate(world, packageIndex_);
-    if (candidate) world.hearths.push(candidate);
-  }
-  for (const hearth of world.hearths) {
-    if (hearth.ignited) continue;
-    const fill = basinFill(world, hearth.cell);
-    hearth.armedYears += fill * dtMonths / MONTHS_PER_YEAR;
-    if (hearth.armedYears < hearth.lagYears) continue;
-    hearth.ignited = true;
-    seedHearth(world, hearth);
-  }
-}
-
-function contactForPackage(world: PeopleWorld, cell: number, packageId: string): number {
-  const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
-  if (packed < 0) return 0;
-  let days = world._migrationDaysPerKmByMonth[world.calendarMonth];
-  if (!days) {
-    days = new Float64Array(world.N);
-    fillMigrationDaysPerKm(world.substrate, world.calendarMonth, days);
-    world._migrationDaysPerKmByMonth[world.calendarMonth] = days;
-  }
-  const localPeople = Math.max(0, world.people[cell] ?? 0);
-  let weightedContact = localPeople > 0
-    ? (world.farmers[packageId]?.[packed] ?? 0) / localPeople
-    : 0;
-  let weightTotal = 1;
-  const farmer = world.farmers[packageId];
-  if (!farmer) return 0;
-  for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
-    const slot = packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction;
-    const target = world._neighborTargets[slot] ?? MATH_NEGATIVE_ONE;
-    const targetPacked = target >= 0 ? world._packedOf[target] ?? MATH_NEGATIVE_ONE : MATH_NEGATIVE_ONE;
-    if (targetPacked < 0) continue;
-    const distance = world._neighborDistanceKm[slot] ?? 0;
-    const cost = world._neighborMode[slot] === 1
-      ? coastalHopCost(distance)
-      : (days[target] ?? Number.POSITIVE_INFINITY) * distance;
-    if (!Number.isFinite(cost) || cost < 0) continue;
-    const weight = 1 / (1 + cost);
-    const targetPeople = Math.max(0, world.people[target] ?? 0);
-    weightedContact += weight * (targetPeople > 0 ? (farmer[targetPacked] ?? 0) / targetPeople : 0);
-    weightTotal += weight;
-  }
-  return clamp01(weightedContact / weightTotal);
+  markPackageActive(world, packageIndex);
 }
 
 /**
- * Farming is a demic label carried by people. The annual conversion pass
- * moves labels only; no scalar technique wave is allowed to outrun farmers.
+ * Hearths condense. Every cell of a package's native range where the crop
+ * can grow accrues peopled-basin years at its basin's fill; the first cells
+ * to reach the package's domestication lag ignite, and a cell within the
+ * separation bar of an ignited hearth of the same package is the same
+ * hearth. No search window, no score, no pin: which range ignites first,
+ * and where on it, is the population history of that range.
+ */
+function updateHearths(world: PeopleWorld, dtMonths: number): void {
+  const dtYears = dtMonths / MONTHS_PER_YEAR;
+  const radius = basinRadiusCells(world);
+  fillSummedArea(world, world.people, world._basinPeopleSum);
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    const pkg = CROP_PACKAGES[packageIndex];
+    const cells = world._nativeCells[packageIndex];
+    const years = world._hearthYears[packageIndex];
+    const canGrow = world._canGrow[packageIndex];
+    if (!pkg || !cells || !years || !canGrow) continue;
+    const ignited = world.hearths
+      .filter((hearth) => hearth.ignited && hearth.packageId === pkg.id)
+      .map((hearth) => hearth.cell);
+    for (let index = 0; index < cells.length; index++) {
+      const packed = cells[index] ?? MATH_NEGATIVE_ONE;
+      if (packed < 0 || canGrow[packed] !== 1) continue;
+      const cell = world._landCells[packed] ?? 0;
+      const fill = basinFill(world, cell, radius);
+      if (fill <= 0) continue;
+      const accrued = (years[index] ?? 0) + fill * dtYears;
+      years[index] = accrued;
+      if (accrued < pkg.domLagY) continue;
+      if ((world.people[cell] ?? 0) <= 0) continue;
+      if (!separated(world, cell, ignited)) continue;
+      const hearth: HearthState = {
+        id: `hearth-${pkg.id}-${cell}`,
+        cell,
+        packageId: pkg.id,
+        lagYears: pkg.domLagY,
+        score: fill,
+        armedYears: accrued,
+        ignited: true,
+      };
+      world.hearths.push(hearth);
+      ignited.push(cell);
+      seedHearth(world, hearth);
+    }
+  }
+}
+
+/**
+ * Farming is a label carried by people. The annual conversion pass moves
+ * labels only: foragers living among farmers adopt their package where it
+ * out-yields foraging, and farmers whose package cannot feed them revert.
+ * Contact is LOCAL — the farmer share of the cell — so a cell converts at a
+ * rate, never at a distance: a neighbour-stencil contact term moves the
+ * front one cell per conversion interval and its speed is the grid spacing
+ * (review, M3a; the third cardinal rule). Spread is the farmers moving.
+ * The advantage saturates, adv/(1+adv): a package ten times better than
+ * foraging is adopted at the rate, not ten times faster than one twice as
+ * good.
  */
 export function convertFarmers(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): void {
   updateHearths(world, dtMonths);
   const dtYears = dtMonths / MONTHS_PER_YEAR;
   const active = activePackageIndices(world);
-  for (const cell of world._landCells) {
-    const population = Math.max(0, world.people[cell] ?? 0);
-    if (population <= 0) continue;
-    let available = foragerDensity(world, cell);
-    for (const packageIndex_ of active) {
-      const pkg = CROP_PACKAGES[packageIndex_];
-      if (!pkg) continue;
-      const farmer = world.farmers[pkg.id];
-      if (!farmer) continue;
-      const farmCapacity = packageCapacity(world, cell, packageIndex_);
+  if (active.length > 0) {
+    for (let packed = 0; packed < world._landCells.length; packed++) {
+      const cell = world._landCells[packed] ?? 0;
+      const population = Math.max(0, world.people[cell] ?? 0);
+      if (population <= 0) continue;
       const foragerCapacity = world._foragerCapacity[cell] ?? 0;
-      const advantage = foragerCapacity > 0
-        ? (farmCapacity - foragerCapacity) / foragerCapacity
-        : 0;
-      const contact = contactForPackage(world, cell, pkg.id);
-      if (advantage > 0 && available > 0) {
-        const amount = Math.min(
-          available,
-          available * PEOPLE_ADOPTION_RATE_PER_YEAR * dtYears * contact * advantage,
-        );
-        const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
-        farmer[packed] = (farmer[packed] ?? 0) + amount;
-        world._farmerTotal[packed] += amount;
-        available -= amount;
-      } else if (advantage < 0) {
-        const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
-        const amount = Math.min(
-          farmer[packed] ?? 0,
-          (farmer[packed] ?? 0) * PEOPLE_ADOPTION_RATE_PER_YEAR * dtYears * Math.min(1, -advantage),
-        );
-        farmer[packed] = Math.max(0, (farmer[packed] ?? 0) - amount);
-        world._farmerTotal[packed] = Math.max(0, (world._farmerTotal[packed] ?? 0) - amount);
-        available += amount;
+      let available = foragerDensity(world, cell);
+      for (const packageIndex of active) {
+        const pkg = CROP_PACKAGES[packageIndex];
+        const farmer = pkg ? world.farmers[pkg.id] : undefined;
+        if (!farmer) continue;
+        const present = Math.max(0, farmer[packed] ?? 0);
+        const farmCapacity = packageCapacity(world, cell, packageIndex);
+        const advantage = foragerCapacity > 0
+          ? (farmCapacity - foragerCapacity) / foragerCapacity
+          : 0;
+        if (advantage > 0) {
+          if (available <= 0 || present <= 0) continue;
+          const contact = Math.min(1, present / population);
+          const amount = Math.min(
+            available,
+            available * PEOPLE_ADOPTION_RATE_PER_YEAR * dtYears * contact * (advantage / (1 + advantage)),
+          );
+          farmer[packed] = present + amount;
+          world._farmerTotal[packed] += amount;
+          available -= amount;
+        } else if (advantage < 0 && present > 0) {
+          const amount = Math.min(
+            present,
+            present * PEOPLE_ADOPTION_RATE_PER_YEAR * dtYears * Math.min(1, -advantage),
+          );
+          farmer[packed] = Math.max(0, present - amount);
+          world._farmerTotal[packed] = Math.max(0, (world._farmerTotal[packed] ?? 0) - amount);
+          available += amount;
+        }
       }
     }
   }
@@ -223,6 +234,7 @@ export function prepareTechnique(world: PeopleWorld): void {
   const lengths = migrationEdgeLengths(world.substrate);
   world._techniqueEdgeH = lengths.horizontal;
   world._techniqueEdgeV = lengths.vertical;
+  fillSummedArea(world, world._foragerCapacity, world._basinCapacitySum);
 }
 
 export function initializeTechnique(world: PeopleWorld): void {
@@ -230,12 +242,17 @@ export function initializeTechnique(world: PeopleWorld): void {
   world._techniqueNext.fill(0);
   deriveTechniqueFromFarmers(world);
   world.hearths = [];
+  for (const years of world._hearthYears) years.fill(0);
 }
 
-/** Compatibility wrapper: the technique cache is derived from farmer mass. */
+/**
+ * Compatibility wrapper: technique is the farmed share, kept current by the
+ * commit epilogue after every growth/migration month, so the scheduled
+ * pass only reports coverage (a second derivation here cost a full pass
+ * over every package per year for no change in state).
+ */
 export function stepTechnique(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): number {
   void dtMonths;
-  deriveTechniqueFromFarmers(world);
   let covered = 0;
   for (const cell of world._landCells) {
     if ((world.technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;

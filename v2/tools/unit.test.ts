@@ -15,6 +15,7 @@ import { passDtMonths, passFires, resolveSchedule } from "../src/sim/scheduler";
 import { PEOPLE_GROWTH_STRIDE_MONTHS } from "../src/sim/constants";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const PRIMED_HEARTH_YEARS = 1e6;
 const rngInputs = {
   seed: 123456789,
   system: "golden.system",
@@ -177,15 +178,23 @@ async function main(): Promise<void> {
     if (last !== undefined) assert.ok(last < band.rowHi * packedWorld.width);
   }
   runSteps(peopleWorld, 24);
-  const techniqueBefore = Float64Array.from(peopleWorld.technique);
-  for (const hearth of peopleWorld.hearths) hearth.lagYears = 0;
-  runSteps(peopleWorld, 1);
+  assert.equal(peopleWorld.hearths.length, 0, "a hearth ignited before its range accrued its lag");
+  // Prime every native cell's peopled-basin years past its lag: the next
+  // conversion pass must ignite, seed farmers, and derive technique as the
+  // farmed share of each cell.
+  for (const years of packedWorld._hearthYears) years.fill(PRIMED_HEARTH_YEARS);
+  runSteps(peopleWorld, 12);
   assert.ok(peopleWorld.hearths.some((hearth) => hearth.ignited), "hearths never ignite");
-  for (let cell = 0; cell < peopleWorld.N; cell++) {
-    assert.ok(
-      peopleWorld.technique[cell] >= (techniqueBefore[cell] ?? 0),
-      "technique wave is not a ratchet",
-    );
+  let farmed = 0;
+  for (const field of Object.values(packedWorld.farmers)) for (const value of field) farmed += value;
+  assert.ok(farmed > 0, "ignition seeded no farmers");
+  for (const cell of packedWorld._landCells) {
+    const packed = packedWorld._packedOf[cell] ?? -1;
+    const population = peopleWorld.people[cell] ?? 0;
+    const expected = population > 0
+      ? Math.min(1, Math.max(0, packedWorld._farmerTotal[packed] ?? 0) / population)
+      : 0;
+    assert.equal(peopleWorld.technique[cell], expected, "technique is not the farmed share");
   }
   const peopleSave = serializeWorld(peopleWorld);
   const peopleLoaded = loadWorld(peopleSave, substrate);

@@ -1111,3 +1111,190 @@ Review corrections to the M1 build (all validated before merge):
     the existing 264 ms ratchet cap; M3a's package/contact work adds more
     than the handoff's provisional +8 ms budget, recorded as a
     mechanism-cost finding rather than a physics change.
+    **Review note (merge, 2026-09-02).** The implementation arrived as a
+    commit on the working branch rather than a `cursor/v2-m3a` PR; it was
+    reviewed line by line against the handoff as if it were one. The
+    delivered structure is the spec's — packages as data with can-grow and
+    native overlays, farmers as per-package masses carried by migration,
+    technique derived as the farmed share, the eight-neighbour LUT with
+    coastal hops, the radiocarbon table in the gate, save v5, parity with
+    the new arrays — and it is kept. Five mechanisms did not do what the
+    spec said, and each was corrected at the cause:
+
+    1. **Farmed capacity was scaled by the farmer share.** `packageCapacity`
+       kept M2's leading `technique ×` factor with technique now meaning
+       "share of the cell that farms", so a package's capacity went as
+       share², every founding group's advantage was negative, arrivals
+       reverted at the adoption rate, and a cell could only be crossed by
+       out-migrating its own reversion. Capacity is now the land's farmed
+       capacity for the package (the share-keyed maturity regime M2 had is
+       kept); a cell's capacity is the mixture of its people
+       ((1 − s)·forager + s·farmed); and the room a target offers a source
+       is the pair spare — the target's capacity opened, in proportion to
+       the source's farmer share, to the land farmed with the source's
+       dominant package — evaluated identically on the source and target
+       sides so conservation holds to the ulp. Farmers can now enter
+       forager land that is full of foragers; foragers cannot flood land
+       that merely could be farmed.
+    2. **The hearth law had degenerated to the catalogue lag.** Basin fill
+       was density over a global bar of 0.0147 persons/km², which every
+       peopled basin clears from the opening tick, so "peopled-basin years"
+       was just "years"; and the candidate was the first native cell in
+       row-major order. The M2 law is restored — a basin's people against
+       the basin's own static forager capacity — accrued per native cell
+       (`_hearthYears`, saved and hashed) through a summed-area table, and
+       the first cells to cross the lag ignite, condensing under the
+       separation bar. `PEOPLE_FORAGER_DENSITY_BAR` is withdrawn.
+    3. **Conversion had a grid-spacing speed.** Contact over the eight-cell
+       stencil with an unbounded linear advantage (capacity 40× foraging
+       ⇒ advantage 40) converted a cell within a few years of a farmed
+       neighbour, so the cultural front moved one cell per conversion
+       interval: 130 km/yr at dev, 22 km/yr at target (third cardinal
+       rule). Contact is now local (the farmer share of the cell) and the
+       advantage saturates (adv/(1+adv)); spread is the farmers moving, and
+       a cultural diffusion with a diffusivity of its own is an M3b-or-later
+       question (DECISIONS 26, review rulings).
+    4. **Farmers rode the forager diffusivity.** With D = 1200 km²/yr and
+       the farmer regime's r = 0.46 %/yr the demic front is 2√(rD) ≈ 4.7
+       km/yr — five times Pinhasi's band, which is why the delivered dev
+       probe had the Rhine 490 years after the Balkans. Farmers now carry
+       their own mobility (`PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR` = 15,
+       Ammerman & Cavalli-Sforza): a farmer mass joins a month's flow at
+       15/1200 of a forager mass. The adoption rate is then grounded on the
+       front band given that mobility, as the spec said it would be — 0.01
+       (the band admits 0.005–0.02), not 0.08.
+    5. **The farmer total drifted from its parts.** The maintained
+       per-cell farmer total differed from Σ farmers by rounding, so a
+       loaded world's technique field differed in the last ulp from the
+       world it was saved from — and the unit test could not see it because
+       no hearth ignites inside its horizon. Both kernels now recompute the
+       total as the package sum at every commit; the parity harness primes
+       every native cell past its lag so farmers exist from tick 1 (the
+       delivered parity never compared a farmer path: the first hearth
+       ignites centuries after the harness's horizon).
+
+    Smaller corrections: the wall check tests a barrier box from the
+    reality row instead of every cell south of 20°N on Earth; the
+    front-isotropy check is withdrawn (a bounding-box aspect of the farmed
+    set says nothing about diamonds, and the climate bounds most of the
+    front); hot loops in both kernels skip inactive packages and empty
+    cells (arithmetic no-ops; parity re-run); the can-grow/native overlays
+    are counts built once per world rather than the dominant package's
+    plane rebuilt every batch; saves carry only packages with mass; the
+    unused bake tool and `hearths.json` are gone; the annual technique
+    pass no longer re-derives what the commit epilogue keeps current, and
+    the farmer-total rebuild loops the active packages only. One W3
+    housekeeping item closed on the way: a browser main thread may not
+    block in `Atomics.wait`, so a world created there (the browser smoke
+    checks do; the shell's worker does not) borrowed the pool and threw
+    mid-tick — the pool is now taken only where the coordinator can wait,
+    and Chromium's main-thread hashes match Node's pooled ones at both
+    grids.
+
+    **The +8 ms budget was never available to an eight-neighbour
+    stencil.** Measured on this runner with the long arm paused, target,
+    shipped schedule, serial: W4 89 ms/tick (migration 73), the delivered
+    M3a 390 ms (migration 310), the merged mechanisms as first written 281
+    ms (migration 245). Doubling the neighbours doubles the pairs, and the
+    delivered gather priced every pair twice (spare, cost, conductance on
+    the source side, again on the target side) with four divisions per
+    pair for the flow and the three cohort shares. The merged kernel
+    prices each pair once — the source phase stores conductance × spare
+    per slot and out ÷ weight per source, the target phase reads them back
+    through the reverse slot and multiplies by per-source cohort fractions
+    frozen at prepare — in both kernels, parity re-run at both grids.
+
+    **Measurements (review runner, 4 cores).** Parity: dev 240 / target 24
+    ticks, TS ↔ serial wasm ↔ 1/2/8 workers, byte-exact at both grids with every
+    native range primed to ignite at tick 1, so the farmer, mobility and
+    pair-spare paths are compared from the first month. Unit, lint,
+    ledger-lint, tsc green. Default gate: `gate: pass` — opening cross-grid
+    relative difference 0.0374, conservation error −1.18e−8 persons (dev)
+    and −1.12e−8 (target), the stride arm (shipped schedule against
+    stride 1, dev, 3000 years) 1.6e−4 relative in population at −8000 and
+    0–20 years in the arrivals it reaches (Levant 20, Yellow River 10,
+    Indus 10, Nile 0, Ganges 0), 25 hearths ignited by the 3000-year dev
+    endpoint, no stale manifest rows The dev long arm
+    (seed 42042, YD→1 CE, the gate's own arrival measure — technique ≥ 0.5
+    within ±3° of the row, sampled every ten years), delivered kernel
+    against the merged one:
+
+    | dev, YD→1 CE | delivered (77db7935) | merged | reality window |
+    |---|---:|---:|---|
+    | Levant hearth → half farmed | −8230 | −7570 | −9500 … −7000 |
+    | Balkans | −7210 | −4790 | −7000 … −6000 |
+    | Central Europe | −6880 | −3750 | −6000 … −5000 |
+    | Rhine | −6720 | −3270 | −5600 … −4800 |
+    | Cardial coast | −6950 | −4060 | −6500 … −5500 |
+    | Yellow River | −5310 | −6880 | −8000 … −5500 |
+    | Mesoamerica | −6100 | −3820 | −7000 … −2500 |
+    | Andes | −4660 | −4560 | −5000 … −2500 |
+    | Balkans → Rhine, km/yr | 3.25 | 1.05 | 0.6 … 1.3 |
+    | Levant → Balkans, km/yr | 2.30 | 0.85 | — |
+    | Europe can-grow cells farmed at −4000 | 250 / 256 | 103 / 256 | most |
+    | people at −4000 | 2.99 B | 0.76 B | 7–14 M |
+
+    The delivered wave crossed Europe at 3.25 km/yr (the whole continent by
+    −6000, a millennium after the Levant): the grid-spacing conversion
+    front. The merged wave runs at 1.05 km/yr through Europe and 0.85 from
+    the Levant to the Balkans — inside the radiocarbon band, which is the
+    speed the mechanism was built to predict — and is therefore LATE at
+    every European row by 1,500–2,000 years, because it starts from a
+    Levant ignition at −8050 (the catalogue lag counted from the Younger
+    Dryas peopling; the real PPNA is a millennium earlier) and because
+    nothing in M3a makes the Anatolian/Aegean leg faster than the interior
+    (the Aegean and Cardial legs were maritime, beyond the 40 km hop —
+    P14). Those rows go to the manifest with that reason; the speed itself
+    is the finding that matters, and it is right.
+
+    **Third cardinal rule spot check, target grid** (same probe, 3000
+    years, 70 min on three threads beside the long arm): the wheat range's
+    separated basins ignite between −8166 and −7907 (dev: −8184 to
+    −7847), the Indus box first on both grids; millet −7521 to −7043 (dev
+    −7550 to −6544); sorghum from −6787 (dev −6795). Half-farmed at the
+    Levant −7470 / Nile −7420 / Indus −7470 / Ganges −7300 (dev −7570 /
+    −7730 / −7680 / −7090). At −7000 the target grid has 1.4 % of its
+    land cells farmed and 2.3 % of Europe's can-grow cells, dev 4.3 % and
+    1.2 % — the coarse grid farms a cell whole. Same kind, same order,
+    within a few centuries; the target long arm (hours) that measures the
+    European rows at the shipped grid is the owner's long-arm run to
+    schedule, and the `:target` manifest rows wait on it.
+
+    **Hearths.** With ranges as data and the M2 law restored, the wheat
+    range's separated basins all ignite between −8184 and −7847 (the Indus
+    box first, at lon 74), millet's between −7550 and −6544, sorghum's
+    across the whole of Africa between −6795 and −6490: every basin of a
+    range fills at the same opening rate, so a lag counted from the
+    peopling ignites a range everywhere within a century or two. The
+    Sahel, East Africa, the Ganges, peninsular India and Japan therefore
+    farm on their own millennia early — the range boxes and lags are the
+    data that decide it (DECISIONS 26 g; P10 for the Sahel), and no
+    mechanism here can hold the Sahel to −3500 while the Levant ignites at
+    −8000 from the same law. Recorded in the manifest, not dialed.
+
+    **Population.** The share-keyed regime reaches M2's matured farmed
+    capacity within a few centuries of arrival, and with no mortality
+    physics the world holds 0.76 B at −4000 and 1.95 B at −1000 on dev
+    (the delivered kernel: 2.99 B and 4.14 B). M3b's food economy owns
+    this; the population rows in the manifest carry the new figures.
+
+    **Cost** (this runner, long arm paused, target grid, shipped schedule,
+    `bench` cadence table, 12-tick samples):
+
+    | target, ms/tick | W4 (ff6bb8d9) | delivered M3a (77db7935) | merged |
+    |---|---:|---:|---:|
+    | serial | 89.4 | 389.6 | 165.6 |
+    | 3 threads | 40.5 | 184.4 | 97.4 |
+    | 8 threads (4 cores) | 37.9 | 182.7 | 75.8 |
+    | serial migration | 73.3 | 309.8 | 131.4 |
+    | serial annual passes, amortised | 1.5 | 20.8 | 3.5 |
+    | YD→1 CE projected, 3 threads | 79 min | 358 min | 189 min |
+
+    The remaining +58 ms serial over W4 is the second neighbour set itself
+    — the pairs doubled, each carrying the pair spare's loads and the
+    conductance division — and it is the price of the stencil the spec
+    asked for; the +8 ms budget in deliverable 7 was an estimate that did
+    not count the pairs. The cohorts + ledger tail (7.6 ms) is W4's, still
+    the next packed-and-banded candidate. `bench -- --check` passes under
+    the 264 ms serial cap (row: 165.6 cold); the baseline is not
+    re-anchored. The dev tick is 0.3 ms shipped.

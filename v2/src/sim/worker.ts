@@ -1,6 +1,5 @@
 import {
   HASH_NUMBER_BYTES,
-  MATH_NEGATIVE_ONE,
   PEOPLE_SNAPSHOT_FIELD_COUNT,
 } from "./constants";
 import { ensurePeopleWasm } from "./peopleKernel";
@@ -8,6 +7,32 @@ import { hashWorld, runSteps, type GridPreset, World } from "./world";
 import { populationTotal } from "./people";
 import type { Substrate } from "./substrate";
 import type { PeopleWorld } from "./people/types";
+
+/**
+ * The can-grow and native overlays are annual land properties: how many
+ * packages can grow in a cell, and how many are native there. They never
+ * change after creation, so they are built once per world, not per batch.
+ */
+let overlayCache: { world: PeopleWorld; canGrow: Uint8Array; native: Uint8Array } | undefined;
+function staticOverlays(world: PeopleWorld): { canGrow: Uint8Array; native: Uint8Array } {
+  if (overlayCache?.world === world) return overlayCache;
+  const canGrow = new Uint8Array(world.N);
+  const native = new Uint8Array(world.N);
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    const cell = world._landCells[packed] ?? 0;
+    let grows = 0;
+    let natives = 0;
+    for (let packageIndex = 0; packageIndex < world._canGrow.length; packageIndex++) {
+      grows += world._canGrow[packageIndex]?.[packed] ?? 0;
+      natives += world._nativeRanges[packageIndex]?.[packed] ?? 0;
+    }
+    canGrow[cell] = grows;
+    native[cell] = natives;
+  }
+  overlayCache = { world, canGrow, native };
+  return overlayCache;
+}
+
 
 interface CreateMessage {
   readonly type: "create";
@@ -80,17 +105,10 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
   technique.set(world.technique);
   if (world.substrate) {
     const peopleWorld = world as PeopleWorld;
-    for (let cell = 0; cell < world.N; cell++) {
-      const packageIndex = peopleWorld._dominantPackage[cell] ?? 0;
-      packageView[cell] = packageIndex;
-      const packed = peopleWorld._packedOf[cell] ?? MATH_NEGATIVE_ONE;
-      canGrowView[cell] = packed >= 0
-        ? peopleWorld._canGrow[packageIndex]?.[packed] ?? 0
-        : 0;
-      nativeView[cell] = packed >= 0
-        ? peopleWorld._nativeRanges[packageIndex]?.[packed] ?? 0
-        : 0;
-    }
+    const overlays = staticOverlays(peopleWorld);
+    packageView.set(peopleWorld._dominantPackage);
+    canGrowView.set(overlays.canGrow);
+    nativeView.set(overlays.native);
   }
   // No world hash per snapshot: hashWorld walks every field with BigInt
   // arithmetic (5.3 s at the target grid — measured, review W3), which

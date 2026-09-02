@@ -85,8 +85,14 @@ fudge factors.
 - Births and deaths are named sources/sinks; migration is a balanced channel
   in the per-pass conservation sheet.
 - Farming is a derived share of per-package farmer masses. Climate bells,
-  growing-season minima, wild ranges, contact, and travel costs determine
-  where the demic wave can move; no speed constant or hearth pin drives it.
+  growing-season minima, wild ranges, and travel costs determine where the
+  demic wave can move; farmers move at their own grounded mobility and
+  foragers adopt the package of the farmers they live among, so the front's
+  speed is 2·√((r + adoption)·D) of the farmer group — no speed constant or
+  hearth pin drives it. A cell's capacity is the mixture of its people, and
+  the land a farming source can enter opens in proportion to the farmers it
+  sends; a hearth ignites where a native range has been a peopled basin for
+  the package's domestication lag (the M2 law).
 - Save format v5 persists people, farmer masses, derived technique, cohorts,
   peopled arrivals, hearth progress, and the resolved pass schedule; terrain
   remains immutable substrate rebuilt
@@ -105,7 +111,8 @@ fudge factors.
   `ensurePeopleWasm({ workers })` and borrowed by kernels; the dispatch
   descriptor lives in shared memory and barriers wait in 1 ms slices;
   hashes are identical for 1, 2, and N workers and identical to the serial
-  TypeScript oracle. Hosts without isolation fall back to serial wasm,
+  TypeScript oracle. Hosts without isolation, and a browser main thread
+  (which may not block in `Atomics.wait`), fall back to serial wasm,
   logged in the status line; a worker that fails mid-phase raises an error
   through shared memory rather than hanging the coordinator. Band partials
   accumulate in locals (per-cell writes to adjacent slots false-shared a
@@ -116,10 +123,12 @@ fudge factors.
   false-sharing finding and the measurements.
 - M3a adds a catalogue-backed crop system: one can-grow LUT and one native
   wild-range mask per package, farmer masses in the same land-packed order as
-  the kernel's cohort state, and a contact/adoption pass. Migration uses an
-  eight-neighbour true-distance stencil with coastal hops capped by the
-  grounded crossing length. The package, can-grow, and native overlays are
-  available in the shell.
+  the kernel's cohort state, and an annual local adoption/reversion pass.
+  Migration uses an eight-neighbour true-distance stencil with coastal hops
+  capped by the grounded crossing length. The package, can-grow, and native
+  overlays are available in the shell. QUESTIONS #37 has the M3a review:
+  what the delivered mechanisms did, what the corrections are, and the
+  measurements.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,

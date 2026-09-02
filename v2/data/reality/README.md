@@ -27,8 +27,11 @@ CC-BY 4.0. `floodplain.json` and `river-seasons.json` record the W1 gates for
 ETOPO channel-floor cross-sections and monthly runoff derived from observed
 climate. These fixtures contain checks and citations, not runtime state.
 
-`hearths.json`, `population-curve.json`, and `farming-arrivals.json` are the
-M2 hand-curated reality fixtures. Hearth coordinates and domestication lags
-are archaeological inputs; pins seed known Earth hearths but do not suppress
-the emergent cradle scorer. Population bands and farming-arrival windows are
-validation references, not simulation rails.
+`population-curve.json`, `farming-arrivals.json`, and `neolithic-arrivals.json`
+are hand-curated reality fixtures: population bands and arrival windows are
+validation references, not simulation rails. `crop-packages.json` (climate
+bells, growing-season minimum, storability, yield, domestication lag) and
+`crop-ranges.json` (wild-progenitor ranges as longitude/latitude boxes,
+rasterized at the substrate grid) are the M3a data inputs; there are no
+hearth pins — a hearth condenses wherever a native range is peopled long
+enough.

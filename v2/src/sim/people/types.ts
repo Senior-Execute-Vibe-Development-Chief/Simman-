@@ -54,6 +54,22 @@ export interface PeopleWorld extends World {
   _canGrow: readonly Uint8Array[];
   /** Per-package native wild-progenitor ranges, packed to land. */
   _nativeRanges: readonly Uint8Array[];
+  /** Per-package list of packed native cells; the hearth law accrues on exactly these. */
+  _nativeCells: readonly Int32Array[];
+  /** Peopled-basin years accrued per native cell per package (state: saved and hashed). */
+  _hearthYears: readonly Float64Array[];
+  /** Summed-area tables (width+1)×(height+1) of forager capacity × area (static) and people × area (per pass). */
+  _basinCapacitySum: Float64Array;
+  _basinPeopleSum: Float64Array;
+  /** Per-cell mobile mass (foragers + farmers × mobility ratio) and farmer share frozen for the month's flow. */
+  _migrationMobile: Float64Array;
+  _migrationFarmerShare: Float64Array;
+  /** Per source slot conductance × pair spare (source phase), per source out ÷ weight, per source cohort fractions. */
+  _pairWeight: Float64Array;
+  _migrationRatio: Float64Array;
+  _childrenFraction: Float64Array;
+  _workingFraction: Float64Array;
+  _eldersFraction: Float64Array;
   /** Dominant farmer package index, derived for lenses and capacity diagnostics. */
   _dominantPackage: Uint8Array;
   /** Static peopling mask (ancestry extent) — hoisted from two array reads per call. */

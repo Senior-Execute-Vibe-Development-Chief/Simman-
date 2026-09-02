@@ -86,6 +86,8 @@ interface PeopleKernelLike {
   farmer_next_ptr(packageIndex: number): number;
   farmer_total_ptr(): number;
   farmer_total_next_ptr(): number;
+  dominant_ptr(): number;
+  set_active_packages(mask: Uint8Array): void;
   derive_capacity_band(rawLo: number, rawHi: number): void;
   begin_growth(dtMonths: number): void;
   growth_band(rawLo: number, rawHi: number, bandIndex: number): void;
@@ -354,6 +356,24 @@ export interface PeopleWasmOptions {
 // private pool of another size synchronously (the parity harness does).
 let sharedPool: PeopleBandWorkerPool | undefined;
 
+/**
+ * The coordinator blocks in Atomics.wait between bands. A browser's main
+ * thread may not block, so a world created there (the browser smoke checks
+ * do; the shell's worker does not) must run serial wasm rather than throw
+ * mid-tick. The probe waits on a value that is already different, which
+ * returns "not-equal" at once where waiting is allowed and throws where it
+ * is not.
+ */
+function coordinatorCanWait(): boolean {
+  try {
+    const probe = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    Atomics.wait(probe, 0, 1, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensurePeopleWasm(options: PeopleWasmOptions = {}): Promise<boolean> {
   if (initialized) return true;
   if (initialization) return initialization;
@@ -394,7 +414,8 @@ export async function ensurePeopleWasm(options: PeopleWasmOptions = {}): Promise
         workerConstructor = workers.Worker as unknown as WorkerConstructor;
         workerIsNode = true;
       } else if (typeof globalThis.Worker === "function"
-        && typeof crossOriginIsolated !== "undefined" && crossOriginIsolated) {
+        && typeof crossOriginIsolated !== "undefined" && crossOriginIsolated
+        && coordinatorCanWait()) {
         workerConstructor = globalThis.Worker as unknown as WorkerConstructor;
         workerIsNode = false;
       }
@@ -574,6 +595,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
         ? world.N : world._landCells.length);
     }
     world._peopledMask = this.byteView(this.kernel.peopled_ptr(), world.N);
+    world._dominantPackage = this.byteView(this.kernel.dominant_ptr(), world.N);
     world._farmerTotal = this.view(
       this.kernel.farmer_total_ptr(),
       world._landCells.length,
@@ -620,13 +642,20 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     }
   }
 
+  /** The active-package mask is oracle state; the kernel reads a copy per pass. */
+  private syncActivePackages(): void {
+    this.kernel.set_active_packages(this.world._activePackage);
+  }
+
   deriveCapacity(): void {
     this.assertMemoryStable();
+    this.syncActivePackages();
     this.dispatchBands("capacity");
   }
 
   beginGrowth(dtMonths = 1): void {
     this.assertMemoryStable();
+    this.syncActivePackages();
     this.kernel.begin_growth(dtMonths);
   }
 
@@ -637,6 +666,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 
   beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
     this.assertMemoryStable();
+    this.syncActivePackages();
     this.kernel.begin_migration(month, dtMonths, growthPrepared);
   }
 

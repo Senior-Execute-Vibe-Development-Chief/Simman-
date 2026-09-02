@@ -202,6 +202,12 @@ export function hashWorld(world: World): string {
     hash = hashNumber(hash, field.length);
     hash = hashField(hash, field);
   }
+  const hearthYears = (world as unknown as { _hearthYears?: readonly Float64Array[] })._hearthYears ?? [];
+  hearthYears.forEach((years, index) => {
+    hash = hashText(hash, `hearthYears.${index}`);
+    hash = hashNumber(hash, years.length);
+    hash = hashField(hash, years);
+  });
   if (peopleState._peopledMask) {
     hash = hashText(hash, "peopledMask");
     for (const value of peopleState._peopledMask) hash = hashByte(hash, value);

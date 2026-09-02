@@ -100,7 +100,9 @@ export function grow(world: PeopleWorld, dtMonths = 1): GrowthResult {
         workingMass[packed] = 0;
         elderMass[packed] = 0;
         world._farmerTotalNext[packed] = 0;
-        for (const pkg of CROP_PACKAGES) world._farmersNext[pkg.id]![packed] = 0;
+        for (const packageIndex of activePackages) {
+          world._farmersNext[CROP_PACKAGES[packageIndex]?.id ?? ""]![packed] = 0;
+        }
         continue;
       }
       const disease = world._diseaseBurden[cell] ?? 0;
@@ -116,10 +118,18 @@ export function grow(world: PeopleWorld, dtMonths = 1): GrowthResult {
       let farmerTotalNext = 0;
       let cellBirths = foragerGrowth.births;
       let cellDeaths = foragerGrowth.deaths;
+      // Only active packages carry mass anywhere, and a package absent from
+      // a cell needs no capacity evaluation: both skips are arithmetic
+      // no-ops (adding zero mass, zero births, zero deaths) that both
+      // kernels apply identically.
       for (const packageIndex of activePackages) {
         const pkg = CROP_PACKAGES[packageIndex];
         if (!pkg) continue;
         const farmer = Math.max(0, world.farmers[pkg.id]?.[packed] ?? 0);
+        if (farmer <= 0) {
+          world._farmersNext[pkg.id]![packed] = 0;
+          continue;
+        }
         const farmGrowth = growGroup(
           farmer,
           packageCapacity(world, cell, packageIndex),

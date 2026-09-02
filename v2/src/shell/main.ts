@@ -320,10 +320,14 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     ];
   }
   if (lens.value === "can-grow" || lens.value === "native") {
+    // Counts: how many packages can grow here / are native here. One package
+    // is a dim ochre, every package a bright one.
     const value = lens.value === "can-grow"
       ? overlayCanGrow?.[cell] ?? 0
       : overlayNative?.[cell] ?? 0;
-    return value > 0 ? [220, 180, 65] : [35, 45, 55];
+    if (value <= 0) return [35, 45, 55];
+    const share = Math.min(1, value / CROP_PACKAGES.length);
+    return [Math.round(150 + 70 * share), Math.round(110 + 70 * share), 65];
   }
   if (lens.value === "climate") {
     return [Math.round(210 * temperature + 25), Math.round(180 * moisture + 30), Math.round(210 * (1 - temperature) + 25)];

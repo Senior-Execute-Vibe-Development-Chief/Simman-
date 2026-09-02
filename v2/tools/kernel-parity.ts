@@ -78,12 +78,20 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
   assert.equal(hashWorld(candidate), hashWorld(reference), `${grid} hash diverged at tick ${step}`);
 }
 
+// Every native range ignites on the first conversion pass, so the farmer
+// arrays, the mobility split and the pair spare are exercised from tick 1.
+// Without this the harness's horizon ends centuries before the first hearth
+// and the farmer paths of both kernels go uncompared (review, M3a).
+const PRIMED_HEARTH_YEARS = 1e6;
+
 function makeWorld(
   grid: GridPreset,
   substrate: ReturnType<typeof buildSubstrate>,
   config: Record<string, string | number | boolean>,
 ): World {
-  return new World({ seed: 42042, grid, config: { preset: "earth_sim", ...config }, substrate });
+  const world = new World({ seed: 42042, grid, config: { preset: "earth_sim", ...config }, substrate });
+  for (const years of (world as PeopleWorld)._hearthYears) years.fill(PRIMED_HEARTH_YEARS);
+  return world;
 }
 
 async function runParity(grid: GridPreset, steps: number): Promise<void> {

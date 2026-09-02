@@ -225,17 +225,19 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_THREAD_STACK_BYTES` | 1048576 | per-worker shadow stack allocated at instance init |
 | `PEOPLE_WORKER_ERROR_BYTES` | 1024 | shared-memory text capacity through which a band worker reports a failure to a coordinator blocked in Atomics.wait |
 
-## M3a — proposed (review pending)
+## M3a — reviewed (2026-09-02)
 
 | Constant | Value | Unit / grounding |
 |---|---:|---|
-| `PEOPLE_ADOPTION_RATE_PER_YEAR` | 0.08 | forager→farmer conversion per unit contact × advantage; provisional mechanism value grounded on the measured European Neolithic front (0.6–1.3 km/yr, Pinhasi et al. 2005); the front gate can falsify it |
+| `PEOPLE_ADOPTION_RATE_PER_YEAR` | 0.01 | per year; the fraction of a cell's foragers who take up a package per year at full local contact (living wholly among its farmers) and saturated advantage. The front runs at 2·√((r + rate)·D) of the farmer group; with the farmer mobility below and M2's farmer growth regime (0.46 %/yr) the Pinhasi–Fort–Ammerman band (0.6–1.3 km/yr) admits 0.005–0.02, and the long front gate can falsify it. Proposed at 0.08 with an unbounded linear advantage, which converted a cell within a few years of first contact and moved the front one cell per conversion interval — a grid-spacing speed (review) |
+| `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR` | 15 | km²/yr; sedentary farmer mobility, Ammerman & Cavalli-Sforza (1984): 1544 km² mean squared displacement per 25-year generation ÷ 4T. Foragers keep the M2 diffusivity (1200); a farmer mass joins a month's flow at the ratio of the two |
+| `PEOPLE_FARMER_MOBILITY_RATIO` | 15 / 1200 = 0.0125 | derived |
 | `PEOPLE_COASTAL_HOP_KM` | 40 | km; longest foot-and-raft water crossing, checked by Cardial coast vs inland arrivals |
 | `PEOPLE_HEARTH_SEED_FRACTION` | 0.2 | share of a hearth cell's people farming at ignition; a founding sub-population rather than a whole-cell relabel |
-| `PEOPLE_FORAGER_DENSITY_BAR` | `0.12 × 0.35 × 0.35 = 0.0147` | persons/km²; derived from the opening forager capacity's fertility floor and initial fill fraction |
-| `PEOPLE_CROP_NEIGHBOR_COUNT` | 8 | neighbours; eight-direction travel/contact stencil with true edge lengths |
-| `SAVE_VERSION_M3A` | 5 | additive farmer-mass persistence format |
-| `PEOPLE_SNAPSHOT_FIELD_COUNT` | 5 | float32 overlay planes in a shell snapshot: population, technique, package, can-grow, native |
+| `PEOPLE_CROP_NEIGHBOR_COUNT` | 8 | neighbours; eight-direction travel stencil with true edge lengths and coastal hops |
+| `SAVE_VERSION_M3A` | 5 | additive farmer-mass and hearth-history persistence format |
+| `PEOPLE_SNAPSHOT_FIELD_COUNT` | 5 | float32 overlay planes in a shell snapshot: population, technique, package, can-grow count, native count |
 | crop packages (data) | per package | climate bell + growing-season minimum + storability + yield + domestication lag; `cropPackages.js` promoted to `data/reality/crop-packages.json` |
-| wild ranges (data) | raster per package | crop biogeography, baked to both grids like `LAKE_MASK` |
+| wild ranges (data) | boxes per package | `data/reality/crop-ranges.json`, longitude/latitude boxes rasterized at the substrate grid; sources still to be cited per box (review finding) |
+| withdrawn | — | `PEOPLE_FORAGER_DENSITY_BAR` (proposed 0.12 × 0.35 × 0.35): the peopled-basin law measures a basin's people against the basin's own static forager capacity (M2, unchanged) and needs no bar; a global bar clamped every peopled basin to "full" from the opening tick |
 | deleted | — | `PEOPLE_TECHNIQUE_WAVE_KMPY`, `PEOPLE_HEARTH_SEARCH_FRACTION`, `PEOPLE_HEARTH_SCORE_*`, `PEOPLE_HEARTH_FALLBACK_LAG_YEARS`, `PEOPLE_HEARTH_LAG_RANGE_YEARS`, `PEOPLE_HEARTH_MAX_COUNT` |

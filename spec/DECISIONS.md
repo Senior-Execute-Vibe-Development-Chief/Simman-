@@ -474,6 +474,35 @@ lawyered.
     produces. Spec: `spec/handoffs/M3a-wave.md`. Branches from the merge
     of the working branch into main.
 
+    **Review rulings (2026-09-02, merge of the M3a implementation;
+    QUESTIONS #37).** (a) *Contact is local.* Foragers adopt the package
+    of the farmers they live among; the neighbour-stencil contact term of
+    the spec is withdrawn because its front moves one cell per conversion
+    interval, a speed equal to the grid spacing (third cardinal rule).
+    Spread is farmers moving; a cultural diffusion with a diffusivity of
+    its own is an M3b-or-later design question, not a stencil. (b) *The
+    advantage saturates*, adv/(1+adv): the linear form converted a cell
+    within years of first contact whatever the rate. (c) *Farmers carry
+    their own mobility.* A farmer mass joins a month's flow at
+    `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR` / the forager diffusivity
+    (15 / 1200, Ammerman & Cavalli-Sforza); riding the forager
+    diffusivity gave 2√(rD) ≈ 4.7 km/yr, five times the radiocarbon
+    front. The adoption rate is then grounded on the front band given
+    that mobility, as the spec said it would be. (d) *A package's farmed
+    capacity is independent of the farmer share*; a cell's capacity is
+    the mixture of its people, and the land a farming source can enter
+    opens in proportion to the farmers it sends (the pair spare). (e)
+    *The peopled-basin law is M2's* — a basin's people against the
+    basin's own static forager capacity, accrued per native cell; the
+    proposed global density bar is withdrawn. (f) *The front-isotropy
+    gate check is withdrawn*: a bounding-box aspect of the farmed set
+    measures nothing about diamonds, and on Earth the climate bounds most
+    of the front; the stencil is the mechanism and is reviewed as such.
+    (g) *The wild-range boxes are data awaiting citations* — three
+    (wheat into the Indus, rice into Japan, sorghum across the whole
+    Sahel) decide whether those regions ignite on their own or are
+    reached, and the owner rules on the sources.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,

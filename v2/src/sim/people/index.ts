@@ -2,6 +2,7 @@ import {
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_BAND_COUNT,
+  PEOPLE_CROP_NEIGHBOR_COUNT,
   PEOPLE_COHORT_CHILD_FRACTION,
   PEOPLE_COHORT_ELDER_FRACTION,
   PEOPLE_COHORT_WORKING_FRACTION,
@@ -81,6 +82,15 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._migrationWeight = new Float64Array(landCount);
   world._migrationPopulation = new Float64Array(landCount);
   world._migrationReceived = new Float64Array(landCount);
+  world._migrationMobile = new Float64Array(landCount);
+  world._migrationFarmerShare = new Float64Array(landCount);
+  world._pairWeight = new Float64Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT);
+  world._migrationRatio = new Float64Array(landCount);
+  world._childrenFraction = new Float64Array(landCount);
+  world._workingFraction = new Float64Array(landCount);
+  world._eldersFraction = new Float64Array(landCount);
+  world._basinCapacitySum = new Float64Array((world.width + 1) * (world.height + 1));
+  world._basinPeopleSum = new Float64Array((world.width + 1) * (world.height + 1));
   world._birthsByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._deathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._migrationByBand = new Float64Array(PEOPLE_BAND_COUNT);
@@ -104,6 +114,8 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._migrationShareRow = new Float64Array(world.height);
   world._canGrow = [];
   world._nativeRanges = [];
+  world._nativeCells = [];
+  world._hearthYears = [];
   world._dominantPackage = new Uint8Array(length);
   const neighbors = buildPeopleNeighborTable(world);
   world._neighborTargets = neighbors.targets;

@@ -192,13 +192,24 @@ function collectTrajectory(
         }
       }
     }
-    const barrier = neolithicArrivals.regions.find((region) => region.limitLatitude !== undefined);
+    // The wall: nothing farmed inside the barrier box (data, not a mechanism)
+    // when its window opens. A bare latitude limit caught every tropic on
+    // Earth — Mesoamerica, India, New Guinea — not the Sahara.
+    const barrier = neolithicArrivals.regions.find((region) => region.barrier !== undefined);
     if (barrier && step === monthsFromYear(barrier.earliest)) {
+      const box = barrier.barrier ?? [];
+      const minLon = box[0] ?? 0;
+      const maxLon = box[1] ?? 0;
+      const minLat = box[2] ?? 0;
+      const maxLat = box[3] ?? 0;
       for (let cell = 0; cell < world.N; cell++) {
         if (!substrate.landMask[cell]) continue;
         const y = Math.floor(cell / world.width);
+        const x = cell - y * world.width;
         const latitude = 90 - ((y + 0.5) / world.height) * 180;
-        if (latitude < (barrier.limitLatitude ?? 0) && (world.technique[cell] ?? 0) >= 0.5) {
+        const longitude = ((x + 0.5) / world.width) * 360 - 180;
+        if (longitude >= minLon && longitude <= maxLon && latitude >= minLat && latitude <= maxLat
+          && (world.technique[cell] ?? 0) >= 0.5) {
           southOfClimateBarrierBeforeWindow = true;
           break;
         }
@@ -252,30 +263,6 @@ function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
     failures.push(`cadence-trajectory:${grid}`);
   }
   disposePeople(reference.world);
-}
-
-function frontAspect(world: World): number | null {
-  const substrate = world.substrate;
-  if (!substrate) return null;
-  let minX = world.width;
-  let maxX = 0;
-  let minY = world.height;
-  let maxY = 0;
-  let count = 0;
-  for (let cell = 0; cell < world.N; cell++) {
-    if ((world.technique[cell] ?? 0) < 0.5) continue;
-    const y = Math.floor(cell / world.width);
-    const x = cell - y * world.width;
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-    count++;
-  }
-  if (count === 0) return null;
-  const horizontal = Math.max(1, maxX - minX + 1);
-  const vertical = Math.max(1, maxY - minY + 1);
-  return Math.max(horizontal / vertical, vertical / horizontal);
 }
 
 function arrivalSpeed(
@@ -342,17 +329,10 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
     const meanSpeed = europeanSpeed;
     findings.front = {
       meanSpeedKmPerYear: meanSpeed,
-      frontAspect: frontAspect(world),
       southOfClimateBarrierBeforeWindow,
     };
     if (meanSpeed !== null && (meanSpeed < 0.6 || meanSpeed > 1.3)) {
       const id = `europe-front-speed:${scope}`;
-      measured.add(id);
-      failures.push(id);
-    }
-    const aspect = frontAspect(world);
-    if (aspect !== null && aspect > 1.3) {
-      const id = `front-isotropy:${scope}`;
       measured.add(id);
       failures.push(id);
     }

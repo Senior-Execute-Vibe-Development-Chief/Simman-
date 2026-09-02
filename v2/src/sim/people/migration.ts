@@ -2,13 +2,16 @@ import {
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_CROP_NEIGHBOR_COUNT,
+  PEOPLE_FARMER_MOBILITY_RATIO,
   PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR,
   PEOPLE_MIGRATION_MAX_SHARE,
   PEOPLE_MIGRATION_MAX_SUBSTEPS,
+  PEOPLE_NEIGHBOR_OPPOSITE,
 } from "../constants";
 import { monthIndex } from "../scheduler";
 import { fillMigrationDaysPerKm } from "../travel/cost";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
+import { activePackageIndices, packageCapacity } from "./crop";
 import type { PeopleWorld } from "./types";
 import { coastalHopCost } from "./neighbors";
 
@@ -47,19 +50,6 @@ export function fillMigrationShareRows(world: PeopleWorld, dtMonths = 1): void {
   }
 }
 
-function cohortShareOf(
-  world: PeopleWorld,
-  flow: number,
-  source: number,
-  sourceMass: Float64Array,
-): number {
-  const packed = world._packedOf[source] ?? MATH_NEGATIVE_ONE;
-  if (packed < 0) return 0;
-  const migrationSource = world._migrationPopulation[packed] ?? 0;
-  if (flow <= 0 || migrationSource <= 0) return 0;
-  return flow * (sourceMass[packed] ?? 0) / migrationSource;
-}
-
 function conductance(world: PeopleWorld, target: number, slot: number): number {
   const distance = world._neighborDistanceKm[slot] ?? 0;
   const cost = world._neighborMode[slot] === 1
@@ -68,60 +58,85 @@ function conductance(world: PeopleWorld, target: number, slot: number): number {
   return Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0;
 }
 
-function addSourceWeight(world: PeopleWorld, target: number, slot: number): number {
-  const packed = world._packedOf[target] ?? MATH_NEGATIVE_ONE;
-  if (packed < 0) return 0;
-  const spare = Math.max(
-    0,
-    (world.capField[target] ?? 0) - (world._peopleNext[packed] ?? 0),
-  ) * (world.cellAreaKm2[target] ?? 0);
-  if (spare <= 0) return 0;
-  return conductance(world, target, slot) * spare;
+/**
+ * The room a target has for what a source sends. Foragers see the target's
+ * capacity as it stands (its people's own mixture); the farmers in the flow
+ * see, in proportion to their share of the source, the land farmed with the
+ * source's dominant package. A farming source can therefore enter forager
+ * land that is full of foragers, and foragers passing through unfarmed land
+ * that could be farmed cannot. Source weights and target flows evaluate this
+ * same expression, so every unit that leaves a source arrives somewhere.
+ */
+function pairSpare(world: PeopleWorld, sourcePacked: number, target: number, targetPacked: number): number {
+  const capacity = world.capField[target] ?? 0;
+  const share = world._migrationFarmerShare[sourcePacked] ?? 0;
+  let open = capacity;
+  if (share > 0) {
+    const sourceCell = world._landCells[sourcePacked] ?? 0;
+    const farmed = packageCapacity(world, target, world._dominantPackage[sourceCell] ?? 0);
+    open = capacity + share * Math.max(0, farmed - capacity);
+  }
+  return Math.max(0, open - (world._migrationPopulation[targetPacked] ?? 0))
+    * (world.cellAreaKm2[target] ?? 0);
 }
 
-function sourceFlow(
+/**
+ * Freeze the month's farmer masses and derive the mobile mass: foragers
+ * move at the migration diffusivity, farmers at their own mobility, so a
+ * farmer mass joins the flow at the mobility ratio. That ratio, not a speed
+ * constant, is what makes the farming front slower than the peopling one.
+ */
+function prepareFarmers(
   world: PeopleWorld,
-  source: number,
-  conductance_: number,
-  targetSpare: number,
-): number {
-  const packed = world._packedOf[source] ?? MATH_NEGATIVE_ONE;
-  if (packed < 0) return 0;
-  const amount = world._migrationOut[packed] ?? 0;
-  const weight = world._migrationWeight[packed] ?? 0;
-  return amount > 0 && weight > 0
-    ? amount * conductance_ * targetSpare / weight
-    : 0;
-}
-
-function prepareFarmers(world: PeopleWorld, packed: number, growthPrepared: boolean): void {
+  packed: number,
+  growthPrepared: boolean,
+  active: readonly number[],
+): void {
   const total = growthPrepared
     ? world._farmerTotalNext[packed] ?? 0
     : world._farmerTotal[packed] ?? 0;
   world._farmerMigrationTotal[packed] = total;
   world._farmerTotalNext[packed] = total;
-  for (const pkg of CROP_PACKAGES) {
+  for (const packageIndex of active) {
+    const id = CROP_PACKAGES[packageIndex]?.id ?? "";
     const current = growthPrepared
-      ? world._farmersNext[pkg.id]?.[packed] ?? 0
-      : world.farmers[pkg.id]?.[packed] ?? 0;
-    world._farmersMigration[pkg.id]![packed] = current;
-    world._farmersNext[pkg.id]![packed] = current;
+      ? world._farmersNext[id]?.[packed] ?? 0
+      : world.farmers[id]?.[packed] ?? 0;
+    world._farmersMigration[id]![packed] = current;
+    world._farmersNext[id]![packed] = current;
+  }
+  const population = world._migrationPopulation[packed] ?? 0;
+  const foragers = Math.max(0, population - total);
+  world._migrationMobile[packed] = foragers + total * PEOPLE_FARMER_MOBILITY_RATIO;
+  world._migrationFarmerShare[packed] = population > 0 ? Math.min(1, total / population) : 0;
+  world._migrationRatio[packed] = 0;
+  world._pairWeight.fill(0, packed * PEOPLE_CROP_NEIGHBOR_COUNT, (packed + 1) * PEOPLE_CROP_NEIGHBOR_COUNT);
+  if (population > 0) {
+    world._childrenFraction[packed] = (world._childrenMass[packed] ?? 0) / population;
+    world._workingFraction[packed] = (world._workingMass[packed] ?? 0) / population;
+    world._eldersFraction[packed] = (world._eldersMass[packed] ?? 0) / population;
+  } else {
+    world._childrenFraction[packed] = 0;
+    world._workingFraction[packed] = 0;
+    world._eldersFraction[packed] = 0;
   }
 }
 
-function debitFarmers(world: PeopleWorld, packed: number, densityMoved: number): void {
-  const population = world._migrationPopulation[packed] ?? 0;
-  if (population <= 0) return;
-  world._farmerTotalNext[packed] = Math.max(
-    0,
-    (world._farmerTotalNext[packed] ?? 0)
-      - densityMoved * (world._farmerMigrationTotal[packed] ?? 0) / population,
-  );
-  for (const pkg of CROP_PACKAGES) {
-    const moved = densityMoved * (world._farmersMigration[pkg.id]?.[packed] ?? 0) / population;
-    world._farmersNext[pkg.id]![packed] = Math.max(
+function debitFarmers(
+  world: PeopleWorld,
+  packed: number,
+  densityMoved: number,
+  active: readonly number[],
+): void {
+  const mobile = world._migrationMobile[packed] ?? 0;
+  const total = world._farmerMigrationTotal[packed] ?? 0;
+  if (mobile <= 0 || total <= 0) return;
+  for (const packageIndex of active) {
+    const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+    const fraction = (world._farmersMigration[id]?.[packed] ?? 0) * PEOPLE_FARMER_MOBILITY_RATIO / mobile;
+    world._farmersNext[id]![packed] = Math.max(
       0,
-      (world._farmersNext[pkg.id]?.[packed] ?? 0) - moved,
+      (world._farmersNext[id]?.[packed] ?? 0) - densityMoved * fraction,
     );
   }
 }
@@ -129,23 +144,21 @@ function debitFarmers(world: PeopleWorld, packed: number, densityMoved: number):
 function gatherFarmers(
   world: PeopleWorld,
   targetPacked: number,
-  source: number,
+  sourcePacked: number,
   flow: number,
   targetArea: number,
+  active: readonly number[],
 ): void {
-  if (source < 0 || flow <= 0) return;
-  const sourcePacked = world._packedOf[source] ?? MATH_NEGATIVE_ONE;
-  const sourcePopulation = sourcePacked >= 0
-    ? world._migrationPopulation[sourcePacked] ?? 0
-    : 0;
-  if (sourcePopulation <= 0) return;
-  const movedTotal = flow * (world._farmerMigrationTotal[sourcePacked] ?? 0) / sourcePopulation;
-  for (const pkg of CROP_PACKAGES) {
-    world._farmersNext[pkg.id]![targetPacked] += (
-      flow * (world._farmersMigration[pkg.id]?.[sourcePacked] ?? 0) / sourcePopulation
+  if (sourcePacked < 0 || flow <= 0) return;
+  const mobile = world._migrationMobile[sourcePacked] ?? 0;
+  const total = world._farmerMigrationTotal[sourcePacked] ?? 0;
+  if (mobile <= 0 || total <= 0) return;
+  for (const packageIndex of active) {
+    const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+    world._farmersNext[id]![targetPacked] += (
+      flow * (world._farmersMigration[id]?.[sourcePacked] ?? 0) * PEOPLE_FARMER_MOBILITY_RATIO / mobile
     ) / targetArea;
   }
-  world._farmerTotalNext[targetPacked] += movedTotal / targetArea;
 }
 
 /**
@@ -185,6 +198,7 @@ export function migrate(
   const childNext = world._childrenNext;
   const workingNext = world._workingNext;
   const elderNext = world._eldersNext;
+  const active = activePackageIndices(world);
   world._migrationByBand.fill(0);
   world._migrationReceivedByBand.fill(0);
 
@@ -217,7 +231,7 @@ export function migrate(
         world._workingMass[packed] = workingNext[packed] ?? 0;
         world._eldersMass[packed] = elderNext[packed] ?? 0;
       }
-      prepareFarmers(world, packed, growthPrepared);
+      prepareFarmers(world, packed, growthPrepared, active);
     }
   }
 
@@ -232,11 +246,19 @@ export function migrate(
       for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
         const slot = packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction;
         const target = world._neighborTargets[slot] ?? MATH_NEGATIVE_ONE;
-        if (target >= 0) sumWeight += addSourceWeight(world, target, slot);
+        if (target < 0) continue;
+        const targetPacked = world._packedOf[target] ?? MATH_NEGATIVE_ONE;
+        if (targetPacked < 0) continue;
+        const spare = pairSpare(world, packed, target, targetPacked);
+        if (spare <= 0) continue;
+        const contribution = conductance(world, target, slot) * spare;
+        world._pairWeight[slot] = contribution;
+        sumWeight += contribution;
       }
       if (sumWeight <= 0) continue;
-      out[packed] = population * area * share;
+      out[packed] = (world._migrationMobile[packed] ?? 0) * area * share;
       weights[packed] = sumWeight;
+      world._migrationRatio[packed] = (out[packed] ?? 0) / sumWeight;
       world._migrationByBand[band.index] = (world._migrationByBand[band.index] ?? 0) + out[packed];
     }
   }
@@ -248,7 +270,7 @@ export function migrate(
       if (amount <= 0) continue;
       const area = areas[cell] ?? 1;
       next[packed] = Math.max(0, (next[packed] ?? 0) - amount / area);
-      debitFarmers(world, packed, amount / area);
+      debitFarmers(world, packed, amount / area, active);
       const population = migrationPopulation[packed] ?? 0;
       if (population > 0) {
         childNext[packed] = Math.max(
@@ -273,22 +295,27 @@ export function migrate(
       const target = world._landCells[packed] ?? 0;
       const targetArea = areas[target] ?? 0;
       if (targetArea <= 0) continue;
-      const targetSpare = Math.max(
-        0,
-        (world.capField[target] ?? 0) - (migrationPopulation[packed] ?? 0),
-      ) * targetArea;
-      if (targetSpare <= 0) continue;
       let received = 0;
       for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
         const slot = packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction;
         const source = world._neighborTargets[slot] ?? MATH_NEGATIVE_ONE;
         if (source < 0) continue;
-        const flow = sourceFlow(world, source, conductance(world, target, slot), targetSpare);
+        const sourcePacked = world._packedOf[source] ?? MATH_NEGATIVE_ONE;
+        if (sourcePacked < 0) continue;
+        // The source priced this pair in its own phase; read it back through
+        // the reverse slot. A hop the source does not see in return (none by
+        // construction) stays in the remainder.
+        const reverse = sourcePacked * PEOPLE_CROP_NEIGHBOR_COUNT + (PEOPLE_NEIGHBOR_OPPOSITE[direction] ?? 0);
+        if ((world._neighborTargets[reverse] ?? MATH_NEGATIVE_ONE) !== target) continue;
+        const contribution = world._pairWeight[reverse] ?? 0;
+        if (contribution <= 0) continue;
+        const flow = (world._migrationRatio[sourcePacked] ?? 0) * contribution;
+        if (flow <= 0) continue;
         received += flow;
-        gatherFarmers(world, packed, source, flow, targetArea);
-        childNext[packed] += cohortShareOf(world, flow, source, world._childrenMass) / targetArea;
-        workingNext[packed] += cohortShareOf(world, flow, source, world._workingMass) / targetArea;
-        elderNext[packed] += cohortShareOf(world, flow, source, world._eldersMass) / targetArea;
+        gatherFarmers(world, packed, sourcePacked, flow, targetArea, active);
+        childNext[packed] += flow * (world._childrenFraction[sourcePacked] ?? 0) / targetArea;
+        workingNext[packed] += flow * (world._workingFraction[sourcePacked] ?? 0) / targetArea;
+        elderNext[packed] += flow * (world._eldersFraction[sourcePacked] ?? 0) / targetArea;
       }
       if (received <= 0) continue;
       next[packed] = (next[packed] ?? 0) + received / targetArea;
@@ -318,13 +345,15 @@ export function migrate(
       childNext[remainderPacked] += density * (world._childrenMass[remainderPacked] ?? 0) / remainderPopulation;
       workingNext[remainderPacked] += density * (world._workingMass[remainderPacked] ?? 0) / remainderPopulation;
       elderNext[remainderPacked] += density * (world._eldersMass[remainderPacked] ?? 0) / remainderPopulation;
-      world._farmerTotalNext[remainderPacked] += (
-        density * (world._farmerMigrationTotal[remainderPacked] ?? 0) / remainderPopulation
-      );
-      for (const pkg of CROP_PACKAGES) {
-        world._farmersNext[pkg.id]![remainderPacked] += (
-          density * (world._farmersMigration[pkg.id]?.[remainderPacked] ?? 0) / remainderPopulation
-        );
+      const mobile = world._migrationMobile[remainderPacked] ?? 0;
+      const farmerTotal = world._farmerMigrationTotal[remainderPacked] ?? 0;
+      if (mobile > 0 && farmerTotal > 0) {
+        for (const packageIndex of active) {
+          const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+          world._farmersNext[id]![remainderPacked] += (
+            density * ((world._farmersMigration[id]?.[remainderPacked] ?? 0) * PEOPLE_FARMER_MOBILITY_RATIO / mobile)
+          );
+        }
       }
     }
   }
@@ -332,7 +361,20 @@ export function migrate(
   world._childrenMass.set(childNext);
   world._workingMass.set(workingNext);
   world._eldersMass.set(elderNext);
-  world._farmerTotal.set(world._farmerTotalNext);
-  for (const pkg of CROP_PACKAGES) world.farmers[pkg.id]!.set(world._farmersNext[pkg.id]!);
+  // The farmer total is always the package sum in package order — never an
+  // incrementally maintained value, which drifts from the sum by rounding
+  // and cannot be rebuilt from a save (review, M3a: the technique field of a
+  // loaded world differed in the last ulp).
+  for (const packageIndex of active) {
+    const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+    world.farmers[id]!.set(world._farmersNext[id]!);
+  }
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    let farmerTotal = 0;
+    for (const packageIndex of active) {
+      farmerTotal += world._farmersNext[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0;
+    }
+    world._farmerTotal[packed] = farmerTotal;
+  }
   return total;
 }

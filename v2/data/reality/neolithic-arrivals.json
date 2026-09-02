@@ -7,7 +7,7 @@
     { "id": "rhine", "latitude": 51, "longitude": 7, "earliest": -5600, "latest": -4800 },
     { "id": "cardial-coast", "latitude": 40, "longitude": 15, "earliest": -6500, "latest": -5500 },
     { "id": "inland-europe", "latitude": 48, "longitude": 15, "earliest": -5800, "latest": -4800 },
-    { "id": "sahel", "latitude": 15, "longitude": 0, "earliest": -3500, "latest": -2500, "limitLatitude": 20 },
+    { "id": "sahel", "latitude": 15, "longitude": 0, "earliest": -3500, "latest": -2500, "barrier": [-18, 44, -35, 20], "barrierNote": "no cell farmed inside this longitude/latitude box (Africa south of the Sahara) when this window opens" },
     { "id": "ganges", "latitude": 25, "longitude": 82, "earliest": -3000, "latest": -2000 },
     { "id": "south-india", "latitude": 15, "longitude": 78, "earliest": -3500, "latest": -2500 },
     { "id": "japan", "latitude": 36, "longitude": 138, "earliest": -1200, "latest": -500 }

@@ -2,23 +2,55 @@
   "misses": [
     {
       "id": "population:-5000:dev",
-      "reason": "Measured 226M vs band max 60M on dev: without famine variance, harvest failure, plagues, or exhausted soil, intrinsic growth runs toward farmed capacity. M3/M7 mortality physics owns this miss; no rate is dialed."
+      "reason": "Measured 282M vs band max 60M on dev (M3a review long arm): without famine variance, harvest failure, plagues, or exhausted soil, intrinsic growth runs toward farmed capacity, and the share-keyed regime reaches the matured farmed capacity within a few centuries of arrival. M3b mortality and intensification physics own this miss; no rate is dialed."
     },
     {
       "id": "population:-3000:dev",
-      "reason": "Measured 438M vs band max 100M on dev: the same missing-mortality physics as population:-5000."
+      "reason": "Measured 1.27B vs band max 100M on dev: the same missing-mortality physics as population:-5000."
     },
     {
       "id": "population:-1000:dev",
-      "reason": "Measured 739M vs band max 200M on dev: the same missing-mortality physics as population:-5000."
+      "reason": "Measured 1.95B vs band max 200M on dev: the same missing-mortality physics as population:-5000."
     },
     {
       "id": "population:1:dev",
-      "reason": "Measured 908M vs band max 400M on dev: the curve saturates against farmed capacity (Malthus via ceiling only, no famine variance), the same missing-mortality physics as population:-5000."
+      "reason": "Measured above 2B vs band max 400M on dev: the curve saturates against farmed capacity (Malthus via ceiling only, no famine variance), the same missing-mortality physics as population:-5000."
     },
     {
-      "id": "arrival:indus:dev",
-      "reason": "Measured -8070 vs earliest -7000 (-7800 with the \u00b1800 grace) on dev: under the peopled-basin-years law the Indus floodplain basin arms as fast as the Fertile Crescent's. Real Mehrgarh package adaptation and monsoon-margin factors are not yet modeled; a physics finding, not a dial."
+      "id": "arrival:balkans:dev",
+      "reason": "Measured -4790 vs latest -6000 (-5200 with the ±800 grace) on dev. The front runs at the measured 0.85 km/yr (Levant to Balkans) and 1.05 km/yr (Balkans to Rhine), inside the radiocarbon band, from a Levant ignition at -8050 whose hearth cell reaches half farmed at -7570; the real dates need domestication about a millennium earlier than the lag-from-Younger-Dryas law gives and the Anatolian/Aegean maritime leapfrog that the 40 km hop cannot make (P14, long sea voyages). A physics finding, not a dial."
+    },
+    {
+      "id": "arrival:central-europe:dev",
+      "reason": "Measured -3750 vs latest -5000 (-4200 with the grace) on dev. The front runs at the measured 0.85 km/yr (Levant to Balkans) and 1.05 km/yr (Balkans to Rhine), inside the radiocarbon band, from a Levant ignition at -8050 whose hearth cell reaches half farmed at -7570; the real dates need domestication about a millennium earlier than the lag-from-Younger-Dryas law gives and the Anatolian/Aegean maritime leapfrog that the 40 km hop cannot make (P14, long sea voyages). A physics finding, not a dial."
+    },
+    {
+      "id": "arrival:rhine:dev",
+      "reason": "Measured -3270 vs latest -4800 (-4000 with the grace) on dev. The front runs at the measured 0.85 km/yr (Levant to Balkans) and 1.05 km/yr (Balkans to Rhine), inside the radiocarbon band, from a Levant ignition at -8050 whose hearth cell reaches half farmed at -7570; the real dates need domestication about a millennium earlier than the lag-from-Younger-Dryas law gives and the Anatolian/Aegean maritime leapfrog that the 40 km hop cannot make (P14, long sea voyages). A physics finding, not a dial."
+    },
+    {
+      "id": "arrival:cardial-coast:dev",
+      "reason": "Measured -4060 vs latest -5500 (-4700 with the grace) on dev: the Cardial spread was maritime, hundreds of km per generation along the Mediterranean coast; the 40 km foot-and-raft hop cannot make it (P14). The front runs at the measured 0.85 km/yr (Levant to Balkans) and 1.05 km/yr (Balkans to Rhine), inside the radiocarbon band, from a Levant ignition at -8050 whose hearth cell reaches half farmed at -7570; the real dates need domestication about a millennium earlier than the lag-from-Younger-Dryas law gives and the Anatolian/Aegean maritime leapfrog that the 40 km hop cannot make (P14, long sea voyages). A physics finding, not a dial."
+    },
+    {
+      "id": "arrival:sahel:dev",
+      "reason": "Measured -6280 vs earliest -3500 (-4300 with the grace) on dev. Sorghum ignites on its own across Africa at -6800: its range box spans the whole Sahel and its domestication lag runs from the Younger Dryas peopling, so the peopled-basin law fires two thousand years after the opening. The real delay is the Holocene humid period's population history (P10, owner ruling pending) and the range/lag data (DECISIONS 26, review ruling g); neither is a rate to dial."
+    },
+    {
+      "id": "climate-barrier:dev",
+      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at -3500 (800 of them on dev). Sorghum ignites on its own across Africa at -6800: its range box spans the whole Sahel and its domestication lag runs from the Younger Dryas peopling, so the peopled-basin law fires two thousand years after the opening. The real delay is the Holocene humid period's population history (P10, owner ruling pending) and the range/lag data (DECISIONS 26, review ruling g); neither is a rate to dial."
+    },
+    {
+      "id": "arrival:ganges:dev",
+      "reason": "Measured -7090 vs earliest -3000 (-3800 with the grace) on dev. An independent ignition inside a range box rather than a reached region: the millet range box reaches the Ganges (DECISIONS 26, review ruling g: range citations pending)."
+    },
+    {
+      "id": "arrival:south-india:dev",
+      "reason": "Measured -6570 vs earliest -3500 (-4300 with the grace) on dev. An independent ignition inside a range box rather than a reached region: the rice range box reaches peninsular India (review ruling g)."
+    },
+    {
+      "id": "arrival:japan:dev",
+      "reason": "Measured -5960 vs earliest -1200 (-2000 with the grace) on dev. An independent ignition inside a range box rather than a reached region: the rice range box reaches Japan (review ruling g)."
     }
   ]
 }

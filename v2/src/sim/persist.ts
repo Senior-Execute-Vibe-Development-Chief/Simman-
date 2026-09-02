@@ -1,6 +1,7 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
 import { SAVE_VERSION_M3A } from "./constants";
+import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World } from "./world";
 import type { HearthState } from "./people/types";
 import { sameSchedule, type PassSchedule } from "./scheduler";
@@ -28,7 +29,10 @@ export interface SaveEnvelope {
   readonly people: {
     readonly initialized: boolean;
     readonly hearths: readonly HearthState[];
+    /** Only packages carrying mass are written; a missing package loads as zero. */
     readonly farmerFields: Record<string, SerializedField>;
+    /** Peopled-basin years per native cell per package: hearth history. */
+    readonly hearthYears?: Record<string, SerializedField>;
     readonly peopledMask: string;
     readonly dominantPackage: string;
   };
@@ -91,19 +95,29 @@ export function saveWorld(world: World): SaveEnvelope {
     };
   }
   const farmerFields: Record<string, SerializedField> = {};
+  const hearthYears: Record<string, SerializedField> = {};
   let peopledMask = "";
   let dominantPackage = "";
   if (world.substrate) {
     const peopleWorld = asPeopleWorld(world);
     for (const packageId of Object.keys(peopleWorld.farmers).sort()) {
       const field = peopleWorld.farmers[packageId];
-      if (!field) continue;
+      if (!field || !field.some((value) => value > 0)) continue;
       farmerFields[packageId] = {
         length: field.length,
         encoding: "base64-float64-le",
         data: base64FromField(field),
       };
     }
+    CROP_PACKAGES.forEach((pkg, index) => {
+      const years = peopleWorld._hearthYears[index];
+      if (!years || years.length === 0) return;
+      hearthYears[pkg.id] = {
+        length: years.length,
+        encoding: "base64-float64-le",
+        data: base64FromField(years),
+      };
+    });
     peopledMask = base64FromBytes(peopleWorld._peopledMask);
     dominantPackage = base64FromBytes(peopleWorld._dominantPackage);
   }
@@ -120,6 +134,7 @@ export function saveWorld(world: World): SaveEnvelope {
       initialized: world.peopleInitialized,
       hearths: world.hearths.map((hearth) => ({ ...hearth })),
       farmerFields,
+      hearthYears,
       peopledMask,
       dominantPackage,
     },
@@ -161,7 +176,10 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
   if (world.substrate) for (const [packageId, current] of Object.entries(asPeopleWorld(world).farmers)) {
     const serialized = data.people.farmerFields?.[packageId];
-    if (!serialized) throw new Error(`Missing farmer field ${packageId}.`);
+    if (!serialized) {
+      current.fill(0);
+      continue;
+    }
     const field = fieldFromBase64(serialized, {
       name: `farmers.${packageId}`,
       defaultValue: 0,
@@ -175,6 +193,23 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
     }
   }
   if (world.substrate) {
+    const peopleWorld = asPeopleWorld(world);
+    CROP_PACKAGES.forEach((pkg, index) => {
+      const years = peopleWorld._hearthYears[index];
+      if (!years) return;
+      const serialized = data.people.hearthYears?.[pkg.id];
+      if (!serialized) {
+        years.fill(0);
+        return;
+      }
+      const field = fieldFromBase64(serialized, {
+        name: `hearthYears.${pkg.id}`,
+        defaultValue: 0,
+        allocate: (length) => new Float64Array(length),
+      });
+      if (field.length !== years.length) throw new Error(`Invalid hearth-years length for ${pkg.id}.`);
+      years.set(field);
+    });
     const mask = bytesFromBase64(data.people.peopledMask);
     if (mask.length !== asPeopleWorld(world)._peopledMask.length) {
       throw new Error("Invalid peopled mask length.");

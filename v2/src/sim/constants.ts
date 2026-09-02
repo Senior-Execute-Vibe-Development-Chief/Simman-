@@ -255,10 +255,11 @@ export const PEOPLE_WORKER_ERROR_BYTES = 1024; // spec/09-constants-ledger.md §
 
 // M3a wave-and-crops constants. These are mechanisms/data contracts, not
 // outcome targets: the front speed is an output of farmer growth and travel.
-export const PEOPLE_ADOPTION_RATE_PER_YEAR = 0.08; // spec/09-constants-ledger.md §M3a proposed — contact/advantage conversion rate
+export const PEOPLE_ADOPTION_RATE_PER_YEAR = 0.01; // spec/09-constants-ledger.md §M3a — foragers adopting per year at full local contact and saturated advantage
+export const PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR = 15; // spec/09-constants-ledger.md §M3a — sedentary farmer mobility, Ammerman & Cavalli-Sforza 1544 km²/generation ÷ 4T
+export const PEOPLE_FARMER_MOBILITY_RATIO = PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR / PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR; // spec/09-constants-ledger.md §M3a — derived: farmer mass share of a month's flow relative to foragers
 export const PEOPLE_COASTAL_HOP_KM = 40; // spec/09-constants-ledger.md §M3a proposed — foot-and-raft crossing scale
 export const PEOPLE_HEARTH_SEED_FRACTION = 0.2; // spec/09-constants-ledger.md §M3a proposed — ignition farmer share
-export const PEOPLE_FORAGER_DENSITY_BAR = PEOPLE_FORAGER_CAPACITY_PER_KM2 * PEOPLE_INITIAL_FILL_FRACTION * PEOPLE_FORAGER_FERTILITY_BASE; // spec/09-constants-ledger.md §M3a proposed — derived opening forager density
 export const PEOPLE_CROP_NEIGHBOR_COUNT = 8; // spec/09-constants-ledger.md §M3a proposed — eight-neighbour travel/contact stencil
 export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed — farmer-field save format
 export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
