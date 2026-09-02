@@ -141,6 +141,40 @@ async function main(): Promise<void> {
     substrate,
   });
   const opening = populationTotal(peopleWorld);
+  const packedWorld = peopleWorld as PeopleWorld;
+  for (const name of [
+    "_peopleNext",
+    "_techniqueNext",
+    "_childrenMass",
+    "_workingMass",
+    "_eldersMass",
+    "_childrenNext",
+    "_workingNext",
+    "_eldersNext",
+    "_migrationOut",
+    "_migrationWeight",
+    "_migrationPopulation",
+    "_migrationReceived",
+  ]) {
+    assert.equal(
+      (packedWorld as unknown as Record<string, Float64Array>)[name]?.length,
+      packedWorld._landCells.length,
+      `${name} must be land-packed`,
+    );
+  }
+  for (const name of ["people", "technique", "children", "working", "elders", "capField"]) {
+    assert.equal(
+      (packedWorld as unknown as Record<string, Float64Array>)[name]?.length,
+      packedWorld.N,
+      `${name} must retain its full-grid view`,
+    );
+  }
+  for (const band of packedWorld._peopleBands) {
+    const first = packedWorld._landCells[band.rawLo];
+    const last = packedWorld._landCells[band.rawHi - 1];
+    if (first !== undefined) assert.ok(first >= band.rowLo * packedWorld.width);
+    if (last !== undefined) assert.ok(last < band.rowHi * packedWorld.width);
+  }
   runSteps(peopleWorld, 24);
   const techniqueBefore = Float64Array.from(peopleWorld.technique);
   for (const hearth of peopleWorld.hearths) hearth.lagYears = 0;

@@ -12,6 +12,7 @@ const PEOPLE_FIELDS = [
   "children",
   "working",
   "elders",
+  "capField",
 ] as const;
 
 const PEOPLE_SCRATCH = [
@@ -51,6 +52,9 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
         (reference as PeopleWorld)._landCells.length,
         `${grid} TS ${name} was not land-packed at ${step}`,
       );
+    } else {
+      assert.equal(left.length, (reference as PeopleWorld).N, `${grid} TS ${name} lost full-grid view`);
+      assert.equal(right.length, (candidate as PeopleWorld).N, `${grid} WASM ${name} lost full-grid view`);
     }
     assert.deepEqual(bytes(right), bytes(left), `${grid} ${name} diverged at tick ${step}`);
   }
