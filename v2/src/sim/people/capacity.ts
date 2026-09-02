@@ -20,11 +20,7 @@ export function deriveCapacity(world: PeopleWorld): void {
   }
   const substrate = world.substrate;
   const capacity = world.capField;
-  for (let cell = 0; cell < world.N; cell++) {
-    if (!substrate.landMask[cell]) {
-      capacity[cell] = 0;
-      continue;
-    }
+  for (const cell of world._landCells) {
     const fertility = Math.max(0, Math.min(1, substrate.fertility[cell] ?? 0));
     const technique = Math.max(0, Math.min(1, world.technique[cell] ?? 0));
     const access = world._waterAccess[cell] ?? 0;

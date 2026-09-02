@@ -11,7 +11,6 @@ import type { PeopleWorld } from "./people/types";
 import {
   beginBandPhase,
   createBandControl,
-  fixedPeopleBands,
   type BandControl,
   type PeopleBand,
 } from "./people/bands";
@@ -45,7 +44,6 @@ interface WorkerLike {
 interface PeopleKernelLike {
   free(): void;
   kernel_ptr(): number;
-  set_parallel_reductions(enabled: boolean): void;
   people_ptr(): number;
   technique_ptr(): number;
   children_ptr(): number;
@@ -63,6 +61,7 @@ interface PeopleKernelLike {
   migration_out_ptr(): number;
   migration_weight_ptr(): number;
   migration_population_ptr(): number;
+  migration_received_ptr(): number;
   derive_capacity_band(rawLo: number, rawHi: number): void;
   prepare_technique(): void;
   technique_band(rawLo: number, rawHi: number, dtMonths: number): void;
@@ -340,7 +339,8 @@ type KernelFieldName =
   | "_eldersNext"
   | "_migrationOut"
   | "_migrationWeight"
-  | "_migrationPopulation";
+  | "_migrationPopulation"
+  | "_migrationReceived";
 
 class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   readonly bands: readonly PeopleBand[];
@@ -360,10 +360,8 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     kernel: PeopleKernelLike = new WasmPeopleKernel(...kernelArguments(world)),
     memoryOverride?: WebAssembly.Memory,
     workerPool?: PeopleBandWorkerPool,
-    parallelReductions = false,
   ) {
     this.kernel = kernel;
-    if (parallelReductions) this.kernel.set_parallel_reductions(true);
     const memory = memoryOverride ?? wasmMemory() as WebAssembly.Memory;
     if (!(memory instanceof WebAssembly.Memory)) {
       throw new Error("People WASM did not expose linear memory.");
@@ -372,7 +370,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.memoryBuffer = memory.buffer;
     this.memoryBytes = memory.buffer.byteLength;
     this.world = world;
-    this.bands = fixedPeopleBands(world.width, world.height);
+    this.bands = world._peopleBands;
     this.workerCount = Math.max(1, Math.floor(workerCount));
     this.workerPool = workerPool;
     this.usesThreads = workerPool !== undefined;
@@ -420,10 +418,20 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       _migrationOut: this.kernel.migration_out_ptr(),
       _migrationWeight: this.kernel.migration_weight_ptr(),
       _migrationPopulation: this.kernel.migration_population_ptr(),
+      _migrationReceived: this.kernel.migration_received_ptr(),
     };
+    const fullGrid = new Set<KernelFieldName>([
+      "people",
+      "technique",
+      "children",
+      "working",
+      "elders",
+      "capField",
+    ]);
     const target = world as unknown as Record<string, unknown>;
     for (const [name, pointer] of Object.entries(pointers)) {
-      target[name] = this.view(pointer, world.N);
+      target[name] = this.view(pointer, fullGrid.has(name as KernelFieldName)
+        ? world.N : world._landCells.length);
     }
     world._migrationDaysPerKm = new Float64Array(world.N);
     world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR).fill(undefined);
@@ -552,7 +560,6 @@ export function createPeopleKernel(
     let kernel: ThreadedPeopleKernel | undefined;
     try {
       kernel = new ThreadedPeopleKernel(...kernelArguments(world));
-      kernel.set_parallel_reductions(true);
       pool = new PeopleBandWorkerPool(
         count,
         threadedModule,
@@ -560,7 +567,7 @@ export function createPeopleKernel(
         workerConstructor,
         workerIsNode,
       );
-      return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool, true);
+      return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool);
     } catch (error) {
       pool?.dispose();
       kernel?.free();

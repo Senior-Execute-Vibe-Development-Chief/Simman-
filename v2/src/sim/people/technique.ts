@@ -331,39 +331,45 @@ export function stepTechnique(world: PeopleWorld, dtMonths = 1): number {
     for (const hearth of world.hearths) {
       if (hearth.ignited) {
         technique[hearth.cell] = 1;
-        next[hearth.cell] = 1;
+        const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
+        if (packed >= 0) next[packed] = 1;
         continue;
       }
       hearth.armedYears += basinFill(world, hearth.cell) * dtMonths / MONTHS_PER_YEAR;
       if (hearth.armedYears >= hearth.lagYears) {
         hearth.ignited = true;
         technique[hearth.cell] = 1;
-        next[hearth.cell] = 1;
+        const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
+        if (packed >= 0) next[packed] = 1;
       }
     }
     wasm.spreadTechnique(dtMonths);
     wasm.commitTechnique();
     let covered = 0;
     let land = 0;
-    for (let cell = 0; cell < world.N; cell++) {
-      if (!world.substrate.landMask[cell]) continue;
+    for (const cell of world._landCells) {
       land++;
       if ((technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;
     }
     return land > 0 ? covered / land : 0;
   }
-  next.set(technique);
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    const cell = world._landCells[packed] ?? 0;
+    next[packed] = technique[cell] ?? 0;
+  }
   for (const hearth of world.hearths) {
     if (hearth.ignited) {
       technique[hearth.cell] = 1;
-      next[hearth.cell] = 1;
+      const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
+      if (packed >= 0) next[packed] = 1;
       continue;
     }
     hearth.armedYears += basinFill(world, hearth.cell) * dtMonths / MONTHS_PER_YEAR;
     if (hearth.armedYears >= hearth.lagYears) {
       hearth.ignited = true;
       technique[hearth.cell] = 1;
-      next[hearth.cell] = 1;
+      const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
+      if (packed >= 0) next[packed] = 1;
     }
   }
   if (world._techniqueEdgeH === undefined || world._techniqueEdgeH.length !== world.height) {
@@ -373,12 +379,14 @@ export function stepTechnique(world: PeopleWorld, dtMonths = 1): number {
   const landMask = world.substrate.landMask;
   const edgeH = world._techniqueEdgeH;
   const edgeV = world._techniqueEdgeV;
-  for (const cell of world._landCells) {
-    if (world._peopledMask[cell] !== 1) continue;
-    const y = (cell / width) | 0;
-    const x = cell - y * width;
-    const current = technique[cell] ?? 0;
-    let candidate = Math.max(current, next[cell] ?? 0);
+  for (const band of world._peopleBands) {
+    for (let packed = band.rawLo; packed < band.rawHi; packed++) {
+      const cell = world._landCells[packed] ?? 0;
+      if (world._peopledMask[cell] !== 1) continue;
+      const y = (cell / width) | 0;
+      const x = cell - y * width;
+      const current = technique[cell] ?? 0;
+      let candidate = Math.max(current, next[packed] ?? 0);
     // Direction order N, S, W, E — the original NEIGHBOR_DX/DY order — with
     // row-local index math producing the same values as neighbor()/edgeKm.
     for (let direction = 0; direction < NEIGHBOR_DX.length; direction++) {
@@ -412,13 +420,16 @@ export function stepTechnique(world: PeopleWorld, dtMonths = 1): number {
       const reached = current + (sourceTechnique - current) * progress * fit;
       if (reached > candidate) candidate = reached;
     }
-    next[cell] = Math.max(current, Math.min(1, candidate));
+      next[packed] = Math.max(current, Math.min(1, candidate));
+    }
   }
-  technique.set(next);
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    const cell = world._landCells[packed] ?? 0;
+    technique[cell] = next[packed] ?? 0;
+  }
   let covered = 0;
   let land = 0;
-  for (let cell = 0; cell < world.N; cell++) {
-    if (!world.substrate.landMask[cell]) continue;
+  for (const cell of world._landCells) {
     land++;
     if ((technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;
   }

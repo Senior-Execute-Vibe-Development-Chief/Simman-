@@ -3,6 +3,8 @@
  * Every phase that writes a field is dispatched in this exact row order. The
  * phase functions only read frozen inputs, so changing the number of dispatch
  * workers cannot change a floating-point reduction or a destination write.
+ * The ranges are packed land-list offsets; row boundaries are still the
+ * grid-derived partition proof.
  */
 import { PEOPLE_BAND_COUNT } from "../constants";
 
@@ -14,11 +16,27 @@ export interface PeopleBand {
   readonly index: number;
   readonly rowLo: number;
   readonly rowHi: number;
+  /** Packed land-list range. Kept as rawLo/rawHi for the wasm ABI. */
   readonly rawLo: number;
   readonly rawHi: number;
 }
 
-export function fixedPeopleBands(width: number, height: number): readonly PeopleBand[] {
+function lowerBound(values: ArrayLike<number>, target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if ((values[middle] ?? 0) < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+export function fixedPeopleBands(
+  width: number,
+  height: number,
+  landCells: ArrayLike<number>,
+): readonly PeopleBand[] {
   const bands: PeopleBand[] = [];
   for (let index = 0; index < PEOPLE_BAND_COUNT; index++) {
     const rowLo = Math.floor(index * height / PEOPLE_BAND_COUNT);
@@ -27,8 +45,8 @@ export function fixedPeopleBands(width: number, height: number): readonly People
       index,
       rowLo,
       rowHi,
-      rawLo: rowLo * width,
-      rawHi: rowHi * width,
+      rawLo: lowerBound(landCells, rowLo * width),
+      rawHi: lowerBound(landCells, rowHi * width),
     });
   }
   return bands;

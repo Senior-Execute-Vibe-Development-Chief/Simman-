@@ -1,6 +1,7 @@
 import {
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
+  PEOPLE_BAND_COUNT,
   PEOPLE_COHORT_CHILD_FRACTION,
   PEOPLE_COHORT_ELDER_FRACTION,
   PEOPLE_COHORT_WORKING_FRACTION,
@@ -17,6 +18,7 @@ import type { WorldOptions } from "../world";
 import { createPeopleKernel, defaultPeopleWorkers } from "../peopleKernel";
 import { allocateFields } from "../fields";
 import { passDtMonths, passFires } from "../scheduler";
+import { fixedPeopleBands } from "./bands";
 
 export const peoplePhaseMilliseconds: Record<string, number> = {
   technique: 0,
@@ -37,25 +39,36 @@ function addPhaseTime(name: keyof typeof peoplePhaseMilliseconds, started: numbe
 
 function allocatePeopleScratch(world: PeopleWorld): void {
   const length = world.N;
-  world.capField = new Float64Array(length);
-  world._peopleNext = new Float64Array(length);
-  world._techniqueNext = new Float64Array(length);
-  world._childrenMass = new Float64Array(length);
-  world._workingMass = new Float64Array(length);
-  world._eldersMass = new Float64Array(length);
-  world._childrenNext = new Float64Array(length);
-  world._workingNext = new Float64Array(length);
-  world._eldersNext = new Float64Array(length);
-  world._migrationOut = new Float64Array(length);
-  world._migrationWeight = new Float64Array(length);
-  world._migrationPopulation = new Float64Array(length);
   world._landCells = new Int32Array(length);
   let landCount = 0;
   for (let cell = 0; cell < length; cell++) {
-    if (!world.substrate.landMask[cell]) continue;
-    world._landCells[landCount++] = cell;
+    if (world.substrate.landMask[cell]) world._landCells[landCount++] = cell;
   }
   world._landCells = world._landCells.slice(0, landCount);
+  world._packedOf = new Int32Array(length);
+  world._packedOf.fill(-1);
+  for (let packed = 0; packed < landCount; packed++) {
+    const cell = world._landCells[packed] ?? 0;
+    world._packedOf[cell] = packed;
+  }
+  world._peopleBands = fixedPeopleBands(world.width, world.height, world._landCells);
+  world.capField = new Float64Array(length);
+  world._peopleNext = new Float64Array(landCount);
+  world._techniqueNext = new Float64Array(landCount);
+  world._childrenMass = new Float64Array(landCount);
+  world._workingMass = new Float64Array(landCount);
+  world._eldersMass = new Float64Array(landCount);
+  world._childrenNext = new Float64Array(landCount);
+  world._workingNext = new Float64Array(landCount);
+  world._eldersNext = new Float64Array(landCount);
+  world._migrationOut = new Float64Array(landCount);
+  world._migrationWeight = new Float64Array(landCount);
+  world._migrationPopulation = new Float64Array(landCount);
+  world._migrationReceived = new Float64Array(landCount);
+  world._birthsByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._deathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._migrationByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._migrationReceivedByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._annualTemperature = new Float64Array(length);
   world._annualMoisture = new Float64Array(length);
   world._techniqueSuitability = new Float64Array(length);
@@ -121,18 +134,20 @@ export function initializePeople(worldInput: World): PeopleWorld {
     "initialPeopling",
     "deaths",
     world.cellAreaKm2,
+    world._landCells,
   );
   const initialPeople = seedPopulation(world);
   initializeTechnique(world);
   deriveCapacity(world);
   world.ledger.recordChannel("people", "initialPeopling", initialPeople, 0);
-  world.ledger.endPass("people", world.people, initialPeople, 0);
+  world.ledger.endPass("people", world.people, initialPeople, 0, world._landCells);
   world.peopleInitialized = true;
   return world;
 }
 
 function normalizeCohorts(world: PeopleWorld): void {
-  for (const cell of world._landCells) {
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    const cell = world._landCells[packed] ?? 0;
     const population = world.people[cell] ?? 0;
     if (population <= 0) {
       world.children[cell] = 0;
@@ -140,8 +155,8 @@ function normalizeCohorts(world: PeopleWorld): void {
       world.elders[cell] = 0;
       continue;
     }
-    const child = Math.max(0, Math.min(1, (world._childrenMass[cell] ?? 0) / population));
-    const working = Math.max(0, Math.min(1 - child, (world._workingMass[cell] ?? 0) / population));
+    const child = Math.max(0, Math.min(1, (world._childrenMass[packed] ?? 0) / population));
+    const working = Math.max(0, Math.min(1 - child, (world._workingMass[packed] ?? 0) / population));
     world.children[cell] = child;
     world.working[cell] = working;
     world.elders[cell] = Math.max(0, 1 - child - working);
@@ -171,6 +186,7 @@ export function stepPeople(worldInput: World): void {
     "births",
     "deaths",
     world.cellAreaKm2,
+    world._landCells,
   );
   if (techniqueDue) {
     const started = performance.now();
@@ -215,7 +231,7 @@ export function stepPeople(worldInput: World): void {
   }
   const ledgerStarted = performance.now();
   if (migrationDue) world.ledger.recordChannel("people", "migration", migration, migration);
-  world.ledger.endPass("people", world.people, growth.births, growth.deaths);
+  world.ledger.endPass("people", world.people, growth.births, growth.deaths, world._landCells);
   world.ledger.assertAll();
   addPhaseTime("ledger", ledgerStarted);
   world.debug.conservationChecks++;
