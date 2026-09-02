@@ -677,7 +677,7 @@ impl PeopleKernel {
         }
     }
 
-    pub fn migration_source_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
+    pub fn migration_prepare_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
         let hi = raw_hi.min(self.land_cells.len());
         let row_lo = band_index * self.height / PEOPLE_BAND_COUNT;
         let row_hi = (band_index + 1) * self.height / PEOPLE_BAND_COUNT;
@@ -698,26 +698,12 @@ impl PeopleKernel {
                 self.migration_share_row[row] = effective.min(PEOPLE_MIGRATION_MAX_SHARE);
             }
         }
+    }
+
+    pub fn migration_source_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
+        let hi = raw_hi.min(self.land_cells.len());
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
-            self.migration_out[packed] = 0.0;
-            self.migration_weight[packed] = 0.0;
-            if self.migration_growth_prepared {
-                self.migration_population[packed] = self.people_next[packed];
-                self.children_next[packed] = self.children_mass[packed];
-                self.working_next[packed] = self.working_mass[packed];
-                self.elders_next[packed] = self.elders_mass[packed];
-            } else {
-                let population = self.people[cell];
-                self.people_next[packed] = population;
-                self.migration_population[packed] = population;
-                self.children_next[packed] = population * self.children[cell];
-                self.working_next[packed] = population * self.working[cell];
-                self.elders_next[packed] = population * self.elders[cell];
-                self.children_mass[packed] = self.children_next[packed];
-                self.working_mass[packed] = self.working_next[packed];
-                self.elders_mass[packed] = self.elders_next[packed];
-            }
             let population = self.people_next[packed];
             if population <= 0.0 {
                 continue;
@@ -1001,6 +987,16 @@ pub fn people_dispatch_technique(pointer: usize, raw_lo: usize, raw_hi: usize, d
 #[wasm_bindgen]
 pub fn people_dispatch_growth(pointer: usize, raw_lo: usize, raw_hi: usize, band_index: usize) {
     unsafe { kernel_mut(pointer).growth_band(raw_lo, raw_hi, band_index) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_migration_prepare(
+    pointer: usize,
+    raw_lo: usize,
+    raw_hi: usize,
+    band_index: usize,
+) {
+    unsafe { kernel_mut(pointer).migration_prepare_band(raw_lo, raw_hi, band_index) }
 }
 
 #[wasm_bindgen]

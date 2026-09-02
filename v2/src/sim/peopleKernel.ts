@@ -71,6 +71,7 @@ interface PeopleKernelLike {
   births(): number;
   deaths(): number;
   begin_migration(month: number, dtMonths: number, growthPrepared: boolean): void;
+  migration_prepare_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_source_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_debit_band(rawLo: number, rawHi: number): void;
   migration_target_band(rawLo: number, rawHi: number, bandIndex: number): void;
@@ -84,6 +85,7 @@ type BandOperation =
   | "capacity"
   | "technique"
   | "growth"
+  | "migration-prepare"
   | "migration-source"
   | "migration-debit"
   | "migration-target";
@@ -310,6 +312,7 @@ export interface PeopleKernelRuntime {
   beginGrowth(dtMonths?: number): void;
   grow(): void;
   beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
+  prepareMigration(): void;
   migrateSources(): void;
   debitMigration(): void;
   gatherMigration(): void;
@@ -449,6 +452,8 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
         this.kernel.technique_band(band.rawLo, band.rawHi, dtMonths);
       } else if (operation === "growth") {
         this.kernel.growth_band(band.rawLo, band.rawHi, band.index);
+      } else if (operation === "migration-prepare") {
+        this.kernel.migration_prepare_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-source") {
         this.kernel.migration_source_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-debit") {
@@ -492,6 +497,11 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
     this.assertMemoryStable();
     this.kernel.begin_migration(month, dtMonths, growthPrepared);
+  }
+
+  prepareMigration(): void {
+    this.assertMemoryStable();
+    this.dispatchBands("migration-prepare");
   }
 
   migrateSources(): void {

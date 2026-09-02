@@ -114,6 +114,7 @@ export function migrate(
   const wasm = world._wasmPeopleKernel;
   if (wasm) {
     wasm.beginMigration(month, dtMonths, growthPrepared);
+    wasm.prepareMigration();
     wasm.migrateSources();
     wasm.debitMigration();
     wasm.gatherMigration();
@@ -148,7 +149,8 @@ export function migrate(
   world._migrationByBand.fill(0);
   world._migrationReceivedByBand.fill(0);
 
-  // Source scan, direction order E, W, S, N (the original DX/DY order).
+  // Preparation is a separate packed phase so every neighbor's frozen next
+  // population is ready before any source computes its weights.
   for (const band of world._peopleBands) {
     out.fill(0, band.rawLo, band.rawHi);
     weights.fill(0, band.rawLo, band.rawHi);
@@ -178,6 +180,13 @@ export function migrate(
         world._workingMass[packed] = workingNext[packed] ?? 0;
         world._eldersMass[packed] = elderNext[packed] ?? 0;
       }
+    }
+  }
+
+  // Source scan, direction order E, W, S, N (the original DX/DY order).
+  for (const band of world._peopleBands) {
+    for (let packed = band.rawLo; packed < band.rawHi; packed++) {
+      const cell = world._landCells[packed] ?? 0;
       const population = next[packed] ?? 0;
       if (population <= 0) continue;
       const area = areas[cell] ?? 0;
