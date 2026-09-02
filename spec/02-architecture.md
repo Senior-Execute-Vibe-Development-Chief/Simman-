@@ -110,7 +110,20 @@
   inside phase-offset passes; inner cadences snap to stride grids).
 - Cadences are performance scheduling only (R1); any pass whose stride
   measurably changes trajectory (v1's POP_FIELD_STRIDE scar) declares
-  stride=1 as its contract.
+  stride=1 as its contract. "Measurably" is measured, not assumed: the
+  stride arm of the people gate compares the shipped schedule against
+  all-strides-1 (DECISIONS 24).
+- A stride may be DERIVED from a physics bound at the grid (explicit
+  diffusion's per-step share, a wave's CFL) — R3 in time: the cadence a
+  mechanism can bear depends on the cell size, so it is computed from
+  the grid and printed, never hand-set per grid.
+- Cross-rate coupling is by ledger, never by reach-in: a pass reads other
+  passes' fields only as of their last commit, and changes them only by
+  posting a delta into a named accumulator the owning pass consumes at
+  its next firing (a conservation-ledger channel). Pass cadence is
+  global; the timing of a local event inside a firing (a cell's harvest)
+  comes from the cell's own state, not the calendar month.
+- The resolved schedule is world identity: hashed and saved.
 - Double-buffer every relaxation (in-place sweeps give infinite wave
   speeds — v1 scar).
 

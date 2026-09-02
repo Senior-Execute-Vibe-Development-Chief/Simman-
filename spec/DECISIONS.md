@@ -413,6 +413,30 @@ lawyered.
     rows. Spec: `spec/handoffs/W2-kernel.md`. Annual-cadence stride
     stays unbuilt pending separate ratification.
 
+## 2026-09-02 — Cadence round
+
+24. **W3: the multi-rate scheduler, and real threads.** (Ratified —
+    owner: "write a spec for this scheduled thing and previously talked
+    about W2B performance", after the cadence conversation.) One monthly
+    clock; every pass declares stride and phase through one helper;
+    cross-rate coupling is by delta ledger, never by reach-in; the
+    resolved schedule is world identity (hashed, saved). The people pass
+    splits: GROWTH (technique, capacity, growth, cohorts) at an annual
+    stride; MIGRATION at the stride its diffusion bound permits at the
+    grid — derived, never hand-set: monthly at the shipped grid (annual
+    outflow share 2.4–7 against the 0.5 bound), annual at dev. Ruling 1's
+    "measurably changes trajectory" gets a measuring instrument: a
+    stride arm that runs reference and shipped schedules and bounds the
+    population and arrival deltas; a failure sets that pass to stride 1,
+    never a tolerance. W2b lands in the same wave: shared-memory wasm
+    (pinned nightly, threads-enabled std) with real `worker_threads` /
+    Web Workers claiming fixed bands, hash-identical to serial dispatch
+    and to the TS oracle; halo-exchange named as the sanctioned fallback.
+    Owner expectation corrected in the spec: "people yearly" is people
+    GROWTH yearly — movement stays monthly at the shipped grid, so the
+    ceiling closes with threads, not cadence alone. Spec:
+    `spec/handoffs/W3-cadence.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,

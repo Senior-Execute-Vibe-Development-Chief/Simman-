@@ -169,3 +169,5 @@ stub. Measured on the review runner: target tick 361→169 ms cold
 wasm build (`+atomics,+bulk-memory`, threads-enabled std) with
 `worker_threads`/Web Workers claiming bands from the control plane —
 or the owner ratifies annual-cadence stride as the alternative lever.
+**Resolved 2026-09-02:** both, as one wave — `spec/handoffs/W3-cadence.md`
+(DECISIONS 24). W2b is its second half.

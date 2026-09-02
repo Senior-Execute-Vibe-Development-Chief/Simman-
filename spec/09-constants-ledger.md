@@ -213,3 +213,13 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_BAND_COUNT` | 16 | fixed contiguous row bands derived from the grid, independent of worker count |
 | `PEOPLE_BROWSER_PARITY_TICKS` | 24 | browser/node wasm identity sample horizon |
 | `PEOPLE_BENCH_LONG_YEARS` | 1000 | target-grid wall-clock benchmark horizon |
+
+## W3 — proposed (review pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `PEOPLE_GROWTH_STRIDE_MONTHS` | 12 | default stride of the growth/technique/capacity/cohort passes; performance cadence, trajectory-checked by the stride arm |
+| (migration stride) | derived | largest divisor of 12 keeping every peopled row's per-firing share ≤ `PEOPLE_MIGRATION_MAX_SHARE`; printed in provenance, not a constant |
+| `CADENCE_TRAJECTORY_POP_TOLERANCE` | 0.02 | relative population delta, shipped schedule vs all-strides-1, at every checkpoint — gate tolerance, never a mechanism input |
+| `CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS` | 25 | farming-arrival delta bound, same comparison |
+| `SAVE_VERSION_W3` | 4 | saves carry the resolved schedule |
