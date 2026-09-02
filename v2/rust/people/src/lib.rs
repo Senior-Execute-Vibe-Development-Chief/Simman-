@@ -698,6 +698,27 @@ impl PeopleKernel {
                 self.migration_share_row[row] = effective.min(PEOPLE_MIGRATION_MAX_SHARE);
             }
         }
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            self.migration_out[packed] = 0.0;
+            self.migration_weight[packed] = 0.0;
+            if self.migration_growth_prepared {
+                self.migration_population[packed] = self.people_next[packed];
+                self.children_next[packed] = self.children_mass[packed];
+                self.working_next[packed] = self.working_mass[packed];
+                self.elders_next[packed] = self.elders_mass[packed];
+            } else {
+                let population = self.people[cell];
+                self.people_next[packed] = population;
+                self.migration_population[packed] = population;
+                self.children_next[packed] = population * self.children[cell];
+                self.working_next[packed] = population * self.working[cell];
+                self.elders_next[packed] = population * self.elders[cell];
+                self.children_mass[packed] = self.children_next[packed];
+                self.working_mass[packed] = self.working_next[packed];
+                self.elders_mass[packed] = self.elders_next[packed];
+            }
+        }
     }
 
     pub fn migration_source_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
