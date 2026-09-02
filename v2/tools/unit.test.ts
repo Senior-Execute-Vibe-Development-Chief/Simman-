@@ -8,6 +8,7 @@ import { loadWorld, serializeWorld } from "../src/sim/persist";
 import { populationTotal } from "../src/sim/people";
 import { runRoutingBatteries } from "../src/sim/travel/battery";
 import type { Substrate } from "../src/sim/substrate";
+import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 import { passDtMonths, passFires, resolveSchedule } from "../src/sim/scheduler";
