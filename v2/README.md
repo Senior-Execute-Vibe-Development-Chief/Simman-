@@ -52,7 +52,7 @@ Node and three browser results.
 ```text
 src/sim/       world, substrate adapter, people fields, travel engine, dmath, worker
 src/ported/    byte-compatible RNG and copied v1 worldgen supplier
-src/shell/     terrain/climate/travel demo
+src/shell/     terrain/climate/travel demo (Equal Earth display projection; sim grid stays lat-lon)
 rust/router/   wasm-bindgen layered routing engine
 rust/people/   wasm-bindgen banded people kernel
 data/reality/  cited travel reality fixture

@@ -786,3 +786,23 @@ Review corrections to the M1 build (all validated before merge):
     (real threads need a shared-memory wasm build), or the owner ratifies
     annual-cadence stride — the ≤30-minute ceiling is unmet either way
     until one lands.
+
+34. **Equal Earth display projection (2026-09-02, owner: "greenland is
+    heavily distorted").** Measured at dev before changing anything: a
+    flood fill over Greenland's land cells sums to 2.40M km² of real
+    area against 2.17M km² true (1.11×, coastal rounding plus a sliver
+    of Ellesmere) — 1.6% of the world's land by AREA, matching the real
+    1.45%, but 3.3% by TILE COUNT. The sim was right and the
+    equirectangular screen was painting Greenland ~2.3× too large. Fix
+    is display only: `src/shell/projection.ts` builds a per-pixel
+    inverse-projection table (Equal Earth, Šavrič et al. 2018, Newton
+    inverse) from the lat-lon sim grid; every lens samples through it,
+    picking runs the table in reverse, routes across the antimeridian
+    are drawn to each edge, and a graticule + globe outline are drawn
+    from the forward projection. A plate-carrée option stays for
+    checking data alignment. No world state, hash, save, or gate is
+    touched. Side finding from the same probe: at dev Greenland is
+    fused to Ellesmere Island (Nares Strait, 20–40 km, closes at 170 km
+    cells; an unbounded fill walks into Canada) — harmless for people
+    (the Thule crossed it on sea ice), noted with the resolution-scale
+    straits should boats ever need it; expected open at the 22 km grid.
