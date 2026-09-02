@@ -38,8 +38,9 @@ const runButton = document.querySelector<HTMLButtonElement>("#run")!;
 const speedInput = document.querySelector<HTMLInputElement>("#speed")!;
 const speedLabel = document.querySelector<HTMLElement>("#speed-label")!;
 const projectionSelect = document.querySelector<HTMLSelectElement>("#projection")!;
+const centreLabel = document.querySelector<HTMLElement>("#centre-label")!;
 if (!canvas || !lens || !month || !monthLabel || !zoomInput || !zoomLabel || !status || !route
-  || !population || !runButton || !speedInput || !speedLabel || !projectionSelect) {
+  || !population || !runButton || !speedInput || !speedLabel || !projectionSelect || !centreLabel) {
   throw new Error("M2 shell markup is incomplete.");
 }
 
@@ -57,20 +58,39 @@ const baseContext = base.getContext("2d")!;
 let baseKey = "";
 const OFF_GLOBE: readonly [number, number, number] = [12, 18, 24];
 let table: ProjectionTable;
-let projected: ImageData;
+let projected: ImageData | undefined;
 let outline: Array<[number, number]> = [];
 let graticuleLines: Array<Array<[number, number]>> = [];
+// Central meridian in degrees east. Dragging at zoom 1 spins the world about
+// its polar axis so the studied region sits where shapes are near-true.
+let centreDegrees = 0;
+let tableBuildMs = 0;
+// Rebuild the table live while dragging only when it is cheap (the dev
+// grid); the target grid's 1.6M-pixel table rebuilds on release instead.
+const LIVE_ROTATE_BUDGET_MS = 40;
+let rotateDirty = false;
+
+function formatCentre(): string {
+  const wrapped = ((centreDegrees + 180) % 360 + 360) % 360 - 180;
+  return `Centre ${Math.abs(Math.round(wrapped))}°${wrapped < 0 ? "W" : "E"}`;
+}
 
 function applyProjection(name: ProjectionName): void {
-  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height);
-  projected = new ImageData(table.width, table.height);
-  canvas.width = table.width;
-  canvas.height = table.height;
-  canvas.style.aspectRatio = `${table.width} / ${table.height}`;
-  base.width = table.width;
-  base.height = table.height;
-  outline = globeOutline(table.projection, substrate.width, substrate.height);
-  graticuleLines = graticule(table.projection, substrate.width, substrate.height);
+  const started = performance.now();
+  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height, centreDegrees);
+  tableBuildMs = performance.now() - started;
+  if (!projected || projected.width !== table.width || projected.height !== table.height) {
+    projected = new ImageData(table.width, table.height);
+    canvas.width = table.width;
+    canvas.height = table.height;
+    canvas.style.aspectRatio = `${table.width} / ${table.height}`;
+    base.width = table.width;
+    base.height = table.height;
+  }
+  outline = globeOutline(table);
+  graticuleLines = graticule(table);
+  centreLabel.textContent = formatCentre();
+  rotateDirty = false;
   baseKey = "";
 }
 applyProjection(projectionSelect.value as ProjectionName);
@@ -256,6 +276,7 @@ function renderBase(selectedMonth: number): void {
     pixels[offset + 2] = blue;
     pixels[offset + 3] = 255;
   }
+  if (!projected) return;
   const out = projected.data;
   const cellOf = table.cellOf;
   for (let pixel = 0; pixel < cellOf.length; pixel++) {
@@ -279,7 +300,14 @@ function renderBase(selectedMonth: number): void {
 
 /** Sim-grid cell coordinates → canvas pixels, through the projection and viewport. */
 function toScreenXY(x: number, y: number): [number, number] {
-  const [px, py] = table.projection.forward(x + 0.5, y + 0.5, substrate.width, substrate.height);
+  const [px, py] = table.gridToPixel(x + 0.5, y + 0.5);
+  return [(px - viewX) * zoom, (py - viewY) * zoom];
+}
+
+/** The seam meridian at a sim row, on the east (+1) or west (−1) map edge, in canvas pixels. */
+function seamScreenXY(y: number, side: 1 | -1): [number, number] {
+  const lat = Math.PI / 2 - ((y + 0.5) / substrate.height) * Math.PI;
+  const [px, py] = table.lonLatToPixel(table.centralMeridian + side * (Math.PI - 1e-9), lat);
   return [(px - viewX) * zoom, (py - viewY) * zoom];
 }
 
@@ -380,13 +408,14 @@ function draw(): void {
       context.beginPath();
       const [sax, say] = toScreenXY(ax, ay);
       const [sbx, sby] = toScreenXY(bx, by);
-      // A segment that wraps the antimeridian is drawn out through the seam
-      // on both sides (each piece runs to the map edge at its own latitude),
-      // never straight across the map.
-      if (Math.abs(bx - ax) > substrate.width / 2) {
-        const aEdge = ax > bx ? substrate.width : 0;
-        const [eax, eay] = toScreenXY(aEdge - 0.5, ay);
-        const [ebx, eby] = toScreenXY(substrate.width - aEdge - 0.5, by);
+      // A segment that crosses the seam is drawn out through it on both
+      // sides (each piece runs to the map edge at its own latitude), never
+      // straight across the map. The seam is wherever the centre puts it,
+      // so the test is in projected pixels.
+      if (Math.abs(sbx - sax) > table.width * zoom / 2) {
+        const aSide: 1 | -1 = sax > sbx ? 1 : -1;
+        const [eax, eay] = seamScreenXY(ay, aSide);
+        const [ebx, eby] = seamScreenXY(by, aSide === 1 ? -1 : 1);
         context.moveTo(sax, say);
         context.lineTo(eax, eay);
         context.moveTo(ebx, eby);
@@ -497,6 +526,19 @@ canvas.addEventListener("pointermove", (event) => {
   const dy = event.clientY - previous.y;
   if (Math.abs(event.clientX - previous.x) + Math.abs(event.clientY - previous.y) > 4) dragged = true;
   if (!dragged) return;
+  if (zoom <= 1) {
+    // Nothing to pan at zoom 1: a horizontal drag spins the world instead.
+    // Dragging the map right carries land east, so the centre moves west.
+    centreDegrees -= dx / bounds.width * 360;
+    if (tableBuildMs < LIVE_ROTATE_BUDGET_MS) {
+      applyProjection(projectionSelect.value as ProjectionName);
+      draw();
+    } else {
+      rotateDirty = true;
+      centreLabel.textContent = `${formatCentre()} (release to redraw)`;
+    }
+    return;
+  }
   viewX -= dx / bounds.width * table.width / zoom;
   viewY -= dy / bounds.height * table.height / zoom;
   draw();
@@ -508,7 +550,13 @@ function releasePointer(event: PointerEvent): void {
   if (event.type !== "pointerup" || pointers.size > 0) return;
   const wasDrag = dragged;
   dragged = false;
-  if (wasDrag) return;
+  if (wasDrag) {
+    if (rotateDirty) {
+      applyProjection(projectionSelect.value as ProjectionName);
+      draw();
+    }
+    return;
+  }
   const cell = cellFromPointer(event);
   if (cell === undefined) return;
   if (startCell === undefined) {

@@ -806,3 +806,12 @@ Review corrections to the M1 build (all validated before merge):
     cells; an unbounded fill walks into Canada) — harmless for people
     (the Thule crossed it on sea ice), noted with the resolution-scale
     straits should boats ever need it; expected open at the 22 km grid.
+    **Movable central meridian (same day, owner: "australia looks a bit
+    squished").** No flat map keeps both shape and area; Equal Earth
+    keeps area exact and puts the shear at the edges, so the centre is
+    now draggable: at zoom 1 a horizontal drag spins the world about its
+    polar axis (live rebuild of the table when it is under 40 ms, on
+    release otherwise — the target grid's 1.6M-pixel table), the seam
+    and graticule follow, routes split at the seam wherever it is.
+    Verified in headless Chromium at 144°E with a Brazil→West Africa
+    route crossing the Atlantic seam.

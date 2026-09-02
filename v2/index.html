@@ -40,6 +40,7 @@
             <option value="plate-carree">Lat-lon grid (data alignment)</option>
           </select>
         </label>
+        <label id="centre-label" title="Drag the map at zoom 1 to spin the world">Centre 0°E</label>
         <label id="month-label">Month 1</label>
         <input id="month" type="range" min="0" max="11" step="1" value="0" />
         <label id="zoom-label">Zoom 1×</label>
@@ -55,7 +56,7 @@
       </div>
       <canvas id="map" width="900" height="450"></canvas>
       <div id="status">Building substrate…</div>
-      <div id="route">Click two points for a route. Scroll to zoom, drag to pan.</div>
+      <div id="route">Click two points for a route. Scroll to zoom, drag to pan — or, at zoom 1, drag to spin the world.</div>
       <p style="margin:6px 0 0">
         <span style="color:#ffd166">■ foot</span> ·
         <span style="color:#f4a259">■ pack</span> ·
