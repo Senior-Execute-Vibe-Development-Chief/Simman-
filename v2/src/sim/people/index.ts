@@ -221,7 +221,12 @@ export function stepPeople(worldInput: World): void {
     : 0;
   if (growthDue || migrationDue) {
     if (world._wasmPeopleKernel) world._wasmPeopleKernel.commitPopulation();
-    else world.people.set(world._peopleNext);
+    else {
+      for (let packed = 0; packed < world._landCells.length; packed++) {
+        const cell = world._landCells[packed] ?? 0;
+        world.people[cell] = world._peopleNext[packed] ?? 0;
+      }
+    }
     // Cohort normalization is a commit invariant, including migration-only
     // months. The scheduled cohorts pass records the annual ageing cadence;
     // this epilogue keeps fractions valid between those firings.
