@@ -1260,6 +1260,28 @@ Review corrections to the M1 build (all validated before merge):
     European rows at the shipped grid is the owner's long-arm run to
     schedule, and the `:target` manifest rows wait on it.
 
+    **Deliverable 0, the pre-M3a baseline at the shipped grid.** The
+    target-grid YD→1 CE long arm of the W4 kernel (`GATE_PEOPLE_LONG=1`,
+    one pinned worker, 7.6 h on this runner, finished 21:32 UTC) is the
+    "before" the handoff asked for beside the dev numbers above:
+
+    | W4 kernel, target | measured | window / band |
+    |---|---:|---|
+    | Levant | −8100 | −9500 … −7000 |
+    | Nile | −8030 | −8500 … −5000 |
+    | Yellow River | −7440 | −8000 … −5500 |
+    | Indus | −8070 | −7000 … −3500 (early, the manifested dev miss) |
+    | Mesoamerica | −3910 | −7000 … −2500 |
+    | Andes | −4570 | −5000 … −2500 |
+    | people −5000 / −3000 / −1000 / 1 | 265 M / 644 M / 870 M / 948 M | ≤ 60 / 100 / 200 / 400 M |
+    | density, river : rainfed : forager | 20.8 : 12.4 : 0.06 /km² | ordered |
+
+    The dev arm of the same run agrees to within 60 years on every
+    arrival (Indus −8060; Mesoamerica −6290 is the one grid-dependent row).
+    Its `:target` rows are not written into the manifest — they describe
+    the technique-wave kernel this merge replaced; the merged kernel's
+    `:target` rows wait on its own long arm.
+
     **Hearths.** With ranges as data and the M2 law restored, the wheat
     range's separated basins all ignite between −8184 and −7847 (the Indus
     box first, at lon 74), millet's between −7550 and −6544, sorghum's
