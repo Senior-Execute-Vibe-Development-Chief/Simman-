@@ -48,10 +48,6 @@ export function grow(world: PeopleWorld, dtMonths = 1): GrowthResult {
   const childMass = world._childrenMass;
   const workingMass = world._workingMass;
   const elderMass = world._eldersMass;
-  next.fill(0);
-  childMass.fill(0);
-  workingMass.fill(0);
-  elderMass.fill(0);
   world._birthsByBand.fill(0);
   world._deathsByBand.fill(0);
   for (const band of world._peopleBands) {

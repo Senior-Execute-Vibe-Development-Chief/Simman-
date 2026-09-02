@@ -550,10 +550,6 @@ impl PeopleKernel {
     }
 
     pub fn begin_growth(&mut self, dt_months: f64) {
-        self.people_next.fill(0.0);
-        self.children_mass.fill(0.0);
-        self.working_mass.fill(0.0);
-        self.elders_mass.fill(0.0);
         self.births_by_band.fill(0.0);
         self.deaths_by_band.fill(0.0);
         self.growth_dt_months = dt_months;
