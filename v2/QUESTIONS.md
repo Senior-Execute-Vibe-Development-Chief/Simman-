@@ -896,6 +896,24 @@ Review corrections to the M1 build (all validated before merge):
     browser smoke runs on the page's main thread, where `Atomics.wait` is
     forbidden, so it exercises serial wasm only; a worker-side identity
     check is needed to cover the threaded browser path.
+    (e) **The barrier stalls were lost futex wakeups, and they are the
+    platform's.** A bare `Atomics.wait`/`notify` barrier between Node's
+    main thread and three workers — no wasm, no sim — missed 26 wakeups
+    in 30,000 rounds on the review runner; each cost the full 10 s wait
+    slice, and W3's cadence bench showed exactly that (one 10 s stall in
+    the dev 3-thread row; the very first parity run hung outright). The
+    dispatch now lives entirely in shared memory (operation, kernel
+    pointer, dt, band ranges in the control plane; workers wait on the
+    phase word, never on a message), and every barrier waits in
+    `PEOPLE_BARRIER_WAIT_MS` = 1 ms slices so a lost wake costs a
+    millisecond: 3000 monthly dev ticks on 3 workers now take 14.4 s
+    against 13.9 s serial with a worst tick of 51 ms (was 10,012 ms),
+    hash identical.
+    (f) **The sim worker hashed the world on every snapshot.** `hashWorld`
+    walks every field with BigInt arithmetic: 87 ms at dev, **5.3 s at
+    the target grid** — per tick batch, whatever the kernel did. Removed
+    from the snapshot (reported once at creation; harnesses hash on
+    demand). Together with (a) this is the owner's play-test slowness.
 35. **Equal Earth display projection (2026-09-02, owner: "greenland is
     heavily distorted").** Measured at dev before changing anything: a
     flood fill over Greenland's land cells sums to 2.40M km² of real

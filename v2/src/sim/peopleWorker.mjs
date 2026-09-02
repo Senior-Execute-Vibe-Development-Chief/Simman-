@@ -34,13 +34,54 @@ function start(input) {
     idle,
     errorFlag,
     errorText,
+    dt: new Float64Array(input.controlStorage, input.dtWord * Int32Array.BYTES_PER_ELEMENT, 1),
+    waitMs: input.waitMs,
     phaseIndex: input.phaseIndex,
     claimIndex: input.claimIndex,
     doneOffset: input.doneOffset,
+    operationIndex: input.operationIndex,
+    kernelIndex: input.kernelIndex,
+    bandCountIndex: input.bandCountIndex,
+    stopIndex: input.stopIndex,
+    bandsOffset: input.bandsOffset,
+    operations: input.operations,
   };
   Atomics.add(ready, 0, 1);
   Atomics.notify(ready, 0);
   post({ type: "ready" });
+  runLoop();
+}
+
+/**
+ * The worker never returns to its event loop while the pool lives: it waits
+ * on the phase word, reads the dispatch descriptor from shared memory, runs
+ * bands, and waits again. No message is needed per phase.
+ */
+function runLoop() {
+  const { control } = runtime;
+  let seen = Atomics.load(control, runtime.phaseIndex);
+  while (Atomics.load(control, runtime.stopIndex) === 0) {
+    Atomics.wait(control, runtime.phaseIndex, seen, runtime.waitMs);
+    if (Atomics.load(control, runtime.stopIndex) !== 0) return;
+    const current = Atomics.load(control, runtime.phaseIndex);
+    if (current === seen) continue;
+    seen = current;
+    const count = Atomics.load(control, runtime.bandCountIndex);
+    const bands = [];
+    for (let index = 0; index < count; index++) {
+      bands.push({
+        rawLo: Atomics.load(control, runtime.bandsOffset + index * 2),
+        rawHi: Atomics.load(control, runtime.bandsOffset + index * 2 + 1),
+      });
+    }
+    dispatch({
+      phase: current,
+      operation: runtime.operations[Atomics.load(control, runtime.operationIndex)],
+      kernelPointer: Atomics.load(control, runtime.kernelIndex),
+      dtMonths: runtime.dt[0],
+      bands,
+    });
+  }
 }
 
 function finishBand(index) {
@@ -96,6 +137,11 @@ function dispatch(payload) {
       if (index >= bands.length) return;
       runBand(payload, bands[index], index);
     }
+  } catch (error) {
+    // Report BEFORE the idle increment below: the coordinator reads the
+    // error flag ahead of its "band never finished" check, and an idle
+    // count that reaches the worker total first would mask the real error.
+    reportError(error);
   } finally {
     Atomics.add(runtime.idle, 0, 1);
     Atomics.notify(runtime.idle, 0);
@@ -105,7 +151,6 @@ function dispatch(payload) {
 function onMessage(message) {
   try {
     if (message.type === "init") start(message);
-    else if (message.type === "dispatch") dispatch(message);
   } catch (error) {
     reportError(error);
   }

@@ -70,9 +70,12 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
   const technique = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT, world.N);
   people.set(world.people);
   technique.set(world.technique);
+  // No world hash per snapshot: hashWorld walks every field with BigInt
+  // arithmetic (5.3 s at the target grid — measured, review W3), which
+  // made every tick batch take seconds regardless of the kernel. The hash
+  // is reported once at creation; harnesses hash on demand.
   return {
     type: "snapshot",
-    hash: hashWorld(world),
     step: world.step,
     version: snapshotVersion++,
     cells: world.N,

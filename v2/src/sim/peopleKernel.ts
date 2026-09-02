@@ -9,9 +9,15 @@ import initThreads, {
 import { fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
 import type { PeopleWorld } from "./people/types";
 import {
+  BAND_CONTROL_BAND_COUNT,
+  BAND_CONTROL_BANDS_OFFSET,
   BAND_CONTROL_CLAIM,
   BAND_CONTROL_DONE_OFFSET,
+  BAND_CONTROL_DT_WORD,
+  BAND_CONTROL_KERNEL,
+  BAND_CONTROL_OPERATION,
   BAND_CONTROL_PHASE,
+  BAND_CONTROL_STOP,
   beginBandPhase,
   createBandControl,
   fixedPeopleBands,
@@ -26,6 +32,7 @@ import {
   PEOPLE_WASM_MEMORY_INITIAL_PAGES,
   PEOPLE_WASM_MEMORY_MAXIMUM_PAGES,
   PEOPLE_WORKER_WAIT_MS,
+  PEOPLE_BARRIER_WAIT_MS,
   MATH_NEGATIVE_ONE,
 } from "./constants";
 
@@ -100,13 +107,31 @@ type BandOperation =
   | "migration-debit"
   | "migration-target";
 
+/** Operation codes written into the control plane; the worker script mirrors this order. */
+const BAND_OPERATIONS: readonly BandOperation[] = [
+  "capacity",
+  "technique",
+  "growth",
+  "migration-source",
+  "migration-debit",
+  "migration-target",
+];
+
 // The worker script is plain JS outside the constants ledger; it receives
 // the shared-layout constants from here rather than restating them.
 const WORKER_LAYOUT = Object.freeze({
   stackBytes: PEOPLE_THREAD_STACK_BYTES,
+  waitMs: PEOPLE_BARRIER_WAIT_MS,
   phaseIndex: BAND_CONTROL_PHASE,
   claimIndex: BAND_CONTROL_CLAIM,
   doneOffset: BAND_CONTROL_DONE_OFFSET,
+  operationIndex: BAND_CONTROL_OPERATION,
+  kernelIndex: BAND_CONTROL_KERNEL,
+  bandCountIndex: BAND_CONTROL_BAND_COUNT,
+  stopIndex: BAND_CONTROL_STOP,
+  dtWord: BAND_CONTROL_DT_WORD,
+  bandsOffset: BAND_CONTROL_BANDS_OFFSET,
+  operations: BAND_OPERATIONS,
 });
 // A worker that throws mid-band reports through shared memory: the
 // coordinator is blocked in Atomics.wait and can never receive a posted
@@ -120,6 +145,7 @@ class PeopleBandWorkerPool {
   private readonly idle: Int32Array;
   private readonly errorFlag: Int32Array;
   private readonly errorText: Uint8Array;
+  private readonly dt: Float64Array;
 
   private constructor(control: BandControl, workers: WorkerLike[], idle: Int32Array, errorStorage: SharedArrayBuffer) {
     this.control = control;
@@ -127,6 +153,7 @@ class PeopleBandWorkerPool {
     this.idle = idle;
     this.errorFlag = new Int32Array(errorStorage, 0, 1);
     this.errorText = new Uint8Array(errorStorage, Int32Array.BYTES_PER_ELEMENT, WORKER_ERROR_BYTES);
+    this.dt = new Float64Array(control.words.buffer, BAND_CONTROL_DT_WORD * Int32Array.BYTES_PER_ELEMENT, 1);
   }
 
   get workerCount(): number {
@@ -209,31 +236,41 @@ class PeopleBandWorkerPool {
     dtMonths = 1,
   ): void {
     Atomics.store(this.idle, 0, 0);
+    // The dispatch descriptor is written BEFORE the phase bump that
+    // publishes it; workers read it only after observing the new phase.
+    const words = this.control.words;
+    Atomics.store(words, BAND_CONTROL_OPERATION, BAND_OPERATIONS.indexOf(operation));
+    Atomics.store(words, BAND_CONTROL_KERNEL, kernelPointer);
+    Atomics.store(words, BAND_CONTROL_BAND_COUNT, bands.length);
+    this.dt[0] = dtMonths;
+    bands.forEach((band, index) => {
+      Atomics.store(words, BAND_CONTROL_BANDS_OFFSET + index * 2, band.rawLo);
+      Atomics.store(words, BAND_CONTROL_BANDS_OFFSET + index * 2 + 1, band.rawHi);
+    });
     beginBandPhase(this.control);
-    const message = {
-      type: "dispatch",
-      operation,
-      kernelPointer,
-      bands,
-      dtMonths,
-      phase: Atomics.load(this.control.phase, 0),
-    };
-    for (const worker of this.workers) worker.postMessage(message);
+    // Short slices: the platform's futex occasionally loses a wakeup
+    // (measured ~1 in 1000 barrier rounds on the review runner, with no
+    // wasm involved); a slice bounds the cost of a lost wake to ~1 ms
+    // where a 10 s slice produced 10 s stalls and, once, a full hang.
     for (let index = 0; index < bands.length; index++) {
       while (Atomics.load(this.control.done, index) === 0) {
         this.throwIfWorkerFailed(operation, index);
         // Every worker has left the claim loop yet this band was never
         // marked done: fail loudly instead of waiting forever.
-        if (Atomics.load(this.idle, 0) >= this.workers.length) {
+        // Re-read the flag AFTER seeing every worker idle: a worker sets its
+        // last band done and then goes idle, and the two loads are not one
+        // atomic step (the first version of this guard fired falsely).
+        if (Atomics.load(this.idle, 0) >= this.workers.length
+          && Atomics.load(this.control.done, index) === 0) {
           throw new Error(`People band ${index} (${operation}) was never finished: a worker left the phase early.`);
         }
-        Atomics.wait(this.control.done, index, 0, PEOPLE_WORKER_WAIT_MS);
+        Atomics.wait(this.control.done, index, 0, PEOPLE_BARRIER_WAIT_MS);
       }
     }
     const barrierStart = performance.now();
     while (Atomics.load(this.idle, 0) < this.workers.length) {
       this.throwIfWorkerFailed(operation, MATH_NEGATIVE_ONE);
-      Atomics.wait(this.idle, 0, Atomics.load(this.idle, 0), PEOPLE_WORKER_WAIT_MS);
+      Atomics.wait(this.idle, 0, Atomics.load(this.idle, 0), PEOPLE_BARRIER_WAIT_MS);
     }
     this.barrierMilliseconds += performance.now() - barrierStart;
   }
@@ -247,6 +284,10 @@ class PeopleBandWorkerPool {
   }
 
   dispose(): void {
+    // Workers block in Atomics.wait on the phase word; tell them to leave
+    // before terminating so no thread dies inside a wasm call.
+    Atomics.store(this.control.words, BAND_CONTROL_STOP, 1);
+    Atomics.notify(this.control.phase, 0);
     for (const worker of this.workers) void worker.terminate();
     this.workers.length = 0;
   }

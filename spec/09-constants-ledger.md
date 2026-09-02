@@ -223,7 +223,8 @@ they are not hidden outcome-fitting levers.
 | `CADENCE_TRAJECTORY_POP_TOLERANCE` | 0.02 | relative population delta, shipped schedule vs all-strides-1, at every checkpoint — gate tolerance, never a mechanism input |
 | `CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS` | 25 | farming-arrival delta bound, same comparison |
 | `SAVE_VERSION_W3` | 4 | saves carry the resolved schedule |
-| `PEOPLE_WORKER_WAIT_MS` | 10000 | Atomics.wait slice for band-done and worker-idle barriers |
+| `PEOPLE_WORKER_WAIT_MS` | 10000 | timeout for a worker to report ready at pool start |
+| `PEOPLE_BARRIER_WAIT_MS` | 1 | Atomics.wait slice for the band-done, worker-idle and phase barriers; a lost futex wakeup (measured: ~1 per 1000 rounds on the review runner, Node main thread ↔ workers, no wasm) then costs one slice instead of hanging |
 | `PEOPLE_WASM_MEMORY_INITIAL_PAGES` | 1024 | shared-memory people kernel initial pages (64 MiB); grows toward the max |
 | `PEOPLE_WASM_MEMORY_MAXIMUM_PAGES` | 32768 | shared-memory cap, 2 GiB, matching the threaded link `--max-memory` |
 | `PEOPLE_THREAD_STACK_BYTES` | 1048576 | per-worker shadow stack allocated at instance init |
