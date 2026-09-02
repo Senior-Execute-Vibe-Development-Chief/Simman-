@@ -38,7 +38,7 @@ function measure(grid: GridPreset): GridResult {
   const world = new World({
     seed: 42042,
     grid,
-    config: { preset: "earth_sim", horizon: "YD-to-1CE", peopleKernel: "wasm", peopleWorkers: 1 },
+    config: { preset: "earth_sim", horizon: "YD-to-1CE", peopleKernel: "wasm" },
     substrate,
   });
   const initialPeople = populationTotal(world);
@@ -131,8 +131,9 @@ function collectTrajectory(
     config: {
       preset: "earth_sim",
       horizon: "YD-to-1CE",
+      // The pre-warmed pool (threads) is hash-identical to serial — the
+      // parity harness asserts it — and the long arm is hours serial.
       peopleKernel: "wasm",
-      peopleWorkers: 1,
       ...config,
     },
     substrate,
