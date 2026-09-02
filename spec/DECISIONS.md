@@ -437,6 +437,23 @@ lawyered.
     ceiling closes with threads, not cadence alone. Spec:
     `spec/handoffs/W3-cadence.md`.
 
+## 2026-09-02 — Layout round
+
+25. **W4: the land-packed people kernel.** (Ratified — owner: "create the
+    spec", after the W3 review found that real threads barely scaled.)
+    W3 measured migration at 54.5 ms serial → 49.4 ms on eight threads:
+    the pass is bound by memory traffic, not arithmetic — six full-grid
+    fills/copies and three whole-grid sums per firing over arrays that
+    are 71% ocean. W4 packs every SCRATCH array and every iteration to
+    the land list (saved fields keep their full-grid views; the peopled
+    mask and band doctrine unchanged), folds the serial preludes and
+    totals into the banded phases with per-band partials combined in
+    band order (the one allowed result change — a summation order,
+    proved harmless by the stride arm), and optionally narrows cleared
+    scratch to f32 storage with f64 arithmetic in lockstep with the TS
+    oracle. Byte-exact parity remains the acceptance instrument. Spec:
+    `spec/handoffs/W4-layout.md`. Branches from the W3 merge.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
