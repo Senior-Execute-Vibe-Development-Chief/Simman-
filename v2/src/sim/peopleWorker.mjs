@@ -15,23 +15,53 @@ function post(message) {
 }
 
 function start(input) {
+  // Layout constants (stack size, control-word indices) come from the
+  // coordinator, which reads them from the constants ledger.
   const wasm = initSync({
     module: input.module,
     memory: input.memory,
-    thread_stack_size: 1048576,
+    thread_stack_size: input.stackBytes,
   });
   const control = new Int32Array(input.controlStorage);
   const ready = new Int32Array(input.readyStorage);
   const idle = new Int32Array(input.idleStorage);
-  runtime = { wasm, control, ready, idle };
+  const errorFlag = new Int32Array(input.errorStorage, 0, 1);
+  const errorText = new Uint8Array(input.errorStorage, Int32Array.BYTES_PER_ELEMENT);
+  runtime = {
+    wasm,
+    control,
+    ready,
+    idle,
+    errorFlag,
+    errorText,
+    phaseIndex: input.phaseIndex,
+    claimIndex: input.claimIndex,
+    doneOffset: input.doneOffset,
+  };
   Atomics.add(ready, 0, 1);
   Atomics.notify(ready, 0);
   post({ type: "ready" });
 }
 
 function finishBand(index) {
-  Atomics.store(runtime.control, 2 + index, 1);
-  Atomics.notify(runtime.control, 2 + index);
+  Atomics.store(runtime.control, runtime.doneOffset + index, 1);
+  Atomics.notify(runtime.control, runtime.doneOffset + index);
+}
+
+/** Report a failure through shared memory: the coordinator is blocked in Atomics.wait and cannot receive a posted message. */
+function reportError(error) {
+  const text = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  if (runtime) {
+    const bytes = new TextEncoder().encode(text).subarray(0, runtime.errorText.length - 1);
+    runtime.errorText.set(bytes);
+    runtime.errorText[bytes.length] = 0;
+    Atomics.store(runtime.errorFlag, 0, 1);
+    Atomics.notify(runtime.idle, 0);
+    for (let index = 0; index < runtime.control.length - runtime.doneOffset; index++) {
+      Atomics.notify(runtime.control, runtime.doneOffset + index);
+    }
+  }
+  post({ type: "error", message: text });
 }
 
 function runBand(payload, band, index) {
@@ -60,9 +90,9 @@ function dispatch(payload) {
   const expectedPhase = payload.phase;
   try {
     while (true) {
-      if (Atomics.load(runtime.control, 0) !== expectedPhase) return;
-      const index = Atomics.add(runtime.control, 1, 1);
-      if (Atomics.load(runtime.control, 0) !== expectedPhase) return;
+      if (Atomics.load(runtime.control, runtime.phaseIndex) !== expectedPhase) return;
+      const index = Atomics.add(runtime.control, runtime.claimIndex, 1);
+      if (Atomics.load(runtime.control, runtime.phaseIndex) !== expectedPhase) return;
       if (index >= bands.length) return;
       runBand(payload, bands[index], index);
     }
@@ -77,7 +107,7 @@ function onMessage(message) {
     if (message.type === "init") start(message);
     else if (message.type === "dispatch") dispatch(message);
   } catch (error) {
-    post({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    reportError(error);
   }
 }
 

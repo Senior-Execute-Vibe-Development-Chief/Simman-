@@ -97,11 +97,15 @@ fudge factors.
   per-firing share stays inside the diffusion bound (dev 12, target 1).
 - The wasm people kernel uses 16 fixed grid-derived row bands. Node
   `worker_threads` and cross-origin-isolated browsers run those bands on a
-  shared-memory pool; hashes are identical for 1, 2, and N workers and
-  identical to the serial TypeScript oracle. Hosts without isolation fall
-  back to serial wasm, logged in the status line. The ≤15.5 ms Phase-1
-  ceiling is not met on a 4-core runner; QUESTIONS #34 has the measured
-  serial/N-thread table.
+  shared-memory pool: one per process, pre-warmed asynchronously by
+  `ensurePeopleWasm({ workers })` and borrowed by kernels; hashes are
+  identical for 1, 2, and N workers and identical to the serial TypeScript
+  oracle. Hosts without isolation fall back to serial wasm, logged in the
+  status line; a worker that fails mid-phase raises an error through shared
+  memory rather than hanging the coordinator. The ≤15.5 ms Phase-1 ceiling
+  is not met on a 4-core runner (migration is memory-bound; W4 packs the
+  kernel to land cells); QUESTIONS #34 has the measured serial/N-thread
+  table and the review corrections.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,

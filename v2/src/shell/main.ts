@@ -114,7 +114,16 @@ function displayDate(step: number): string {
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
 }
 worker.addEventListener("message", (event) => {
+  if (event.data?.type === "error") {
+    // A worker failure used to vanish: the page just stopped updating.
+    status.textContent = `Worker error · ${String(event.data.message)}`;
+    console.error("Sim worker error:", event.data.message);
+    playing = false;
+    runButton.textContent = "Run";
+    return;
+  }
   if (event.data?.type === "created") {
+    worldReady = true;
     const isolated = event.data.isolated === true;
     const threaded = event.data.usesThreads === true;
     const kernel = event.data.kernel !== "wasm"
@@ -148,8 +157,9 @@ worker.addEventListener("message", (event) => {
 // returns. A fixed-interval post outran the worker on the target grid
 // (~0.5 s/tick) and queued unboundedly — the page read as frozen.
 let tickPending = false;
+let worldReady = false;
 function requestTicks(): void {
-  if (!playing || tickPending) return;
+  if (!playing || tickPending || !worldReady) return;
   tickPending = true;
   worker.postMessage({ type: "tick", steps: speed });
 }

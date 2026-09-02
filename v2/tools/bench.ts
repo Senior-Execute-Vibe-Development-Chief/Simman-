@@ -5,7 +5,7 @@ import { printProvenance, provenance } from "./lib/provenance";
 import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
-import { ensurePeopleWasm, defaultPeopleWorkers } from "../src/sim/peopleKernel";
+import { ensurePeopleWasm, defaultPeopleWorkers, resizePeoplePool } from "../src/sim/peopleKernel";
 import {
   peoplePhaseMilliseconds,
   resetPeoplePhaseMilliseconds,
@@ -112,6 +112,7 @@ async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> 
   }
   const rows: Record<string, unknown>[] = [];
   for (const config of configs) {
+    if (config.peopleWorkers > 1 || config.peopleThreads) await resizePeoplePool(config.peopleWorkers);
     const world = new World({
       seed: 42042,
       grid,

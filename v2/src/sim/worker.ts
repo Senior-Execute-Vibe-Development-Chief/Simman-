@@ -82,9 +82,13 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
 }
 
 const scope = globalThis as unknown as Partial<WorkerScope>;
+// Messages are handled strictly in order: "create" awaits the wasm load, and
+// a "tick" that arrived meanwhile must wait for it, not throw (it did — the
+// shell then sat on "waiting for worker" forever; review, W3).
+let queue: Promise<unknown> = Promise.resolve();
 if (typeof scope.addEventListener === "function" && typeof scope.postMessage === "function") {
   scope.addEventListener("message", (event) => {
-    void handleWorkerMessage(event.data).then((response) => {
+    queue = queue.then(() => handleWorkerMessage(event.data)).then((response) => {
       const transfer = response.type === "snapshot" && response.buffer instanceof ArrayBuffer
         ? [response.buffer]
         : [];

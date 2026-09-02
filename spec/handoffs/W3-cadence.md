@@ -341,3 +341,19 @@ atomics; no band layout from worker count; no per-tick copy of fields.
 No "workers" label without threads behind it. No M3 mechanics (harvest,
 famine, accumulators with consumers) — only the coupling helper and the
 doctrine. No touching worldgen, substrate data, travel, or the router.
+
+## Status at merge (2026-09-02, review)
+
+Merged to main by the owner as PR #122 before review completed; the
+review corrections landed on the working branch afterwards (QUESTIONS
+#34 review note). Delivered: W3a in full (scheduler, derived strides —
+target 1 / dev 12 — the stride arm with its measured deltas, schedule in
+hash and save); W3b in full (shared-memory build on a pinned nightly,
+real `worker_threads` / Web Workers, hash identity across worker counts,
+byte identity with the TS oracle and, cross-branch, with the pre-wave
+kernels at stride 1). Ceiling: **missed** — 110 → 73 ms/tick from
+cadence, threads barely scale because migration is memory-bound (W4,
+DECISIONS 25, is the response). Review corrections: the browser had never
+run wasm at all (a Node-detection bug since W2), the worker pool's
+synchronous start-up could hang a browser worker, worker failures are
+now propagated through shared memory, and the shell's tick race is fixed.

@@ -262,3 +262,4 @@ export const PEOPLE_WORKER_WAIT_MS = 10000; // spec/09-constants-ledger.md §W3 
 export const PEOPLE_WASM_MEMORY_INITIAL_PAGES = 1024; // spec/09-constants-ledger.md §W3 proposed — shared-memory wasm initial pages
 export const PEOPLE_WASM_MEMORY_MAXIMUM_PAGES = 32768; // spec/09-constants-ledger.md §W3 proposed — shared-memory wasm max pages (2 GiB)
 export const PEOPLE_THREAD_STACK_BYTES = 1048576; // spec/09-constants-ledger.md §W3 proposed — per-worker wasm shadow stack
+export const PEOPLE_WORKER_ERROR_BYTES = 1024; // spec/09-constants-ledger.md §W3 proposed — shared-memory error text capacity for a failed band worker

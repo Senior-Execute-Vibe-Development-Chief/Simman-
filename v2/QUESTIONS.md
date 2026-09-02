@@ -856,6 +856,46 @@ Review corrections to the M1 build (all validated before merge):
     monthly migration plus per-commit cohort/ledger. Do not re-anchor
     `bench-baselines.json` downward from this faster runner (W2 lesson);
     `--check` still passes against the review-runner 220 ms target cap.
+    **Review note (merge, 2026-09-02).** Delivered as specified: the
+    scheduler, derived strides (target 1 / dev 12, re-derived here), the
+    stride arm (dev deltas reproduced: population 4.0e-5, arrivals
+    0/0/0/10 years), real `worker_threads` with hash identity across
+    1/2/8 workers, and — checked cross-branch — stride 1 byte-identical
+    to the pre-wave kernels at both grids (240 dev / 24 target ticks).
+    Review corrections, all mechanisms not patches:
+    (a) **The shell never ran wasm.** Since W2 the sim worker had been on
+    the TypeScript kernels: the loader tested `typeof window` to detect
+    Node, a browser worker has no `window` either, `fs.readFile` threw
+    and the failure was swallowed. Node is now detected by `process.
+    versions.node`; loader failures are logged, never silent. This is
+    most of the owner's "5 years per 5 s" play-test slowness.
+    (b) **Pool start-up was a structural hang.** The pool constructor
+    waited for worker readiness with `Atomics.wait`; a worker that failed
+    to start could only report through an event, which a blocked thread
+    never receives — the shell's sim worker hung on exactly this once wasm
+    actually loaded. Pool creation is now asynchronous (readiness via
+    message events with a timeout), pre-warmed by `ensurePeopleWasm({
+    workers })` as one process-level pool that kernels borrow (dispatch
+    carries the kernel pointer); harnesses resize it with
+    `resizePeoplePool(n)`. Node workers are `unref`'d so a pool never
+    keeps a process alive (the reason gate/bench needed `process.exit`).
+    (c) **Mid-phase worker failures propagate.** A worker that throws
+    inside a band writes the error into shared memory; the coordinator's
+    barriers check the flag and throw with the text instead of waiting
+    forever (the `post({type:"error"})` it used was unreadable by a
+    thread blocked in Atomics.wait). The worker script also takes its
+    stack size and control-word layout from the coordinator rather than
+    restating ledger constants.
+    (d) **Shell tick race.** Ticks were posted before "create" finished,
+    the worker threw "world has not been created", the error was dropped
+    and `tickPending` stayed set — "waiting for worker" forever. Worker
+    messages are now handled strictly in order and the shell posts no
+    ticks until "created"; worker errors surface in the status line.
+    Verified in Chromium: `Worker ready · WASM 3 threads · growth 12 ·
+    migration 12`, population advancing. Note for W4: the tri-engine
+    browser smoke runs on the page's main thread, where `Atomics.wait` is
+    forbidden, so it exercises serial wasm only; a worker-side identity
+    check is needed to cover the threaded browser path.
 35. **Equal Earth display projection (2026-09-02, owner: "greenland is
     heavily distorted").** Measured at dev before changing anything: a
     flood fill over Greenland's land cells sums to 2.40M km² of real

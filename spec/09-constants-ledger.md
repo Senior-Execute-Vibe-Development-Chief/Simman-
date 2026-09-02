@@ -227,3 +227,4 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_WASM_MEMORY_INITIAL_PAGES` | 1024 | shared-memory people kernel initial pages (64 MiB); grows toward the max |
 | `PEOPLE_WASM_MEMORY_MAXIMUM_PAGES` | 32768 | shared-memory cap, 2 GiB, matching the threaded link `--max-memory` |
 | `PEOPLE_THREAD_STACK_BYTES` | 1048576 | per-worker shadow stack allocated at instance init |
+| `PEOPLE_WORKER_ERROR_BYTES` | 1024 | shared-memory text capacity through which a band worker reports a failure to a coordinator blocked in Atomics.wait |

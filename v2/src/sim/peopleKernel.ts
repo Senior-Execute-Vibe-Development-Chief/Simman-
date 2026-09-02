@@ -9,6 +9,9 @@ import initThreads, {
 import { fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
 import type { PeopleWorld } from "./people/types";
 import {
+  BAND_CONTROL_CLAIM,
+  BAND_CONTROL_DONE_OFFSET,
+  BAND_CONTROL_PHASE,
   beginBandPhase,
   createBandControl,
   fixedPeopleBands,
@@ -19,6 +22,7 @@ import {
   MONTHS_PER_YEAR,
   PEOPLE_BAND_COUNT,
   PEOPLE_THREAD_STACK_BYTES,
+  PEOPLE_WORKER_ERROR_BYTES,
   PEOPLE_WASM_MEMORY_INITIAL_PAGES,
   PEOPLE_WASM_MEMORY_MAXIMUM_PAGES,
   PEOPLE_WORKER_WAIT_MS,
@@ -27,6 +31,11 @@ import {
 
 let initialized = false;
 let initialization: Promise<boolean> | undefined;
+// A browser WORKER has no `window` either: testing for it sent the shell's
+// sim worker down the Node path (fs.readFile) and silently onto the
+// TypeScript kernels for all of W2 (review, W3). Node is Node when it says so.
+const IS_NODE = typeof process !== "undefined"
+  && typeof (process as { versions?: { node?: string } }).versions?.node === "string";
 let threadedInitialized = false;
 let threadedMemory: WebAssembly.Memory | undefined;
 let threadedModule: WebAssembly.Module | undefined;
@@ -38,6 +47,8 @@ const runtimeRegistry = new Set<PeopleKernelRuntimeImpl>();
 interface WorkerLike {
   postMessage(message: unknown): void;
   terminate(): void | Promise<number>;
+  /** Node only: a pool must never keep the process alive on its own. */
+  unref?: () => void;
   addEventListener?: (type: string, listener: (event: MessageEvent) => void) => void;
   on?: (type: string, listener: (message: unknown) => void) => void;
 }
@@ -89,67 +100,106 @@ type BandOperation =
   | "migration-debit"
   | "migration-target";
 
+// The worker script is plain JS outside the constants ledger; it receives
+// the shared-layout constants from here rather than restating them.
+const WORKER_LAYOUT = Object.freeze({
+  stackBytes: PEOPLE_THREAD_STACK_BYTES,
+  phaseIndex: BAND_CONTROL_PHASE,
+  claimIndex: BAND_CONTROL_CLAIM,
+  doneOffset: BAND_CONTROL_DONE_OFFSET,
+});
+// A worker that throws mid-band reports through shared memory: the
+// coordinator is blocked in Atomics.wait and can never receive a posted
+// message, so a posted error would be a silent hang (review, W3).
+const WORKER_ERROR_BYTES = PEOPLE_WORKER_ERROR_BYTES;
+
 class PeopleBandWorkerPool {
   readonly control: BandControl;
   barrierMilliseconds = 0;
   private readonly workers: WorkerLike[];
-  private readonly ready: Int32Array;
   private readonly idle: Int32Array;
+  private readonly errorFlag: Int32Array;
+  private readonly errorText: Uint8Array;
 
-  constructor(
+  private constructor(control: BandControl, workers: WorkerLike[], idle: Int32Array, errorStorage: SharedArrayBuffer) {
+    this.control = control;
+    this.workers = workers;
+    this.idle = idle;
+    this.errorFlag = new Int32Array(errorStorage, 0, 1);
+    this.errorText = new Uint8Array(errorStorage, Int32Array.BYTES_PER_ELEMENT, WORKER_ERROR_BYTES);
+  }
+
+  get workerCount(): number {
+    return this.workers.length;
+  }
+
+  /**
+   * Spawn the workers and await their readiness through ordinary message
+   * events. Readiness must not be awaited with Atomics.wait: a worker that
+   * fails to start reports through an event, and a thread blocked in
+   * Atomics.wait can never receive it — the shell's sim worker hung on
+   * exactly that (review, W3). Failure resolves to undefined after logging.
+   */
+  static async create(
     workerCount: number,
     module: WebAssembly.Module,
     memory: WebAssembly.Memory,
     WorkerClass: WorkerConstructor,
     isNode: boolean,
-  ) {
-    this.control = createBandControl(workerCount);
-    if (!this.control.shared || !this.control.storage) {
-      throw new Error("SharedArrayBuffer is unavailable for people workers.");
-    }
-    const readyStorage = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
-    this.ready = new Int32Array(readyStorage);
+  ): Promise<PeopleBandWorkerPool | undefined> {
+    const control = createBandControl(workerCount);
+    if (!control.shared || !control.storage) return undefined;
     const idleStorage = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
-    this.idle = new Int32Array(idleStorage);
-    this.workers = [];
-    for (let index = 0; index < this.control.workerCount; index++) {
+    const errorStorage = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT + WORKER_ERROR_BYTES);
+    const readyStorage = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+    const payload = {
+      module,
+      memory,
+      controlStorage: control.storage,
+      readyStorage,
+      idleStorage,
+      errorStorage,
+      ...WORKER_LAYOUT,
+    };
+    const workers: WorkerLike[] = [];
+    const readiness: Array<Promise<void>> = [];
+    for (let index = 0; index < control.workerCount; index++) {
       const worker = new WorkerClass(new URL("./peopleWorker.mjs", import.meta.url), {
         type: "module",
-        workerData: {
-          module,
-          memory,
-          controlStorage: this.control.storage,
-          readyStorage,
-          idleStorage,
-        },
+        workerData: payload,
       });
-      worker.addEventListener?.("message", () => undefined);
-      worker.on?.("error", (error) => {
-        if (Atomics.load(this.ready, 0) >= 0) {
-          Atomics.store(this.ready, 0, MATH_NEGATIVE_ONE);
-          Atomics.notify(this.ready, 0);
+      readiness.push(new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`people worker ${index} did not become ready within ${PEOPLE_WORKER_WAIT_MS} ms`)), PEOPLE_WORKER_WAIT_MS);
+        const onMessage = (data: unknown): void => {
+          const message = data as { type?: string; message?: string } | undefined;
+          if (message?.type === "ready") {
+            clearTimeout(timer);
+            resolve();
+          } else if (message?.type === "error") {
+            clearTimeout(timer);
+            reject(new Error(message.message ?? "worker error"));
+          }
+        };
+        if (isNode) {
+          worker.on?.("message", onMessage);
+          worker.on?.("error", (error) => reject(error instanceof Error ? error : new Error(String(error))));
+        } else {
+          worker.addEventListener?.("message", (event) => onMessage(event.data));
+          worker.addEventListener?.("error", (event) => reject(new Error(String((event as unknown as { message?: string }).message ?? "worker failed to start"))));
         }
-        console.error(error);
-      });
-      if (!isNode) {
-        worker.postMessage({
-          type: "init",
-          module,
-          memory,
-          controlStorage: this.control.storage,
-          readyStorage,
-          idleStorage,
-        });
-      }
-      this.workers.push(worker);
+      }));
+      if (isNode) worker.unref?.();
+      else worker.postMessage({ type: "init", ...payload });
+      workers.push(worker);
     }
-    while (Atomics.load(this.ready, 0) < this.control.workerCount) {
-      if (Atomics.load(this.ready, 0) < 0) {
-        this.dispose();
-        throw new Error("A people worker failed during initialization.");
-      }
-      Atomics.wait(this.ready, 0, Atomics.load(this.ready, 0), PEOPLE_WORKER_WAIT_MS);
+    try {
+      await Promise.all(readiness);
+    } catch (error) {
+      for (const worker of workers) void worker.terminate();
+      console.error("People worker pool unavailable; using serial wasm.", error);
+      return undefined;
     }
+    return new PeopleBandWorkerPool(control, workers, new Int32Array(idleStorage), errorStorage);
   }
 
   dispatch(
@@ -171,14 +221,29 @@ class PeopleBandWorkerPool {
     for (const worker of this.workers) worker.postMessage(message);
     for (let index = 0; index < bands.length; index++) {
       while (Atomics.load(this.control.done, index) === 0) {
+        this.throwIfWorkerFailed(operation, index);
+        // Every worker has left the claim loop yet this band was never
+        // marked done: fail loudly instead of waiting forever.
+        if (Atomics.load(this.idle, 0) >= this.workers.length) {
+          throw new Error(`People band ${index} (${operation}) was never finished: a worker left the phase early.`);
+        }
         Atomics.wait(this.control.done, index, 0, PEOPLE_WORKER_WAIT_MS);
       }
     }
     const barrierStart = performance.now();
     while (Atomics.load(this.idle, 0) < this.workers.length) {
+      this.throwIfWorkerFailed(operation, MATH_NEGATIVE_ONE);
       Atomics.wait(this.idle, 0, Atomics.load(this.idle, 0), PEOPLE_WORKER_WAIT_MS);
     }
     this.barrierMilliseconds += performance.now() - barrierStart;
+  }
+
+  private throwIfWorkerFailed(operation: BandOperation, band: number): void {
+    if (Atomics.load(this.errorFlag, 0) === 0) return;
+    const length = this.errorText.indexOf(0);
+    const text = new TextDecoder().decode(this.errorText.subarray(0, length < 0 ? this.errorText.length : length));
+    this.dispose();
+    throw new Error(`People worker failed during ${operation}${band >= 0 ? ` band ${band}` : ""}: ${text}`);
   }
 
   dispose(): void {
@@ -226,25 +291,38 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
  * the sibling asset. Failure is a deliberate capability result: callers can
  * select the reference TypeScript kernel when wasm is unavailable.
  */
-export async function ensurePeopleWasm(): Promise<boolean> {
+export interface PeopleWasmOptions {
+  /** Worker count for the pre-warmed pool; defaults to the machine's spare cores. */
+  readonly workers?: number;
+}
+
+// One pool per process, sized once and pre-warmed by the loader; kernels
+// borrow it (dispatch carries the kernel pointer). Node may still build a
+// private pool of another size synchronously (the parity harness does).
+let sharedPool: PeopleBandWorkerPool | undefined;
+
+export async function ensurePeopleWasm(options: PeopleWasmOptions = {}): Promise<boolean> {
   if (initialized) return true;
   if (initialization) return initialization;
   initialization = (async () => {
     try {
       const wasmUrl = new URL("../wasm/people/people_bg.wasm", import.meta.url);
-      if (typeof window === "undefined") {
+      if (IS_NODE) {
         const fs = await import("node:fs/promises");
         await init({ module_or_path: await fs.readFile(wasmUrl) });
       } else {
         await init({ module_or_path: wasmUrl });
       }
       initialized = true;
-    } catch {
+    } catch (error) {
+      // Never fall back silently: the shell reported "TypeScript people
+      // fallback" for a whole wave without anyone seeing why (review, W3).
+      console.error("People wasm kernel unavailable; using the TypeScript kernels.", error);
       return false;
     }
     try {
       const threadUrl = new URL("../wasm/people-threads/people_bg.wasm", import.meta.url);
-      const threadBytes = typeof window === "undefined"
+      const threadBytes = IS_NODE
         ? await (await import("node:fs/promises")).readFile(threadUrl)
         : new Uint8Array(await (await fetch(threadUrl)).arrayBuffer());
       threadedModule = await WebAssembly.compile(threadBytes);
@@ -258,7 +336,7 @@ export async function ensurePeopleWasm(): Promise<boolean> {
         memory: threadedMemory,
         thread_stack_size: PEOPLE_THREAD_STACK_BYTES,
       });
-      if (typeof window === "undefined") {
+      if (IS_NODE) {
         const workers = await import("node:worker_threads");
         workerConstructor = workers.Worker as unknown as WorkerConstructor;
         workerIsNode = true;
@@ -268,9 +346,15 @@ export async function ensurePeopleWasm(): Promise<boolean> {
         workerIsNode = false;
       }
       threadedInitialized = true;
-    } catch {
+      const requested = Number(options.workers);
+      const count = Number.isFinite(requested) && requested >= 1 ? Math.floor(requested) : defaultPeopleWorkers();
+      if (count > 1 && workerConstructor) {
+        sharedPool = await PeopleBandWorkerPool.create(count, threadedModule, threadedMemory, workerConstructor, workerIsNode);
+      }
+    } catch (error) {
       // The ordinary wasm module remains a valid capability fallback. The
       // shell reports this as serial wasm instead of claiming worker threads.
+      console.error("Threaded people kernel unavailable; using serial wasm.", error);
       threadedInitialized = false;
     }
     return true;
@@ -534,7 +618,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 
   dispose(): void {
     runtimeRegistry.delete(this);
-    this.workerPool?.dispose();
+    // The pool is a process resource borrowed by kernels, never owned.
     this.kernel.free();
   }
 }
@@ -547,26 +631,38 @@ export function createPeopleKernel(
   if (!peopleWasmReady()) return undefined;
   const count = Math.max(1, Math.floor(workerCount));
   const wantThreads = preferThreads || count > 1;
-  if (wantThreads && threadedInitialized && threadedMemory && threadedModule && workerConstructor) {
-    let pool: PeopleBandWorkerPool | undefined;
+  const pool = wantThreads && threadedInitialized && threadedMemory
+    ? borrowPool(count)
+    : undefined;
+  if (pool && threadedMemory) {
     let kernel: ThreadedPeopleKernel | undefined;
     try {
       kernel = new ThreadedPeopleKernel(...kernelArguments(world));
       kernel.set_parallel_reductions(true);
-      pool = new PeopleBandWorkerPool(
-        count,
-        threadedModule,
-        threadedMemory,
-        workerConstructor,
-        workerIsNode,
-      );
       return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool, true);
     } catch (error) {
-      pool?.dispose();
       kernel?.free();
       console.error("Threaded people kernel unavailable; using serial wasm.", error);
     }
+  } else if (wantThreads) {
+    console.warn(`People kernel: no worker pool of ${count} is ready (pre-warm one with ensurePeopleWasm({ workers })); using serial wasm.`);
   }
   return new PeopleKernelRuntimeImpl(world, count);
+}
+
+/** The pre-warmed pool when its size matches; a pool is a process resource, never disposed by a kernel. */
+function borrowPool(count: number): PeopleBandWorkerPool | undefined {
+  if (sharedPool && sharedPool.workerCount === count) return sharedPool;
+  return undefined;
+}
+
+/** Replace the process pool with one of another size (tests and harnesses). */
+export async function resizePeoplePool(workers: number): Promise<boolean> {
+  if (!threadedInitialized || !threadedModule || !threadedMemory || !workerConstructor) return false;
+  const count = Math.max(1, Math.floor(workers));
+  if (sharedPool?.workerCount === count) return true;
+  sharedPool?.dispose();
+  sharedPool = await PeopleBandWorkerPool.create(count, threadedModule, threadedMemory, workerConstructor, workerIsNode);
+  return sharedPool !== undefined;
 }
 
