@@ -856,3 +856,76 @@ Review corrections to the M1 build (all validated before merge):
     monthly migration plus per-commit cohort/ledger. Do not re-anchor
     `bench-baselines.json` downward from this faster runner (W2 lesson);
     `--check` still passes against the review-runner 220 ms target cap.
+
+35. **W4 land-packed people kernel (2026-09-02).** This wave starts from
+    the W3 merge `32974aac4e80b0004032d303a97f858d51cd9f20`; no W3 code was
+    restarted. The target substrate at seed 42042 has 1,620,000 cells and
+    558,091 land cells (34.4501%); dev has 28,800 cells and 9,752 land
+    cells. The land list is row-major and the 16 bands are the same
+    grid-derived row ranges as W3, with their endpoints converted to
+    contiguous land-list offsets. The inverse is −1 on ocean.
+
+    **Traffic ledger, measured before/after.** The pre-wave row uses the W3
+    #34 implementation and its same-runner phase measurement. Bytes count
+    `Float64` array reads plus writes (`8 B` each); branch bytes and scalar
+    partial slots are immaterial and omitted. `N` is the full target grid
+    and `L` is its land count.
+
+    | target operation | W3 pre-wave | W4 land-packed | organization |
+    |---|---:|---:|---|
+    | migration clears: out, weight, received | 38.880 MB | 13.394 MB | W3 serial full-grid fills → W4 packed band fills |
+    | growth-prepared migration setup: 4 arrays, read + write | 103.680 MB | 35.718 MB | serial full-grid copies → packed preparation band |
+    | migration finish: 3 cohort copies, read + write | 77.760 MB | 26.788 MB | packed copy; no physics change |
+    | migration total/received sums | 22.324 MB | 0 | two full-grid sums → 16 ascending band partials |
+    | commit population, read + write | 25.920 MB | 8.929 MB | full-grid copy → packed-to-full-grid scatter |
+    | ledger begin + end: people and area reads | 51.840 MB | 17.859 MB | full-grid sums → land-list sums |
+    | **counted array traffic** | **320.404 MB** | **102.689 MB** | **3.12× less, 69.24% reduction** |
+
+    The 13.394 MB W4 clear is split by phase: out/weight are cleared in
+    migration preparation (8.929 MB) and received is cleared in the target
+    phase (4.465 MB). Every growth slot is written, so its old four
+    full-grid fills were removed entirely; the setup row counts the four
+    required frozen-state read/write assignments. Source, debit, gather,
+    normalization, and ledger iteration domains changed from raw `N` scans
+    to `L` packed scans. W4 leaves only packed cohort copying,
+    packed-to-full-grid commit, the remainder deposit, and barriers in the
+    serial tail; no whole-grid migration sum remains.
+
+    The timing confirmation is a warm target serial run (12 ticks after a
+    12-tick warm-up): migration preparation 3.774 ms/tick, source 12.460,
+    debit 4.701, gather 15.677, finish 1.031, for 37.64 ms total. The
+    bench phase aggregate is 37.40 ms/tick for migration. W3's same-runner
+    migration phase was 54.5 ms/firing.
+
+    **Cadence × threads, target, same 4-core runner.** The table is the
+    shipped 12-month schedule unless the name says stride-1. It uses the
+    existing 116,412-tick horizon and 15.5 ms/tick ceiling.
+
+    | config | ms/tick | idle-barrier ms/tick | projected YD→1 CE |
+    |---|---:|---:|---:|
+    | serial stride-1 | 74.59 | 0 | 144.7 min |
+    | serial shipped | 46.20 | 0 | 89.6 min |
+    | 3 threads stride-1 | 75.12 | 0.009 | 145.7 min |
+    | 3 threads shipped | 48.84 | 0.003 | 94.8 min |
+    | 8 threads stride-1 | 65.98 | 0.069 | 128.0 min |
+    | 8 threads shipped | 41.64 | 0.008 | 80.8 min |
+
+    Dev measurements were 1.393 / 0.117 ms/tick for serial stride-1 /
+    shipped, 1.644 / 0.157 for 3 threads, and 2.025 / 0.225 for 8
+    threads. The target result is a 73.0 → 46.2 ms shipped-schedule
+    reduction from W3, but the ≤15.5 ms ceiling remains unmet even with
+    eight workers on four cores. The remaining dominant target costs are
+    monthly migration (37.4 ms) and the per-commit cohort/ledger tail
+    (~4.25 ms); oversubscribed eight-worker migration is 33.35 ms. The
+    optional f32-storage experiment was not taken: W4 already meets the
+    land-packing objective with f64 scratch and f64 arithmetic, so no
+    tolerance or arithmetic contract was changed.
+
+    **Parity and stride arm.** Rust and TS use the same land order, packed
+    neighbor inverse, phase order, and ascending partial fold. The
+    existing 240 dev / 24 target byte-parity arm now also checks
+    `capField` remains full-grid and `migrationReceived` is packed; serial
+    wasm, one real worker, two workers, and eight workers are identical.
+    The W4 stride arm is running at both grids (dev and target, 3000-year
+    horizon); its population and farming-arrival deltas will be appended
+    here with the gate result.

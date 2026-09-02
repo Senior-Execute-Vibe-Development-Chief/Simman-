@@ -95,13 +95,15 @@ fudge factors.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
   fire annually; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
-- The wasm people kernel uses 16 fixed grid-derived row bands. Node
-  `worker_threads` and cross-origin-isolated browsers run those bands on a
-  shared-memory pool; hashes are identical for 1, 2, and N workers and
-  identical to the serial TypeScript oracle. Hosts without isolation fall
-  back to serial wasm, logged in the status line. The ≤15.5 ms Phase-1
-  ceiling is not met on a 4-core runner; QUESTIONS #34 has the measured
-  serial/N-thread table.
+- The wasm people kernel uses a row-major land index and 16 fixed,
+  grid-derived row bands. Only scratch and iteration are land-packed; the
+  saved people, technique, cohort, and capacity views remain full-grid.
+  Node `worker_threads` and cross-origin-isolated browsers run those bands on
+  a shared-memory pool; hashes are identical for 1, 2, and N workers and the
+  serial TypeScript oracle. On the review runner, target serial shipped is
+  46.20 ms/tick and 8 workers are 41.64 ms/tick (80.8 minutes projected for
+  YD→1 CE); the ≤15.5 ms ceiling remains open. QUESTIONS #35 has the traffic
+  ledger, barrier, stride, and core-count findings.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,
