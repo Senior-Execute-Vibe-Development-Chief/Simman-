@@ -65,17 +65,17 @@ function addSourceWeight(
   world: PeopleWorld,
   target: number,
   edge: number,
-  sum: { value: number },
-): void {
+): number {
   const packed = world._packedOf[target] ?? MATH_NEGATIVE_ONE;
-  if (packed < 0 || !peopled(world, target)) return;
+  if (packed < 0 || !peopled(world, target)) return 0;
   const spare = Math.max(
     0,
     (world.capField[target] ?? 0) - (world._peopleNext[packed] ?? 0),
   ) * (world.cellAreaKm2[target] ?? 0);
-  if (spare <= 0) return;
+  if (spare <= 0) return 0;
   const cost = (world._migrationDaysPerKm[target] ?? Number.POSITIVE_INFINITY) * edge;
-  if (Number.isFinite(cost) && cost >= 0) sum.value += (1 / (1 + cost)) * spare;
+  if (Number.isFinite(cost) && cost >= 0) return (1 / (1 + cost)) * spare;
+  return 0;
 }
 
 function sourceFlow(
@@ -134,7 +134,6 @@ export function migrate(
     world._migrationDaysPerKmByMonth[cycleMonth] = days;
   }
   world._migrationDaysPerKm = days;
-  fillMigrationShareRows(world, dtMonths);
   const edgeH = world._migrationEdgeH;
   const edgeV = world._migrationEdgeV;
   const capField = world.capField;
@@ -146,35 +145,39 @@ export function migrate(
   const childNext = world._childrenNext;
   const workingNext = world._workingNext;
   const elderNext = world._eldersNext;
-  out.fill(0);
-  weights.fill(0);
-  world._migrationReceived.fill(0);
   world._migrationByBand.fill(0);
   world._migrationReceivedByBand.fill(0);
-  if (growthPrepared) {
-    migrationPopulation.set(next);
-    childNext.set(world._childrenMass);
-    workingNext.set(world._workingMass);
-    elderNext.set(world._eldersMass);
-  } else {
-    for (let packed = 0; packed < world._landCells.length; packed++) {
-      const cell = world._landCells[packed] ?? 0;
-      const population = world.people[cell] ?? 0;
-      next[packed] = population;
-      migrationPopulation[packed] = population;
-      childNext[packed] = population * (world.children[cell] ?? 0);
-      workingNext[packed] = population * (world.working[cell] ?? 0);
-      elderNext[packed] = population * (world.elders[cell] ?? 0);
-    }
-    world._childrenMass.set(childNext);
-    world._workingMass.set(workingNext);
-    world._eldersMass.set(elderNext);
-  }
 
   // Source scan, direction order E, W, S, N (the original DX/DY order).
   for (const band of world._peopleBands) {
+    out.fill(0, band.rawLo, band.rawHi);
+    weights.fill(0, band.rawLo, band.rawHi);
+    for (let row = band.rowLo; row < band.rowHi; row++) {
+      if (dtMonths !== 1) {
+        world._migrationShareRow[row] = migrationShareForArea(
+          world.cellAreaKm2[row * width] ?? 0,
+          dtMonths,
+        );
+      }
+    }
     for (let packed = band.rawLo; packed < band.rawHi; packed++) {
       const cell = world._landCells[packed] ?? 0;
+      if (growthPrepared) {
+        migrationPopulation[packed] = next[packed] ?? 0;
+        childNext[packed] = world._childrenMass[packed] ?? 0;
+        workingNext[packed] = world._workingMass[packed] ?? 0;
+        elderNext[packed] = world._eldersMass[packed] ?? 0;
+      } else {
+        const population = world.people[cell] ?? 0;
+        next[packed] = population;
+        migrationPopulation[packed] = population;
+        childNext[packed] = population * (world.children[cell] ?? 0);
+        workingNext[packed] = population * (world.working[cell] ?? 0);
+        elderNext[packed] = population * (world.elders[cell] ?? 0);
+        world._childrenMass[packed] = childNext[packed] ?? 0;
+        world._workingMass[packed] = workingNext[packed] ?? 0;
+        world._eldersMass[packed] = elderNext[packed] ?? 0;
+      }
       const population = next[packed] ?? 0;
       if (population <= 0) continue;
       const area = areas[cell] ?? 0;
@@ -183,23 +186,23 @@ export function migrate(
       const x = cell - y * width;
       const share = world._migrationShareRow[y] ?? 0;
       const rowLength = edgeH[y] ?? 0;
-      const sumWeight = { value: 0 };
+      let sumWeight = 0;
 
       const east = y * width + (x + 1 === width ? 0 : x + 1);
-      addSourceWeight(world, east, rowLength, sumWeight);
+      sumWeight += addSourceWeight(world, east, rowLength);
       const west = y * width + (x === 0 ? width - 1 : x - 1);
-      addSourceWeight(world, west, rowLength, sumWeight);
+      sumWeight += addSourceWeight(world, west, rowLength);
       if (y + 1 < world.height) {
         const south = cell + width;
-        addSourceWeight(world, south, edgeV, sumWeight);
+        sumWeight += addSourceWeight(world, south, edgeV);
       }
       if (y > 0) {
         const north = cell - width;
-        addSourceWeight(world, north, edgeV, sumWeight);
+        sumWeight += addSourceWeight(world, north, edgeV);
       }
-      if (sumWeight.value > 0) {
+      if (sumWeight > 0) {
         out[packed] = population * area * share;
-        weights[packed] = sumWeight.value;
+        weights[packed] = sumWeight;
         world._migrationByBand[band.index] = (world._migrationByBand[band.index] ?? 0)
           + out[packed];
       }
@@ -236,6 +239,7 @@ export function migrate(
   // per-edge conductance uses the SOURCE row's horizontal length — for
   // horizontal edges the rows coincide, exactly as before.
   for (const band of world._peopleBands) {
+    world._migrationReceived.fill(0, band.rawLo, band.rawHi);
     for (let packed = band.rawLo; packed < band.rawHi; packed++) {
     const target = world._landCells[packed] ?? 0;
     if (!peopled(world, target)) continue;
