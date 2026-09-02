@@ -1,11 +1,11 @@
-import init, { Router } from "../wasm/router.js";
+import init, { Router } from "../wasm/router/router.js";
 
 let initialized: Promise<void> | undefined;
 
 async function initializeRouter(): Promise<void> {
   if (initialized) return initialized;
   initialized = (async () => {
-    const wasmUrl = new URL("../wasm/router_bg.wasm", import.meta.url);
+    const wasmUrl = new URL("../wasm/router/router_bg.wasm", import.meta.url);
     if (typeof window === "undefined") {
       const fs = await import("node:fs/promises");
       await init({ module_or_path: await fs.readFile(wasmUrl) });

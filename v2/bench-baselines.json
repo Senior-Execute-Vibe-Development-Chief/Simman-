@@ -1,19 +1,19 @@
 {
   "dev": {
-    "substrateMilliseconds": 2300,
-    "routingInitializeMilliseconds": 80,
-    "customizeMilliseconds": 45,
-    "queryMilliseconds": 95,
-    "distanceMapMilliseconds": 75,
-    "tickMilliseconds": 20
+    "substrateMilliseconds": 2100,
+    "routingInitializeMilliseconds": 20,
+    "customizeMilliseconds": 50,
+    "queryMilliseconds": 45,
+    "distanceMapMilliseconds": 32,
+    "tickMilliseconds": 12
   },
   "target": {
-    "substrateMilliseconds": 68000,
-    "routingInitializeMilliseconds": 2800,
-    "customizeMilliseconds": 2600,
-    "queryMilliseconds": 3600,
-    "distanceMapMilliseconds": 3800,
-    "tickMilliseconds": 470
+    "substrateMilliseconds": 52000,
+    "routingInitializeMilliseconds": 2500,
+    "customizeMilliseconds": 1800,
+    "queryMilliseconds": 2100,
+    "distanceMapMilliseconds": 2200,
+    "tickMilliseconds": 220
   },
-  "notes": "M2 review baseline (seed 42042, earth_sim). 10-tick cold averages on the review runner: dev ~14.5 ms, target ~361 ms; 24-tick warm steady state ~210 ms/tick at target after the second hash-identical optimization round (row-local edge math, per-month cost-field caches, static habitability LUTs; world hashes byte-equal to the pre-optimization tree at both grids). Values carry headroom for runner variance; CI fails above 120%. The target-grid long-horizon run remains the recorded performance finding (QUESTIONS.md #30/#32) pending the banded/wasm kernel drop-in."
+  "notes": "W2 baseline re-measured on the review runner (seed 42042, earth_sim), 10-tick cold averages: dev 8.9 ms/tick, target 169 ms/tick with the single-thread wasm kernel (pre-W2 on the same runner: 361 cold / 210 warm at target). Cursor's runner measured 2.6 / 122 ms; cross-runner numbers are not comparable, so baselines always come from the review runner. Values carry headroom; CI fails above 120%. Worker banding is NOT yet parallel (QUESTIONS #33 review note): 116,412 ticks x ~169 ms is ~5.5 h here, so the <=30-minute Phase-1 ceiling remains open. BENCH_LONG=1 adds the 1000-year target arm."
 }

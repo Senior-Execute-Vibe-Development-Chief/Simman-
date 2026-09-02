@@ -5,6 +5,7 @@ import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
 import { provenance } from "./lib/provenance";
+import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 
 interface GridResult {
   readonly grid: GridPreset;
@@ -19,6 +20,8 @@ interface GridResult {
 }
 
 const FAST_MONTHS = 12;
+
+if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 
 function measure(grid: GridPreset): GridResult {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
@@ -79,13 +82,8 @@ const initialParity = Math.abs(dev.initialPeople - target.initialPeople)
 // ── The horizon arms (M2 review). ──────────────────────────────────────────
 // Default: a ~3000-year dev trajectory arm — long enough for the first hearth
 // ignitions and the early wave, cheap enough for every gate run. With
-// GATE_PEOPLE_LONG=1: the full YD→1 CE dev arm checks the real M2 table —
-// population checkpoint bands, farming arrival order and timing, density
-// ordering — with misses acknowledged in data/reality/known-misses-people.json
-// or failing the gate. The TARGET-grid long horizon stays a recorded
-// limitation (QUESTIONS #30): ~0.8 s/tick × 116k ticks is not a gate arm
-// until the banded/wasm kernel lands; dev is the fast sanity, and carries the
-// verdict alone for now, honestly labeled.
+// GATE_PEOPLE_LONG=1 both grids run the full YD→1 CE primary horizon; target
+// is the shipped-grid verdict and dev remains the fast cross-grid comparison.
 const YD_START_YEAR = -9700;
 const monthsFromYear = (year: number): number => Math.round((year - YD_START_YEAR) * 12);
 const longArm = process.env.GATE_PEOPLE_LONG === "1";
@@ -104,12 +102,12 @@ const failures: string[] = [];
 const measured = new Set<string>();
 const findings: Record<string, unknown> = {};
 
-{
-  const substrate = buildSubstrate(42042, { preset: "earth_sim" }, "dev");
+function runTrajectory(grid: GridPreset): void {
+  const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const world = new World({
     seed: 42042,
-    grid: "dev",
-    config: { preset: "earth_sim", horizon: "YD-to-1CE" },
+    grid,
+    config: { preset: "earth_sim", horizon: "YD-to-1CE", peopleKernel: "wasm" },
     substrate,
   });
   const checkpointSteps = populationCurve.bands
@@ -151,25 +149,28 @@ const findings: Record<string, unknown> = {};
       }
     }
   }
+  const scope = `${grid}`;
   for (const point of curve) {
-    measured.add(`population:${point.year}`);
-    if (!point.inBand) failures.push(`population:${point.year}`);
+    const id = `population:${point.year}:${scope}`;
+    measured.add(id);
+    if (!point.inBand) failures.push(id);
   }
-  findings.curve = curve;
   const arrivals = farmingArrivals.regions.map((region) => {
     const step = arrivalStep.get(region.id);
     const year = step === undefined ? null : YD_START_YEAR + step / 12;
     const inWindow = year !== null && year >= region.earliest - 800 && year <= region.latest + 800;
     return { id: region.id, year, earliest: region.earliest, latest: region.latest, inWindow };
   });
-  findings.arrivals = arrivals;
+  const trajectory = (findings.trajectory ?? {}) as Record<string, unknown>;
+  trajectory[grid] = { curve, arrivals };
+  findings.trajectory = trajectory;
   if (longArm) {
     for (const arrival of arrivals) {
-      measured.add(`arrival:${arrival.id}`);
-      if (!arrival.inWindow) failures.push(`arrival:${arrival.id}`);
+      const id = `arrival:${arrival.id}:${scope}`;
+      measured.add(id);
+      if (!arrival.inWindow) failures.push(id);
     }
-    // Density ordering at the -3000 checkpoint class boundaries, measured on
-    // the final state as the mid-run proxy the fast arm can afford.
+    // Density ordering at the final primary-horizon state.
     let riverPeople = 0; let riverArea = 0;
     let rainfedPeople = 0; let rainfedArea = 0;
     let foragerPeople = 0; let foragerArea = 0;
@@ -185,18 +186,26 @@ const findings: Record<string, unknown> = {};
     const river = riverArea > 0 ? riverPeople / riverArea : 0;
     const rainfed = rainfedArea > 0 ? rainfedPeople / rainfedArea : 0;
     const forager = foragerArea > 0 ? foragerPeople / foragerArea : 0;
-    findings.densityOrdering = { river, rainfed, forager };
-    measured.add("density-ordering");
-    if (!(river > rainfed && rainfed > forager)) failures.push("density-ordering");
+    const ordering = (findings.densityOrdering ?? {}) as Record<string, unknown>;
+    ordering[grid] = { river, rainfed, forager };
+    findings.densityOrdering = ordering;
+    measured.add(`density-ordering:${scope}`);
+    if (!(river > rainfed && rainfed > forager)) failures.push(`density-ordering:${scope}`);
   } else {
-    // Trajectory arm: at 3000 years the first hearths must have ignited and
-    // the wave must be moving; the curve checkpoints inside the window bind.
+    // The short arm keeps one trajectory horizon in the default gate.
     let ignited = 0;
     for (const hearth of world.hearths) if (hearth.ignited) ignited++;
-    findings.ignitedAt3000Years = ignited;
-    measured.add("no-hearth-ignition-by-3000y");
-    if (ignited < 1) failures.push("no-hearth-ignition-by-3000y");
+    const ignition = (findings.ignitedAt3000Years ?? {}) as Record<string, unknown>;
+    ignition[grid] = ignited;
+    findings.ignitedAt3000Years = ignition;
+    const id = `no-hearth-ignition-by-3000y:${scope}`;
+    measured.add(id);
+    if (ignited < 1) failures.push(id);
   }
+}
+
+for (const grid of longArm ? (["dev", "target"] as const) : (["dev"] as const)) {
+  runTrajectory(grid);
 }
 
 const unacknowledged = failures.filter((id) => !acknowledged.has(id));
@@ -221,6 +230,6 @@ console.log(JSON.stringify({
   findings,
   knownMisses: [...acknowledged.entries()].map(([id, reason]) => ({ id, reason })),
   warnings: [
-    "The target-grid long horizon is a recorded limitation (QUESTIONS #30) pending the banded/wasm kernel; the dev arm carries the horizon verdict.",
+    "The long horizon is primary at the shipped target grid; dev is retained as a cross-grid comparison.",
   ],
 }));

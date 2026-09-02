@@ -1,4 +1,5 @@
 import { HASH_NUMBER_BYTES } from "./constants";
+import { ensurePeopleWasm } from "./peopleKernel";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
 import { populationTotal } from "./people";
 import type { Substrate } from "./substrate";
@@ -32,10 +33,22 @@ let world: World | undefined;
 const snapshotPool: ArrayBuffer[] = [];
 let snapshotVersion = 0;
 
-export function handleWorkerMessage(message: WorkerMessage): Record<string, unknown> {
+export async function handleWorkerMessage(message: WorkerMessage): Promise<Record<string, unknown>> {
   if (message.type === "create") {
+    if (message.config?.peopleKernel !== "ts") await ensurePeopleWasm();
     world = new World(message);
-    return { type: "created", hash: hashWorld(world), grid: world.grid, step: world.step };
+    const peopleKernel = (world as unknown as { _wasmPeopleKernel?: { workerCount: number } })._wasmPeopleKernel;
+    return {
+      type: "created",
+      hash: hashWorld(world),
+      grid: world.grid,
+      step: world.step,
+      kernel: peopleKernel ? "wasm" : "ts",
+      workerCount: peopleKernel?.workerCount ?? 1,
+      sharedBands: peopleKernel
+        ? (world as unknown as { _wasmPeopleKernel: { control: { shared: boolean } } })._wasmPeopleKernel.control.shared
+        : false,
+    };
   }
   if (message.type === "recycle") {
     snapshotPool.push(message.buffer);
@@ -65,17 +78,16 @@ export function handleWorkerMessage(message: WorkerMessage): Record<string, unkn
 const scope = globalThis as unknown as Partial<WorkerScope>;
 if (typeof scope.addEventListener === "function" && typeof scope.postMessage === "function") {
   scope.addEventListener("message", (event) => {
-    try {
-      const response = handleWorkerMessage(event.data);
+    void handleWorkerMessage(event.data).then((response) => {
       const transfer = response.type === "snapshot" && response.buffer instanceof ArrayBuffer
         ? [response.buffer]
         : [];
       scope.postMessage?.(response, transfer);
-    } catch (error) {
+    }).catch((error: unknown) => {
       scope.postMessage?.({
         type: "error",
         message: error instanceof Error ? error.message : String(error),
       });
-    }
+    });
   });
 }

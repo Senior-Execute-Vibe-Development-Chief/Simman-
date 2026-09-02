@@ -9,6 +9,7 @@ import { populationTotal } from "../src/sim/people";
 import { runRoutingBatteries } from "../src/sim/travel/battery";
 import type { Substrate } from "../src/sim/substrate";
 import { hashWorld, runSteps, World } from "../src/sim/world";
+import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const rngInputs = {
@@ -102,6 +103,7 @@ function peopleFixture(): Substrate {
 }
 
 async function main(): Promise<void> {
+  if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
   assert.deepEqual(tsRngVectors(), v1RngVectors(), "RNG port diverged from v1 oracle");
   assert.equal(checkDmathGoldens().length, 26);
   const routing = await runRoutingBatteries();

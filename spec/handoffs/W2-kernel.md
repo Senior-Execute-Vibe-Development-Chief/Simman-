@@ -156,3 +156,16 @@ derived from worker count. No copy-per-tick memory traffic. No touching
 worldgen, substrate data, travel costs, or the router crate's logic. No
 second population representation — the wasm SoA IS the field storage,
 viewed, never mirrored.
+
+## Status at merge (2026-09-02, review)
+
+Delivered: deliverables 1, 2, 4 (gate promotion wiring), 5, and the
+cross-origin isolation half of 3. **Open — W2b:** deliverable 3's actual
+parallelism. The merged kernel dispatches its 16 bands serially; the
+worker count is a label and the SharedArrayBuffer control plane is a
+stub. Measured on the review runner: target tick 361→169 ms cold
+(~2× from wasm alone) against the 10–20× this handoff asked for, so the
+≤30-minute ceiling is still missed (~5.5 h). W2b needs a shared-memory
+wasm build (`+atomics,+bulk-memory`, threads-enabled std) with
+`worker_threads`/Web Workers claiming bands from the control plane —
+or the owner ratifies annual-cadence stride as the alternative lever.

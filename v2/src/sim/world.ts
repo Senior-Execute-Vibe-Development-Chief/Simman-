@@ -100,8 +100,8 @@ export class World {
     };
     this.cellAreaKm2 = new Float64Array(this.N);
     this.capField = new Float64Array(this.N);
-    allocateFields(this as unknown as Record<string, unknown>, this.N);
     if (this.substrate) initializePeople(this);
+    else allocateFields(this as unknown as Record<string, unknown>, this.N);
   }
 }
 
@@ -170,7 +170,14 @@ function hashField(hash: bigint, field: NumericField): bigint {
 /** Stable 64-bit FNV-1a identity over config, step, and every declared field. */
 export function hashWorld(world: World): string {
   let hash = HASH_OFFSET_BASIS;
-  hash = hashText(hash, stableStringify(world.config));
+  // Kernel selection and its dispatch width are execution details, not world
+  // state. Excluding them makes the TS oracle and the wasm drop-in share one
+  // identity while preserving every physical/configuration input.
+  const identityConfig = Object.fromEntries(
+    Object.entries(world.config)
+      .filter(([key]) => key !== "peopleKernel" && key !== "peopleWorkers"),
+  );
+  hash = hashText(hash, stableStringify(identityConfig));
   hash = hashNumber(hash, world.step);
   hash = hashNumber(hash, world.calendarMonth);
   hash = hashText(hash, stableStringify({

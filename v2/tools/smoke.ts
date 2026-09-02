@@ -6,6 +6,7 @@ import { M0_DEFAULT_SEED, M0_DETERMINISM_TICKS } from "../src/sim/constants";
 import { loadWorld, serializeWorld } from "../src/sim/persist";
 import { runRoutingBatteries } from "../src/sim/travel/battery";
 import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
+import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 
 const SEED = M0_DEFAULT_SEED;
 const TICKS = M0_DETERMINISM_TICKS;
@@ -42,6 +43,7 @@ function saveLoadRun(grid: GridPreset): void {
 }
 
 async function main(): Promise<void> {
+  if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
   const dmathGoldens = checkDmathGoldens();
   const routing = await runRoutingBatteries();
   assert.ok(routing.every((result) => result.queries >= 72), "routing battery is incomplete");

@@ -690,15 +690,11 @@ Review corrections to the M1 build (all validated before merge):
    cells remain exactly zero. Save format 3 carries the people, technique,
    cohorts, and hearth progress while the substrate remains rebuildable.
 
-30. **The first people gate arm is intentionally mechanical and short.** A
-   full YD→1 CE target-grid run is not yet a practical per-commit gate with
-   the current JavaScript field loops (the existing target substrate itself is
-   already a minute-scale build). `gate-people.ts` therefore hard-checks the
-   opening population envelope, zero peopling leakage, monotone opening
-   growth, conservation, and dev/target opening parity, while recording the
-   archaeological arrival fixture and the long-horizon requirement as an
-   explicit warning. The next performance milestone must add the long arm
-   behind the same pass API; no timing shortcut is a simulation mechanic.
+30. **The first people gate arm was intentionally mechanical and short.** W2
+   promotes the full YD→1 CE arm to the shipped target grid behind
+   `GATE_PEOPLE_LONG=1`; the default gate retains the cheap mechanical checks
+   and the dev 3000-year trajectory arm. No timing shortcut is a simulation
+   mechanic.
 
 31. **Worker substrate loading remains a shell placeholder.** The worker
    receives the immutable typed substrate built by the shell and runs the
@@ -733,8 +729,8 @@ Review corrections to the M1 build (all validated before merge):
     timing, density ordering — against
     data/reality/known-misses-people.json with the same
     acknowledge-or-fail ratchet as travel. The gate prints its measured
-    findings before asserting. The target-grid long horizon stays the
-    recorded kernel-drop-in limitation (#30).
+    findings before asserting. W2 moves the verdict to the shipped target
+    grid; dev remains a cross-grid comparison.
     (e) **THE LATITUDE BUG** (the first honest long run earned its keep
     immediately): three people-sim sites used the full-circle 360-degree
     span in latitude formulas. Hearth pins landed at HALF their real
@@ -759,3 +755,34 @@ Review corrections to the M1 build (all validated before merge):
     1 CE — because nothing yet dies of famine, plague, or exhausted
     soil: M3's job arriving on schedule, manifested per checkpoint, no
     rate dialed.
+
+33. **W2 kernel measurements (2026-09-01).** The Rust people kernel is
+    byte-identical to the TypeScript oracle for 240 dev ticks and 24 target
+    ticks, including people, technique, cohorts, and migration scratch; the
+    world hash is identical for one, two, and eight fixed-band worker
+    configurations. The wasm `dpow` path matches all three graveyard vectors.
+    On this runner the warm 10-tick bench is 2.61 ms/tick at dev and
+    122.06 ms/tick at target (against the pre-W2 target 210 ms/tick warm
+    finding). The target YD→1 CE projection is 236.8 minutes
+    (`116,412 × 122.06 ms`), so the ≤30-minute Phase-1 ceiling remains an
+    explicit performance miss, not a physics change; the optional 1000-year
+    bench projects to 24.4 minutes and is the instrument for the next
+    optimization wave.
+    **Review note (merge, 2026-09-02).** Delivered: the Rust kernel with
+    people state in wasm linear memory behind JS views (parity byte-exact
+    at both grids in the review run too — 240 dev / 24 target ticks, dpow
+    goldens), the fixed 16-band grid partition, COOP/COEP isolation, and
+    the grid-scoped manifest ids. NOT delivered: worker parallelism. The
+    "workers" are a label — bands are dispatched serially on the calling
+    thread (no worker_threads, no Web Workers, no Atomics; the
+    SharedArrayBuffer control plane is an unused stub), so the 1/2/8-worker
+    hash identity is vacuous and the gain is wasm alone: on the review
+    runner 361→169 ms/tick cold (210→~120 warm) at target, ~2×, against
+    the spec's 10–20× ask. Bench baselines re-anchored on the review
+    runner (Cursor's runner numbers fail the ratchet 10× on routing here).
+    The speculative target-grid manifest rows were removed — they were
+    written without a target long-arm run; the arm is running at review
+    and its measured rows follow. Handoff deliverable 3 stays open as W2b
+    (real threads need a shared-memory wasm build), or the owner ratifies
+    annual-cadence stride — the ≤30-minute ceiling is unmet either way
+    until one lands.

@@ -12,7 +12,7 @@ function peopled(world: PeopleWorld, cell: number): boolean {
   return world._peopledMask[cell] === 1;
 }
 
-function migrationShareForArea(area_: number): number {
+export function migrationShareForArea(area_: number): number {
   const area = Math.max(1, area_);
   const annualShare = PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR / area;
   const rawShare = annualShare / MONTHS_PER_YEAR;
@@ -30,7 +30,7 @@ function migrationShareForArea(area_: number): number {
 }
 
 /** Cell area is a row property, so the substepped share is too. */
-function fillMigrationShareRows(world: PeopleWorld): void {
+export function fillMigrationShareRows(world: PeopleWorld): void {
   for (let y = 0; y < world.height; y++) {
     world._migrationShareRow[y] = migrationShareForArea(world.cellAreaKm2[y * world.width] ?? 0);
   }
@@ -60,6 +60,15 @@ function cohortShareOf(
  * cost model is paid twelve fills total.
  */
 export function migrate(world: PeopleWorld, month: number): number {
+  const wasm = world._wasmPeopleKernel;
+  if (wasm) {
+    wasm.beginMigration(month);
+    wasm.migrateSources();
+    wasm.debitMigration();
+    wasm.gatherMigration();
+    wasm.finishMigration();
+    return wasm.migrationTotal();
+  }
   const width = world.width;
   if (world._migrationEdgeH === undefined || world._migrationEdgeH.length !== world.height) {
     const lengths = migrationEdgeLengths(world.substrate);

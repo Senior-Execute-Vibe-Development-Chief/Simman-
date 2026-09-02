@@ -26,6 +26,16 @@ export const WORLD_SCRATCH = new Set<string>([
   "_annualTemperature",
   "_annualMoisture",
   "_techniqueSuitability",
+  "_migrationDaysPerKm",
+  "_migrationDaysPerKmByMonth",
+  "_waterAccess",
+  "_reliefMult",
+  "_foragerCapacity",
+  "_diseaseBurden",
+  "_migrationShareRow",
+  "_migrationEdgeH",
+  "_migrationEdgeV",
+  "_wasmPeopleKernel",
 ]);
 
 const isNumeric = (value: unknown): value is number =>

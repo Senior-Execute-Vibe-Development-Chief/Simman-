@@ -1,5 +1,6 @@
 import type { Substrate } from "../substrate";
 import type { World } from "../world";
+import type { PeopleKernelRuntime } from "../peopleKernel";
 
 export interface HearthState {
   readonly id: string;
@@ -52,6 +53,8 @@ export interface PeopleWorld extends World {
   _diseaseBurden: Float64Array;
   /** Per-row migration share for the tick (area is a row property). */
   _migrationShareRow: Float64Array;
+  /** Optional wasm owner of the authoritative fields; absent means TS oracle. */
+  _wasmPeopleKernel?: PeopleKernelRuntime;
 }
 
 export function asPeopleWorld(world: World): PeopleWorld {

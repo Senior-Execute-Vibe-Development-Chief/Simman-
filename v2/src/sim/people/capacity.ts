@@ -14,6 +14,10 @@ import type { PeopleWorld } from "./types";
  * quantity: it is a present environmental consequence, not history.
  */
 export function deriveCapacity(world: PeopleWorld): void {
+  if (world._wasmPeopleKernel) {
+    world._wasmPeopleKernel.deriveCapacity();
+    return;
+  }
   const substrate = world.substrate;
   const capacity = world.capField;
   for (let cell = 0; cell < world.N; cell++) {

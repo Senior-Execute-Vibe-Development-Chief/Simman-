@@ -29,6 +29,14 @@ const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
  * mass without creating a second population representation.
  */
 export function grow(world: PeopleWorld): GrowthResult {
+  if (world._wasmPeopleKernel) {
+    world._wasmPeopleKernel.beginGrowth();
+    world._wasmPeopleKernel.grow();
+    return {
+      births: world._wasmPeopleKernel.births(),
+      deaths: world._wasmPeopleKernel.deaths(),
+    };
+  }
   const people = world.people;
   const next = world._peopleNext;
   const childMass = world._childrenMass;

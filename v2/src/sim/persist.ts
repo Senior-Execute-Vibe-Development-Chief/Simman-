@@ -102,7 +102,12 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
     const serialized = data.fields[definition.name];
     if (!serialized) throw new Error(`Missing declared field ${definition.name}.`);
     const field = fieldFromBase64(serialized, definition);
-    (world as unknown as Record<string, unknown>)[definition.name] = field;
+    const current = (world as unknown as Record<string, unknown>)[definition.name];
+    if (current instanceof Float64Array && current.length === field.length) {
+      current.set(field);
+    } else {
+      (world as unknown as Record<string, unknown>)[definition.name] = field;
+    }
   }
   world.peopleInitialized = data.people.initialized;
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
