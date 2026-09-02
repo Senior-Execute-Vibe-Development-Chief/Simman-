@@ -240,6 +240,7 @@ pub struct PeopleKernel {
     migration_out: Vec<f64>,
     migration_weight: Vec<f64>,
     migration_population: Vec<f64>,
+    migration_received_cell: Vec<f64>,
 
     migration_month: usize,
     growth_dt_months: f64,
@@ -314,6 +315,7 @@ impl PeopleKernel {
             migration_out: vec![0.0; cells],
             migration_weight: vec![0.0; cells],
             migration_population: vec![0.0; cells],
+            migration_received_cell: vec![0.0; cells],
             migration_month: 0,
             growth_dt_months: 1.0,
             births_by_band: [0.0; PEOPLE_BAND_COUNT],
@@ -656,6 +658,7 @@ impl PeopleKernel {
         self.migration_month = month % MONTHS_PER_YEAR;
         self.migration_out.fill(0.0);
         self.migration_weight.fill(0.0);
+        self.migration_received_cell.fill(0.0);
         self.migration_by_band.fill(0.0);
         self.migration_received_by_band.fill(0.0);
         self.migration_legacy = 0.0;
@@ -674,6 +677,9 @@ impl PeopleKernel {
                 self.working_next[cell] = population * self.working[cell];
                 self.elders_next[cell] = population * self.elders[cell];
             }
+            self.children_mass.copy_from_slice(&self.children_next);
+            self.working_mass.copy_from_slice(&self.working_next);
+            self.elders_mass.copy_from_slice(&self.elders_next);
         }
         if dt_months != 1.0 {
             for row in 0..self.height {
@@ -856,6 +862,7 @@ impl PeopleKernel {
             received += west_flow;
             received += east_flow;
             self.people_next[target] += received / target_area;
+            self.migration_received_cell[target] = received;
             if self.parallel_reductions {
                 self.migration_received_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += received;
             } else {
@@ -905,19 +912,50 @@ impl PeopleKernel {
         }
     }
 
+    fn serial_migration_total(&self) -> f64 {
+        // Land-cell order, skip zeros — the TypeScript oracle's debit loop.
+        let mut total = 0.0;
+        for cell in 0..self.cells {
+            if self.land[cell] == 0 {
+                continue;
+            }
+            let amount = self.migration_out[cell];
+            if amount <= 0.0 {
+                continue;
+            }
+            total += amount;
+        }
+        total
+    }
+
+    fn serial_migration_received(&self) -> f64 {
+        // Same skip-order as the oracle gather: peopled land with spare.
+        // Per-cell received is written by the band; the coordinator sums.
+        let mut received_total = 0.0;
+        for target in 0..self.cells {
+            if self.land[target] == 0 || self.peopled[target] == 0 {
+                continue;
+            }
+            let target_area = self.cell_area[target];
+            if target_area <= 0.0 {
+                continue;
+            }
+            let target_spare = (self.capacity[target] - self.migration_population[target]).max(0.0)
+                * target_area;
+            if target_spare <= 0.0 {
+                continue;
+            }
+            received_total += self.migration_received_cell[target];
+        }
+        received_total
+    }
+
     pub fn finish_migration(&mut self) {
-        let migration_total = if self.parallel_reductions {
-            self.migration_by_band.iter().fold(0.0, |total, value| total + value)
-        } else {
-            self.migration_legacy
-        };
-        let migration_received = if self.parallel_reductions {
-            self.migration_received_by_band
-                .iter()
-                .fold(0.0, |total, value| total + value)
-        } else {
-            self.migration_received_legacy
-        };
+        // Band-slot folds are ledger-only. The remainder written back onto
+        // people must use the oracle's left-to-right land-cell association
+        // or a 1-ulp total difference lands on the first peopled cell.
+        let migration_total = self.serial_migration_total();
+        let migration_received = self.serial_migration_received();
         let remainder = migration_total - migration_received;
         let mut remainder_cell = None;
         for cell in 0..self.cells {
@@ -945,11 +983,7 @@ impl PeopleKernel {
     }
 
     pub fn migration_total(&self) -> f64 {
-        if self.parallel_reductions {
-            self.migration_by_band.iter().fold(0.0, |total, value| total + value)
-        } else {
-            self.migration_legacy
-        }
+        self.serial_migration_total()
     }
 
     pub fn commit_population(&mut self) {
@@ -975,4 +1009,50 @@ impl PeopleKernel {
             self.elders[cell] = (1.0 - child - working).max(0.0);
         }
     }
+}
+
+/// Free-function band dispatch. Workers must not go through wasm-bindgen's
+/// `&mut self` JS borrow flag; the band layout is the write-disjointness proof.
+unsafe fn kernel_mut(pointer: usize) -> &'static mut PeopleKernel {
+    &mut *(pointer as *mut PeopleKernel)
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_capacity(pointer: usize, raw_lo: usize, raw_hi: usize) {
+    unsafe { kernel_mut(pointer).derive_capacity_band(raw_lo, raw_hi) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_technique(pointer: usize, raw_lo: usize, raw_hi: usize, dt_months: f64) {
+    unsafe { kernel_mut(pointer).technique_band(raw_lo, raw_hi, dt_months) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_growth(pointer: usize, raw_lo: usize, raw_hi: usize, band_index: usize) {
+    unsafe { kernel_mut(pointer).growth_band(raw_lo, raw_hi, band_index) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_migration_source(
+    pointer: usize,
+    raw_lo: usize,
+    raw_hi: usize,
+    band_index: usize,
+) {
+    unsafe { kernel_mut(pointer).migration_source_band(raw_lo, raw_hi, band_index) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_migration_debit(pointer: usize, raw_lo: usize, raw_hi: usize) {
+    unsafe { kernel_mut(pointer).migration_debit_band(raw_lo, raw_hi) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_migration_target(
+    pointer: usize,
+    raw_lo: usize,
+    raw_hi: usize,
+    band_index: usize,
+) {
+    unsafe { kernel_mut(pointer).migration_target_band(raw_lo, raw_hi, band_index) }
 }

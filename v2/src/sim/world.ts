@@ -177,7 +177,9 @@ export function hashWorld(world: World): string {
   // identity while preserving every physical/configuration input.
   const identityConfig = Object.fromEntries(
     Object.entries(world.config)
-      .filter(([key]) => key !== "peopleKernel" && key !== "peopleWorkers"),
+      .filter(([key]) => (
+        key !== "peopleKernel" && key !== "peopleWorkers" && key !== "peopleThreads"
+      )),
   );
   hash = hashText(hash, stableStringify(identityConfig));
   hash = hashText(hash, stableStringify({ schedule: world.schedule }));

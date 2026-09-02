@@ -17,6 +17,12 @@ import {
 } from "./people/bands";
 import {
   MONTHS_PER_YEAR,
+  PEOPLE_BAND_COUNT,
+  PEOPLE_THREAD_STACK_BYTES,
+  PEOPLE_WASM_MEMORY_INITIAL_PAGES,
+  PEOPLE_WASM_MEMORY_MAXIMUM_PAGES,
+  PEOPLE_WORKER_WAIT_MS,
+  MATH_NEGATIVE_ONE,
 } from "./constants";
 
 let initialized = false;
@@ -85,8 +91,10 @@ type BandOperation =
 
 class PeopleBandWorkerPool {
   readonly control: BandControl;
+  barrierMilliseconds = 0;
   private readonly workers: WorkerLike[];
   private readonly ready: Int32Array;
+  private readonly idle: Int32Array;
 
   constructor(
     workerCount: number,
@@ -101,6 +109,8 @@ class PeopleBandWorkerPool {
     }
     const readyStorage = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
     this.ready = new Int32Array(readyStorage);
+    const idleStorage = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+    this.idle = new Int32Array(idleStorage);
     this.workers = [];
     for (let index = 0; index < this.control.workerCount; index++) {
       const worker = new WorkerClass(new URL("./peopleWorker.mjs", import.meta.url), {
@@ -110,12 +120,13 @@ class PeopleBandWorkerPool {
           memory,
           controlStorage: this.control.storage,
           readyStorage,
+          idleStorage,
         },
       });
       worker.addEventListener?.("message", () => undefined);
       worker.on?.("error", (error) => {
         if (Atomics.load(this.ready, 0) >= 0) {
-          Atomics.store(this.ready, 0, -1);
+          Atomics.store(this.ready, 0, MATH_NEGATIVE_ONE);
           Atomics.notify(this.ready, 0);
         }
         console.error(error);
@@ -127,6 +138,7 @@ class PeopleBandWorkerPool {
           memory,
           controlStorage: this.control.storage,
           readyStorage,
+          idleStorage,
         });
       }
       this.workers.push(worker);
@@ -136,7 +148,7 @@ class PeopleBandWorkerPool {
         this.dispose();
         throw new Error("A people worker failed during initialization.");
       }
-      Atomics.wait(this.ready, 0, Atomics.load(this.ready, 0), 10000);
+      Atomics.wait(this.ready, 0, Atomics.load(this.ready, 0), PEOPLE_WORKER_WAIT_MS);
     }
   }
 
@@ -146,6 +158,7 @@ class PeopleBandWorkerPool {
     bands: readonly PeopleBand[],
     dtMonths = 1,
   ): void {
+    Atomics.store(this.idle, 0, 0);
     beginBandPhase(this.control);
     const message = {
       type: "dispatch",
@@ -153,13 +166,19 @@ class PeopleBandWorkerPool {
       kernelPointer,
       bands,
       dtMonths,
+      phase: Atomics.load(this.control.phase, 0),
     };
     for (const worker of this.workers) worker.postMessage(message);
+    const waitStart = performance.now();
     for (let index = 0; index < bands.length; index++) {
       while (Atomics.load(this.control.done, index) === 0) {
-        Atomics.wait(this.control.done, index, 0, 10000);
+        Atomics.wait(this.control.done, index, 0, PEOPLE_WORKER_WAIT_MS);
       }
     }
+    while (Atomics.load(this.idle, 0) < this.workers.length) {
+      Atomics.wait(this.idle, 0, Atomics.load(this.idle, 0), PEOPLE_WORKER_WAIT_MS);
+    }
+    this.barrierMilliseconds += performance.now() - waitStart;
   }
 
   dispose(): void {
@@ -230,14 +249,14 @@ export async function ensurePeopleWasm(): Promise<boolean> {
         : new Uint8Array(await (await fetch(threadUrl)).arrayBuffer());
       threadedModule = await WebAssembly.compile(threadBytes);
       threadedMemory = new WebAssembly.Memory({
-        initial: 24576,
-        maximum: 32768,
+        initial: PEOPLE_WASM_MEMORY_INITIAL_PAGES,
+        maximum: PEOPLE_WASM_MEMORY_MAXIMUM_PAGES,
         shared: true,
       });
       await initThreads({
         module_or_path: threadBytes,
         memory: threadedMemory,
-        thread_stack_size: 1024 * 1024,
+        thread_stack_size: PEOPLE_THREAD_STACK_BYTES,
       });
       if (typeof window === "undefined") {
         const workers = await import("node:worker_threads");
@@ -272,8 +291,17 @@ export function wasmDpowValue(base: number, exponent: number): number {
   return wasmDpow(base, exponent);
 }
 
+export function defaultPeopleWorkers(): number {
+  const concurrency = typeof navigator !== "undefined" && Number.isFinite(navigator.hardwareConcurrency)
+    ? navigator.hardwareConcurrency
+    : 1;
+  return Math.max(1, Math.min(PEOPLE_BAND_COUNT, concurrency - 1));
+}
+
 export interface PeopleKernelRuntime {
   readonly workerCount: number;
+  readonly usesThreads: boolean;
+  readonly barrierMilliseconds: number;
   readonly bands: readonly PeopleBand[];
   readonly control: BandControl;
   deriveCapacity(): void;
@@ -318,6 +346,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   readonly bands: readonly PeopleBand[];
   readonly control: BandControl;
   readonly workerCount: number;
+  readonly usesThreads: boolean;
   private readonly kernel: PeopleKernelLike;
   private readonly workerPool?: PeopleBandWorkerPool;
   private readonly memory: WebAssembly.Memory;
@@ -346,6 +375,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.bands = fixedPeopleBands(world.width, world.height);
     this.workerCount = Math.max(1, Math.floor(workerCount));
     this.workerPool = workerPool;
+    this.usesThreads = workerPool !== undefined;
     this.control = workerPool?.control ?? createBandControl(this.workerCount);
     this.attachFields(world);
     // wasm-bindgen exposes one linear memory for the module. A second world
@@ -498,6 +528,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     return this.kernel.migration_total();
   }
 
+  get barrierMilliseconds(): number {
+    return this.workerPool?.barrierMilliseconds ?? 0;
+  }
+
   dispose(): void {
     runtimeRegistry.delete(this);
     this.workerPool?.dispose();
@@ -508,10 +542,12 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 export function createPeopleKernel(
   world: PeopleWorld,
   workerCount = 1,
+  preferThreads = false,
 ): PeopleKernelRuntime | undefined {
   if (!peopleWasmReady()) return undefined;
   const count = Math.max(1, Math.floor(workerCount));
-  if (count > 1 && threadedInitialized && threadedMemory && threadedModule && workerConstructor) {
+  const wantThreads = preferThreads || count > 1;
+  if (wantThreads && threadedInitialized && threadedMemory && threadedModule && workerConstructor) {
     let pool: PeopleBandWorkerPool | undefined;
     let kernel: ThreadedPeopleKernel | undefined;
     try {
@@ -524,10 +560,11 @@ export function createPeopleKernel(
         workerConstructor,
         workerIsNode,
       );
-      return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool);
-    } catch {
+      return new PeopleKernelRuntimeImpl(world, count, kernel, threadedMemory, pool, true);
+    } catch (error) {
       pool?.dispose();
       kernel?.free();
+      console.error("Threaded people kernel unavailable; using serial wasm.", error);
     }
   }
   return new PeopleKernelRuntimeImpl(world, count);

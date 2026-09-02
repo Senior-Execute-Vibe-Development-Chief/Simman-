@@ -786,3 +786,40 @@ Review corrections to the M1 build (all validated before merge):
     (real threads need a shared-memory wasm build), or the owner ratifies
     annual-cadence stride — the ≤30-minute ceiling is unmet either way
     until one lands.
+
+34. **W3 cadence and threads (2026-09-02).** The monthly clock is unchanged;
+    `passFires` in `src/sim/scheduler.ts` is the only cadence check. Growth,
+    technique, capacity, and cohorts default to stride 12; migration is
+    derived from `PEOPLE_MIGRATION_MAX_SHARE` at the grid (Earth peopled
+    rows: dev 12 / target 1). `dtMonths` scales rates as `rate × dt / 12`.
+    **Identity.** After rebuilding wasm (real rustc/wasm-pack, pinned
+    `nightly-2025-02-01` for the shared-memory artifact), TS, serial wasm,
+    and the threaded pool are byte-identical on the kernel-parity harness.
+    The previous 1-tick remainder mismatch at people[1263] was the migration
+    conservation remainder using a band-fold / reconstructed total instead of
+    the oracle's land-cell sum of per-cell received; `migration_received_cell`
+    plus coordinator-side serial reduction closes it. Workers call free
+    `people_dispatch_*` functions on the kernel pointer so they do not take
+    wasm-bindgen's `&mut self` borrow. A phase-idle barrier was required:
+    waiting only on per-band done flags let a worker still in the claim loop
+    steal the next phase's claim counter. Save/load continuation across
+    migration-only months needed two mechanical follow-throughs of the
+    phase split: reconstruct `_childrenMass` with the fractions (debit still
+    reads the mass buffers), and re-derive capacity after load (annual
+    capacity would otherwise leave the seed capField in place for eleven
+    monthly migrations).
+    **Threads.** Node `worker_threads` instantiate the shared-memory module
+    against one `WebAssembly.Memory`. Default worker count is
+    `min(cpus−1, 16)`. A 1-worker threaded probe matches serial and TS.
+    Shared-memory initial pages are 1024 (64 MiB) and grow; a 1.5 GiB
+    initial allocation OOMed the target kernel constructor (dlmalloc
+    doubling). Kernel-parity is green: 240 dev / 24 target ticks, TS ↔
+    serial wasm ↔ 1-worker threads byte-identical, 2- and 8-worker hashes
+    identical to serial.
+    **Schedule on Earth (seed 42042).** dev growth/migration 12; target
+    growth 12 / migration 1. Worlds without a peopled mask treat every
+    row as peopled, so polar cells force migration 1 — that is the
+    derivation working, not a content gate.
+    **Still to print after the gate/bench run:** phase-split milliseconds,
+    stride-arm population/arrival deltas, and the serial/N-thread ×
+    stride-1/shipped tick table with the YD→1 CE projection.

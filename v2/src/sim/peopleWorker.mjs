@@ -18,11 +18,12 @@ function start(input) {
   const wasm = initSync({
     module: input.module,
     memory: input.memory,
-    thread_stack_size: 1024 * 1024,
+    thread_stack_size: 1048576,
   });
   const control = new Int32Array(input.controlStorage);
   const ready = new Int32Array(input.readyStorage);
-  runtime = { wasm, control, ready };
+  const idle = new Int32Array(input.idleStorage);
+  runtime = { wasm, control, ready, idle };
   Atomics.add(ready, 0, 1);
   Atomics.notify(ready, 0);
   post({ type: "ready" });
@@ -37,17 +38,17 @@ function runBand(payload, band, index) {
   const { wasm } = runtime;
   const pointer = payload.kernelPointer;
   if (payload.operation === "capacity") {
-    wasm.peoplekernel_derive_capacity_band(pointer, band.rawLo, band.rawHi);
+    wasm.people_dispatch_capacity(pointer, band.rawLo, band.rawHi);
   } else if (payload.operation === "technique") {
-    wasm.peoplekernel_technique_band(pointer, band.rawLo, band.rawHi, payload.dtMonths);
+    wasm.people_dispatch_technique(pointer, band.rawLo, band.rawHi, payload.dtMonths);
   } else if (payload.operation === "growth") {
-    wasm.peoplekernel_growth_band(pointer, band.rawLo, band.rawHi, index);
+    wasm.people_dispatch_growth(pointer, band.rawLo, band.rawHi, index);
   } else if (payload.operation === "migration-source") {
-    wasm.peoplekernel_migration_source_band(pointer, band.rawLo, band.rawHi, index);
+    wasm.people_dispatch_migration_source(pointer, band.rawLo, band.rawHi, index);
   } else if (payload.operation === "migration-debit") {
-    wasm.peoplekernel_migration_debit_band(pointer, band.rawLo, band.rawHi);
+    wasm.people_dispatch_migration_debit(pointer, band.rawLo, band.rawHi);
   } else if (payload.operation === "migration-target") {
-    wasm.peoplekernel_migration_target_band(pointer, band.rawLo, band.rawHi, index);
+    wasm.people_dispatch_migration_target(pointer, band.rawLo, band.rawHi, index);
   } else {
     throw new Error(`Unknown people band operation: ${payload.operation}`);
   }
@@ -56,10 +57,18 @@ function runBand(payload, band, index) {
 
 function dispatch(payload) {
   const bands = payload.bands;
-  while (true) {
-    const index = Atomics.add(runtime.control, 1, 1);
-    if (index >= bands.length) return;
-    runBand(payload, bands[index], index);
+  const expectedPhase = payload.phase;
+  try {
+    while (true) {
+      if (Atomics.load(runtime.control, 0) !== expectedPhase) return;
+      const index = Atomics.add(runtime.control, 1, 1);
+      if (Atomics.load(runtime.control, 0) !== expectedPhase) return;
+      if (index >= bands.length) return;
+      runBand(payload, bands[index], index);
+    }
+  } finally {
+    Atomics.add(runtime.idle, 0, 1);
+    Atomics.notify(runtime.idle, 0);
   }
 }
 

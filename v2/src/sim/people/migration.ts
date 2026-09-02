@@ -124,6 +124,9 @@ export function migrate(
       workingNext[cell] = population * (world.working[cell] ?? 0);
       elderNext[cell] = population * (world.elders[cell] ?? 0);
     }
+    world._childrenMass.set(childNext);
+    world._workingMass.set(workingNext);
+    world._eldersMass.set(elderNext);
   }
 
   // Source scan, direction order E, W, S, N (the original DX/DY order).

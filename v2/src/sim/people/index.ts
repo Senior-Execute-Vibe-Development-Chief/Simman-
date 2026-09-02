@@ -14,9 +14,26 @@ import { initializeTechnique, prepareTechnique, stepTechnique } from "./techniqu
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
-import { createPeopleKernel } from "../peopleKernel";
+import { createPeopleKernel, defaultPeopleWorkers } from "../peopleKernel";
 import { allocateFields } from "../fields";
 import { passDtMonths, passFires } from "../scheduler";
+
+export const peoplePhaseMilliseconds: Record<string, number> = {
+  technique: 0,
+  capacity: 0,
+  growth: 0,
+  migration: 0,
+  cohorts: 0,
+  ledger: 0,
+};
+
+export function resetPeoplePhaseMilliseconds(): void {
+  for (const key of Object.keys(peoplePhaseMilliseconds)) peoplePhaseMilliseconds[key] = 0;
+}
+
+function addPhaseTime(name: keyof typeof peoplePhaseMilliseconds, started: number): void {
+  peoplePhaseMilliseconds[name] += performance.now() - started;
+}
 
 function allocatePeopleScratch(world: PeopleWorld): void {
   const length = world.N;
@@ -85,10 +102,14 @@ export function initializePeople(worldInput: World): PeopleWorld {
   prepareTechnique(world);
   const forceTypeScript = world.config.peopleKernel === "ts";
   if (!forceTypeScript) {
-    const configuredWorkers = Number(world.config.peopleWorkers ?? 1);
+    const configuredWorkers = Number(world.config.peopleWorkers);
+    const workers = Number.isFinite(configuredWorkers) && configuredWorkers >= 1
+      ? Math.floor(configuredWorkers)
+      : defaultPeopleWorkers();
     world._wasmPeopleKernel = createPeopleKernel(
       world,
-      Number.isFinite(configuredWorkers) ? configuredWorkers : 1,
+      workers,
+      world.config.peopleThreads === true,
     );
   }
   if (!world._wasmPeopleKernel) {
@@ -151,18 +172,36 @@ export function stepPeople(worldInput: World): void {
     "deaths",
     world.cellAreaKm2,
   );
-  if (techniqueDue) stepTechnique(world, passDtMonths(techniqueSchedule!));
-  if (capacityDue) deriveCapacity(world);
+  if (techniqueDue) {
+    const started = performance.now();
+    stepTechnique(world, passDtMonths(techniqueSchedule!));
+    addPhaseTime("technique", started);
+  }
+  if (capacityDue) {
+    const started = performance.now();
+    deriveCapacity(world);
+    addPhaseTime("capacity", started);
+  }
   const growth = growthDue
-    ? grow(world, passDtMonths(growthSchedule!))
+    ? (() => {
+      const started = performance.now();
+      const result = grow(world, passDtMonths(growthSchedule!));
+      addPhaseTime("growth", started);
+      return result;
+    })()
     : { births: 0, deaths: 0 };
   const migration = migrationDue
-    ? migrate(
-      world,
-      world.calendarMonth,
-      passDtMonths(migrationSchedule!),
-      growthDue,
-    )
+    ? (() => {
+      const started = performance.now();
+      const result = migrate(
+        world,
+        world.calendarMonth,
+        passDtMonths(migrationSchedule!),
+        growthDue,
+      );
+      addPhaseTime("migration", started);
+      return result;
+    })()
     : 0;
   if (growthDue || migrationDue) {
     if (world._wasmPeopleKernel) world._wasmPeopleKernel.commitPopulation();
@@ -170,11 +209,15 @@ export function stepPeople(worldInput: World): void {
     // Cohort normalization is a commit invariant, including migration-only
     // months. The scheduled cohorts pass records the annual ageing cadence;
     // this epilogue keeps fractions valid between those firings.
+    const started = performance.now();
     normalizeCohorts(world);
+    addPhaseTime("cohorts", started);
   }
+  const ledgerStarted = performance.now();
   if (migrationDue) world.ledger.recordChannel("people", "migration", migration, migration);
   world.ledger.endPass("people", world.people, growth.births, growth.deaths);
   world.ledger.assertAll();
+  addPhaseTime("ledger", ledgerStarted);
   world.debug.conservationChecks++;
   for (const schedule of world.schedule) {
     if (!passFires(world, schedule)) continue;

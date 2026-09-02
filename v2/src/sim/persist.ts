@@ -4,6 +4,8 @@ import { SAVE_VERSION_W3 } from "./constants";
 import { type GridPreset, World } from "./world";
 import type { HearthState } from "./people/types";
 import { sameSchedule, type PassSchedule } from "./scheduler";
+import { deriveCapacity } from "./people/capacity";
+import { asPeopleWorld } from "./people/types";
 
 export const SAVE_VERSION = SAVE_VERSION_W3;
 
@@ -117,6 +119,10 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   }
   world.peopleInitialized = data.people.initialized;
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
+  // Capacity is derived scratch. Annual cadence means a loaded world can
+  // run many migration-only months before the next capacity firing, so
+  // re-derive from the restored technique rather than keeping the seed.
+  if (world.substrate && world.peopleInitialized) deriveCapacity(asPeopleWorld(world));
   return world;
 }
 

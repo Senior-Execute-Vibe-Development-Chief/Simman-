@@ -258,3 +258,7 @@ export const PEOPLE_GROWTH_STRIDE_MONTHS = 12; // spec/09-constants-ledger.md §
 export const CADENCE_TRAJECTORY_POP_TOLERANCE = 0.02; // spec/09-constants-ledger.md §W3 proposed — cadence trajectory gate
 export const CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS = 25; // spec/09-constants-ledger.md §W3 proposed — cadence arrival gate
 export const SAVE_VERSION_W3 = 4; // spec/09-constants-ledger.md §W3 proposed — schedule-aware persistence
+export const PEOPLE_WORKER_WAIT_MS = 10000; // spec/09-constants-ledger.md §W3 proposed — band-barrier wait slice
+export const PEOPLE_WASM_MEMORY_INITIAL_PAGES = 1024; // spec/09-constants-ledger.md §W3 proposed — shared-memory wasm initial pages
+export const PEOPLE_WASM_MEMORY_MAXIMUM_PAGES = 32768; // spec/09-constants-ledger.md §W3 proposed — shared-memory wasm max pages (2 GiB)
+export const PEOPLE_THREAD_STACK_BYTES = 1048576; // spec/09-constants-ledger.md §W3 proposed — per-worker wasm shadow stack
