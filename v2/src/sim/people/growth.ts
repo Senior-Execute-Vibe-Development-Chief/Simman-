@@ -28,9 +28,9 @@ const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
  * beside the authoritative people field so aging and migration use the same
  * mass without creating a second population representation.
  */
-export function grow(world: PeopleWorld): GrowthResult {
+export function grow(world: PeopleWorld, dtMonths = 1): GrowthResult {
   if (world._wasmPeopleKernel) {
-    world._wasmPeopleKernel.beginGrowth();
+    world._wasmPeopleKernel.beginGrowth(dtMonths);
     world._wasmPeopleKernel.grow();
     return {
       births: world._wasmPeopleKernel.births(),
@@ -60,7 +60,10 @@ export function grow(world: PeopleWorld): GrowthResult {
     }
     const technique = clamp01(world.technique[cell] ?? 0);
     const regime = PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN * technique;
-    const rate = PEOPLE_R_GROWTH_PER_YEAR / MONTHS_PER_YEAR
+    const monthlyRate = dtMonths === 1
+      ? PEOPLE_R_GROWTH_PER_YEAR / MONTHS_PER_YEAR
+      : PEOPLE_R_GROWTH_PER_YEAR * dtMonths / MONTHS_PER_YEAR;
+    const rate = monthlyRate
       * regime
       / (1 + PEOPLE_DISEASE_RATE * (world._diseaseBurden[cell] ?? 0));
     const naturalBirths = population * rate;
@@ -68,7 +71,9 @@ export function grow(world: PeopleWorld): GrowthResult {
       (population - PEOPLE_GRAVEYARD_DENSITY) / PEOPLE_GRAVEYARD_DENSITY,
     );
     const graveyardDeaths = densityPressure > 0
-      ? population * PEOPLE_GRAVEYARD_RATE * dpow(densityPressure, PEOPLE_GRAVEYARD_GAMMA)
+      ? population
+        * (dtMonths === 1 ? PEOPLE_GRAVEYARD_RATE : PEOPLE_GRAVEYARD_RATE * dtMonths)
+        * dpow(densityPressure, PEOPLE_GRAVEYARD_GAMMA)
       : 0;
     const crowdingDeaths = naturalBirths * clamp01(population / capacity);
     const cellDeaths = Math.min(population + naturalBirths, graveyardDeaths + crowdingDeaths);
@@ -93,11 +98,15 @@ export function grow(world: PeopleWorld): GrowthResult {
     const eldersAfter = Math.max(0, elders - elderDeaths);
     const childToWorking = Math.min(
       childAfter,
-      childAfter / (PEOPLE_CHILD_AGE_YEARS * MONTHS_PER_YEAR),
+      dtMonths === 1
+        ? childAfter / (PEOPLE_CHILD_AGE_YEARS * MONTHS_PER_YEAR)
+        : childAfter / (PEOPLE_CHILD_AGE_YEARS * MONTHS_PER_YEAR) * dtMonths,
     );
     const workingToElders = Math.min(
       workingAfter,
-      workingAfter / (PEOPLE_WORKING_AGE_YEARS * MONTHS_PER_YEAR),
+      dtMonths === 1
+        ? workingAfter / (PEOPLE_WORKING_AGE_YEARS * MONTHS_PER_YEAR)
+        : workingAfter / (PEOPLE_WORKING_AGE_YEARS * MONTHS_PER_YEAR) * dtMonths,
     );
     childMass[cell] = Math.max(0, childAfter - childToWorking) + naturalBirths;
     workingMass[cell] = Math.max(0, workingAfter - workingToElders) + childToWorking;

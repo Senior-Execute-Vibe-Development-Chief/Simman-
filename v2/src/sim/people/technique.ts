@@ -322,7 +322,7 @@ export function initializeTechnique(world: PeopleWorld): void {
   world.hearths = chooseHearths(world);
 }
 
-export function stepTechnique(world: PeopleWorld): number {
+export function stepTechnique(world: PeopleWorld, dtMonths = 1): number {
   const technique = world.technique;
   const next = world._techniqueNext;
   const wasm = world._wasmPeopleKernel;
@@ -334,14 +334,14 @@ export function stepTechnique(world: PeopleWorld): number {
         next[hearth.cell] = 1;
         continue;
       }
-      hearth.armedYears += basinFill(world, hearth.cell) / MONTHS_PER_YEAR;
+      hearth.armedYears += basinFill(world, hearth.cell) * dtMonths / MONTHS_PER_YEAR;
       if (hearth.armedYears >= hearth.lagYears) {
         hearth.ignited = true;
         technique[hearth.cell] = 1;
         next[hearth.cell] = 1;
       }
     }
-    wasm.spreadTechnique();
+    wasm.spreadTechnique(dtMonths);
     wasm.commitTechnique();
     let covered = 0;
     let land = 0;
@@ -359,7 +359,7 @@ export function stepTechnique(world: PeopleWorld): number {
       next[hearth.cell] = 1;
       continue;
     }
-    hearth.armedYears += basinFill(world, hearth.cell) / MONTHS_PER_YEAR;
+    hearth.armedYears += basinFill(world, hearth.cell) * dtMonths / MONTHS_PER_YEAR;
     if (hearth.armedYears >= hearth.lagYears) {
       hearth.ignited = true;
       technique[hearth.cell] = 1;
@@ -404,7 +404,9 @@ export function stepTechnique(world: PeopleWorld): number {
       if (sourceTechnique <= current) continue;
       const progress = Math.min(
         1,
-        PEOPLE_TECHNIQUE_WAVE_KMPY / MONTHS_PER_YEAR / Math.max(1, distance),
+        dtMonths === 1
+          ? PEOPLE_TECHNIQUE_WAVE_KMPY / MONTHS_PER_YEAR / Math.max(1, distance)
+          : PEOPLE_TECHNIQUE_WAVE_KMPY * dtMonths / MONTHS_PER_YEAR / Math.max(1, distance),
       );
       const fit = spreadSuitability(world, cell);
       const reached = current + (sourceTechnique - current) * progress * fit;

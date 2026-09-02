@@ -34,6 +34,12 @@ const failures: string[] = [];
 for (const path of sourceFiles(simRoot)) {
   if (path.endsWith("constants.ts")) continue;
   const source = withoutCommentsAndStrings(readFileSync(path, "utf8"));
+  if (!path.endsWith("scheduler.ts")
+    && (/%\s*MONTHS_PER_YEAR/.test(source) || /\b(?:step|world\.step)\s*%/.test(source))) {
+    failures.push(
+      `${relative(process.cwd(), path)}: cadence checks must use scheduler.passFires/monthIndex`,
+    );
+  }
   const lines = source.split("\n");
   lines.forEach((line, lineNumber) => {
     for (const match of line.matchAll(/(?<![A-Za-z0-9_$])(-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(?![A-Za-z0-9_$])/g)) {

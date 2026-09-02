@@ -8,7 +8,6 @@ import {
   HASH_RADIX,
   HASH_OFFSET_BASIS,
   HASH_PRIME,
-  MONTHS_PER_YEAR,
   TARGET_GRID_HEIGHT,
   TARGET_GRID_WIDTH,
 } from "./constants";
@@ -17,6 +16,7 @@ import { allocateFields, fieldEntries, type NumericField } from "./fields";
 import type { Substrate } from "./substrate";
 import { initializePeople, stepPeople } from "./people/index";
 import type { HearthState } from "./people/types";
+import { resolveSchedule, type PassSchedule, nextMonth } from "./scheduler";
 
 export type GridPreset = "dev" | "target";
 
@@ -42,7 +42,7 @@ export interface WorldConfig extends Record<string, string | number | boolean> {
 export interface WorldDebug {
   ticks: number;
   conservationChecks: number;
-  peoplePasses: number;
+  peoplePasses: Record<string, number>;
   peopleBirths: number;
   peopleDeaths: number;
   peopleMigration: number;
@@ -55,6 +55,7 @@ export class World {
   readonly height: number;
   readonly N: number;
   readonly config: WorldConfig;
+  readonly schedule: readonly PassSchedule[];
   readonly ledger: ConservationLedger;
   readonly debug: WorldDebug;
   readonly substrate?: Substrate;
@@ -93,7 +94,7 @@ export class World {
     this.debug = {
       ticks: 0,
       conservationChecks: 0,
-      peoplePasses: 0,
+      peoplePasses: {},
       peopleBirths: 0,
       peopleDeaths: 0,
       peopleMigration: 0,
@@ -102,6 +103,7 @@ export class World {
     this.capField = new Float64Array(this.N);
     if (this.substrate) initializePeople(this);
     else allocateFields(this as unknown as Record<string, unknown>, this.N);
+    this.schedule = resolveSchedule(this);
   }
 }
 
@@ -113,7 +115,7 @@ export function dimensionsFor(grid: GridPreset): GridDimensions {
 export function stepWorld(world: World): void {
   if (world.substrate) stepPeople(world);
   world.step++;
-  world.calendarMonth = (world.calendarMonth + 1) % MONTHS_PER_YEAR;
+  world.calendarMonth = nextMonth(world.calendarMonth);
   world.debug.ticks++;
 }
 
@@ -178,6 +180,7 @@ export function hashWorld(world: World): string {
       .filter(([key]) => key !== "peopleKernel" && key !== "peopleWorkers"),
   );
   hash = hashText(hash, stableStringify(identityConfig));
+  hash = hashText(hash, stableStringify({ schedule: world.schedule }));
   hash = hashNumber(hash, world.step);
   hash = hashNumber(hash, world.calendarMonth);
   hash = hashText(hash, stableStringify({

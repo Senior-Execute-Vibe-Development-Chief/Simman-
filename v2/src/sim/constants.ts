@@ -254,3 +254,7 @@ export const SAVE_VERSION_M2 = 3; // spec/09-constants-ledger.md §M2 proposed �
 export const PEOPLE_BAND_COUNT = 16; // spec/09-constants-ledger.md §W2 proposed — fixed grid-derived kernel bands
 export const PEOPLE_BROWSER_PARITY_TICKS = 24; // spec/09-constants-ledger.md §W2 proposed — browser people identity sample
 export const PEOPLE_BENCH_LONG_YEARS = 1000; // spec/09-constants-ledger.md §W2 proposed — target benchmark horizon
+export const PEOPLE_GROWTH_STRIDE_MONTHS = 12; // spec/09-constants-ledger.md §W3 proposed — annual slow-pass cadence
+export const CADENCE_TRAJECTORY_POP_TOLERANCE = 0.02; // spec/09-constants-ledger.md §W3 proposed — cadence trajectory gate
+export const CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS = 25; // spec/09-constants-ledger.md §W3 proposed — cadence arrival gate
+export const SAVE_VERSION_W3 = 4; // spec/09-constants-ledger.md §W3 proposed — schedule-aware persistence

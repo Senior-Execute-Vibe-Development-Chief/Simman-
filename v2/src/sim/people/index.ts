@@ -16,6 +16,7 @@ import { World } from "../world";
 import type { WorldOptions } from "../world";
 import { createPeopleKernel } from "../peopleKernel";
 import { allocateFields } from "../fields";
+import { passDtMonths, passFires } from "../scheduler";
 
 function allocatePeopleScratch(world: PeopleWorld): void {
   const length = world.N;
@@ -128,6 +129,21 @@ function normalizeCohorts(world: PeopleWorld): void {
 
 export function stepPeople(worldInput: World): void {
   const world = initializePeople(worldInput);
+  const due = new Map(
+    world.schedule.map((schedule) => [schedule.name, passFires(world, schedule)]),
+  );
+  const techniqueSchedule = world.schedule.find(({ name }) => name === "people.technique");
+  const capacitySchedule = world.schedule.find(({ name }) => name === "people.capacity");
+  const growthSchedule = world.schedule.find(({ name }) => name === "people.growth");
+  const migrationSchedule = world.schedule.find(({ name }) => name === "people.migration");
+  const cohortsSchedule = world.schedule.find(({ name }) => name === "people.cohorts");
+  const techniqueDue = due.get("people.technique") === true;
+  const capacityDue = due.get("people.capacity") === true;
+  const growthDue = due.get("people.growth") === true;
+  const migrationDue = due.get("people.migration") === true;
+  const cohortsDue = due.get("people.cohorts") === true;
+  if (!techniqueDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return;
+
   world.ledger.beginPass(
     "people",
     world.people,
@@ -135,17 +151,35 @@ export function stepPeople(worldInput: World): void {
     "deaths",
     world.cellAreaKm2,
   );
-  stepTechnique(world);
-  deriveCapacity(world);
-  const growth = grow(world);
-  const migration = migrate(world, world.calendarMonth);
-  if (world._wasmPeopleKernel) world._wasmPeopleKernel.commitPopulation();
-  else world.people.set(world._peopleNext);
-  normalizeCohorts(world);
-  world.ledger.recordChannel("people", "migration", migration, migration);
+  if (techniqueDue) stepTechnique(world, passDtMonths(techniqueSchedule!));
+  if (capacityDue) deriveCapacity(world);
+  const growth = growthDue
+    ? grow(world, passDtMonths(growthSchedule!))
+    : { births: 0, deaths: 0 };
+  const migration = migrationDue
+    ? migrate(
+      world,
+      world.calendarMonth,
+      passDtMonths(migrationSchedule!),
+      growthDue,
+    )
+    : 0;
+  if (growthDue || migrationDue) {
+    if (world._wasmPeopleKernel) world._wasmPeopleKernel.commitPopulation();
+    else world.people.set(world._peopleNext);
+    // Cohort normalization is a commit invariant, including migration-only
+    // months. The scheduled cohorts pass records the annual ageing cadence;
+    // this epilogue keeps fractions valid between those firings.
+    normalizeCohorts(world);
+  }
+  if (migrationDue) world.ledger.recordChannel("people", "migration", migration, migration);
   world.ledger.endPass("people", world.people, growth.births, growth.deaths);
   world.ledger.assertAll();
-  world.debug.peoplePasses++;
+  world.debug.conservationChecks++;
+  for (const schedule of world.schedule) {
+    if (!passFires(world, schedule)) continue;
+    world.debug.peoplePasses[schedule.name] = (world.debug.peoplePasses[schedule.name] ?? 0) + 1;
+  }
   world.debug.peopleBirths = growth.births;
   world.debug.peopleDeaths = growth.deaths;
   world.debug.peopleMigration = migration;
