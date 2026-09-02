@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "cursor/v2-w4",
-      "sha": "aa2ea7c1d4aece1b8e0525126396583457694b33",
+      "sha": "ff932b683ca939bc4ce7322ceea74e3951951440",
       "slug": "cursor-v2-w4",
-      "builtAt": "2026-09-02T07:59:55.924Z",
+      "builtAt": "2026-09-02T08:04:18.459Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-v2-w4/"
