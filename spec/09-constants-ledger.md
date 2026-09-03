@@ -242,3 +242,15 @@ they are not hidden outcome-fitting levers.
 | wild ranges (data) | boxes per package | `data/reality/crop-ranges.json`, longitude/latitude boxes rasterized at the substrate grid; sources still to be cited per box (review finding) |
 | withdrawn | — | `PEOPLE_FORAGER_DENSITY_BAR` (proposed 0.12 × 0.35 × 0.35): the peopled-basin law measures a basin's people against the basin's own static forager capacity (M2, unchanged) and needs no bar; a global bar clamped every peopled basin to "full" from the opening tick |
 | deleted | — | `PEOPLE_TECHNIQUE_WAVE_KMPY`, `PEOPLE_HEARTH_SEARCH_FRACTION`, `PEOPLE_HEARTH_SCORE_*`, `PEOPLE_HEARTH_FALLBACK_LAG_YEARS`, `PEOPLE_HEARTH_LAG_RANGE_YEARS`, `PEOPLE_HEARTH_MAX_COUNT` |
+
+## W5 — proposed (review pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `CAGE_KNEE_FREE_SHARE` | 0.2 | share; the Power row `CAGE_KNEE` (pressure zero while ≳20 % of the basin is free — Carneiro's circumscription, v1-measured ladder) as a named constant. Read by the wake trigger now and by M4's taking later: one quantity, one row |
+| `PEOPLE_FARMED_MARKER_SHARE` | 0.5 | representation threshold (18.3), not a world constant: the farmed share at which arrival instruments count a cell as farmed — the people gate's existing 0.5, named and shared with the arrival recorder |
+| `SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS` | 100 | gate tolerance, never a mechanism input: bound on the median per-cell arrival delta between the solve regime and the awake kernel over the same horizon; a tenth of the narrowest arrival window the tables carry (the Pinhasi rows are 800–1000 years wide) |
+| `SOLVE_AGREEMENT_POP_TOLERANCE` | 0.05 | gate tolerance: relative population delta at every checkpoint band, same comparison; the bands themselves are factors of two to six wide |
+| `SAVE_VERSION_W5` | 6 | saves carry the phase and the wake step |
+| (solve stride) | derived | largest whole-year multiple of 12 months keeping every explicit per-firing fraction inside `PEOPLE_MIGRATION_MAX_SHARE`: the farmer hop share on rows with can-grow cells, farmer growth, adoption, cohort ageing; printed in provenance like the migration stride, never hand-set per grid |
+| `config.wake` | auto / never / year | an initial condition (auto = the caged-basin trigger; never = measurement mode; a year = the player's epoch), not a constant, read by no pass |

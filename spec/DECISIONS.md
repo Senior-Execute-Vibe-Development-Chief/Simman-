@@ -503,6 +503,49 @@ lawyered.
     Sahel) decide whether those regions ignite on their own or are
     reached, and the owner rules on the sources.
 
+## 2026-09-03 — Solve round
+
+27. **W5: the peopling solve and the wake.** (Ratified — owner: "write
+    the spec", after the prehistory conversation: "do we NEED to model
+    several thousand years of predictable people growth?" and "do we
+    REALLY need to simulate actual year by year movement?") No. Before
+    anything pushes back on the people field the only thing that moves is
+    the farming front, and its diffusion bound permits a multi-year step
+    where the forager bound forces a monthly one (15 against 1200 km²/yr).
+    The kernel gains a second schedule regime, SOLVE: every pass at one
+    stride derived from the bounds the passes already carry (farmer hops
+    on can-grow rows, farmer growth, adoption, cohort ageing — about 84
+    months expected at both grids, printed, never set); foragers grow in
+    place without hopping (their opening fill is a uniform fraction of
+    capacity, so their diffusion carries no net mass to first order; the
+    second-order effect is measured by an agreement arm, never assumed);
+    conductance at the annual mean. The world WAKES into the monthly
+    regime at the first caged basin: the first hearth-law window whose
+    free farmable share falls below the ledger's caging knee — M4's own
+    precondition (Carneiro), so M4 inherits the trigger instead of
+    redefining it. Sub-rulings: (a) the wake is a state trigger;
+    `config.wake` (auto / never / a year) is an initial condition like the
+    seed, read by nothing after the switch; a chosen year later than the
+    trigger is the player knowingly accepting the solve past its
+    validity, and provenance says so. (b) The window is the hearth-law
+    basin until M4 derives its flight radius (the forager diffusion length
+    over a generation is the candidate); then the wake follows that
+    derivation. (c) The scrubber's prehistory frames are a rendering
+    condensation (02, box 5): reconstructed from recorded arrival steps
+    and the passes' own constants, never state, never saved. (d) The
+    reality tables for the front and the population curve are measured
+    per commit at both grids from a full-horizon solve, inside the
+    dev-loop directive (a minute, not hours; demotable to the long
+    workflow by a flag); the awake kernel's agreement with the solve is a
+    long-workflow arm whose bounds are gate tolerances — a failure lowers
+    the stride or restores forager hops, never a tolerance. (e) No
+    physical constant is added; the new constants are the named knee, the
+    named farmed marker, two gate tolerances and a save version. (f) The
+    awake kernel's cost is untouched: the row-cadence question W3 left
+    open stays open, and this wave replaces the performance wave sketched
+    after the M3a review. Spec: `spec/handoffs/W5-solve.md`. Branches
+    from the merge of the working branch into main.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,

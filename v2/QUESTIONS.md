@@ -1365,3 +1365,122 @@ Review corrections to the M1 build (all validated before merge):
     on-disk substrate cache would take both to under a second locally; in
     CI the restore of a ~400 MB artefact costs about what the build does,
     so it is a local-loop gain first.
+
+## Prehistory findings
+
+39. **Prehistory on the clock physics permits (2026-09-03, owner: "do we
+    NEED to model several thousand years of predictable people growth?",
+    "do we REALLY need to simulate actual year by year movement?").** The
+    analysis behind `spec/handoffs/W5-solve.md`.
+
+    **What forces the monthly tick.** The forager hop share,
+    `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR / area`: 2.4 hops a year at
+    the equator of the shipped grid (495 km² cells), unbounded toward the
+    poles, against the explicit-diffusion bound of half a cell's people
+    per firing — so migration fires monthly at the shipped grid and the
+    kernel runs 116,000 ticks from the opening to 1 CE. Farmers hop at
+    `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR / area`: 0.030 a year at the
+    equator, 0.065 on a 62° row. The same bound permits a farmer step of
+    five to seven years at the shipped grid, set by the highest-latitude
+    row any package can grow on (seven if that row is near 62°, six near
+    65°, five near 70° — the implementation prints it). At dev the hop bound is
+    centuries and the binding bound is cohort ageing (a seventh of the
+    children age out per step at seven years). The other explicit
+    fractions — farmer growth 0.46 %/yr, adoption 1 %/yr — bound the
+    step at 108 and 50 years. So the pre-wake regime runs about 1,400
+    steps at the shipped grid instead of 116,000, and every step is the
+    kernel's own passes with a longer `dtMonths`.
+
+    **What the regime omits, and how large that should be.** Forager
+    hops. The opening fill is a uniform fraction of forager capacity
+    (`PEOPLE_INITIAL_FILL_FRACTION`), so to first order the forager flux
+    between neighbours cancels and the fill fraction stays uniform;
+    growth then differs between cells only through the disease term
+    (≤ 35 % slower in the tropical belt), which opens fill differences of
+    order a tenth over the fill and drives a second-order flux. That flux
+    is not small in reach — the forager diffusion length over 3,000
+    years is √(4 · 1200 · 3000) ≈ 3,800 km — but it moves people between
+    basins whose fill fractions differ by a tenth, and the hearth law
+    reads a basin's fill over a 1,000 km window. The expected effect is
+    hearth ignitions shifted by decades to a century or two, and
+    arrivals with them; the agreement arm measures it at both grids
+    against the awake kernel and the bound is a gate tolerance
+    (`SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS`, a tenth of the narrowest
+    reality window). If it fails, the remedy is named in the spec: the
+    forager hops return at the forager stride with substeps, or the
+    stride comes down; never the tolerance. The other omission is the
+    monthly conductance, replaced by its annual mean; the stride arm
+    already measured annual-versus-monthly migration at dev at 0–20
+    years in arrivals (QUESTIONS #37).
+
+    **The two regimes of the lattice front.** The front's speed depends
+    on two rates per cell: the farmer hop rate λ = 15 / area per year
+    and the leading-edge growth r = 0.0028 × 1.65 + 0.01 × adv/(1+adv) ≈
+    0.0144 per year where farming's advantage is large.
+
+    | | dev (167 km cells) | target (22 km cells) |
+    |---|---:|---:|
+    | cell area at the equator | 27,800 km² | 495 km² |
+    | λ, farmer hops per year | 0.00054 | 0.030 |
+    | r / λ | 27 | 0.48 |
+    | continuum Fickian diffusivity λ⟨d²⟩/4 (⟨d²⟩ ≈ 1.5 · area over the 8-stencil) | 5.6 km²/yr | 5.6 km²/yr |
+    | continuum front speed 2√(r · D) | 0.57 km/yr | 0.57 km/yr |
+    | measured (M3a review, Balkans → Rhine) | 1.05 km/yr | not measured — the 3000-year target spot check ended before Europe |
+
+    The Fickian diffusivity is grid-invariant (λ · area is the mobility),
+    so in the continuum regime both grids would give the same speed. But
+    dev sits deep in the slow-hop lattice regime, r ≫ λ: a cell is seeded
+    by a neighbour that is itself saturating toward forty times the
+    forager density, the front is one cell wide, and its speed is set by
+    how fast the source fills, not by the leading edge — a pushed lattice
+    front, and the 1.05 km/yr measured at dev is that regime, above the
+    continuum value. The shipped grid sits near the continuum, r ≈ λ/2,
+    where the front is wider than a cell and pulled by its leading edge.
+    The two grids can therefore differ in KIND, not degree (third
+    cardinal rule), and nothing has yet measured the target front through
+    Europe: the M3a review's target long arm is the owner's run to
+    schedule. W5 makes that a per-commit number at the shipped grid. If
+    the target front comes out slower than dev's — the analysis says it
+    may — that is the kernel's hop law, the same in both regimes, and a
+    finding about it; the solve reproduces whichever regime the grid is
+    in because it runs the same nonlinear hop-and-grow law at a stride
+    inside the same bound. The solve is not a new front physics, and the
+    unit check in the spec pins the flat-field speed to the awake
+    kernel's, printing the linear spreading speed beside it so the
+    regime stays visible rather than absorbed.
+
+    **Where the wake lands on the current kernel.** The trigger is the
+    first hearth-law window whose free farmable share falls below the
+    caging knee (a fifth). On the dev long arm the Levant wheat hearth
+    ignites at −8050 and is half farmed at −7570; its 1,000 km window is
+    crossed in about a thousand years at the measured speed and fills
+    from the forager density toward the farmed capacity at 0.46 %/yr —
+    to four fifths of a forty-fold rise about 750 years after the last
+    cell is reached. So the current kernel should cage the Levant around
+    −5800: roughly 40 % of the opening-to-1 CE horizon, not the whole of
+    prehistory. That is the honest number today, and it is early for the
+    same reason the population curve is high (282 M at −5000 against a
+    band of 60 M): nothing yet kills anyone. When M3b's mortality physics
+    lands the basins fill slower, the wake moves later, and the wake year
+    becomes a development clock the gate prints at both grids on every
+    commit. A player who wants a later start chooses a year, and
+    provenance records that the world was caged earlier.
+
+    **What it buys and what it does not.**
+
+    | | today | with W5 |
+    |---|---|---|
+    | opening to the first caged basin, shipped grid | over an hour on three threads | seconds to a minute, played on the map |
+    | any pre-wake year on screen | replay | a sought frame |
+    | arrival windows and population bands at the shipped grid | the long workflow, hours, on request | every commit, both grids, ≤ 60 s |
+    | the awake kernel's tick | 76–166 ms at target | unchanged |
+
+    The last row is the point to keep in view: the awake kernel's cost
+    is the forager diffusion bound on polar rows and the eight-neighbour
+    pair loop, the row-cadence question W3 left open; W5 removes the
+    ticks before the wake, not the cost after it.
+
+    **The dev-loop cost.** The per-commit gates job grows by the target
+    solve arm, budgeted at 60 s and reported; it sits inside the
+    directive's letter (nothing that takes hours) and the spec names the
+    one-line demotion to `v2-long.yml` if the owner wants it out.
