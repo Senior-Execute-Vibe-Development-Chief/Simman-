@@ -68,8 +68,16 @@ const RELATIVES: readonly PackageRelatives[] = [
     { name: "Sorghum arundinaceum", continents: ["AFRICA"] },
     { name: "Cenchrus violaceus", continents: ["AFRICA"] },
   ] },
-  { packageId: "millet", note: "wild broomcorn millet and green foxtail, the two founders of the north Chinese package (Zhao 2011; Lu et al. 2009)", taxa: [
-    { name: "Panicum miliaceum subsp. ruderale", continents: ["ASIA"] },
+  // Green foxtail only. `Panicum miliaceum subsp. ruderale` was here and is
+  // removed: it is a FERAL ESCAPE of the crop, not a wild progenitor —
+  // broomcorn millet's wild ancestor is unknown to botany (Zohary, Hopf &
+  // Weiss 2012) — and its records are Russian weeds of cultivation, with
+  // 100 % of their corrected weight north of 50 N. Counting them as
+  // evidence of the ancestor's range is the same error as counting European
+  // sunflowers, and it forced the founder-set intersection into Siberia
+  // however well green foxtail's own weight was corrected: green foxtail's
+  // corrected centre is 101.6 E, 41.7 N, which is north China.
+  { packageId: "millet", note: "green foxtail, the wild ancestor of foxtail millet (Zhao 2011); broomcorn millet's wild ancestor is unknown to botany", taxa: [
     { name: "Setaria viridis", continents: ["ASIA"] },
   ] },
   { packageId: "tubers", note: "wild manioc (Olsen & Schaal 1999); wild sweet potato is excluded, its range reaching Mexico", taxa: [
@@ -144,10 +152,13 @@ async function familyKeyOf(name: string): Promise<number> {
  * selection bias and presence-only distribution models, Ecological
  * Applications 19:181-197.
  */
-async function backgroundOf(familyKey: number, continent: string, lon: number, lat: number): Promise<number> {
+/** All vascular plants: the fallback target group where a taxon's own family is too thinly collected to measure effort. */
+const TRACHEOPHYTA_KEY = 7707728;
+
+async function backgroundOf(groupParam: string, continent: string, lon: number, lat: number): Promise<number> {
   const west = Math.floor(lon / BACKGROUND_DEGREES) * BACKGROUND_DEGREES;
   const south = Math.floor(lat / BACKGROUND_DEGREES) * BACKGROUND_DEGREES;
-  const url = `https://api.gbif.org/v1/occurrence/search?familyKey=${familyKey}&continent=${continent}`
+  const url = `https://api.gbif.org/v1/occurrence/search?${groupParam}&continent=${continent}`
     + `&decimalLongitude=${west},${west + BACKGROUND_DEGREES}&decimalLatitude=${south},${south + BACKGROUND_DEGREES}`
     + "&hasCoordinate=true&hasGeospatialIssue=false&limit=0";
   const cached = cacheGet<number>(url);
@@ -225,15 +236,34 @@ for (const entry of RELATIVES) {
     // is domesticated, the raw counts put the Kazakh steppe and Omsk beside
     // the loess, and the corrected shares put north China above both.
     const familyKey = await familyKeyOf(taxon.name);
-    const backgrounds = new Map<string, number>();
+    // The target group has to be collected densely enough to measure effort
+    // at all. A big family does that (the grasses); a small one does not —
+    // enset's family left 1 of its 121 cells measurable — so where the
+    // family cannot answer for most of a taxon's ground, the group widens to
+    // all vascular plants. The choice is made ONCE PER TAXON, so every
+    // cell's ratio carries the same denominator.
+    const cellKey = (cell: { continent: string; lon: number; lat: number }) =>
+      `${cell.continent}:${Math.floor(cell.lon / BACKGROUND_DEGREES)}:${Math.floor(cell.lat / BACKGROUND_DEGREES)}`;
+    const measure = async (groupParam: string): Promise<Map<string, number>> => {
+      const counts = new Map<string, number>();
+      for (const cell of cells.values()) {
+        const key = cellKey(cell);
+        if (counts.has(key)) continue;
+        counts.set(key, await backgroundOf(groupParam, cell.continent, cell.lon, cell.lat));
+      }
+      return counts;
+    };
+    let group = familyKey > 0 ? `familyKey=${familyKey}` : `phylumKey=${TRACHEOPHYTA_KEY}`;
+    let backgrounds = await measure(group);
+    const measurable = [...cells.values()]
+      .filter((cell) => (backgrounds.get(cellKey(cell)) ?? 0) >= MIN_BACKGROUND_RECORDS).length;
+    if (measurable * 2 < cells.size) {
+      group = `phylumKey=${TRACHEOPHYTA_KEY}`;
+      backgrounds = await measure(group);
+    }
     let corrected = 0;
     for (const cell of cells.values()) {
-      const key = `${cell.continent}:${Math.floor(cell.lon / BACKGROUND_DEGREES)}:${Math.floor(cell.lat / BACKGROUND_DEGREES)}`;
-      let background = backgrounds.get(key);
-      if (background === undefined) {
-        background = familyKey > 0 ? await backgroundOf(familyKey, cell.continent, cell.lon, cell.lat) : 0;
-        backgrounds.set(key, background);
-      }
+      const background = backgrounds.get(cellKey(cell)) ?? 0;
       if (background >= MIN_BACKGROUND_RECORDS) corrected += cell.records / background;
     }
     // Each taxon then carries the same total weight, whatever its record
@@ -243,8 +273,7 @@ for (const entry of RELATIVES) {
     // surveyed one decide where the package's envelope sits.
     const scale = corrected > 0 ? 1 / corrected : 0;
     const rows = [...cells.values()].map((cell) => {
-      const key = `${cell.continent}:${Math.floor(cell.lon / BACKGROUND_DEGREES)}:${Math.floor(cell.lat / BACKGROUND_DEGREES)}`;
-      const background = backgrounds.get(key) ?? 0;
+      const background = backgrounds.get(cellKey(cell)) ?? 0;
       // A cell with too little botany in it keeps its place as an
       // observation — the plant IS there — but carries no weight in the fit.
       const weight = background >= MIN_BACKGROUND_RECORDS ? (cell.records / background) * scale : 0;
@@ -255,12 +284,13 @@ for (const entry of RELATIVES) {
       continents: taxon.continents,
       records: total,
       sampled: points.length,
+      targetGroup: group,
       backgroundCells: backgrounds.size,
       weightedCells: rows.filter((row) => row[2] > 0).length,
       cells: rows,
     });
     console.error(`${entry.packageId} ${taxon.name}: ${total} records, ${points.length} read, ${cells.size} cells,`
-      + ` ${backgrounds.size} background cells, ${rows.filter((row) => row[2] > 0).length} weighted`);
+      + ` ${backgrounds.size} background cells (${group}), ${rows.filter((row) => row[2] > 0).length} weighted`);
   }
   packages.push({ packageId: entry.packageId, note: entry.note, taxa });
 }
