@@ -1,4 +1,4 @@
-# Simman v2 — W5 the peopling solve and the wake
+# Simman v2 — W7 where farming begins, and how it travels
 
 M3a builds on the immutable Earth substrate and seasonal multimodal travel
 field with one real-unit population field. Population grows toward derived
@@ -173,4 +173,16 @@ fudge factors.
   and routing battery hashes.
 - `eslint` forbids standard-library transcendentals in simulation and copied
   worldgen uses the v2 deterministic math substitutions.
+- **Where farming begins (W7).** A hearth condenses on the DENSE-STAND
+  habitat of a package's wild progenitor — `data/reality/crop-ranges.json`,
+  cited per package, the belts where the plant forms harvestable stands and
+  not its whole botanical distribution — when a peopled basin there has
+  accrued the package's domestication lag at the basin's fill times the
+  share of the cell's subsistence that is still the forager yield. A basin
+  the spread has reached lives on a farmed capacity a hundredfold that
+  yield, so its clock all but stops: arrival pre-empts invention with no
+  rule for it. Boats hop 100 km (`PEOPLE_COASTAL_HOP_KM`, the Neolithic's
+  own crossings), which at the shipped grid opens the Aegean, the Marmara
+  and the Korea Strait. The dev grid cannot represent those straits, so the
+  European rows and Japan are measured at the shipped grid.
 

@@ -31,10 +31,14 @@ climate. These fixtures contain checks and citations, not runtime state.
 are hand-curated reality fixtures: population bands and arrival windows are
 validation references, not simulation rails. `crop-packages.json` (climate
 bells, growing-season minimum, storability, yield, domestication lag) and
-`crop-ranges.json` (wild-progenitor ranges as longitude/latitude boxes,
-rasterized at the substrate grid) are the M3a data inputs; there are no
-hearth pins — a hearth condenses wherever a native range is peopled long
-enough.
+`crop-ranges.json` (the DENSE-STAND habitat of each package's wild
+progenitors as longitude/latitude boxes, rasterized at the substrate grid;
+every range carries its citations, W7) are the M3a data inputs; there are no
+hearth pins — a hearth condenses wherever a range is peopled long enough
+by people who still live on the land's forager yield (a basin that already
+farms stops domesticating, W7). The sorghum lag (2500 y) runs from the
+wild-sorghum harvests of the Khartoum Mesolithic and Nabta Playa (~6000 BCE)
+to the domesticated grain of the eastern Sudan (Winchell et al. 2017).
 
 `known-misses-people.json` rows are scoped by arm and grid: `…:dev` and
 `…:target` are the awake (monthly) kernel's long arms; `…:solve:dev` and

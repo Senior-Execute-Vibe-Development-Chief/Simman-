@@ -3,6 +3,7 @@ import {
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_ADOPTION_RATE_PER_YEAR,
+  PEOPLE_CAPACITY_FLOOR_PER_KM2,
   PEOPLE_HEARTH_BASIN_RADIUS_KM,
   PEOPLE_HEARTH_MIN_SEPARATION_KM,
   PEOPLE_HEARTH_SEED_FRACTION,
@@ -123,12 +124,30 @@ function seedHearth(world: PeopleWorld, hearth: HearthState): void {
 }
 
 /**
+ * The rate at which a native cell's people domesticate the stand they live
+ * on: the basin's fill (people against the basin's forager capacity) times
+ * the share of the cell's own subsistence that is still the land's forager
+ * yield. An unfarmed cell accrues at its fill; a cell that farming has
+ * reached lives on a capacity a hundredfold the forager yield, so its clock
+ * all but stops (W7). Spreading pre-empts inventing with no rule for it: the
+ * Iranian plateau, western Anatolia and the Nile receive the package before
+ * any stand of theirs could mature one, exactly as the record has it.
+ */
+export function hearthAccrualRate(world: PeopleWorld, cell: number, fill: number): number {
+  const forager = world._foragerCapacity[cell] ?? 0;
+  const living = Math.max(PEOPLE_CAPACITY_FLOOR_PER_KM2, world.capField[cell] ?? 0);
+  return fill * Math.min(1, forager / living);
+}
+
+/**
  * Hearths condense. Every cell of a package's native range where the crop
- * can grow accrues peopled-basin years at its basin's fill; the first cells
- * to reach the package's domestication lag ignite, and a cell within the
- * separation bar of an ignited hearth of the same package is the same
- * hearth. No search window, no score, no pin: which range ignites first,
- * and where on it, is the population history of that range.
+ * can grow accrues years at `hearthAccrualRate`; the first cells to reach
+ * the package's domestication lag ignite, and a cell within the separation
+ * bar of an ignited hearth of the same package is the same hearth. No
+ * search window, no score, no pin: which range ignites first, and where on
+ * it, is the population history of that range. The range itself is data:
+ * the dense-stand habitat of the wild progenitor (`crop-ranges.json`, W7),
+ * not the crop's whole climate envelope.
  */
 function updateHearths(world: PeopleWorld, dtMonths: number): void {
   const dtYears = dtMonths / MONTHS_PER_YEAR;
@@ -149,7 +168,7 @@ function updateHearths(world: PeopleWorld, dtMonths: number): void {
       const cell = world._landCells[packed] ?? 0;
       const fill = basinFill(world, cell, radius);
       if (fill <= 0) continue;
-      const accrued = (years[index] ?? 0) + fill * dtYears;
+      const accrued = (years[index] ?? 0) + hearthAccrualRate(world, cell, fill) * dtYears;
       years[index] = accrued;
       if (accrued < pkg.domLagY) continue;
       if ((world.people[cell] ?? 0) <= 0) continue;

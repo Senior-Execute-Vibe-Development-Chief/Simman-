@@ -257,7 +257,7 @@ export const PEOPLE_WORKER_ERROR_BYTES = 1024; // spec/09-constants-ledger.md §
 // outcome targets: the front speed is an output of farmer growth and travel.
 export const PEOPLE_ADOPTION_RATE_PER_YEAR = 0.01; // spec/09-constants-ledger.md §M3a — foragers adopting per year at full local contact and saturated advantage
 export const PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR = 15; // spec/09-constants-ledger.md §M3a — sedentary farmer mobility, Ammerman & Cavalli-Sforza 1544 km²/generation ÷ 4T
-export const PEOPLE_COASTAL_HOP_KM = 40; // spec/09-constants-ledger.md §M3a proposed — foot-and-raft crossing scale
+export const PEOPLE_COASTAL_HOP_KM = 100; // spec/09-constants-ledger.md §W7 — the longest sea crossing the Neolithic colonised from a mainland (Cyprus ~70 km, Malta ~80 km, Corsica ~80 km); replaces the 40 km foot-and-raft scale
 export const PEOPLE_HEARTH_SEED_FRACTION = 0.2; // spec/09-constants-ledger.md §M3a proposed — ignition farmer share
 export const PEOPLE_CROP_NEIGHBOR_COUNT = 8; // spec/09-constants-ledger.md §M3a proposed — eight-neighbour travel/contact stencil
 export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed — farmer-field save format

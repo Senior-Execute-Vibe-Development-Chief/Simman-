@@ -1681,3 +1681,123 @@ Review corrections to the M1 build (all validated before merge):
     **Not run:** the agreement arm and the target solve arm (`v2-long`).
     The awake trajectory at the shipped grid is now a half-hour run
     rather than five hours, which the long workflow can afford weekly.
+
+42. **W7 landed: where farming begins, and how it travels (2026-09-03,
+    owner: "we need the spread and starting block to be perfect, or at
+    least acceptable", on the play-report of ten wheat hearths in one
+    century from the Nile to the Indus and ten rice hearths from Bengal to
+    Japan).** Spec `spec/handoffs/W7-origins.md`; DECISIONS 29.
+
+    **The finding.** The M3a hearth law was a calendar in two parts. The
+    wild ranges were bounding boxes of whole botanical distributions
+    (wheat 30–78°E, rice to 145°E, sorghum across sub-Saharan Africa),
+    their citations pending since the review (26 g). And a world that
+    opens peopled fills every basin to its forager capacity within a few
+    centuries, so every cell of every box reached the package's lag in the
+    same century; the 1000 km separation rule then cut each box into a
+    string of hearths — 78 in all, ten for wheat, ten for rice, twenty for
+    sorghum. A hearth fired because of when it was (first cardinal rule),
+    in places whose only claim was a box (second rule).
+
+    **What changed.** (1) The ranges are the dense-stand habitat of the
+    wild progenitor, cited per package on the sources' own distinction
+    between massive stands and sporadic plants (Harlan & Zohary 1966;
+    Zohary, Hopf & Weiss 2012; Fuller 2011; Fuller & Qin 2009; Matsuoka
+    2002; Piperno 2009; Harlan 1971; Winchell 2017; Manning 2011; Lu 2009;
+    Zhao 2011; Olsen & Schaal 1999; Piperno & Pearsall 1998; Harlan 1969;
+    Denham 2003; Smith 2006). (2) The clock accrues at the basin's fill
+    times `foragerCapacity / capField`, the share of the cell's own
+    subsistence that is still the land's forager yield: a basin the spread
+    has reached lives on a farmed capacity a hundredfold that yield and its
+    clock all but stops, so arrival pre-empts invention with no rule for
+    it. (3) `PEOPLE_COASTAL_HOP_KM` 40 → 100, the crossings the Neolithic
+    colonised (Cyprus, Malta, Corsica). (4) Sorghum's lag 2000 → 2500, the
+    Sudan's wild harvests to its domesticated grain (Winchell 2017). No
+    bell, no other lag, no separation, no rate, no mobility moved; the
+    Rust kernel is untouched.
+
+    **Dev solve arm (17.8 s, wake never).** 21 hearths: wheat 2 — northern
+    Iraq (33.8°N, 42.8°E) at −8083 and Fars (32.2°N, 51.8°E) at −8027, the
+    southern Levant folding into the first by the separation rule; millet
+    2 at −7313/−7306 (the western Liao and Inner Mongolia's edge of the
+    loess belt); rice 1 on the Han–Yangtze (32.2°N, 113.3°E) at −6200;
+    sorghum 5 across the Sahelo-Sudanian belt at −6186 to −6151; Ethiopia
+    1 at −6417; eastern seeds 2 at −6200; New Guinea 2 at −5661/−5556;
+    lowland tubers 5 at −5486 to −5367; maize 1 in the Balsas at −3946.
+    Reached by spread, inside their windows: Fertile Crescent −7971, Nile
+    −6515, Yellow River −6298, Indus −5654 (−7943 before, its own hearth),
+    Mesoamerica −3498, Andes −4478, south India −3750 (−6340 before, its
+    own hearth). Japan no longer ignites (−6088 before). Population at
+    −5000 falls from 247M to 78.8M against a band of 5–60M; at 1 CE from
+    2.25B to 1.94B. Balkans → Rhine 1.08 km/yr, unchanged. The first caged
+    basin moves from the Nile delta (−5955) to Susiana (32.2°N, 48.8°E) at
+    −5892.
+
+    **Transect (dev, arrival year).** Northern Iraq −7971 → southeast
+    Turkey −7635 → Cilicia −6977 → central Anatolia −6774 → northwest
+    Anatolia −6242 → Thrace −4835 → Bulgaria −4807 → Thessaly −4478 →
+    Belgrade −4359 → Hungary −4226; Cyprus −6774, Crete −3862 (overland
+    through the Balkans), eastern Iberia −1881; Sinai −6718, the Fayum
+    −6312; the Iranian plateau −7915, Turkmenistan −6809, the Indus −5850,
+    the Punjab −5360, the Ganges −4058, Bengal −3302; the loess −6501, the
+    lower Yangtze −5899; Korea and Japan never. The Marmara is the whole
+    European lateness: 1,400 years from northwest Anatolia to Thrace for a
+    strait a kilometre wide, because at 167 km cells it is open sea beyond
+    any hop and the front walks round the Black Sea. The same for the
+    Korea Strait. The dev grid cannot represent straits; the European rows
+    and Japan are the shipped grid's to measure (third cardinal rule), and
+    the dev rows are recorded as that artefact.
+
+    **What remains early, and whose it is.** The Sahel (−6060 against
+    −3500) and eastern North America (−6200): the sim's belts are caged
+    from the opening under today's climate, where the real ones filled as
+    the green Sahara dried and the mid-Holocene floodplains formed — P10,
+    not a lag to stretch. The Ganges (−4254 against −3000) now by spread
+    from the Punjab at the front's own speed, a millennium early. Ethiopia
+    (−6417) on a lag the record cannot yet ground. Population is M3b's.
+
+    **Manifest.** The Indus and south India rows leave; inland Europe
+    joins the European rows (their cause is now the straits, not the
+    Levant's lag); the Sahel, barrier, Ganges and Japan rows carry their
+    new numbers and causes.
+
+    **Shipped grid (target solve arm, 1,069 s).** The first target run
+    measured the old hop: the edit that raised `PEOPLE_COASTAL_HOP_KM` sat
+    in a script block that aborted on an earlier assertion, and a
+    connectivity probe (no coastal link in the whole Marmara window, none
+    longer than 37 km anywhere) found it. With the hop in effect: 94
+    crossings of the Marmara (the Bosporus at 44 km), Cyprus at 89 km,
+    the Cyclades chain, Tsushima at 92 km. 28 hearths: wheat on the Tigris
+    (−8069) and in the Taurus north of Cilicia (−8048); millet 3; rice on
+    the middle (−6221) and lower (−6151) Yangtze; sorghum 9; Ethiopia 2;
+    eastern seeds 2; New Guinea 2; lowland tubers 6; maize 1 (−3974).
+    Arrivals: Fertile Crescent −7859, Nile −6235, Yellow River −7012,
+    Indus −3225, Mesoamerica −3435, Andes −3995, Balkans −5654, Cardial
+    −4807, inland Europe −4387 — inside their windows; Crete −5871,
+    Cyprus −6851, Thrace −5983, Bulgaria −5696, Thessaly −5395, Korea
+    −4555, Kyushu −3883. Population −5000: 53.0M, inside the band (118M
+    before the wave; 5–60M). Caged: Cappadocia (38.3°N, 36.9°E) at −5535.
+    Still late: central Europe −3722, the Rhine −2980, Balkans → Rhine
+    0.59 km/yr against the band's 0.6. Still early: Japan −3162 (millet
+    through Korea; the window is Yayoi rice), the Sahel −5864 (P10). The
+    Ganges −950 and south India unreached: the second wheat hearth
+    condensed in the Taurus rather than Fars, and the Iranian leg slowed
+    (plateau −6263, Turkmenistan −4716, Indus −3155). Bench: target solve
+    firing 399 ms against the 440 baseline; parity byte-exact on the new
+    stencil at both grids.
+
+    **The front speed is the farmers' own 2·√(r·D).** Flat field, one
+    seeded cell, the solve regime: dev 0.66 km/yr (one 167 km cell every
+    252 years after a 420-year latency), target 0.53 km/yr after a
+    340-year latency. 0.53 is 2·√(0.0046 × 15) to two figures: the farmer
+    group's growth (0.28 %/yr × 1.65) and mobility (15 km²/yr). The
+    ledger's expectation of 0.94 added the adoption rate at full contact;
+    a pulled front's speed is its leading edge's linear rate, and at the
+    edge contact is nil. So the shipped-grid Europe is late for a grounded
+    reason: `PEOPLE_R_GROWTH_PER_YEAR` (0.28 %/yr) is the crowded long-run
+    average, which the logistic term already produces from an uncrowded
+    rate, and a colonising Neolithic population grows at ~1 %/yr
+    (Bocquet-Appel 2002; Ammerman & Cavalli-Sforza 1984 used a colonising
+    r). Re-grounding r is M2's constant and lifts the population curve as
+    well, so it goes to the owner as P15 rather than into this wave.
+

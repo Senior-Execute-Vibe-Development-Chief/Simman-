@@ -30,6 +30,7 @@ import {
 import { migrationShareForArea } from "../src/sim/people/migration";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive } from "../src/sim/people/crop";
+import { hearthAccrualRate } from "../src/sim/people/technique";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { stepFromYear } from "../src/sim/horizon";
 
@@ -444,6 +445,23 @@ async function main(): Promise<void> {
     config: { peopleGrowthStride: 12, peopleMigrationStride: 12 },
   });
   assert.equal(named(forced, "people.migration")?.stride, 12);
+
+  // W7: the hearth clock runs at the basin's fill times the share of the
+  // cell's subsistence that is still the land's forager yield, so a cell
+  // farming has reached (capacity far above the forager yield) all but
+  // stops domesticating its own stand — spreading pre-empts inventing.
+  {
+    const clockWorld = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    const cell = clockWorld._landCells[Math.floor(clockWorld._landCells.length / 2)] ?? 0;
+    const forager = clockWorld._foragerCapacity[cell] ?? 0;
+    assert.ok(forager > 0);
+    clockWorld.capField[cell] = forager;
+    assert.ok(Math.abs(hearthAccrualRate(clockWorld, cell, 0.8) - 0.8) < 1e-12, "an unfarmed cell accrues at its fill");
+    clockWorld.capField[cell] = forager * 100;
+    assert.ok(Math.abs(hearthAccrualRate(clockWorld, cell, 0.8) - 0.008) < 1e-12, "a farmed cell's clock slows by its capacity ratio");
+    clockWorld.capField[cell] = forager * 0.5;
+    assert.equal(hearthAccrualRate(clockWorld, cell, 1), 1, "the ratio is capped at one");
+  }
 
   console.log(JSON.stringify({
     tests: "ok",
