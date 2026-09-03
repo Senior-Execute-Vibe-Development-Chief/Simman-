@@ -10,6 +10,8 @@ const SEED = 42042;
 const HOST = "127.0.0.1";
 const PORT = 4173;
 const BASE_URL = `http://${HOST}:${PORT}`;
+/** The dev-grid world builds its substrate and creates the worker inside this. */
+const SHELL_BOOT_TIMEOUT_MS = 60_000;
 
 async function waitForServer(): Promise<void> {
   for (let attempt = 0; attempt < 60; attempt++) {
@@ -36,9 +38,23 @@ async function browserResult(type: BrowserType): Promise<BrowserM1Result> {
   const browser = await type.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.goto(`${BASE_URL}/src/shell/index.html`, { waitUntil: "domcontentloaded" });
+    // The shell must boot on the page Vite builds and Pages serves: the root
+    // index. A top-level throw there (a control the script requires that the
+    // markup lacks) used to pass this smoke, which only ran the kernel checks
+    // below on a page it never watched.
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+    await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded" });
     const isolated = await page.evaluate(() => globalThis.crossOriginIsolated);
     assert.equal(isolated, true, `${type.name} did not receive COOP/COEP isolation headers`);
+    await page.waitForFunction(
+      () => (document.querySelector("#status")?.textContent ?? "").startsWith("Worker "),
+      undefined,
+      { timeout: SHELL_BOOT_TIMEOUT_MS },
+    );
+    const status = await page.evaluate(() => document.querySelector("#status")?.textContent ?? "");
+    assert.deepEqual(pageErrors, [], `${type.name}: the shell threw while booting`);
+    assert.ok(status.startsWith("Worker ready"), `${type.name}: the shell did not reach a ready worker: ${status}`);
     return await page.evaluate(async (seed) => {
       const entry = "/src/sim/browserSmoke.ts";
       const module = await import(entry);
