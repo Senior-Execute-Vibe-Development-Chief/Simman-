@@ -618,6 +618,23 @@ lawyered.
     at full contact, which a leading edge never has. Central Europe and
     the Rhine stay late for that reason, and the remedy is P15.
 
+30. **W8: who farms what, where, and why.** (Direction ratified — owner:
+    "spec all of these changes we have talked about", after the W7
+    play-report: the origin "seems fixed, not dynamic and procedural";
+    marginal land farmed as densely as the Crescent on the farming lens;
+    the first crop holding a cell for good.) One wave: (a) wild stands as
+    a field — a wild-habitat envelope per package sampled at the plant's
+    documented localities, polygons for the belts, the hearth clock at the
+    basin's dependence on the stand, the spacing constant deleted and a
+    hearth a region; (b) forager capacity by habitat — shores and stands
+    from the hunter-gatherer density literature, so the affluent forager
+    resists; (c) yield graded by climate fit; (d) adoption under pressure,
+    the cell's fill; (e) the mixture as the capacity; (f) farmers switch
+    to a better crop by the adoption law. New reality tables: the centres
+    of domestication with windows, the staple by region at 1 CE, the
+    forager density ordering. P10 and contingency stay the owner's. Spec:
+    `spec/handoffs/W8-who-farms-what.md`. Implementation on request.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
