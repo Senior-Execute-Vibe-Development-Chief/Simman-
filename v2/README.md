@@ -116,11 +116,10 @@ fudge factors.
   per-firing share stays inside the diffusion bound (dev 12, target 1).
 - **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
   pass fires at one stride derived from the bounds the passes already carry
-  (farmer hops on the rows a package can grow on, farmer growth, adoption,
-  cohort ageing — 84 months at both grids, printed in provenance), foragers
-  and farmers each hop their own share of the stride, and conductance is the
-  annual mean of the twelve monthly tables. The world WAKES into the monthly
-  regime at the first caged basin: the first hearth-law window centred on a
+  (each group's hops on the rows it can be a source from, farmer growth,
+  adoption, cohort ageing — 84 months at both grids, printed in provenance),
+  and conductance is the annual mean of the twelve monthly tables. The world
+  WAKES into the AWAKE regime at the first caged basin: the first hearth-law window centred on a
   farmed cell whose free farmable room falls below the caging knee
   (`CAGE_KNEE_FREE_SHARE`, Carneiro's circumscription, the precondition of
   M4's taking). `config.wake` is an initial condition — `"auto"` (the
@@ -129,7 +128,19 @@ fudge factors.
   world state (saved, hashed, in provenance); hearth ignitions and the wake
   are the event log's first entries. The shell plays the peopling while it
   solves, scrubs the solved span through reconstructed frames (a rendering,
-  never state), and runs the monthly kernel from the wake.
+  never state), and runs the awake kernel from the wake.
+- **Two flows, room by group (W6).** Foragers see forager room (the land's
+  forager capacity minus everyone there), farmers see farmed room (the
+  capacity of the package they carry minus everyone there); each group is
+  split among the eight neighbours by conductance × its own room and hops
+  its own share of the firing (`PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR`, 23,
+  grounded on Aka mating and exploration ranges; `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR`,
+  15). Room below the numerical floor is no room, and a source none of
+  whose neighbours has room for a group is not priced for it, so a full
+  region costs nothing. The awake movement stride derives per group like
+  the solve stride and is 84 months at both grids: growth fires yearly,
+  movement every seven years, and most months are empty ticks. The two
+  regimes differ only in the growth cadence.
 - The wasm people kernel uses a row-major land index and 16 fixed,
   grid-derived row bands. Only scratch and iteration are land-packed; the
   saved people, technique, cohort, and capacity views remain full-grid.

@@ -13,7 +13,11 @@ import {
 import type { PeopleWorld } from "../src/sim/people/types";
 import os from "node:os";
 
-const BENCH_TICKS = 10;
+// One movement cycle of the awake regime (W6: movement fires every solve
+// stride, growth yearly, most months are empty), so the tick row is the
+// mean month over a whole cycle rather than ten months that hold one firing.
+const BENCH_TICKS = 84;
+const SOLVE_TICKS = 10;
 const CADENCE_TICKS = 12;
 
 interface BenchRow {
@@ -84,8 +88,8 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     substrate,
   });
   const solveStart = performance.now();
-  runSteps(solveWorld, BENCH_TICKS);
-  const solveStepMilliseconds = (performance.now() - solveStart) / BENCH_TICKS;
+  runSteps(solveWorld, SOLVE_TICKS);
+  const solveStepMilliseconds = (performance.now() - solveStart) / SOLVE_TICKS;
   const result = {
     grid,
     substrateMilliseconds,
@@ -204,6 +208,7 @@ console.log(JSON.stringify({
   cadence,
   format: "milliseconds",
   peopleTickSamples: BENCH_TICKS,
+  solveStepSamples: SOLVE_TICKS,
   cadenceTickSamples: CADENCE_TICKS,
   ceilingMilliseconds: 15.5,
   horizonTicks: TARGET_HORIZON_TICKS,

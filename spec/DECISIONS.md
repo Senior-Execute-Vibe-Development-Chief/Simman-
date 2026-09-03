@@ -571,6 +571,10 @@ lawyered.
     switch. (e) The adoption rate may be re-grounded inside the range its
     row already admits if the front leaves the radiocarbon band once the
     flood is gone; nothing else moves. Spec: `spec/handoffs/W6-foragers.md`.
+    Implemented the same day (QUESTIONS #41): the mobility grounded at 23
+    km²/yr on the Aka measurements, the front inside the band at 1.08
+    km/yr so (e) was not needed, the awake month at the shipped grid down
+    tenfold.
 
 ## Proposed — working design, awaiting explicit ratification
 

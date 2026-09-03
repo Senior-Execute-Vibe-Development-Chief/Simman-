@@ -54,59 +54,59 @@
     },
     {
       "id": "population:-5000:solve:dev",
-      "reason": "Measured 265M vs band max 60M on the dev solve arm (the awake kernel's dev long arm: 282M): the same missing-mortality physics as population:-5000:dev — without famine variance, harvest failure, plagues or exhausted soil, growth runs to farmed capacity. M3b owns this miss; no rate is dialed."
+      "reason": "Measured 247M vs band max 60M on the dev solve arm (the awake kernel's dev long arm: 282M; the W5 solve 265M): the same missing-mortality physics as population:-5000:dev — without famine variance, harvest failure, plagues or exhausted soil, growth runs to farmed capacity. M3b owns this miss; no rate is dialed."
     },
     {
       "id": "population:-3000:solve:dev",
-      "reason": "Measured 1.23B vs band max 100M on the dev solve arm (awake 1.27B): the same missing-mortality physics as population:-5000."
+      "reason": "Measured 1.33B vs band max 100M on the dev solve arm (awake 1.27B): the same missing-mortality physics as population:-5000."
     },
     {
       "id": "population:-1000:solve:dev",
-      "reason": "Measured 1.90B vs band max 200M on the dev solve arm (awake 1.95B): the same missing-mortality physics as population:-5000."
+      "reason": "Measured 2.02B vs band max 200M on the dev solve arm (awake 1.95B): the same missing-mortality physics as population:-5000."
     },
     {
       "id": "population:1:solve:dev",
-      "reason": "Measured 2.18B vs band max 400M on the dev solve arm (awake above 2B): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000."
+      "reason": "Measured 2.25B vs band max 400M on the dev solve arm (awake above 2B): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000."
     },
     {
       "id": "arrival:balkans:solve:dev",
-      "reason": "Measured −4324 vs latest −6000 (−5200 with the grace) on the dev solve arm. The solve regime (W5: the same passes at an 84-month stride, foragers and farmers each hopping their own share of the stride) reproduces the awake kernel's dev long arm: the front runs Balkans to Rhine at 1.04 km/yr (awake 1.05), inside the radiocarbon band, and the Old World hearths, the Nile, the Indus and the Yellow River agree within 20 years. Europe is reached about 470 years later than in the awake kernel (Balkans −4324 against −4790) — the solve agreement arm bounds the per-cell median over the horizon; this regional delta is recorded, not dialed. The rows miss for the awake kernel's reasons: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14)."
+      "reason": "Measured −4919 vs latest −6000 (−5200 with the grace) on the dev solve arm. The solve regime (W5/W6: the same passes at an 84-month stride, foragers and farmers each on their own room and share) reproduces the awake kernel's front: Balkans to Rhine at 1.08 km/yr (awake 1.05 with the M3a forager flood, 1.04 in the W5 solve), inside the radiocarbon band. With foragers no longer flooding new farming cells (W6) the ignition cells reach half farmed about four centuries earlier and every European row moves earlier by 400–600 years, still late: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14). Recorded, not dialed."
     },
     {
       "id": "arrival:central-europe:solve:dev",
-      "reason": "Measured −3267 vs latest −5000 (−4200 with the grace) on the dev solve arm. The solve regime (W5: the same passes at an 84-month stride, foragers and farmers each hopping their own share of the stride) reproduces the awake kernel's dev long arm: the front runs Balkans to Rhine at 1.04 km/yr (awake 1.05), inside the radiocarbon band, and the Old World hearths, the Nile, the Indus and the Yellow River agree within 20 years. Europe is reached about 470 years later than in the awake kernel (Balkans −4324 against −4790) — the solve agreement arm bounds the per-cell median over the horizon; this regional delta is recorded, not dialed. The rows miss for the awake kernel's reasons: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14)."
+      "reason": "Measured −3897 vs latest −5000 (−4200 with the grace) on the dev solve arm. The solve regime (W5/W6: the same passes at an 84-month stride, foragers and farmers each on their own room and share) reproduces the awake kernel's front: Balkans to Rhine at 1.08 km/yr (awake 1.05 with the M3a forager flood, 1.04 in the W5 solve), inside the radiocarbon band. With foragers no longer flooding new farming cells (W6) the ignition cells reach half farmed about four centuries earlier and every European row moves earlier by 400–600 years, still late: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14). Recorded, not dialed."
     },
     {
       "id": "arrival:rhine:solve:dev",
-      "reason": "Measured −2791 vs latest −4800 (−4000 with the grace) on the dev solve arm. The solve regime (W5: the same passes at an 84-month stride, foragers and farmers each hopping their own share of the stride) reproduces the awake kernel's dev long arm: the front runs Balkans to Rhine at 1.04 km/yr (awake 1.05), inside the radiocarbon band, and the Old World hearths, the Nile, the Indus and the Yellow River agree within 20 years. Europe is reached about 470 years later than in the awake kernel (Balkans −4324 against −4790) — the solve agreement arm bounds the per-cell median over the horizon; this regional delta is recorded, not dialed. The rows miss for the awake kernel's reasons: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14)."
+      "reason": "Measured −3449 vs latest −4800 (−4000 with the grace) on the dev solve arm. The solve regime (W5/W6: the same passes at an 84-month stride, foragers and farmers each on their own room and share) reproduces the awake kernel's front: Balkans to Rhine at 1.08 km/yr (awake 1.05 with the M3a forager flood, 1.04 in the W5 solve), inside the radiocarbon band. With foragers no longer flooding new farming cells (W6) the ignition cells reach half farmed about four centuries earlier and every European row moves earlier by 400–600 years, still late: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14). Recorded, not dialed."
     },
     {
       "id": "arrival:cardial-coast:solve:dev",
-      "reason": "Measured −3582 vs latest −5500 (−4700 with the grace) on the dev solve arm: the Cardial spread was maritime, beyond the 40 km foot-and-raft hop (P14). The solve regime (W5: the same passes at an 84-month stride, foragers and farmers each hopping their own share of the stride) reproduces the awake kernel's dev long arm: the front runs Balkans to Rhine at 1.04 km/yr (awake 1.05), inside the radiocarbon band, and the Old World hearths, the Nile, the Indus and the Yellow River agree within 20 years. Europe is reached about 470 years later than in the awake kernel (Balkans −4324 against −4790) — the solve agreement arm bounds the per-cell median over the horizon; this regional delta is recorded, not dialed. The rows miss for the awake kernel's reasons: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14)."
-    },
-    {
-      "id": "arrival:inland-europe:solve:dev",
-      "reason": "Measured −3596 vs latest −4800 (−4000 with the grace) on the dev solve arm. The solve regime (W5: the same passes at an 84-month stride, foragers and farmers each hopping their own share of the stride) reproduces the awake kernel's dev long arm: the front runs Balkans to Rhine at 1.04 km/yr (awake 1.05), inside the radiocarbon band, and the Old World hearths, the Nile, the Indus and the Yellow River agree within 20 years. Europe is reached about 470 years later than in the awake kernel (Balkans −4324 against −4790) — the solve agreement arm bounds the per-cell median over the horizon; this regional delta is recorded, not dialed. The rows miss for the awake kernel's reasons: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14)."
+      "reason": "Measured −4065 vs latest −5500 (−4700 with the grace) on the dev solve arm: the Cardial spread was maritime, beyond the 40 km foot-and-raft hop (P14). The solve regime (W5/W6: the same passes at an 84-month stride, foragers and farmers each on their own room and share) reproduces the awake kernel's front: Balkans to Rhine at 1.08 km/yr (awake 1.05 with the M3a forager flood, 1.04 in the W5 solve), inside the radiocarbon band. With foragers no longer flooding new farming cells (W6) the ignition cells reach half farmed about four centuries earlier and every European row moves earlier by 400–600 years, still late: a Levant ignition whose lag runs from the Younger Dryas peopling and no maritime leapfrog (P14). Recorded, not dialed."
     },
     {
       "id": "arrival:sahel:solve:dev",
-      "reason": "Measured −6277 vs earliest −3500 (−4300 with the grace) on the dev solve arm (awake −6280): sorghum ignites on its own across Africa at −6795; its range box spans the whole Sahel and its lag runs from the Younger Dryas peopling. The real delay is the Holocene humid period's population history (P10) and the range/lag data (DECISIONS 26 g); neither is a rate to dial."
+      "reason": "Measured −6179 vs earliest −3500 (−4300 with the grace) on the dev solve arm (awake −6280): sorghum ignites on its own across Africa; its range box spans the whole Sahel and its lag runs from the Younger Dryas peopling. The real delay is the Holocene humid period's population history (P10) and the range/lag data (DECISIONS 26 g); neither is a rate to dial."
     },
     {
       "id": "climate-barrier:solve:dev",
-      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at −3500 on the dev solve arm, as on the awake kernel's dev long arm: sorghum ignites on its own across Africa at −6795 (P10, DECISIONS 26 g)."
+      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at −3500 on the dev solve arm, as on the awake kernel's dev long arm: sorghum ignites on its own across Africa (P10, DECISIONS 26 g)."
     },
     {
       "id": "arrival:ganges:solve:dev",
-      "reason": "Measured −7075 vs earliest −3000 (−3800 with the grace) on the dev solve arm (awake −7090): an independent ignition inside the millet range box, which reaches the Ganges (DECISIONS 26 g: range citations pending)."
+      "reason": "Measured −7096 vs earliest −3000 (−3800 with the grace) on the dev solve arm (awake −7090): an independent ignition inside the millet range box, which reaches the Ganges (DECISIONS 26 g: range citations pending)."
     },
     {
       "id": "arrival:south-india:solve:dev",
-      "reason": "Measured −6536 vs earliest −3500 (−4300 with the grace) on the dev solve arm (awake −6570): an independent ignition inside the rice range box, which reaches peninsular India (review ruling g)."
+      "reason": "Measured −6340 vs earliest −3500 (−4300 with the grace) on the dev solve arm (awake −6570): an independent ignition inside the rice range box, which reaches peninsular India (review ruling g)."
     },
     {
       "id": "arrival:japan:solve:dev",
-      "reason": "Measured −5906 vs earliest −1200 (−2000 with the grace) on the dev solve arm (awake −5960): an independent ignition inside the rice range box, which reaches Japan (review ruling g)."
+      "reason": "Measured −6088 vs earliest −1200 (−2000 with the grace) on the dev solve arm (awake −5960): an independent ignition inside the rice range box, which reaches Japan (review ruling g)."
+    },
+    {
+      "id": "arrival:indus:solve:dev",
+      "reason": "Measured −7943 vs earliest −7000 (−7800 with the grace) on the dev solve arm, 140 years early: an independent ignition inside the wheat range box, which reaches the Indus (DECISIONS 26 g: range citations pending). The W4 kernel's target long arm had the same early Indus (−8070); with W6's foragers no longer flooding the ignition cell it reaches half farmed four centuries sooner than in the W5 solve (−7677), crossing the grace line."
     }
   ]
 }

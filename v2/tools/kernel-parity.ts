@@ -188,11 +188,15 @@ async function runGrid(grid: GridPreset, steps: number): Promise<Record<string, 
   const switchYear = HORIZON_OPENING_YEAR
     + Math.floor(steps / 2) * probe.solveStride / MONTHS_PER_YEAR
     + 1;
-  return [
+  // The chosen-epoch switch is the same code path at either grid; running
+  // it at dev alone keeps the CI parity job near its pre-W5 time
+  // (QUESTIONS #40: 7:41 with three regimes at both grids).
+  const regimes = [
     await runParity(grid, steps, substrate, {}, "solve"),
     await runParity(grid, steps, substrate, { wake: HORIZON_OPENING_YEAR }, "awake"),
-    await runParity(grid, steps, substrate, { wake: switchYear }, "switch"),
   ];
+  if (grid === "dev") regimes.push(await runParity(grid, steps, substrate, { wake: switchYear }, "switch"));
+  return regimes;
 }
 
 function checkWasmDmath(): number {

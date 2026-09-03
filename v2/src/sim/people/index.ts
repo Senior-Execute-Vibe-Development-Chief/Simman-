@@ -10,7 +10,7 @@ import {
 } from "../constants";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { deriveCapacity } from "./capacity";
-import { deriveTechniqueFromFarmers, initializeCropFields, refreshTechniqueShare } from "./crop";
+import { activePackageIndices, deriveTechniqueFromFarmers, initializeCropFields, refreshTechniqueShare } from "./crop";
 import { cellAreasKm2, annualClimateFromSubstrate, fillStaticHabitability } from "./habitability";
 import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
@@ -82,11 +82,16 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._migrationWeight = new Float64Array(landCount);
   world._migrationPopulation = new Float64Array(landCount);
   world._migrationReceived = new Float64Array(landCount);
-  world._migrationMobile = new Float64Array(landCount);
+  world._migrationOutFarmers = new Float64Array(landCount);
   world._migrationFarmerWeight = new Float64Array(landCount);
-  world._migrationFarmerShare = new Float64Array(landCount);
+  world._migrationFarmerRatio = new Float64Array(landCount);
   world._migrationFarmerShareRow = new Float64Array(world.height);
-  world._pairWeight = new Float64Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT);
+  world._roomForagers = new Uint8Array(landCount);
+  world._roomFarmers = new Uint8Array(landCount);
+  world._migrationFarmerByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._migrationFarmerReceivedByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  // Two weights per pair: the forager weight, then the farmer weight.
+  world._pairWeight = new Float64Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT * 2);
   world._migrationRatio = new Float64Array(landCount);
   world._childrenFraction = new Float64Array(landCount);
   world._workingFraction = new Float64Array(landCount);
@@ -194,6 +199,26 @@ export function initializePeople(worldInput: World): PeopleWorld {
   return world;
 }
 
+/** Commit the grown farmer masses and rebuild the total as the package sum (the movement pass's own tail). */
+function commitFarmers(world: PeopleWorld): void {
+  if (world._wasmPeopleKernel) {
+    world._wasmPeopleKernel.commitFarmers();
+    return;
+  }
+  const active = activePackageIndices(world);
+  for (const packageIndex of active) {
+    const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+    world.farmers[id]!.set(world._farmersNext[id]!);
+  }
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    let total = 0;
+    for (const packageIndex of active) {
+      total += world._farmersNext[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0;
+    }
+    world._farmerTotal[packed] = total;
+  }
+}
+
 function normalizeCohorts(world: PeopleWorld): void {
   for (let packed = 0; packed < world._landCells.length; packed++) {
     const cell = world._landCells[packed] ?? 0;
@@ -218,7 +243,7 @@ function normalizeCohorts(world: PeopleWorld): void {
  * fires with that dt, foragers do not hop, and conductance is the annual
  * mean — the kernel's own passes on the clock the farmer bound permits (W5).
  */
-export function stepPeople(worldInput: World, solveDtMonths?: number): void {
+export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   const world = initializePeople(worldInput);
   const solve = solveDtMonths !== undefined;
   const due = new Map(
@@ -236,7 +261,7 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): void {
   const growthDue = due.get("people.growth") === true;
   const migrationDue = due.get("people.migration") === true;
   const cohortsDue = due.get("people.cohorts") === true;
-  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return;
+  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return false;
 
   world.ledger.beginPass(
     "people",
@@ -272,12 +297,13 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): void {
   const migration = migrationDue
     ? (() => {
       const started = performance.now();
+      // A firing of a year or more sees every season: the annual-mean table.
+      const dt = solve ? solveDtMonths : passDtMonths(migrationSchedule!);
       const result = migrate(
         world,
-        solve ? MONTHS_PER_YEAR : world.calendarMonth,
-        solve ? solveDtMonths : passDtMonths(migrationSchedule!),
+        dt >= MONTHS_PER_YEAR ? MONTHS_PER_YEAR : world.calendarMonth,
+        dt,
         growthDue,
-        solve,
       );
       addPhaseTime("migration", started);
       return result;
@@ -291,6 +317,12 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): void {
         world.people[cell] = world._peopleNext[packed] ?? 0;
       }
     }
+    // Movement commits the farmer masses it moved; a growth-only firing
+    // must commit the masses growth wrote, or a year's farmer growth is
+    // lost while the people it belongs to are kept (W6: before the movement
+    // stride exceeded the growth stride the two always fired together, and
+    // the flat-field check found the awake front falling behind).
+    if (growthDue && !migrationDue) commitFarmers(world);
     refreshTechniqueShare(world);
     deriveCapacity(world);
     // Cohort normalization is a commit invariant, including migration-only
@@ -313,6 +345,7 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): void {
   world.debug.peopleBirths = growth.births;
   world.debug.peopleDeaths = growth.deaths;
   world.debug.peopleMigration = migration;
+  return growthDue || migrationDue;
 }
 
 export function populationTotal(worldInput: World): number {

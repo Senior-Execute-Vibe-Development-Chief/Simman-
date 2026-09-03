@@ -93,14 +93,16 @@ interface PeopleKernelLike {
   growth_band(rawLo: number, rawHi: number, bandIndex: number): void;
   births(): number;
   deaths(): number;
-  begin_migration(month: number, dtMonths: number, growthPrepared: boolean, solve: boolean): void;
+  begin_migration(month: number, dtMonths: number, growthPrepared: boolean): void;
   migration_prepare_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_source_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_debit_band(rawLo: number, rawHi: number): void;
   migration_target_band(rawLo: number, rawHi: number, bandIndex: number): void;
   finish_migration(): void;
   migration_total(): number;
+  priced_pairs(): number;
   commit_population(): void;
+  commit_farmers(): void;
   normalize_cohorts(): void;
 }
 
@@ -472,18 +474,20 @@ export interface PeopleKernelRuntime {
   deriveCapacity(): void;
   beginGrowth(dtMonths?: number): void;
   grow(): void;
-  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean, solve?: boolean): void;
+  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
   prepareMigration(): void;
   migrateSources(): void;
   debitMigration(): void;
   gatherMigration(): void;
   finishMigration(): void;
   commitPopulation(): void;
+  commitFarmers(): void;
   normalizeCohorts(): void;
   dispose(): void;
   births(): number;
   deaths(): number;
   migrationTotal(): number;
+  pricedPairs(): number;
 }
 
 type KernelFieldName =
@@ -671,10 +675,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.dispatchBands("growth");
   }
 
-  beginMigration(month: number, dtMonths = 1, growthPrepared = true, solve = false): void {
+  beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
     this.assertMemoryStable();
     this.syncActivePackages();
-    this.kernel.begin_migration(month, dtMonths, growthPrepared, solve);
+    this.kernel.begin_migration(month, dtMonths, growthPrepared);
   }
 
   prepareMigration(): void {
@@ -707,6 +711,12 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.kernel.commit_population();
   }
 
+  commitFarmers(): void {
+    this.assertMemoryStable();
+    this.syncActivePackages();
+    this.kernel.commit_farmers();
+  }
+
   normalizeCohorts(): void {
     this.assertMemoryStable();
     this.kernel.normalize_cohorts();
@@ -722,6 +732,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 
   migrationTotal(): number {
     return this.kernel.migration_total();
+  }
+
+  pricedPairs(): number {
+    return this.kernel.priced_pairs();
   }
 
   get barrierMilliseconds(): number {

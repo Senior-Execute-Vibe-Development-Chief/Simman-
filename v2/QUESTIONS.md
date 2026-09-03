@@ -1593,3 +1593,91 @@ Review corrections to the M1 build (all validated before merge):
     the same workflow. The shell's timeline reconstructs frames from the
     recorded arrivals and the passes' constants; it is a rendering, never
     state, and is not saved.
+
+41. **W6 landed: the base population stays (2026-09-03, owner: "now I
+    want YOU to implement this").** Implemented on the working branch
+    against `spec/handoffs/W6-foragers.md`; the handoff's status section
+    lists what was kept and what the measurements changed.
+
+    **The forager mobility, grounded.** The M2 value (1200 km²/yr) was a
+    v1 calibration the seed table had carried as `[REDERIVE]`. The
+    replacement follows the farmer value's own convention — mean squared
+    displacement per generation ÷ 4T — from the only forager population
+    with a published mating-range measurement I could read in full: the
+    Aka of the Central African Republic, at 0.017–0.031 people/km², inside
+    the sim's forager density band. Cavalli-Sforza & Hewlett (1982, *Ann.
+    Hum. Genet.* 46) report that the mean distance between the birthplaces
+    of mates equals the mean exploration range; Hewlett, van de Koppel &
+    Cavalli-Sforza (1982, *Man* 17) measure that range as negative-
+    exponential with mean 43 km (half-range 30; adult males 27.5–58.3 km
+    by locality, females 32.4). An exponential has ⟨d²⟩ = 2k². Counting
+    one parent's displacement as half the mating distance gives 925 km²
+    per generation and 9 km²/yr; counting the whole mating distance gives
+    3,698 km² and 37 km²/yr. The ledger carries the range and the value is
+    its median, 23 km²/yr — one and a half times the farmer value, not
+    eighty times it. Chosen from the sources before any run, as the spec
+    required. (MacDonald & Hewlett 1999 is a scanned image with no text
+    layer on the copy I could reach; Wijsman & Cavalli-Sforza 1984 and Fix
+    1999 are behind paywalls; none was used.)
+
+    **Room by group, two flows.** Foragers see forager room (the land's
+    forager capacity minus everyone there), farmers see the farmed
+    capacity of the package they carry minus everyone there; room below
+    the numerical floor is no room; each group splits by conductance × its
+    own room and hops its own share; a source none of whose neighbours has
+    room for a group is not priced for it (a superset flag per target,
+    so a skip never drops a flow that is not zero). Parity byte-exact in
+    three regimes at both grids.
+
+    **A second commit-path bug, caught by the same flat-field check.**
+    With movement every 84 months and growth every 12, a growth-only
+    firing existed for the first time, and it never committed the farmer
+    masses growth wrote — only the movement pass ever wrote them back, so
+    a year's farmer growth was lost while the people it belonged to were
+    kept, and the awake front fell behind the solve by 80 % in farmed
+    extent. Both kernels now commit farmers on a growth-only firing. The
+    check then agrees to 4.8 % in extent and 0.01 % in population.
+
+    **What the flood's removal did to the front.** On the dev solve arm
+    (17 s for the horizon), Balkans → Rhine runs at 1.08 km/yr against
+    1.04 with the flood (awake 1.05): inside the band, so the adoption
+    rate stays at 0.01 and the re-grounding clause was not needed. The
+    ignition cells reach half farmed about four centuries sooner (the
+    Levant −7971 against −7551; the Nile −7936; the Indus −7943; the
+    Yellow River −7201), and every European row moves 400–600 years
+    earlier (Balkans −4919, central Europe −3897, Rhine −3449, Cardial
+    coast −4065, inland Europe −4191 — that row now inside its window).
+    The Indus crosses its early grace line by 140 years, an independent
+    ignition inside the wheat range box (DECISIONS 26 g), manifested. The
+    first caged basin is the Nile delta at −5955 (W5: −6144). Population
+    at −5000 is 247 M (W5 solve 265 M): the same missing-mortality miss.
+
+    **The stride, both regimes.** Each group's hop bound (foragers on
+    peopled rows at 23 km²/yr, farmers on can-grow rows at 15, inside the
+    substepped bound) sits far above the cohort-ageing bound, so the
+    awake movement stride derives to 84 months at both grids: growth
+    fires yearly, movement every seven years, and most months are empty
+    ticks. The awake and solve regimes now differ only in the growth
+    cadence.
+
+    **Measurements (review runner, 4 cores; this afternoon's runner was
+    about a third slower than the morning's — the same target substrate
+    build took 52.5 s against 39 s — so cross-session numbers carry that).**
+    Awake, target, one 84-month cycle: 1,338 ms — growth 305 (seven
+    firings), movement 207 (one firing), conversion 195, capacity 140,
+    cohorts 52, technique 25, ledger 28 — a mean month of 16 ms against
+    163 before W6, a tenfold cut; the projected YD→1 CE is about 32 min
+    serial at the shipped grid against 5.3 h, and the 6,000 years after
+    the wake about 20 min against two hours. Dev: 0.8 ms a month against
+    2.2. A solve firing: 8.2 ms dev, 416–426 target (233 in the morning's
+    W5 measurement; two rooms per pair cost about a fifth more when every
+    pair is priced, the rest is the runner). Priced pairs at the opening:
+    3.07 M of 4.5 M (foragers have room everywhere at 35 % fill; the skip
+    earns its keep as the world fills). Parity 520 s locally with the
+    switch regime at dev only. Bench baselines re-anchored downward for
+    the tick rows (12 → 2 dev, 220 → 22 target) and upward for the solve
+    firing (8 → 11, 300 → 440) with the measurement attached.
+
+    **Not run:** the agreement arm and the target solve arm (`v2-long`).
+    The awake trajectory at the shipped grid is now a half-hour run
+    rather than five hours, which the long workflow can afford weekly.

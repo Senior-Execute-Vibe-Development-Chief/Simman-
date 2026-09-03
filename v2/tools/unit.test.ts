@@ -19,6 +19,7 @@ import {
   PEOPLE_CHILD_AGE_YEARS,
   PEOPLE_FARMED_MARKER_SHARE,
   PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+  PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
   PEOPLE_GROWTH_FORAGER_FACTOR,
   PEOPLE_GROWTH_STRIDE_MONTHS,
   PEOPLE_GROWTH_TECHNIQUE_GAIN,
@@ -239,6 +240,7 @@ async function main(): Promise<void> {
       PEOPLE_MIGRATION_MAX_SHARE / PEOPLE_ADOPTION_RATE_PER_YEAR,
       PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_CHILD_AGE_YEARS,
       PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS * smallestRow / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+      PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS * smallestRow / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
     );
     assert.equal(world.solveStride, Math.max(1, Math.floor(boundYears)) * MONTHS_PER_YEAR, "solve stride is not the bound minimum");
     assert.equal(world.phase, "solve", "a peopled world must open in the solve regime");
@@ -248,10 +250,11 @@ async function main(): Promise<void> {
     assert.equal(awake.phase, "awake", "a world whose epoch is the opening must open awake");
     assert.equal(awake.wakeStep, 0);
   }
-  // The hop invariant: in one solve step a farmed cell's farmers hop
+  // The two hop invariants (W6): in one firing a cell's farmers hop
   // PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR × dt / area of themselves (after
-  // growth), whatever the foragers beside them do; the foragers take the
-  // forager share of the stride. Both are the kernel's own shares.
+  // growth) and its foragers PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR × dt /
+  // area, each on its own weights; and a source with no room beside it for
+  // a group sends none of that group. Both are the kernel's own shares.
   const seedFarmers = (world: World, share: number): number => {
     const people = world as PeopleWorld;
     const cell = Math.floor(world.height / 2) * world.width + Math.floor(world.width / 2);
@@ -275,16 +278,23 @@ async function main(): Promise<void> {
     const farmers = people._farmerMigrationTotal[packed] ?? 0;
     const foragers = (people._migrationPopulation[packed] ?? 0) - farmers;
     const farmerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
-    const foragerShare = migrationShareForArea(area, world.solveStride);
+    const foragerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
     assert.ok(farmers > 0 && foragers > 0);
-    const mobile = people._migrationMobile[packed] ?? 0;
-    assert.equal(mobile, foragers * foragerShare + farmers * farmerShare, "the solve regime's mobile mass is not the weighted sum");
-    assert.equal(people._migrationOut[packed], mobile * area, "a solve firing's out is not the whole mobile mass");
-    const farmersMoved = (people._migrationOut[packed] ?? 0) * farmers * (people._migrationFarmerWeight[packed] ?? 0) / mobile;
-    const expected = farmers * area * farmerShare;
-    assert.ok(Math.abs(farmersMoved - expected) <= 1e-9 * expected, `farmers moved ${farmersMoved}, expected ${expected}`);
+    assert.equal(people._migrationOutFarmers[packed], farmers * area * farmerShare, "farmers did not hop their own share");
+    assert.equal(people._migrationOut[packed], foragers * area * foragerShare, "foragers did not hop their own share");
+    assert.ok((world.debug.pricedPairs ?? 0) > 0, "no pair was priced on an unfilled field");
     const balance = world.ledger.snapshot().people;
     assert.equal(balance?.sources.migration, balance?.sinks.migration);
+    // Fill every cell to its forager capacity: no room anywhere, so no
+    // source is priced and nothing moves — exactly, not approximately.
+    for (const full of people._landCells) world.people[full] = people._foragerCapacity[full] ?? 0;
+    const wheat = CROP_PACKAGES.find((pkg) => pkg.id === "wheat")!.id;
+    people.farmers[wheat]!.fill(0);
+    deriveTechniqueFromFarmers(people);
+    deriveCapacity(people);
+    runSteps(world, 1);
+    assert.equal(world.debug.pricedPairs, 0, "a full field still priced pairs");
+    assert.equal(world.debug.peopleMigration, 0, "a full field still moved people");
   }
   // The switch: a chosen epoch wakes the world at exactly that year; the
   // solve steps before it match a never-waking world's field for field,
@@ -304,7 +314,7 @@ async function main(): Promise<void> {
     assert.equal(chosen.step, stepFromYear(epoch), "the world did not wake at exactly its epoch");
     assert.equal(chosen.phase, "awake");
     assert.equal(chosen.wakeStep, stepFromYear(epoch));
-    assert.equal(chosen.schedule.find((row) => row.name === "people.migration")?.stride, 1, "migration is not monthly after the wake");
+    assert.equal(chosen.schedule.find((row) => row.name === "people.migration")?.stride, chosen.solveStride, "movement is not on its derived stride after the wake");
     assert.ok(chosen.events.some((event) => event.kind === "wake"));
     const before = chosen.step;
     runSteps(chosen, 1);
@@ -421,8 +431,13 @@ async function main(): Promise<void> {
   assert.equal(named(targetWorld, "people.growth")?.stride, PEOPLE_GROWTH_STRIDE_MONTHS);
   // Unpeopled poles are excluded from derivation; a world with every row
   // treated as peopled (no substrate mask) must pick 1, matching target.
-  assert.equal(named(targetWorld, "people.migration")?.stride, 1);
-  assert.equal(named(devWorld, "people.migration")?.stride, 1);
+  // W6: the awake movement stride is derived per group like the solve
+  // stride and may exceed a year; on a world without a substrate every row
+  // counts as peopled and no row can grow, so only the forager bound and
+  // the pass bounds apply.
+  assert.equal(named(targetWorld, "people.migration")?.stride, targetWorld.solveStride);
+  assert.equal(named(devWorld, "people.migration")?.stride, devWorld.solveStride);
+  assert.equal(targetWorld.solveStride % PEOPLE_GROWTH_STRIDE_MONTHS, 0);
   const forced = new World({
     seed: 1,
     grid: "target",

@@ -73,13 +73,19 @@ export interface PeopleWorld extends World {
   /** Rendering state for the timeline (never saved or hashed): first farmed step and package per land cell. */
   _arrivalStep: Int32Array;
   _arrivalPackage: Uint8Array;
-  /** Per-cell mobile mass (foragers × forager weight + farmers × farmer weight), the farmer weight, and the farmer share frozen for the firing's flow. */
-  _migrationMobile: Float64Array;
+  /** Two flows (W6): per source the farmers' outflow, their weight sum and ratio (the foragers' are `_migrationOut`, `_migrationWeight`, `_migrationRatio`). */
+  _migrationOutFarmers: Float64Array;
   _migrationFarmerWeight: Float64Array;
-  _migrationFarmerShare: Float64Array;
-  /** Per-row farmer hop share for a solve firing (the forager share is `_migrationShareRow`). */
+  _migrationFarmerRatio: Float64Array;
+  /** Per-row farmer hop share for the firing (the forager share is `_migrationShareRow`). */
   _migrationFarmerShareRow: Float64Array;
-  /** Per source slot conductance × pair spare (source phase), per source out ÷ weight, per source cohort fractions. */
+  /** Per cell: whether foragers, and whether the farmers of any active package, could enter it this firing. */
+  _roomForagers: Uint8Array;
+  _roomFarmers: Uint8Array;
+  /** Per-band farmer outflow and per-group received sums (the forager out is `_migrationByBand`). */
+  _migrationFarmerByBand: Float64Array;
+  _migrationFarmerReceivedByBand: Float64Array;
+  /** Per source slot, two weights (forager, farmer) = conductance × room, written in the source phase and read back through the reverse slot; per source out ÷ weight; per source cohort fractions. */
   _pairWeight: Float64Array;
   _migrationRatio: Float64Array;
   _childrenFraction: Float64Array;

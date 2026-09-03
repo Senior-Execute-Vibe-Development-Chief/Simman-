@@ -58,6 +58,8 @@ export interface WorldDebug {
   peopleBirths: number;
   peopleDeaths: number;
   peopleMigration: number;
+  /** Neighbour pairs priced by the last movement firing (W6: a full region prices none). */
+  pricedPairs: number;
 }
 
 /** The append-only event log: hearth ignitions and the wake, the first world content it holds. */
@@ -131,6 +133,7 @@ export class World {
       peopleBirths: 0,
       peopleDeaths: 0,
       peopleMigration: 0,
+      pricedPairs: 0,
     };
     this.cellAreaKm2 = new Float64Array(this.N);
     this.capField = new Float64Array(this.N);
@@ -186,11 +189,14 @@ export function stepWorld(world: World): void {
     evaluateWake(world);
     return;
   }
-  if (world.substrate) stepPeople(world);
+  // The recorder reads committed state; a month in which nothing fired
+  // (most months, once movement runs on its own multi-year stride — W6)
+  // costs nothing.
+  const committed = world.substrate ? stepPeople(world) : false;
   world.step++;
   world.calendarMonth = nextMonth(world.calendarMonth);
   world.debug.ticks++;
-  if (world.substrate) recordArrivals(world);
+  if (committed) recordArrivals(world);
 }
 
 export function runSteps(world: World, steps: number): void {

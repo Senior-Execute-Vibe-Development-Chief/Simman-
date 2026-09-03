@@ -10,7 +10,7 @@ import {
   PEOPLE_GROWTH_FORAGER_FACTOR,
   PEOPLE_GROWTH_STRIDE_MONTHS,
   PEOPLE_GROWTH_TECHNIQUE_GAIN,
-  PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR,
+  PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
   PEOPLE_MIGRATION_MAX_SHARE,
   PEOPLE_MIGRATION_MAX_SUBSTEPS,
   PEOPLE_R_GROWTH_PER_YEAR,
@@ -95,7 +95,7 @@ function cellAreaAtRow(width: number, height: number, row: number): number {
 export function migrationRawShareForArea(
   area: number,
   dtMonths: number,
-  diffusivity = PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR,
+  diffusivity = PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
 ): number {
   const safeArea = Math.max(1, area);
   return diffusivity * dtMonths / MONTHS_PER_YEAR / safeArea;
@@ -108,40 +108,40 @@ function rowArea(world: World, row: number): number {
     : cellAreaAtRow(world.width, world.height, row);
 }
 
-function derivedMigrationStride(world: World, growthStride: number): number {
-  const override = world.config.peopleMigrationStride;
-  if (override !== undefined) return positiveInteger(override, 1);
-
-  const divisors: number[] = [];
-  for (let stride = 1; stride <= growthStride; stride++) {
-    if (growthStride % stride === 0) divisors.push(stride);
-  }
-  divisors.sort((left, right) => right - left);
+/** The rows anyone lives on: the rows foragers can be sources from. */
+function peopledRows(world: World): boolean[] {
+  const rows: boolean[] = new Array<boolean>(world.height).fill(false);
   const peopled = world.substrate
     ? (world as unknown as { _peopledMask?: Uint8Array })._peopledMask
     : undefined;
-  for (const stride of divisors) {
-    let valid = true;
-    for (let row = 0; row < world.height; row++) {
-      let rowIsPeopled = peopled === undefined;
-      if (peopled) {
-        const first = row * world.width;
-        const last = first + world.width;
-        for (let cell = first; cell < last; cell++) {
-          if (peopled[cell] === 1) {
-            rowIsPeopled = true;
-            break;
-          }
-        }
-      }
-      if (rowIsPeopled && migrationRawShareForArea(rowArea(world, row), stride) > PEOPLE_MIGRATION_MAX_SHARE) {
-        valid = false;
+  if (!peopled) return rows.fill(true);
+  for (let row = 0; row < world.height; row++) {
+    const first = row * world.width;
+    const last = first + world.width;
+    for (let cell = first; cell < last; cell++) {
+      if (peopled[cell] === 1) {
+        rows[row] = true;
         break;
       }
     }
-    if (valid) return stride;
   }
-  return 1;
+  return rows;
+}
+
+/**
+ * The movement stride of the AWAKE regime (W6): each group's hop share on
+ * the rows it can be a source from, inside the bound the hop kernel
+ * honours without capping, together with the growth, adoption and
+ * cohort-ageing bounds the solve stride already carries — the same
+ * derivation, so the two regimes now differ only in the growth cadence.
+ * A multiple of the growth stride, so a movement firing always follows a
+ * growth firing in the same month; may exceed a year. Never hand-set.
+ */
+function derivedMigrationStride(world: World, growthStride: number): number {
+  const override = world.config.peopleMigrationStride;
+  if (override !== undefined) return positiveInteger(override, 1);
+  const solve = resolveSolveStride(world);
+  return Math.max(growthStride, Math.floor(solve / growthStride) * growthStride);
 }
 
 function scheduleEntry(world: World, name: string, stride: number): PassSchedule {
@@ -197,9 +197,10 @@ function canGrowRows(world: World): boolean[] {
  * The SOLVE stride: the largest whole-year multiple of 12 months keeping
  * every explicit per-firing fraction the passes take inside the bound the
  * kernel honours — farmer growth, adoption and cohort ageing inside the
- * diffusion bound itself, and the farmer hop share on every row a package
- * can grow on inside the bound times the substeps the hop kernel takes
- * before it caps (a firing it can honour exactly by substepping). The bare
+ * diffusion bound itself, and each group's hop share on every row it can
+ * be a source from (farmers on can-grow rows, foragers on peopled rows)
+ * inside the bound times the substeps the hop kernel takes before it caps
+ * (a firing it can honour exactly by substepping). The bare
  * bound would let one near-polar can-grow cell, admitted by a permissive
  * crop bell, force a yearly stride at the shipped grid (QUESTIONS #40).
  * Derived from the bounds the passes already carry, printed in provenance,
@@ -216,13 +217,21 @@ export function resolveSolveStride(world: World): number {
     PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_CHILD_AGE_YEARS,
   );
   const hopBound = PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS;
-  const rows = canGrowRows(world);
+  const farmerRows = canGrowRows(world);
+  const foragerRows = peopledRows(world);
   for (let row = 0; row < world.height; row++) {
-    if (!rows[row]) continue;
-    years = Math.min(
-      years,
-      hopBound * rowArea(world, row) / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
-    );
+    if (farmerRows[row]) {
+      years = Math.min(
+        years,
+        hopBound * rowArea(world, row) / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+      );
+    }
+    if (foragerRows[row]) {
+      years = Math.min(
+        years,
+        hopBound * rowArea(world, row) / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+      );
+    }
   }
   return Math.max(1, Math.floor(years)) * MONTHS_PER_YEAR;
 }

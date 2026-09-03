@@ -241,3 +241,34 @@ looking at the front. No touching growth, conversion, the hearth law, the
 wake trigger, the solve stride's bounds, or the bad-year question for
 forager land (that is M3b's, and it goes to the owner as a ruling there).
 No tolerance edits. No long-arm runs.
+
+---
+
+## Status (implemented on the working branch, 2026-09-03)
+
+Implemented in the spec session itself (owner: "now I want YOU to
+implement this"); reviewed against this document as if it were a PR.
+QUESTIONS #41 carries the findings and measurements.
+
+**Delivered as specified:** deliverable 1 (room by group, the floor), 2
+(two flows with two weights per pair, per-group remainders, the two hop
+invariants), 3 (`PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR` = 23, grounded on
+the Aka mating and exploration ranges of Cavalli-Sforza & Hewlett 1982
+and Hewlett, van de Koppel & Cavalli-Sforza 1982 by the farmer value's
+convention, the derivation range 9–37 carried in the ledger and the value
+its median, chosen before any run; the M2 diffusivity and the ratio
+retired), 4 (each group's bound in the stride derivation; the awake
+movement stride a multiple of the growth stride that may exceed a year,
+84 months at both grids; the skip with a superset room flag per target;
+the recorder on commit firings), 5 (the front stayed inside the band at
+1.08 km/yr, so the adoption rate did not move), 6 (parity in three
+regimes; the unit checks; the dev solve arm re-measured and manifested;
+the bench over one movement cycle, re-baselined downward for the tick
+rows; the parity CI job's switch regime at dev only).
+
+**Found on the way (QUESTIONS #41):** a growth-only firing — new with a
+movement stride above the growth stride — never committed the farmer
+masses growth wrote; both kernels now do. The flat-field check caught it
+as an 80 % gap in farmed extent between the regimes.
+
+**Not run:** the agreement arm and the target solve arm (`v2-long`).
