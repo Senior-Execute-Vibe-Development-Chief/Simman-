@@ -75,7 +75,8 @@ function comparePeopleState(reference: World, candidate: World, grid: GridPreset
     Buffer.from((reference as PeopleWorld)._peopledMask),
     `${grid} peopled mask diverged at tick ${step}`,
   );
-  assert.equal(hashWorld(candidate), hashWorld(reference), `${grid} hash diverged at tick ${step}`);
+  // Every field is compared byte for byte above; the world hash (config,
+  // schedule, hearths, accrual) is compared once per pair at the end.
 }
 
 // Every native range ignites on the first conversion pass, so the farmer
@@ -107,6 +108,7 @@ async function runParity(grid: GridPreset, steps: number): Promise<void> {
     comparePeopleState(reference, wasm, grid, step);
   }
   const serialHash = hashWorld(wasm);
+  assert.equal(serialHash, hashWorld(reference), `${grid} serial hash diverged after ${steps} ticks`);
   (wasm as PeopleWorld)._wasmPeopleKernel?.dispose();
 
   const threadedReference = makeWorld(grid, substrate, { peopleKernel: "ts" });
@@ -125,6 +127,11 @@ async function runParity(grid: GridPreset, steps: number): Promise<void> {
     runSteps(threadedOne, 1);
     comparePeopleState(threadedReference, threadedOne, grid, step);
   }
+  assert.equal(
+    hashWorld(threadedOne),
+    hashWorld(threadedReference),
+    `${grid} 1-worker hash diverged after ${steps} ticks`,
+  );
   (threadedOne as PeopleWorld)._wasmPeopleKernel?.dispose();
 
   const hashes: Record<number, string> = { 1: serialHash };

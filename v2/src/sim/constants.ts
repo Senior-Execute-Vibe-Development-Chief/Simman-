@@ -62,10 +62,11 @@ export const M0_DEFAULT_SEED = 42042; // spec/09-constants-ledger.md §Units —
 export const HASH_NUMBER_BYTES = 8; // spec/09-constants-ledger.md §Units — M0 world identity hash
 
 // FNV-1a 64-bit-ish world hash parameters.
-export const HASH_OFFSET_BASIS = 14695981039346656037n; // spec/09-constants-ledger.md §Units — M0 world identity hash
-export const HASH_PRIME = 1099511628211n; // spec/09-constants-ledger.md §Units — M0 world identity hash
-export const HASH_MASK = 18446744073709551615n; // spec/09-constants-ledger.md §Units — M0 world identity hash
-export const HASH_HEX_WIDTH = 16; // spec/09-constants-ledger.md §Units — M0 world identity hash
+export const HASH_OFFSET_BASIS = 2166136261; // spec/09-constants-ledger.md §Units — world identity hash, 32-bit FNV-1a offset basis
+export const HASH_PRIME = 16777619; // spec/09-constants-ledger.md §Units — world identity hash, 32-bit FNV-1a prime
+export const HASH_LANE_SEED = 1013904223; // spec/09-constants-ledger.md §Units — world identity hash, second-lane seed (Numerical Recipes LCG increment)
+export const HASH_WORD_BYTES = 4; // spec/09-constants-ledger.md §Units — world identity hash consumes 32-bit words
+export const HASH_HEX_WIDTH = 8; // spec/09-constants-ledger.md §Units — hex digits per 32-bit hash lane
 export const HASH_RADIX = 16; // spec/09-constants-ledger.md §Units — M0 world identity hash
 export const BASE64_CHUNK_SIZE = 32768; // spec/09-constants-ledger.md §Units — M0 persistence envelope
 

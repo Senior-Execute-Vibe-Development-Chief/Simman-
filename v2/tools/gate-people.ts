@@ -380,13 +380,21 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
 // (two 3000-year runs, ~1 h on a 4-core box) joins under GATE_PEOPLE_LONG=1
 // or GATE_PEOPLE_TARGET=1 — the W4 review ran it once and recorded the
 // deltas (QUESTIONS #36), the per-commit gate stays minutes.
+// The trajectory and stride arms simulate 3000 years (two dev runs, ~4 min
+// on a CI runner) and are not part of the per-commit gate: nothing that
+// runs the simulation is (owner directive, 2026-09-03). They run under
+// GATE_PEOPLE_TRAJECTORY=1 in the long workflow and on request.
+const trajectoryArm = process.env.GATE_PEOPLE_TRAJECTORY === "1" || longArm
+  || process.env.GATE_PEOPLE_TARGET === "1";
 const trajectoryGrids = longArm || process.env.GATE_PEOPLE_TARGET === "1"
   ? (["dev", "target"] as const)
   : (["dev"] as const);
-for (const grid of trajectoryGrids) {
-  const shipped = collectTrajectory(grid);
-  runCadenceArm(grid, shipped);
-  runTrajectory(grid, shipped);
+if (trajectoryArm) {
+  for (const grid of trajectoryGrids) {
+    const shipped = collectTrajectory(grid);
+    runCadenceArm(grid, shipped);
+    runTrajectory(grid, shipped);
+  }
 }
 
 const unacknowledged = failures.filter((id) => !acknowledged.has(id));
@@ -401,8 +409,8 @@ assert.deepEqual(stale, [], `stale people known-misses: ${stale.join(", ")}`);
 
 console.log(JSON.stringify({
   gate: "pass",
-  horizon: longArm ? "YD-to-1CE-full" : "YD-plus-3000y-trajectory",
-  mode: longArm ? "long-dev-arm" : "fast-mechanical-plus-trajectory",
+  horizon: longArm ? "YD-to-1CE-full" : trajectoryArm ? "YD-plus-3000y-trajectory" : "mechanical-12-ticks",
+  mode: longArm ? "long-dev-arm" : trajectoryArm ? "fast-mechanical-plus-trajectory" : "fast-mechanical",
   populationCurve: populationCurve.source,
   farmingArrivals: farmingArrivals.source,
   crossGridInitialRelativeDifference: initialParity,

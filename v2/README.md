@@ -28,16 +28,20 @@ npm run browser    # Node + Chromium + Firefox + WebKit identity checks
 npm run dev        # Vite development server
 ```
 
-`npm run gate:people` runs the people arm directly. Its opening-window checks
-run at both grids and every run adds a ~3000-year dev trajectory arm (first
-hearth ignitions, curve checkpoints inside the window). The full YD→1 CE
-dev and shipped target batteries — population checkpoint bands, farming arrival
-order and timing, density ordering — run with
-`GATE_PEOPLE_LONG=1 npm run gate:people`; misses are acknowledged in
-`data/reality/known-misses-people.json` or fail the gate. The default gate
-also runs a cadence stride arm (all-strides-1 vs shipped schedule) at the
-dev 3000-year horizon. The target-grid long battery is the primary
-verdict; the dev battery is retained for comparison.
+`npm run gate:people` runs the people arm directly. Per commit it is
+mechanical: the opening-window checks at both grids over twelve ticks
+(seconds, plus the substrate builds). **Nothing that simulates history runs
+per commit** (owner directive, 2026-09-03). The 3000-year dev trajectory
+arm and the cadence stride arm run with `GATE_PEOPLE_TRAJECTORY=1`; the
+full YD→1 CE dev and shipped-grid batteries — population checkpoint bands,
+farming arrival order and timing, density ordering — with
+`GATE_PEOPLE_LONG=1`. Misses are acknowledged in
+`data/reality/known-misses-people.json` or fail the gate. The bench's
+per-phase cadence table (six configurations per grid) runs with
+`BENCH_CADENCE=1`; `bench -- --check` alone is the ratchet. In CI the
+mechanical checks run as four parallel jobs on every push
+(`.github/workflows/v2-ci.yml`); the long arms and the full browser matrix
+are `v2-long.yml`, on request or weekly.
 
 The W1 water bake is reproducible with `npx tsx tools/build-waterdata.mts
 <etopo.nc> <HydroLAKES_polys_v10.shp>` when refreshing the committed

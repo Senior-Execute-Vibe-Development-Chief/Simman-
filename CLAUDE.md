@@ -7,6 +7,13 @@ Nothing is scripted; every empire on the map is the output of local rules. Read
 `npm run validate` and `npm run resgate` tools remain available for manual
 diagnostics; v2 changes use the acceptance suite in `v2/`.
 
+**Never run the simulation as part of the development loop** (owner directive
+2026-09-03). Per-commit CI and local verification are mechanical: lint, unit,
+smoke, parity, the 12-tick gates, the bench ratchet, the oracle. Anything that
+simulates history — the 3000-year trajectory arms, the cadence table, the full
+YD→1 CE run — is the `v2-long` workflow on request, never a step in a review or
+a push. A finding that needs a long arm is recorded as needing one, not run.
+
 If you ADD STATE to the world, also run `npm run coverage`: it proves, by
 perturbation rather than by name-matching, that every measurable property is
 reachable from `collect()`. New state is measured by default — the exclusion

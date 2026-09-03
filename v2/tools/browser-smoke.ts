@@ -55,11 +55,16 @@ async function main(): Promise<void> {
   const server = startServer();
   try {
     await waitForServer();
-    const engines: ReadonlyArray<readonly [string, BrowserType]> = [
+    // BROWSER_SMOKE_BROWSERS=chromium keeps the per-commit job to one engine;
+    // the full matrix runs in the long workflow.
+    const wanted = (process.env.BROWSER_SMOKE_BROWSERS ?? "chromium,firefox,webkit")
+      .toLowerCase().split(",").map((name) => name.trim());
+    const engines: ReadonlyArray<readonly [string, BrowserType]> = ([
       ["Chromium", chromium],
       ["Firefox", firefox],
       ["WebKit", webkit],
-    ];
+    ] as const).filter(([name]) => wanted.includes(name.toLowerCase()));
+    assert.ok(engines.length > 0, "BROWSER_SMOKE_BROWSERS names no known engine");
     for (const [name, type] of engines) {
       const result = await browserResult(type);
       assert.deepEqual(result, nodeResult, `${name} diverged from Node`);

@@ -3,11 +3,12 @@ import {
   DEV_GRID_HEIGHT,
   DEV_GRID_WIDTH,
   HASH_HEX_WIDTH,
-  HASH_MASK,
+  HASH_LANE_SEED,
   HASH_NUMBER_BYTES,
   HASH_RADIX,
   HASH_OFFSET_BASIS,
   HASH_PRIME,
+  HASH_WORD_BYTES,
   TARGET_GRID_HEIGHT,
   TARGET_GRID_WIDTH,
 } from "./constants";
@@ -139,41 +140,65 @@ export function stableStringify(value: unknown): string {
 
 const hashNumberBuffer = new ArrayBuffer(HASH_NUMBER_BYTES);
 const hashNumberView = new DataView(hashNumberBuffer);
+const hashNumberBytes = new Uint8Array(hashNumberBuffer);
 
-function hashByte(hash: bigint, value: number): bigint {
-  return ((hash ^ BigInt(value)) * HASH_PRIME) & HASH_MASK;
+/**
+ * Two 32-bit FNV-1a lanes over 32-bit words, carried as a pair of uint32s.
+ * The previous identity was 64-bit FNV-1a over every byte in BigInt
+ * arithmetic — 5.5 s per target-grid hash, which made the parity harness
+ * spend nine of its thirteen CI minutes hashing (review, 2026-09-03). Word
+ * lanes in Math.imul run the same walk in tens of milliseconds. Typed-array
+ * bytes are consumed in platform order, which is little-endian on every
+ * supported host and inside wasm.
+ */
+interface HashState { a: number; b: number; }
+
+function hashWord(state: HashState, word: number): void {
+  state.a = Math.imul(state.a ^ word, HASH_PRIME) >>> 0;
+  state.b = Math.imul(state.b ^ Math.imul(word, HASH_LANE_SEED), HASH_PRIME) >>> 0;
 }
 
-function hashText(hash: bigint, text: string): bigint {
-  let result = hash;
-  for (let index = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index);
-    result = hashByte(result, code & BYTE_MASK);
-    result = hashByte(result, code >>> 8);
+function hashByte(state: HashState, value: number): void {
+  hashWord(state, value & BYTE_MASK);
+}
+
+function hashBytes(state: HashState, bytes: Uint8Array): void {
+  const words = Math.floor(bytes.byteLength / HASH_WORD_BYTES);
+  if (bytes.byteOffset % HASH_WORD_BYTES === 0) {
+    const view = new Uint32Array(bytes.buffer, bytes.byteOffset, words);
+    for (let index = 0; index < words; index++) hashWord(state, view[index] ?? 0);
+  } else {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let index = 0; index < words; index++) {
+      hashWord(state, view.getUint32(index * HASH_WORD_BYTES, true));
+    }
   }
-  return result;
+  for (let index = words * HASH_WORD_BYTES; index < bytes.byteLength; index++) {
+    hashByte(state, bytes[index] ?? 0);
+  }
 }
 
-function hashNumber(hash: bigint, value: number): bigint {
+function hashText(state: HashState, text: string): void {
+  for (let index = 0; index < text.length; index++) hashWord(state, text.charCodeAt(index));
+}
+
+function hashNumber(state: HashState, value: number): void {
   hashNumberView.setFloat64(0, value, true);
-  let result = hash;
-  for (let index = 0; index < hashNumberView.byteLength; index++) {
-    result = hashByte(result, hashNumberView.getUint8(index));
-  }
-  return result;
+  hashBytes(state, hashNumberBytes);
 }
 
-function hashField(hash: bigint, field: NumericField): bigint {
-  let result = hash;
-  for (let index = 0; index < field.length; index++) {
-    result = hashNumber(result, field[index] ?? 0);
-  }
-  return result;
+function hashField(state: HashState, field: NumericField): void {
+  hashBytes(state, new Uint8Array(field.buffer, field.byteOffset, field.byteLength));
+}
+
+function hashHex(state: HashState): string {
+  return state.a.toString(HASH_RADIX).padStart(HASH_HEX_WIDTH, "0")
+    + state.b.toString(HASH_RADIX).padStart(HASH_HEX_WIDTH, "0");
 }
 
 /** Stable 64-bit FNV-1a identity over config, step, and every declared field. */
 export function hashWorld(world: World): string {
-  let hash = HASH_OFFSET_BASIS;
+  const hash: HashState = { a: HASH_OFFSET_BASIS, b: HASH_OFFSET_BASIS ^ HASH_LANE_SEED };
   // Kernel selection and its dispatch width are execution details, not world
   // state. Excluding them makes the TS oracle and the wasm drop-in share one
   // identity while preserving every physical/configuration input.
@@ -183,11 +208,11 @@ export function hashWorld(world: World): string {
         key !== "peopleKernel" && key !== "peopleWorkers" && key !== "peopleThreads"
       )),
   );
-  hash = hashText(hash, stableStringify(identityConfig));
-  hash = hashText(hash, stableStringify({ schedule: world.schedule }));
-  hash = hashNumber(hash, world.step);
-  hash = hashNumber(hash, world.calendarMonth);
-  hash = hashText(hash, stableStringify({
+  hashText(hash, stableStringify(identityConfig));
+  hashText(hash, stableStringify({ schedule: world.schedule }));
+  hashNumber(hash, world.step);
+  hashNumber(hash, world.calendarMonth);
+  hashText(hash, stableStringify({
     peopleInitialized: world.peopleInitialized,
     hearths: world.hearths,
   }));
@@ -198,24 +223,24 @@ export function hashWorld(world: World): string {
   for (const packageId of Object.keys(peopleState.farmers ?? {}).sort()) {
     const field = peopleState.farmers?.[packageId];
     if (!field) continue;
-    hash = hashText(hash, `farmers.${packageId}`);
-    hash = hashNumber(hash, field.length);
-    hash = hashField(hash, field);
+    hashText(hash, `farmers.${packageId}`);
+    hashNumber(hash, field.length);
+    hashField(hash, field);
   }
   const hearthYears = (world as unknown as { _hearthYears?: readonly Float64Array[] })._hearthYears ?? [];
   hearthYears.forEach((years, index) => {
-    hash = hashText(hash, `hearthYears.${index}`);
-    hash = hashNumber(hash, years.length);
-    hash = hashField(hash, years);
+    hashText(hash, `hearthYears.${index}`);
+    hashNumber(hash, years.length);
+    hashField(hash, years);
   });
   if (peopleState._peopledMask) {
-    hash = hashText(hash, "peopledMask");
-    for (const value of peopleState._peopledMask) hash = hashByte(hash, value);
+    hashText(hash, "peopledMask");
+    hashBytes(hash, peopleState._peopledMask);
   }
   for (const { definition, field } of fieldEntries(world as unknown as Record<string, unknown>)) {
-    hash = hashText(hash, definition.name);
-    hash = hashNumber(hash, field.length);
-    hash = hashField(hash, field);
+    hashText(hash, definition.name);
+    hashNumber(hash, field.length);
+    hashField(hash, field);
   }
-  return hash.toString(HASH_RADIX).padStart(HASH_HEX_WIDTH, "0");
+  return hashHex(hash);
 }

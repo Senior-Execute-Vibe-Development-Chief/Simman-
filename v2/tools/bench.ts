@@ -153,7 +153,11 @@ async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> 
 
 if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 const rows = [await benchmark("dev"), await benchmark("target")];
-const cadence = [await cadenceBench("dev"), await cadenceBench("target")];
+// The cadence table (six configurations per grid) is the review's
+// per-phase measurement, not the per-commit ratchet; BENCH_CADENCE=1.
+const cadence = process.env.BENCH_CADENCE === "1"
+  ? [await cadenceBench("dev"), await cadenceBench("target")]
+  : [];
 if (process.argv.includes("--check")) {
   const baselines = JSON.parse(
     readFileSync(new URL("../bench-baselines.json", import.meta.url), "utf8"),

@@ -19,6 +19,7 @@ Rows below are the seed set, inherited from v1's audited registry
 | FOOD_UNIT | 1 t grain | |
 | RATION | ~1 t/person/year equivalent (v1: 0.003 u/tick·su) `[REDERIVE at v2 tick]` | subsistence flow |
 | TICK | `[DERIVE]` (v1: 0.25 y) | one tick's span in years |
+| HASH_OFFSET_BASIS / HASH_PRIME | 2166136261 / 16777619 | world identity hash: 32-bit FNV-1a over 32-bit words, two lanes (the second seeded with HASH_LANE_SEED 1013904223, the Numerical Recipes LCG increment), 16 hex digits. Replaced the byte-wise 64-bit BigInt FNV-1a (5.5 s per target hash) on 2026-09-03; identity strings before that date are not comparable |
 
 ## Travel & freight (03)
 

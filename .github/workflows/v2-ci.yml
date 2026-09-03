@@ -1,5 +1,11 @@
 name: Simman v2 M2
 
+# Per-commit CI is mechanical only: nothing here simulates history (owner
+# directive, 2026-09-03). The 3000-year trajectory gate, the cadence bench
+# table and the browser matrix beyond Chromium live in v2-long.yml, run on
+# request. The three Node jobs run in parallel so the wall time is the
+# longest of them, not their sum.
+
 on:
   push:
     paths:
@@ -14,9 +20,12 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: never
+
 jobs:
-  node:
-    name: Node gates
+  checks:
+    name: Lint, unit, smoke
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,17 +37,21 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: v2/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            v2/rust/router
+            v2/rust/people
       - run: npm ci
       - run: rustup target add wasm32-unknown-unknown
       - run: npm run lint
-      - run: npm test
-      - run: npm run gate
-      - run: npm run bench -- --check
-      - run: npm run oracle
+      - run: npm run wasm:build
+      - run: npx tsx tools/unit.test.ts
+      - run: npx tsx tools/smoke.ts
       - run: npm run build
 
-  browsers:
-    name: Chromium, Firefox, WebKit
+  parity:
+    name: Kernel parity
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,7 +63,62 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: v2/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            v2/rust/router
+            v2/rust/people
       - run: npm ci
       - run: rustup target add wasm32-unknown-unknown
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm run browser
+      - run: npm run wasm:build
+      - run: npx tsx tools/kernel-parity.ts
+
+  gates:
+    name: Gates, bench ratchet, oracle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: v2/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            v2/rust/router
+            v2/rust/people
+      - run: npm ci
+      - run: rustup target add wasm32-unknown-unknown
+      - run: npm run wasm:build
+      - run: npx tsx tools/gate-travel.ts
+      - run: npx tsx tools/gate-people.ts
+      - run: npx tsx tools/bench.ts --check
+      - run: npx tsx tools/worldgen-oracle.ts
+
+  browser:
+    name: Chromium
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: v2/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            v2/rust/router
+            v2/rust/people
+      - run: npm ci
+      - run: rustup target add wasm32-unknown-unknown
+      - run: npx playwright install --with-deps chromium
+      - run: npm run wasm:build
+      - run: BROWSER_SMOKE_BROWSERS=chromium npx tsx tools/browser-smoke.ts

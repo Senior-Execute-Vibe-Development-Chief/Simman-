@@ -1320,3 +1320,43 @@ Review corrections to the M1 build (all validated before merge):
     the next packed-and-banded candidate. `bench -- --check` passes under
     the 264 ms serial cap (row: 165.6 cold); the baseline is not
     re-anchored. The dev tick is 0.3 ms shipped.
+
+## Development-loop findings
+
+38. **Why every push cost twenty minutes, and the fix (2026-09-03, owner:
+    "figure out why every single commit, merge or push on this repo takes
+    upwards of 20 minutes").** The critical path was one CI job, "Node
+    gates", running everything in series on one runner: 21.5 min on the
+    last green run. Its step times: `npm test` 13.1 min, `npm run gate`
+    4.5 min, `bench --check` 2.2 min, oracle 1.2 min, lint, build and
+    setup under a minute together. Inside `npm test`, the parity harness
+    hashed both worlds after every tick — and `hashWorld` was a byte-wise
+    64-bit FNV in BigInt arithmetic, 5.5 s per target-grid call — so the
+    target arm spent about nine minutes hashing to compare what it had
+    already compared byte for byte. The gate spent four minutes on the
+    3000-year trajectory and stride arms, which are simulation runs. The
+    bench's cadence table was twelve configurations of twelve ticks with
+    six target substrate builds along the way.
+
+    Changes: the world hash is two 32-bit FNV-1a lanes over 32-bit words
+    (target 5.5 s → 0.2 s, dev 116 ms → 7 ms; identity strings before
+    this date are not comparable); the parity harness hashes once per
+    pair; the trajectory and stride arms run only under
+    `GATE_PEOPLE_TRAJECTORY=1` and the cadence table under
+    `BENCH_CADENCE=1`, both in the new on-request `v2-long` workflow
+    together with the Firefox/WebKit matrix; per-commit CI is four parallel
+    jobs (lint+unit+smoke+build, parity, gates+ratchet+oracle, Chromium)
+    with the cargo cache kept between runs. Nothing that simulates history
+    runs per commit; that is now a rule in CLAUDE.md.
+
+    Local, this runner, after: unit 3 s, smoke 25 s, parity 165 s,
+    mechanical people gate 51 s, bench ratchet 62 s — 5.1 min in series
+    where the same tools took 21 min on CI. CI wall time after:
+    {{CI_AFTER}}.
+
+    What is left on the path is the target substrate build, about 41 s per
+    tool and rebuilt by every tool (parity, smoke, both gates, bench,
+    oracle), and world creation at the target grid, 12 s. A content-keyed
+    on-disk substrate cache would take both to under a second locally; in
+    CI the restore of a ~400 MB artefact costs about what the build does,
+    so it is a local-loop gain first.
