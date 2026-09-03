@@ -55,7 +55,7 @@
       "seasonMinimumMonths": 4,
       "storability": 0.9,
       "yield": 0.85,
-      "domLagY": 2000,
+      "domLagY": 2500,
       "color": [196, 170, 110]
     },
     {

@@ -1,72 +1,50 @@
 {
-  "source": "Crop-wild-relative distributions compiled from archaeobotanical and biogeographic range syntheses.",
-  "format": "longitude/latitude bounding boxes; bake tool rasterizes these data to the requested grid.",
+  "source": "Dense-stand habitat of each package's wild progenitors — the belts where the wild plant forms harvestable stands, not its whole botanical distribution (W7). Boxes are longitude/latitude [minLon, maxLon, minLat, maxLat]; the bake tool rasterizes them at the substrate grid. Sporadic or segetal occurrences outside these belts (wild einkorn in the Balkans and Crimea, wild barley across Iran and Central Asia, perennial wild rice through monsoon Asia, wild sorghum across eastern and southern Africa) are excluded on the sources' own distinction between massive stands and scattered plants; those regions are reached by the spread, which is the reality check on that reading.",
   "ranges": [
     {
       "packageId": "wheat",
-      "boxes": [
-        [30, 50, 27, 42],
-        [45, 65, 25, 40],
-        [65, 78, 25, 38]
-      ]
+      "source": "Harlan & Zohary 1966, Science 153:1074–1080 (wild wheats and barley form 'massive stands' only in the Fertile Crescent arc, elsewhere sporadic); Zohary, Hopf & Weiss 2012, Domestication of Plants in the Old World, 4th ed., maps 3 (wild einkorn), 5 (wild emmer), 8 (wild barley): the summer-dry, winter-rain oak-park belt of the southern Levant, the Lebanon–Anti-Lebanon, the Upper Euphrates–Tigris and Karacadağ, and the Zagros foothills from Mosul to Fars.",
+      "boxes": [[34.5, 36.5, 30.5, 34], [35.5, 37.5, 33, 35.5], [36.5, 42, 35.5, 38.5], [42, 48.5, 32, 37.5], [47, 52, 29.5, 33.5]]
     },
     {
       "packageId": "rice",
-      "boxes": [
-        [72, 110, 10, 31],
-        [100, 124, 18, 35],
-        [124, 145, 24, 39]
-      ]
+      "source": "Fuller 2011, Rice 4:78–92 and Fuller & Qin 2009, World Archaeology 41:88–113 (annual, seed-rich wild rice at the cool northern margin of its range, the middle and lower Yangtze lake country and the Huai); Zheng et al. 2016, Scientific Reports 6:28136 (Holocene wild-rice distribution). Perennial O. rufipogon of the monsoon tropics and the Ganges plain is excluded; Indian rice was a later, japonica-introgressed domestication (Choi et al. 2017, Mol. Biol. Evol. 34:969–979).",
+      "boxes": [[108, 122, 27, 33]]
     },
     {
       "packageId": "maize",
-      "boxes": [
-        [-112, -84, 8, 31],
-        [-104, -86, 4, 19]
-      ]
+      "source": "Matsuoka et al. 2002, PNAS 99:6080–6084 (single domestication from Zea mays ssp. parviglumis); Piperno et al. 2009, PNAS 106:5019–5024 (Balsas River valley, Guerrero).",
+      "boxes": [[-103, -98, 17, 20]]
     },
     {
       "packageId": "sorghum",
-      "boxes": [
-        [-18, 42, 5, 21],
-        [20, 48, -12, 14],
-        [44, 53, -25, -10]
-      ]
+      "source": "Harlan 1971, Science 174:468–474 (the African 'non-centre'); Winchell et al. 2017, Current Anthropology 58:673–683 (domestication of sorghum in the eastern Sudan, 4th millennium BCE); Manning et al. 2011, J. Archaeol. Sci. 38:312–322 (pearl millet, the western Sahel): the Sahelo-Sudanian savanna belt from Senegal to the Atbara.",
+      "boxes": [[-17, 38, 10, 17.5]]
     },
     {
       "packageId": "millet",
-      "boxes": [
-        [95, 124, 28, 48],
-        [72, 94, 25, 36]
-      ]
+      "source": "Lu et al. 2009, PNAS 106:7367–7372 (broomcorn millet, Cishan); Zhao 2011, Current Anthropology 52:S295–S306 (foxtail and broomcorn millet on the loess plateau, the North China plain and the western Liao).",
+      "boxes": [[105, 121, 34, 43]]
     },
     {
       "packageId": "tubers",
-      "boxes": [
-        [-82, -64, -22, 4],
-        [-79, -66, -15, 3]
-      ]
+      "source": "Olsen & Schaal 1999, PNAS 96:5586–5591 (manioc from Manihot esculenta ssp. flabellifolia, southern Amazon border, Brazil–Bolivia); Piperno & Pearsall 1998, The Origins of Agriculture in the Lowland Neotropics (root crops of the Colombian, Ecuadorian and northern Peruvian lowlands by the ninth millennium BP).",
+      "boxes": [[-66, -50, -18, -8], [-81, -72, -9, 8]]
     },
     {
       "packageId": "highland-roots",
-      "boxes": [
-        [28, 48, 3, 17],
-        [30, 46, -8, 8]
-      ]
+      "source": "Harlan 1969, Economic Botany 23:309–314 (Ethiopia as a centre of domestication: enset, teff, finger millet); Zohary, Hopf & Weiss 2012, the Ethiopian highlands.",
+      "boxes": [[35, 41, 6, 14]]
     },
     {
       "packageId": "new-guinea-roots",
-      "boxes": [
-        [140, 156, -12, 1],
-        [128, 146, -10, 5]
-      ]
+      "source": "Denham et al. 2003, Science 301:189–193 (Kuk Swamp, the New Guinea highlands: taro and banana cultivation from the early Holocene).",
+      "boxes": [[138, 150, -9, -3]]
     },
     {
       "packageId": "eastern-seeds",
-      "boxes": [
-        [-96, -68, 24, 48],
-        [-86, -60, 30, 48]
-      ]
+      "source": "Smith 2006, PNAS 103:12223–12228 (the Eastern Agricultural Complex: squash, sunflower, marsh elder and chenopod in the river valleys of the interior mid-latitude woodlands, Ozarks to the Ohio).",
+      "boxes": [[-94, -82, 34, 41]]
     }
   ]
 }

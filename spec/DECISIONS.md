@@ -576,6 +576,48 @@ lawyered.
     km/yr so (e) was not needed, the awake month at the shipped grid down
     tenfold.
 
+29. **W7: where farming begins, and how it travels.** (Owner directive
+    2026-09-03, on the play-report of ten wheat hearths igniting in one
+    century from the Nile to the Indus and ten rice hearths from Bengal
+    to Japan: "we need the spread and starting block to be perfect, or at
+    least acceptable.") The M3a hearth law had become a calendar: range
+    boxes covering whole botanical distributions, and a peopled world
+    that fills every basin within centuries, so every cell of every box
+    reached the lag in the same century and the separation rule cut it
+    into hearths a thousand kilometres apart. Rulings: (a) *The ranges
+    are the dense-stand habitat of the wild progenitor, cited per
+    package* — the belts where the plant forms harvestable stands, on the
+    sources' own distinction between massive stands and sporadic plants
+    (26 g is resolved by those citations); sporadic regions are reached,
+    and their arrival windows are the check on the reading. (b) *A basin
+    that already farms stops domesticating*: the clock accrues at the
+    basin's fill times the share of the cell's subsistence that is still
+    the forager yield (`foragerCapacity / capField`), so arrival pre-empts
+    invention with no rule for it. (c) *The boat hop is the Neolithic's*:
+    100 km on the crossings it colonised (Cyprus, Malta, Corsica),
+    replacing the 40 km foot-and-raft scale. (d) *The sorghum lag runs
+    from the Sudan's wild harvests to its domesticated grain* (2500 y,
+    Winchell 2017). (e) *The dev grid cannot represent the straits*: at
+    167 km cells the Bosporus, the Dardanelles and the Korea Strait are
+    open sea beyond any hop, so every European row and Japan are measured
+    at the shipped grid (third cardinal rule) and the dev rows are
+    recorded as the artefact they are. (f) *What remains early is P10's*:
+    the Sahel and eastern North America ignite on a world caged from the
+    opening under today's climate, where the real belts filled as the
+    green Sahara dried and the mid-Holocene floodplains formed; no lag is
+    stretched to hide it. Spec: `spec/handoffs/W7-origins.md`.
+    Implemented the same day (QUESTIONS #42): 21 hearths at dev (78
+    before) and 28 at the shipped grid, wheat in the Fertile Crescent arc
+    only, rice on the Yangtze only; at the shipped grid the Balkans, the
+    Cardial coast, inland Europe, the Nile, the Indus and the Yellow River
+    reached by spread inside their windows, Korea at −4555, and the
+    population at −5000 inside its band for the first time. (g) *The
+    front's speed is the farmers' own 2·√(r·D)*: 0.53 km/yr at the
+    shipped grid on a flat field, to two figures the farmer growth (0.46
+    %/yr) and mobility (15 km²/yr); the ledger's 0.94 had added adoption
+    at full contact, which a leading edge never has. Central Europe and
+    the Rhine stay late for that reason, and the remedy is P15.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
@@ -587,6 +629,18 @@ lawyered.
   physics. Bake-side only — no live sea level; replaces dials with data
   (R2/R7). Not needed for M2: the proxies already yield the correct
   peopling extents and ordering that its gates consume.
+- **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
+  farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
+  group's own uncrowded growth; the kernel reproduces that to two figures
+  on a flat field (0.53 km/yr at the shipped grid) and the shipped-grid
+  Europe is late because `PEOPLE_R_GROWTH_PER_YEAR` (0.28 %/yr) is the
+  crowded long-run average, which the logistic term already produces from
+  an uncrowded rate. A colonising Neolithic population grows at ~1 %/yr
+  (Bocquet-Appel 2002, the Neolithic demographic transition; Ammerman &
+  Cavalli-Sforza 1984). Re-grounding r on the uncrowded rate would put the
+  front at ~0.8–1 km/yr at both grids and lift the population curve toward
+  capacity faster, which M3b's mortality then has to pay for; the owner
+  rules on the order.
 - **P10. Paleoclimate anomaly track** (review, 2026-09-02). The sim
   applies today's climatology from 9700 BCE; the Sahara was green from
   ~9000 to ~4000 BCE, with lakes, herders, and the first Nile settlers
