@@ -248,3 +248,82 @@ trigger, the two flows, the strides, the boat hop.
   Andean package (potato, quinoa: the catalogue has none, so the Andes are
   reached by lowland roots). Both are catalogue additions, data not
   mechanism; ruled on when the tables show the cost.
+
+## Status (implemented on the working branch, 2026-09-03)
+
+**What landed, and what the first drafts got wrong.** All six items of
+the spec, plus a seventh the runs demanded: ignition requires the package
+to beat foraging where it stands (a marginal pocket the spread never
+entered otherwise lit millennia later). Four first-draft choices were
+measured and replaced before any run was believed: the aquatic forager
+term applied to the water-access index (rainfall, so every wet cell was a
+fishing shore and the stand's share collapsed — wheat lit at −3841);
+adoption pressure against the mixture capacity (which rises the moment
+farmers appear, so the front stalled — Europe unreached by 1 CE); the
+stand priced through the farmed-yield chain (0.04 persons/km² at
+Karacadağ, a tenth of the Natufian record); and the hearth share divided
+by the whole forager capacity (fishing as the stand's alternative rather
+than its companion, so the Yangtze rice clock ran at a third of its
+rate). Each is in the ledger with its measurement. A fifth was a third-rule
+bug: a 167 km coast cell counted as full shore, 29 % of the reference
+grid's peopled cells, and the opening population left its band; the shore
+is now a 20 km strip's share of the cell at any grid.
+
+**Dev solve arm (23 s).** 31 hearths. Wheat at Karacadağ (38.3°N, 39.8°E)
+and the Zagros (33.8°N, 47.3°E) at −7908/−7915 (the southern Levant joins
+the Zagros region); millet on the loess and the Liao at −7096 to −6795;
+rice on the Yangtze at −3561 — late, because millet from the loess reaches
+the lower Yangtze at −5920, a century before rice's own clock (about
+−5800), and the pre-emption term stops it where millet farms; maize in
+the Balsas −3505; Kuk −5472; lowland roots −5269; the Sahel −5885,
+Ethiopia −6228, the eastern woodlands −5654 (early, below). Reached
+inside their windows: the Fertile Crescent −7614, the Nile −5885 (the
+fit's water term: a floodplain meets a crop's need), the Yellow River
+−6900, the Indus −4639, the Ganges −3120, south India −2462, Mesoamerica
+−3379, the Andes −4513, inland Europe −4051. Staples at 1 CE: south China
+and the lower Yangtze rice, the loess millet, the Indus and central Europe
+wheat, the Sahel sorghum, the Amazon margin manioc; the Ganges millet,
+the Nile sorghum and Mesoamerica the eastern seeds (the crop bells'
+warmth terms and the seeds' early clock; recorded). Forager ordering
+0.46 > 0.14 > 0.11 persons/km². Opening population 7.0M (band 1–10M);
+−5000 67M (band 5–60M); 1 CE 1.11B. Balkans → Rhine 1.08 km/yr.
+
+**Target solve arm (24 min).** 47 hearths. Wheat THREE: northern Iraq
+(36.7°N, 44.7°E), the Beqaa–Damascus basin (34.3°N, 36.1°E), the southern
+Zagros (32.9°N, 49.3°E), at −7901 to −7873 — the multi-centred Crescent
+the record describes. Rice THREE on the Yangtze (the Han, the lower
+river, Hangzhou Bay) at −5710 to −5381, inside the window: at 22 km cells
+rice wins the race it loses at 167. Millet five across north China at
+−7124 to −6662; maize −3596; Kuk four; lowland roots twelve from −5220.
+Reached inside their windows: the Nile −6172, the Yellow River −7033, the
+Indus −3190, the Balkans −5332 (the straits open at the shipped grid),
+Mesoamerica −3456, the Andes −4562. Korea −5311, Kyushu −4562.
+Population −5000 43.8M, inside its band for the first time; −3000 277M;
+1 CE 681M (bands 100M and 400M: M3b's). Farmed land 49 %.
+
+**What remains, and whose it is.** (1) Europe's interior: central Europe
+−3309, the Rhine −2511, the Cardial coast −4471 at target; the front runs
+at 0.56 km/yr there, below the band, because adoption under pressure
+lowers the frontier's rate — P15, the frontier growth rate, unchanged in
+kind. (2) Japan early at target (−3638 against −1200): the shore forager at
+Binford's median does not resist rice the way the Jōmon did; resistance
+needs the labour and risk terms (M3b, chapter 15). (3) The Sahel, Ethiopia
+and the eastern woodlands early: P10 and a lag the record cannot ground.
+(4) The Ganges and south India late at target (−915, unreached): the
+Punjab is a dry plain whose crop fit is its rivers' access alone, so the
+corridor is riverine and slow (irrigation works are M3b's). (5) The
+Ganges, Nile and Mesoamerica staples on the crop bells' warmth terms and
+early maize's narrow tolerance (data). (6) **The wake moves late.** The
+first caged basin under W8 is the Amazon margin at −2049 (dev) and New
+Guinea at −1335 (target), where W7 caged the Nile delta at −5955 and
+Susiana at −5717: with capacities graded by fit and adoption under
+pressure, no basin's free farmable share falls below the caging knee for
+millennia. The W5 trigger measures the right thing against the wrong
+denominator (every farmable cell in the window at its own fit-graded
+capacity) and needs its own review; a player chooses a wake year meanwhile.
+
+**Verified.** Lint, tsc, unit (stand share, mixture, done flags), smoke,
+kernel parity byte-exact at both grids in all three regimes, the dev
+people gate with the three new tables, the production build, the
+Chromium browser smoke, the bench ratchet.
+

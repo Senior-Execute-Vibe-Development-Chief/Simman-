@@ -1801,3 +1801,46 @@ Review corrections to the M1 build (all validated before merge):
     r). Re-grounding r is M2's constant and lifts the population curve as
     well, so it goes to the owner as P15 rather than into this wave.
 
+43. **W8 landed: who farms what, where, and why (2026-09-03, owner:
+    "implement", after "a lot of this seems fixed, not dynamic and
+    procedural?", the marginal-land question and the beige-over-green
+    question).** Spec `spec/handoffs/W8-who-farms-what.md`, whose status
+    section carries the numbers; DECISIONS 30.
+
+    **What the wave is.** The origin, the resistance and the crop choice
+    from two fields. Wild stands are a field (each package's habitat
+    envelope sampled at the plant's localities, polygons for the belts);
+    forager capacity is by habitat (terrestrial, aquatic at Binford's
+    median on shores as a 20 km strip's share of the cell, rivers, lakes
+    and floodplains, and the richest stand at the Natufian density); a
+    crop's capacity is graded by its fit with accessible water meeting
+    its need; a cell's capacity is the mixture of its crops; foragers
+    adopt under pressure and farmers switch by the adoption law; a hearth
+    ignites where a basin's dependence on its stand has run the lag and
+    the crop beats foraging, and it is a region. The spacing constant is
+    gone. Three new reality tables.
+
+    **The measurements that changed the draft** (all in the ledger): the
+    aquatic term on rainfall; pressure against the mixture; the stand
+    through the yield chain; the hearth share against fishing; the shore
+    as a whole cell. Each was a first draft that the dev solve arm
+    falsified in seconds, which is what the solve regime is for.
+
+    **What it produced.** At the shipped grid: three wheat hearths across
+    the Crescent at −7900, three rice hearths on the Yangtze inside their
+    window, five millet hearths in north China, maize in the Balsas, the
+    Balkans reached at −5332, the population at −5000 inside its band
+    (43.8M). At dev the same in kind, except rice, which millet pre-empts
+    by a century at 167 km cells.
+
+    **What it exposed.** The W5 wake trigger: with fit-graded capacities
+    no basin cages for millennia (dev −2049 in the Amazon, target −1335 in
+    New Guinea), so the auto wake needs its own review — the denominator
+    counts every farmable cell of the window at its own fit-graded
+    capacity, which marginal cells inflate. The frontier growth rate (P15)
+    now binds Europe's interior at 0.56 km/yr. Japan is early because the
+    shore forager does not resist rice without labour and risk terms. The
+    Punjab is a riverine corridor without irrigation works. The crop bells'
+    warmth terms hand the Nile to sorghum and Mesoamerica to the eastern
+    seeds. All recorded in the manifest with their causes; nothing dialed.
+
