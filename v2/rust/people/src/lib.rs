@@ -278,6 +278,8 @@ pub struct PeopleKernel {
     package_count: usize,
     package_yields: Vec<f64>,
     can_grow: Vec<u8>,
+    /// Per-package climate fit (the crop bell over its growing months), packed to land (W8).
+    crop_fit: Vec<f64>,
     neighbor_targets: Vec<i32>,
     neighbor_distance: Vec<f64>,
     neighbor_mode: Vec<u8>,
@@ -371,6 +373,7 @@ impl PeopleKernel {
         package_count: usize,
         package_yields: &[f64],
         can_grow: &[u8],
+        crop_fit: &[f64],
         neighbor_targets: &[i32],
         neighbor_distance: &[f64],
         neighbor_mode: &[u8],
@@ -404,6 +407,7 @@ impl PeopleKernel {
             package_count,
             package_yields: copy_f64(package_yields, package_count),
             can_grow: copy_u8(can_grow, package_count.saturating_mul(land_count), 0),
+            crop_fit: copy_f64(crop_fit, package_count.saturating_mul(land_count)),
             neighbor_targets: neighbor_targets.to_vec(),
             neighbor_distance: copy_f64(
                 neighbor_distance,
@@ -587,15 +591,31 @@ impl PeopleKernel {
             let cell = self.land_cells[packed] as usize;
             let dominant = self.dominant_package(packed);
             self.dominant[cell] = dominant as u8;
-            // A cell's capacity is the mixture its people imply: foragers at
-            // the forager density, farmers at their dominant package's farmed
-            // density, weighted by the farmed share. Unfarmed land is forager
-            // land even where a package could grow; the farmed capacity opens
-            // to a migration source through `pair_spare`, never to foragers.
-            let farmed = self.package_capacity(cell, packed, dominant);
+            // The mixture is the capacity (W8): each package at its own farmed
+            // capacity weighted by its share of the cell's people, the rest at
+            // the forager density; the oracle's `mixtureCapacity`, active
+            // packages summed in index order.
             let forager = self.forager_capacity[cell];
-            let share = clamp01(self.technique[cell]);
-            let mixture = forager + share * (farmed - forager);
+            let population = self.people[cell].max(0.0);
+            let mixture = if population <= 0.0 {
+                forager
+            } else {
+                let mut farmed_share = 0.0;
+                let mut farmed = 0.0;
+                for package_index in 0..self.package_count {
+                    if self.active_package[package_index] == 0 {
+                        continue;
+                    }
+                    let mass = self.farmers[package_index * self.land_cells.len() + packed].max(0.0);
+                    if mass <= 0.0 {
+                        continue;
+                    }
+                    let share = (mass / population).min(1.0);
+                    farmed_share += share;
+                    farmed += share * self.package_capacity(cell, packed, package_index);
+                }
+                forager * (1.0 - clamp01(farmed_share)) + farmed
+            };
             self.capacity[cell] = if mixture > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
                 mixture
             } else {
@@ -637,6 +657,7 @@ impl PeopleKernel {
         fertility
             * PEOPLE_FARM_CAPACITY_PER_KM2
             * self.package_yields[package_index]
+            * self.crop_fit[package_index * self.land_cells.len() + packed]
             * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
             * (1.0 + access * PEOPLE_WATER_ACCESS_GAIN)
             * self.relief_multiplier[cell]

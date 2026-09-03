@@ -228,7 +228,6 @@ export const PEOPLE_MIGRATION_MAX_SHARE = 0.5; // spec/09-constants-ledger.md §
 export const PEOPLE_MIGRATION_MAX_SUBSTEPS = 16; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion substep cap
 export const PEOPLE_TECHNIQUE_PRESENT = 0.01; // spec/09-constants-ledger.md §M2 proposed — reached-technique visibility threshold
 export const PEOPLE_TECHNIQUE_CLIMATE_FLOOR = 0.05; // spec/09-constants-ledger.md §M2 proposed — package-envelope spread floor
-export const PEOPLE_HEARTH_MIN_SEPARATION_KM = 1000; // spec/09-constants-ledger.md §M2 proposed — independent hearth spacing
 export const PEOPLE_HEARTH_BASIN_RADIUS_KM = 500; // spec/09-constants-ledger.md §M2 proposed — peopled-basin maturity radius
 export const PEOPLE_COHORT_CHILD_FRACTION = 0.35; // spec/09-constants-ledger.md §M2 proposed — opening child cohort share
 export const PEOPLE_COHORT_WORKING_FRACTION = 0.6; // spec/09-constants-ledger.md §M2 proposed — opening working cohort share
@@ -276,3 +275,9 @@ export const SOLVE_AGREEMENT_POP_TOLERANCE = 0.05; // spec/09-constants-ledger.m
 export const SAVE_VERSION_W5 = 6; // spec/09-constants-ledger.md §W5 proposed — phase, wake and caged steps, events in the envelope
 export const HORIZON_OPENING_YEAR = -9700; // spec/09-constants-ledger.md §Units — Phase 1 opening, the end of the Younger Dryas (calendar label and the clock's origin)
 export const HORIZON_END_YEAR = 1; // spec/09-constants-ledger.md §Units — Phase 1 primary horizon end (calendar label)
+
+export const PEOPLE_SHORE_STRIP_KM = 20; // spec/09-constants-ledger.md §W8 — the shore strip a coastal forager works, a day's foraging radius each way (Kelly 2013, ~10 km); a coast cell's aquatic access is the strip's share of the cell, the same in real km at every grid
+export const PEOPLE_FORAGER_AQUATIC_CAPACITY_PER_KM2 = 0.4; // spec/09-constants-ledger.md §W8 — forager density at full aquatic access (shore, river, lake, floodplain): the median of Binford 2001's aquatic-resource groups (0.3–3 persons/km², Kelly 2013)
+export const PEOPLE_WILD_STAND_CAPACITY_PER_KM2 = 0.5; // spec/09-constants-ledger.md §W8 — forager density a dense wild stand feeds at full richness: Natufian hamlets on the Levantine stands (Bar-Yosef 1998), Binford 2001's terrestrial-plant groups in warm-temperate settings (0.1–0.5 persons/km²)
+export const SAVE_VERSION_W8 = 7; // spec/09-constants-ledger.md §W8 — hearth records carry their region size
+

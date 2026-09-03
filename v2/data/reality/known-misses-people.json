@@ -18,7 +18,7 @@
     },
     {
       "id": "arrival:balkans:dev",
-      "reason": "Measured -4790 vs latest -6000 (-5200 with the \u00b1800 grace) on dev. The front runs at the measured 0.85 km/yr (Levant to Balkans) and 1.05 km/yr (Balkans to Rhine), inside the radiocarbon band, from a Levant ignition at -8050 whose hearth cell reaches half farmed at -7570; the real dates need domestication about a millennium earlier than the lag-from-Younger-Dryas law gives and the Anatolian/Aegean maritime leapfrog that the 40 km hop cannot make (P14, long sea voyages). A physics finding, not a dial."
+      "reason": "Measured -4790 vs latest -6000 (-5200 with the ±800 grace) on dev. The front runs at the measured 0.85 km/yr (Levant to Balkans) and 1.05 km/yr (Balkans to Rhine), inside the radiocarbon band, from a Levant ignition at -8050 whose hearth cell reaches half farmed at -7570; the real dates need domestication about a millennium earlier than the lag-from-Younger-Dryas law gives and the Anatolian/Aegean maritime leapfrog that the 40 km hop cannot make (P14, long sea voyages). A physics finding, not a dial."
     },
     {
       "id": "arrival:central-europe:dev",
@@ -54,59 +54,51 @@
     },
     {
       "id": "population:-5000:solve:dev",
-      "reason": "Measured 78.8M vs band max 60M on the dev solve arm (247M before W7, when the hearth law ignited every basin of every range box at once): the same missing-mortality physics as population:-5000:dev \u2014 without famine variance, harvest failure, plagues or exhausted soil, growth runs to farmed capacity. M3b owns this miss; no rate is dialed."
+      "reason": "Measured 67.0M vs band max 60M on the dev solve arm (78.8M under W7, 247M before): the same missing-mortality physics as population:-5000:dev — without famine variance, harvest failure, plagues or exhausted soil, growth runs to farmed capacity. M3b owns this miss; no rate is dialed."
     },
     {
       "id": "population:-3000:solve:dev",
-      "reason": "Measured 765M vs band max 100M on the dev solve arm (1.33B before W7): the same missing-mortality physics as population:-5000."
+      "reason": "Measured 493M vs band max 100M on the dev solve arm (765M under W7): the same missing-mortality physics as population:-5000."
     },
     {
       "id": "population:-1000:solve:dev",
-      "reason": "Measured 1.64B vs band max 200M on the dev solve arm (2.02B before W7): the same missing-mortality physics as population:-5000."
+      "reason": "Measured 999M vs band max 200M on the dev solve arm (1.64B under W7): the same missing-mortality physics as population:-5000."
     },
     {
       "id": "population:1:solve:dev",
-      "reason": "Measured 1.94B vs band max 400M on the dev solve arm (2.25B before W7): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000."
+      "reason": "Measured 1.11B vs band max 400M on the dev solve arm (1.94B under W7): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000."
     },
     {
       "id": "arrival:balkans:solve:dev",
-      "reason": "Measured \u22124632 vs latest \u22126000 (\u22125200 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia at \u22126242 and then walks round the Black Sea: Thrace at \u22124835, 1,400 years for a strait a kilometre wide. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −4758 vs latest −6000 (−5200 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:central-europe:solve:dev",
-      "reason": "Measured \u22123596 vs latest \u22125000 (\u22124200 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia at \u22126242 and then walks round the Black Sea: Thrace at \u22124835, 1,400 years for a strait a kilometre wide. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −3736 vs latest −5000 (−4200 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:rhine:solve:dev",
-      "reason": "Measured \u22123155 vs latest \u22124800 (\u22124000 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia at \u22126242 and then walks round the Black Sea: Thrace at \u22124835, 1,400 years for a strait a kilometre wide. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −3288 vs latest −4800 (−4000 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:cardial-coast:solve:dev",
-      "reason": "Measured \u22123785 vs latest \u22125500 (\u22124700 with the grace) on the dev solve arm: reached overland through the Balkans, because at 167 km cells no Mediterranean crossing is within the 100 km boat hop (W7). On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia at \u22126242 and then walks round the Black Sea: Thrace at \u22124835, 1,400 years for a strait a kilometre wide. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −3918 vs latest −5500 (−4700 with the grace) on the dev solve arm: reached overland through the Balkans, because at 167 km cells no Mediterranean crossing is within the 100 km boat hop. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:sahel:solve:dev",
-      "reason": "Measured \u22126060 vs earliest \u22123500 (\u22124300 with the grace) on the dev solve arm: five sorghum hearths across the Sahelo-Sudanian belt at \u22126186 to \u22126151. The range is now the cited dense-stand belt and the lag (2500 y) runs from the wild-sorghum harvests of the Khartoum Mesolithic and Nabta Playa (~6000 BCE) to the domesticated grain of the eastern Sudan (Winchell et al. 2017), but the sim's Sahel is caged from the opening under today's climate, where the real belt only filled as the green Sahara dried (P10). Recorded, not dialed."
+      "reason": "Measured −5703 vs earliest −3500 (−4300 with the grace) on the dev solve arm: sorghum hearths across the Sahelian belt from −5885 (see hearth:sahel-sudan:solve:dev; P10)."
     },
     {
       "id": "climate-barrier:solve:dev",
-      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at \u22123500 on the dev solve arm: sorghum ignites across the belt at \u22126186 to \u22126151 (see arrival:sahel:solve:dev; P10)."
-    },
-    {
-      "id": "arrival:ganges:solve:dev",
-      "reason": "Measured \u22124254 vs earliest \u22123000 (\u22123800 with the grace) on the dev solve arm (\u22127096 before W7, an independent millet ignition inside a range box that reached the Ganges). Now reached by the spread from the Punjab (\u22125360) at the front's own speed; the real plain opened a millennium later. Recorded, not dialed."
+      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at −3500 on the dev solve arm: sorghum ignites across the belt from −5885 (see hearth:sahel-sudan:solve:dev; P10)."
     },
     {
       "id": "arrival:japan:solve:dev",
-      "reason": "Not reached by 1 CE on the dev solve arm (\u22126088 before W7, an independent rice ignition inside a range box that reached Japan). On the dev grid (167 km cells) the Korea Strait is open sea wider than the 100 km boat hop and Korea itself is not reached; a resolution artefact of the reference grid, measured at the shipped grid."
-    },
-    {
-      "id": "arrival:inland-europe:solve:dev",
-      "reason": "Measured \u22123904 vs latest \u22124800 (\u22124000 with the grace) on the dev solve arm (\u22124191, inside the grace, before W7). On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia at \u22126242 and then walks round the Black Sea: Thrace at \u22124835, 1,400 years for a strait a kilometre wide. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Not reached by 1 CE on the dev solve arm. On the dev grid (167 km cells) the Korea Strait is open sea wider than the 100 km boat hop and Korea itself is not reached; a resolution artefact of the reference grid, measured at the shipped grid."
     },
     {
       "id": "population:-3000:solve:target",
-      "reason": "Measured 397M vs band max 100M on the target solve arm (W7; \u22125000 is inside its band at 53.0M): the same missing-mortality physics as population:-5000:dev. M3b owns this miss."
+      "reason": "Measured 397M vs band max 100M on the target solve arm (W7; −5000 is inside its band at 53.0M): the same missing-mortality physics as population:-5000:dev. M3b owns this miss."
     },
     {
       "id": "population:-1000:solve:target",
@@ -118,35 +110,63 @@
     },
     {
       "id": "arrival:central-europe:solve:target",
-      "reason": "Measured \u22123722 vs latest \u22125000 (\u22124200 with the grace) on the target solve arm. The Balkans land inside their window (\u22125654) once the straits link (W7); the inland leg runs at 0.59 km/yr, the farmer group's own 2\u00b7\u221a(r\u00b7D) with M2's crowded long-run growth rate. P15 (the uncrowded frontier growth rate) is the remedy, an owner ruling because it moves the population curve too. Recorded, not dialed."
+      "reason": "Measured −3722 vs latest −5000 (−4200 with the grace) on the target solve arm. The Balkans land inside their window (−5654) once the straits link (W7); the inland leg runs at 0.59 km/yr, the farmer group's own 2·√(r·D) with M2's crowded long-run growth rate. P15 (the uncrowded frontier growth rate) is the remedy, an owner ruling because it moves the population curve too. Recorded, not dialed."
     },
     {
       "id": "arrival:rhine:solve:target",
-      "reason": "Measured \u22122980 vs latest \u22124800 (\u22124000 with the grace) on the target solve arm: the same 0.59 km/yr inland leg as arrival:central-europe:solve:target (P15)."
+      "reason": "Measured −2980 vs latest −4800 (−4000 with the grace) on the target solve arm: the same 0.59 km/yr inland leg as arrival:central-europe:solve:target (P15)."
     },
     {
       "id": "europe-front-speed:solve:target",
-      "reason": "Measured 0.59 km/yr Balkans \u2192 Rhine on the target solve arm against the band's 0.6: the farmer group's own 2\u00b7\u221a(r\u00b7D) (0.53 on a flat field at this grid) with M2's crowded long-run growth rate (P15). Recorded, not dialed."
+      "reason": "Measured 0.59 km/yr Balkans → Rhine on the target solve arm against the band's 0.6: the farmer group's own 2·√(r·D) (0.53 on a flat field at this grid) with M2's crowded long-run growth rate (P15). Recorded, not dialed."
     },
     {
       "id": "arrival:sahel:solve:target",
-      "reason": "Measured \u22125864 vs earliest \u22123500 (\u22124300 with the grace) on the target solve arm: nine sorghum hearths across the cited belt at \u22126179 to \u22126039 on a Sahel caged from the opening under today's climate, where the real belt filled as the green Sahara dried (P10). Recorded, not dialed."
+      "reason": "Measured −5864 vs earliest −3500 (−4300 with the grace) on the target solve arm: nine sorghum hearths across the cited belt at −6179 to −6039 on a Sahel caged from the opening under today's climate, where the real belt filled as the green Sahara dried (P10). Recorded, not dialed."
     },
     {
       "id": "climate-barrier:solve:target",
-      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at \u22123500 on the target solve arm: sorghum ignites across the belt at \u22126179 to \u22126039 (P10)."
+      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at −3500 on the target solve arm: sorghum ignites across the belt at −6179 to −6039 (P10)."
     },
     {
       "id": "arrival:ganges:solve:target",
-      "reason": "Measured \u2212950 vs latest \u22122000 (\u22121200 with the grace) on the target solve arm: reached late by the wheat front, whose Iranian leg slowed once the second wheat hearth condensed in the Taurus rather than Fars (plateau \u22126263, Turkmenistan \u22124716, Indus \u22123155, the Punjab unfarmed). Recorded, not dialed."
+      "reason": "Measured −950 vs latest −2000 (−1200 with the grace) on the target solve arm: reached late by the wheat front, whose Iranian leg slowed once the second wheat hearth condensed in the Taurus rather than Fars (plateau −6263, Turkmenistan −4716, Indus −3155, the Punjab unfarmed). Recorded, not dialed."
     },
     {
       "id": "arrival:south-india:solve:target",
-      "reason": "Not reached by 1 CE on the target solve arm: the rice range is the Yangtze's (W7) and the wheat front reaches the Ganges only at \u2212950 (see arrival:ganges:solve:target). Recorded, not dialed."
+      "reason": "Not reached by 1 CE on the target solve arm: the rice range is the Yangtze's (W7) and the wheat front reaches the Ganges only at −950 (see arrival:ganges:solve:target). Recorded, not dialed."
     },
     {
       "id": "arrival:japan:solve:target",
-      "reason": "Measured \u22123162 vs earliest \u22121200 (\u22122000 with the grace) on the target solve arm: millet reaches Korea at \u22124555 and crosses Tsushima (92 km, inside the W7 boat hop) to Kyushu at \u22123883; the window is Yayoi rice. Recorded, not dialed."
+      "reason": "Measured −3162 vs earliest −1200 (−2000 with the grace) on the target solve arm: millet reaches Korea at −4555 and crosses Tsushima (92 km, inside the W7 boat hop) to Kyushu at −3883; the window is Yayoi rice. Recorded, not dialed."
+    },
+    {
+      "id": "hearth:yangtze:solve:dev",
+      "reason": "Rice lights at −3561 vs latest −5000 (−4200 with the grace) on the dev solve arm. Its stand share on the Yangtze (the wild envelope's moisture optimum sits below the lake country's annual index) runs the clock to about −5800, and millet from the loess reaches the lower Yangtze at −5920, a century first, so the pre-emption term stops the rice clock where millet farms; rice then lights south of the belt's core once and takes the south by switching (staple:south-china and staple:lower-yangtze pass). A race decided by a century between two mechanisms that are both right in kind; recorded, not dialed."
+    },
+    {
+      "id": "hearth:sahel-sudan:solve:dev",
+      "reason": "Sorghum lights across the Sahelian belt from −5885 vs earliest −4000 (−4800 with the grace) on the dev solve arm: the belt is caged from the opening under today's climate, where the real belt filled as the green Sahara dried (P10). No lag is stretched to hide it."
+    },
+    {
+      "id": "hearth:ethiopia:solve:dev",
+      "reason": "The Ethiopian package lights at −6228 vs earliest −3000 (−3800 with the grace) on the dev solve arm, on a lag (2200 y) the record cannot yet ground (D'Andrea 2008 dates teff and enset domestication loosely); recorded as the data gap it is."
+    },
+    {
+      "id": "hearth:eastern-woodlands:solve:dev",
+      "reason": "The Eastern Agricultural Complex lights at −5654 vs earliest −3000 (−3800 with the grace) on the dev solve arm: its stand is rich under today's climate from the opening, where the real river-valley weed habitats formed with the mid-Holocene floodplains (Smith 2006) — a P10-class forcing, not a lag to stretch."
+    },
+    {
+      "id": "staple:ganges:solve:dev",
+      "reason": "The Ganges plain farms millet, not rice, at 1 CE on the dev solve arm: millet from the loess crosses Yunnan and Assam and reaches the plain (−3120) while the rice hearth lights late (see hearth:yangtze:solve:dev) and its farmers arrive after; switching then favours the crop already there because the sim's rice fit on the plain is not above millet's. The crop bells are directional data (v1); recorded."
+    },
+    {
+      "id": "staple:nile:solve:dev",
+      "reason": "The Nile farms sorghum, not wheat, at 1 CE on the dev solve arm: sorghum spreads down the Nile from the Sudan and out-yields wheat there under the crop bells (Egypt's annual warmth sits at wheat's tolerance edge and inside sorghum's), so switching hands the valley to sorghum. The real Nile grew emmer and barley as winter crops on the flood, a season the annual bells do not carry; a data finding on the bells, recorded."
+    },
+    {
+      "id": "staple:mesoamerica:solve:dev",
+      "reason": "Central Mexico farms the Eastern Agricultural Complex, not maize, at 1 CE on the dev solve arm: the eastern seeds light early (see hearth:eastern-woodlands:solve:dev) and reach Mexico before maize lights (−3505), and early maize's narrow temperature tolerance (tTolEarly) keeps its fit below the seeds', so switching does not hand the valleys to maize. Recorded; the fix is P10 for the seeds' timing and the maize bell's early tolerance (data)."
     }
   ]
 }

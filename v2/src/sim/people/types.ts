@@ -13,6 +13,8 @@ export interface HearthState {
   ignited: boolean;
   /** The world step the hearth ignited at (the event log's first entries). */
   readonly ignitedStep: number;
+  /** Cells of the range that crossed the lag inside this hearth's basin (W8: a hearth is a region, its count a measurement). */
+  regionCells: number;
 }
 
 export interface PeopleWorld extends World {
@@ -54,12 +56,22 @@ export interface PeopleWorld extends World {
   _techniqueSuitability: Float64Array;
   /** Per-package annual climate/season admissibility, packed to land. */
   _canGrow: readonly Uint8Array[];
+  /** Per-package climate fit (the crop bell over its growing months, 0..1), packed to land (W8). */
+  _cropFit: readonly Float64Array[];
+  /** Per-package wild-stand richness (0..1) and the persons/km² the stand feeds, packed to land (W8, static). */
+  _standRichness: readonly Float64Array[];
+  _standCapacity: readonly Float64Array[];
+  /** Per cell: the richest stand's richness and capacity (W8, static; the lens and the forager capacity read these). */
+  _standBest: Float64Array;
+  _standCapacityBest: Float64Array;
   /** Per-package native wild-progenitor ranges, packed to land. */
   _nativeRanges: readonly Uint8Array[];
   /** Per-package list of packed native cells; the hearth law accrues on exactly these. */
   _nativeCells: readonly Int32Array[];
   /** Peopled-basin years accrued per native cell per package (state: saved and hashed). */
   _hearthYears: readonly Float64Array[];
+  /** Per native cell per package: the cell has ignited, joined a hearth, or can never (W8; rebuilt on load from the years). */
+  _hearthDone: readonly Uint8Array[];
   /** Summed-area tables (width+1)×(height+1) of forager capacity × area (static) and people × area (per pass). */
   _basinCapacitySum: Float64Array;
   _basinPeopleSum: Float64Array;
@@ -114,6 +126,8 @@ export interface PeopleWorld extends World {
   _reliefMult: Float64Array;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;
+  /** The terrestrial part of the forager capacity (W8): the living a stand's gatherers weigh their stand against. */
+  _foragerTerrestrial: Float64Array;
   _diseaseBurden: Float64Array;
   /** Per-row migration share for the tick (area is a row property). */
   _migrationShareRow: Float64Array;

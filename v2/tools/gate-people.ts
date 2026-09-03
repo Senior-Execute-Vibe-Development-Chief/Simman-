@@ -3,6 +3,10 @@ import { performance } from "node:perf_hooks";
 import populationCurve from "../data/reality/population-curve.json";
 import farmingArrivals from "../data/reality/farming-arrivals.json";
 import neolithicArrivals from "../data/reality/neolithic-arrivals.json";
+import hearthCentres from "../data/reality/hearths.json";
+import stapleByRegion from "../data/reality/staple-by-region.json";
+import { aquaticAccess } from "../src/sim/people/habitability";
+import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
 import type { PeopleWorld } from "../src/sim/people/types";
@@ -430,6 +434,107 @@ function cellLonLat(world: World, cell: number): { lon: number; lat: number } | 
   };
 }
 
+function cellDistanceDegrees(world: World, cell: number, latitude: number, longitude: number): number {
+  const at = cellLonLat(world, cell);
+  if (!at) return Number.POSITIVE_INFINITY;
+  const dLon = Math.abs(((at.lon - longitude + 540) % 360) - 180);
+  return Math.max(Math.abs(at.lat - latitude), dLon);
+}
+
+/**
+ * The centres of domestication (W8): every hearth must sit inside a cited
+ * centre of its package, and every centre must have lit by its latest.
+ * The count per centre is reported; it is a measurement now, not a spacing.
+ */
+function judgeHearths(world: World, scope: string): Record<string, unknown> {
+  const radius = hearthCentres.radiusDegrees;
+  const perCentre: Record<string, { hearths: number; first: number | null; regionCells: number; inWindow: boolean }> = {};
+  const outside: Array<{ packageId: string; year: number; lat: number; lon: number }> = [];
+  for (const centre of hearthCentres.centres) perCentre[centre.id] = { hearths: 0, first: null, regionCells: 0, inWindow: false };
+  for (const hearth of world.hearths) {
+    if (!hearth.ignited) continue;
+    const year = Math.round(yearFromStep(hearth.ignitedStep));
+    const centre = hearthCentres.centres.find((row) => row.packageId === hearth.packageId
+      && cellDistanceDegrees(world, hearth.cell, row.latitude, row.longitude) <= ((row as { radiusDegrees?: number }).radiusDegrees ?? radius));
+    if (!centre) {
+      const at = cellLonLat(world, hearth.cell);
+      outside.push({ packageId: hearth.packageId, year, lat: at?.lat ?? 0, lon: at?.lon ?? 0 });
+      continue;
+    }
+    const row = perCentre[centre.id]!;
+    row.hearths++;
+    row.regionCells += hearth.regionCells;
+    if (row.first === null || year < row.first) row.first = year;
+  }
+  for (const centre of hearthCentres.centres) {
+    const row = perCentre[centre.id]!;
+    row.inWindow = row.first !== null && row.first >= centre.earliest - 800 && row.first <= centre.latest + 800;
+    const id = `hearth:${centre.id}:${scope}`;
+    measured.add(id);
+    if (!row.inWindow) failures.push(id);
+  }
+  const outsidePackages = new Set(outside.map((row) => row.packageId));
+  for (const pkg of CROP_PACKAGES) {
+    const id = `hearth-outside:${pkg.id}:${scope}`;
+    measured.add(id);
+    if (outsidePackages.has(pkg.id)) failures.push(id);
+  }
+  return { centres: perCentre, outside };
+}
+
+/** The staple by region at 1 CE (W8): the majority dominant package of a region's farmed cells. */
+function judgeStaples(world: World, scope: string): Record<string, unknown> {
+  const radius = stapleByRegion.radiusDegrees;
+  const result: Record<string, unknown> = {};
+  for (const region of stapleByRegion.regions) {
+    const counts = new Map<string, number>();
+    let farmed = 0;
+    for (let cell = 0; cell < world.N; cell++) {
+      if (!world.substrate!.landMask[cell]) continue;
+      if ((world.technique[cell] ?? 0) < PEOPLE_FARMED_MARKER_SHARE) continue;
+      if (cellDistanceDegrees(world, cell, region.latitude, region.longitude) > radius) continue;
+      farmed++;
+      const id = CROP_PACKAGES[(world as PeopleWorld)._dominantPackage[cell] ?? 0]?.id ?? "";
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    let dominant = "";
+    let dominantCount = 0;
+    for (const [id, count] of counts) if (count > dominantCount) { dominant = id; dominantCount = count; }
+    const pass = farmed > 0 && dominant === region.packageId;
+    result[region.id] = { expected: region.packageId, dominant: dominant || null, farmedCells: farmed, pass };
+    const id = `staple:${region.id}:${scope}`;
+    measured.add(id);
+    if (!pass) failures.push(id);
+  }
+  return result;
+}
+
+/**
+ * Forager density by habitat at the opening (W8, Binford): shores and stands
+ * hold denser foragers than fertile interior land, which holds denser than
+ * desert and boreal land. Measured on the static forager capacity.
+ */
+function judgeForagerOrdering(world: World, scope: string): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const sums = { aquaticOrStand: [0, 0], fertileInterior: [0, 0], poorInterior: [0, 0] };
+  for (const cell of people._landCells) {
+    if (people._peopledMask[cell] !== 1) continue;
+    const capacity = people._foragerCapacity[cell] ?? 0;
+    const fertility = world.substrate!.fertility[cell] ?? 0;
+    const rich = aquaticAccess(people, cell) >= 0.5 || (people._standBest[cell] ?? 0) >= 0.5;
+    const bucket = rich ? sums.aquaticOrStand : fertility >= 0.6 ? sums.fertileInterior : fertility < 0.2 ? sums.poorInterior : null;
+    if (!bucket) continue;
+    bucket[0] += capacity;
+    bucket[1] += 1;
+  }
+  const mean = (pair: number[]) => (pair[1]! > 0 ? pair[0]! / pair[1]! : 0);
+  const ordering = { aquaticOrStand: mean(sums.aquaticOrStand), fertileInterior: mean(sums.fertileInterior), poorInterior: mean(sums.poorInterior) };
+  const id = `forager-ordering:${scope}`;
+  measured.add(id);
+  if (!(ordering.aquaticOrStand > ordering.fertileInterior && ordering.fertileInterior > ordering.poorInterior)) failures.push(id);
+  return ordering;
+}
+
 /**
  * The solve arm (W5): the solve regime to the end of the horizon, with the
  * caged-basin trigger recorded but not acted on (`wake: "never"`), so every
@@ -452,7 +557,11 @@ function runSolveArm(grid: GridPreset): TrajectorySample {
       packageId: hearth.packageId,
       cell: hearth.cell,
       year: yearFromStep(hearth.ignitedStep),
+      regionCells: hearth.regionCells,
     })),
+    centres: judgeHearths(world, scope),
+    staples: judgeStaples(world, scope),
+    foragerOrdering: judgeForagerOrdering(world, scope),
   };
   findings.solve = solve;
   return sample;

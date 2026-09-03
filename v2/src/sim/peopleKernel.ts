@@ -327,6 +327,13 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     );
   }
   const yields = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.yield ?? 1);
+  const cropFit = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    cropFit.set(
+      world._cropFit[packageIndex] ?? new Float64Array(world._landCells.length),
+      packageIndex * world._landCells.length,
+    );
+  }
   return [
     world.width,
     world.height,
@@ -343,6 +350,7 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     CROP_PACKAGES.length,
     yields,
     canGrow,
+    cropFit,
     world._neighborTargets,
     world._neighborDistanceKm,
     world._neighborMode,

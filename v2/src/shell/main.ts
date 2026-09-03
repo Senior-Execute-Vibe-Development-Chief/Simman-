@@ -381,13 +381,14 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     ];
   }
   if (lens.value === "can-grow" || lens.value === "native") {
-    // Counts: how many packages can grow here / are native here. One package
-    // is a dim ochre, every package a bright one.
+    // Can-grow is a count (one package a dim ochre, every package a bright
+    // one); wild stands (W8) are a richness, 0..1, the belt a hearth can
+    // condense on.
     const value = lens.value === "can-grow"
-      ? overlayCanGrow?.[cell] ?? 0
+      ? (overlayCanGrow?.[cell] ?? 0) / CROP_PACKAGES.length
       : overlayNative?.[cell] ?? 0;
     if (value <= 0) return [35, 45, 55];
-    const share = Math.min(1, value / CROP_PACKAGES.length);
+    const share = Math.min(1, value);
     return [Math.round(150 + 70 * share), Math.round(110 + 70 * share), 65];
   }
   if (lens.value === "climate") {

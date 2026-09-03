@@ -11,7 +11,12 @@ import {
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { deriveCapacity } from "./capacity";
 import { activePackageIndices, deriveTechniqueFromFarmers, initializeCropFields, refreshTechniqueShare } from "./crop";
-import { cellAreasKm2, annualClimateFromSubstrate, fillStaticHabitability } from "./habitability";
+import {
+  annualClimateFromSubstrate,
+  applyWildStands,
+  cellAreasKm2,
+  fillStaticHabitability,
+} from "./habitability";
 import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
 import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
@@ -128,12 +133,19 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._waterAccess = new Float64Array(length);
   world._reliefMult = new Float64Array(length);
   world._foragerCapacity = new Float64Array(length);
+  world._foragerTerrestrial = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
   world._migrationShareRow = new Float64Array(world.height);
   world._canGrow = [];
   world._nativeRanges = [];
   world._nativeCells = [];
+  world._cropFit = [];
+  world._standRichness = [];
+  world._standCapacity = [];
+  world._standBest = new Float64Array(length);
+  world._standCapacityBest = new Float64Array(length);
   world._hearthYears = [];
+  world._hearthDone = [];
   world._dominantPackage = new Uint8Array(length);
   const neighbors = buildPeopleNeighborTable(world);
   world._neighborTargets = neighbors.targets;
@@ -166,6 +178,7 @@ export function initializePeople(worldInput: World): PeopleWorld {
   fillStaticHabitability(world);
   fillMigrationShareRows(world);
   initializeCropFields(world);
+  applyWildStands(world);
   prepareTechnique(world);
   const forceTypeScript = world.config.peopleKernel === "ts";
   if (!forceTypeScript) {

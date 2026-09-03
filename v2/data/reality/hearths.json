@@ -1,0 +1,100 @@
+{
+ "source": "Independent centres of domestication with the windows in which each package's staple appears there; a hearth outside every centre is a miss, a centre without a hearth by its latest is a miss (W8). Windows are archaeological checks, not simulation rails. A centre may carry its own radiusDegrees where the source describes a belt rather than a point (Harlan 1971's Sahelian non-centre).",
+ "radiusDegrees": 6,
+ "centres": [
+  {
+   "id": "fertile-crescent",
+   "packageId": "wheat",
+   "latitude": 35,
+   "longitude": 42,
+   "earliest": -9500,
+   "latest": -8000,
+   "source": "Willcox 2005, Veg. Hist. Archaeobot. 14:534–541; Fuller, Willcox & Allaby 2011, World Archaeology 43:628–652 (protracted, multi-regional across the arc)"
+  },
+  {
+   "id": "yangtze",
+   "packageId": "rice",
+   "latitude": 30.5,
+   "longitude": 115,
+   "earliest": -7000,
+   "latest": -5000,
+   "source": "Fuller & Qin 2009; Zhao 2011 (Kuahuqiao, Hemudu, Pengtoushan)"
+  },
+  {
+   "id": "north-china",
+   "packageId": "millet",
+   "latitude": 38,
+   "longitude": 114,
+   "earliest": -6500,
+   "latest": -5500,
+   "source": "Zhao 2011; Lu et al. 2009 (Cishan, Peiligang, Xinglonggou on the western Liao, Houli in Shandong)",
+   "radiusDegrees": 8
+  },
+  {
+   "id": "balsas",
+   "packageId": "maize",
+   "latitude": 18.5,
+   "longitude": -100.5,
+   "earliest": -7000,
+   "latest": -4000,
+   "source": "Piperno et al. 2009 (Xihuatoxtla, initial cultivation); productive maize villages by −2500"
+  },
+  {
+   "id": "sahel-sudan",
+   "packageId": "sorghum",
+   "latitude": 15.5,
+   "longitude": 10,
+   "earliest": -4000,
+   "latest": -2500,
+   "source": "Harlan 1971 (the Sahelian non-centre, Senegal to the Nile); Winchell et al. 2017 (eastern Sudan); Manning et al. 2011 (pearl millet, Mali)",
+   "radiusDegrees": 28
+  },
+  {
+   "id": "ethiopia",
+   "packageId": "highland-roots",
+   "latitude": 10,
+   "longitude": 38,
+   "earliest": -3000,
+   "latest": -1000,
+   "source": "D'Andrea 2008, Economic Botany 62:547–566 (teff); Harlan 1969"
+  },
+  {
+   "id": "kuk",
+   "packageId": "new-guinea-roots",
+   "latitude": -5.8,
+   "longitude": 144.3,
+   "earliest": -7000,
+   "latest": -4000,
+   "source": "Denham et al. 2003"
+  },
+  {
+   "id": "amazon-margin",
+   "packageId": "tubers",
+   "latitude": -13,
+   "longitude": -60,
+   "earliest": -7000,
+   "latest": -5000,
+   "source": "Olsen & Schaal 1999 (manioc, the southern Amazon border of Brazil and Bolivia)",
+   "radiusDegrees": 8
+  },
+  {
+   "id": "eastern-woodlands",
+   "packageId": "eastern-seeds",
+   "latitude": 38,
+   "longitude": -88,
+   "earliest": -3000,
+   "latest": -1500,
+   "source": "Smith 2006"
+  },
+  {
+   "id": "northwest-neotropics",
+   "packageId": "tubers",
+   "latitude": 3,
+   "longitude": -76,
+   "earliest": -7000,
+   "latest": -5000,
+   "radiusDegrees": 10,
+   "source": "Piperno & Pearsall 1998 (Colombian, Ecuadorian, northern Peruvian and western Amazon lowland root crops)"
+  }
+ ]
+}

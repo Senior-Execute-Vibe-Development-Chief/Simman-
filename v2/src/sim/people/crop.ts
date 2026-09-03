@@ -6,8 +6,9 @@ import {
   PEOPLE_FARM_TECHNIQUE_GAIN,
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
   PEOPLE_WATER_ACCESS_GAIN,
+  PEOPLE_WILD_STAND_CAPACITY_PER_KM2,
 } from "../constants";
-import { CROP_PACKAGES, pkgClimateBell } from "../../ported/worldgen/cropPackages.js";
+import { CROP_PACKAGES, pkgClimateBell, pkgMoistureBell, pkgTemperatureBell, pkgWildBell } from "../../ported/worldgen/cropPackages.js";
 import { sampleCropRanges } from "../../ported/worldgen/cropRangeData.js";
 import type { PeopleWorld } from "./types";
 
@@ -31,12 +32,27 @@ export function packageCapacity(world: PeopleWorld, cell: number, packageIndex: 
   const fertility = clamp01(world.substrate.fertility[cell] ?? 0);
   const technique = clamp01(world.technique[cell] ?? 0);
   const access = world._waterAccess[cell] ?? 0;
+  // The climate bell gates can-grow and (W8) grades the harvest: a
+  // package's capacity in a cell scales with how well the cell suits it.
   return fertility
     * PEOPLE_FARM_CAPACITY_PER_KM2
     * (pkg.yield ?? 1)
+    * (world._cropFit[packageIndex]?.[packed] ?? 0)
     * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
     * (1 + access * PEOPLE_WATER_ACCESS_GAIN)
     * (world._reliefMult[cell] ?? 0);
+}
+
+/**
+ * Persons per km² a cell's wild stand of a package feeds (W8): the density
+ * a dense stand held its gatherers at, graded by the stand's richness — the
+ * wild-habitat bell on the cell's annual climate inside the range polygon.
+ * Static; built once with the crop fields.
+ */
+export function standCapacity(world: PeopleWorld, cell: number, packageIndex: number): number {
+  const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
+  if (packed < 0) return 0;
+  return world._standCapacity[packageIndex]?.[packed] ?? 0;
 }
 
 /**
@@ -53,36 +69,74 @@ export function initializeCropFields(world: PeopleWorld): void {
   const nativeRanges: Uint8Array[] = [];
   const nativeCells: Int32Array[] = [];
   const canGrow: Uint8Array[] = [];
+  const fits: Float64Array[] = [];
+  const richness: Float64Array[] = [];
+  world._standBest.fill(0);
+  world._standCapacityBest.fill(0);
   for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
     const pkg = CROP_PACKAGES[packageIndex];
     const source = sourceRanges[packageIndex];
     const native = new Uint8Array(landCount);
     const grow = new Uint8Array(landCount);
+    const fit = new Float64Array(landCount);
+    const stand = new Float64Array(landCount);
     const listed: number[] = [];
     for (let packed = 0; packed < landCount; packed++) {
       const cell = world._landCells[packed] ?? 0;
       native[packed] = source?.[cell] ?? 0;
       if (native[packed] === 1) listed.push(packed);
       let season = 0;
+      let fitSum = 0;
+      const access = world._waterAccess[cell] ?? 0;
       for (let month = 0; month < MONTHS_PER_YEAR; month++) {
         const climateIndex = cell * MONTHS_PER_YEAR + month;
         const temperature = world.substrate.climate.temperature[climateIndex] ?? 0;
         const moisture = world.substrate.climate.moisture[climateIndex] ?? 0;
+        const bell = pkgClimateBell(pkg, temperature, moisture);
         if (temperature >= (pkg.baseTemperature ?? pkg.tOpt - pkg.tTol)
-          && pkgClimateBell(pkg, temperature, moisture) >= PEOPLE_TECHNIQUE_CLIMATE_FLOOR) {
+          && bell >= PEOPLE_TECHNIQUE_CLIMATE_FLOOR) {
           season++;
+          // The fit (W8): the crop's warmth term times its water term, where
+          // the water is met by rain or by the water the land gives access to
+          // — a floodplain grows wheat in a desert.
+          fitSum += pkgTemperatureBell(pkg, temperature) * Math.max(pkgMoistureBell(pkg, moisture), access);
         }
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;
+      fit[packed] = grow[packed] === 1 ? fitSum / season : 0;
+      // Stand richness (W8): inside the range polygon, where the crop can
+      // grow, the wild-habitat bell on the annual climate.
+      if (native[packed] === 1 && grow[packed] === 1) {
+        stand[packed] = pkgWildBell(pkg, world._annualTemperature[cell] ?? 0, world._annualMoisture[cell] ?? 0);
+      }
     }
     nativeRanges.push(native);
     nativeCells.push(Int32Array.from(listed));
     canGrow.push(grow);
+    fits.push(fit);
+    richness.push(stand);
   }
   world._nativeRanges = nativeRanges;
   world._nativeCells = nativeCells;
   world._canGrow = canGrow;
+  world._cropFit = fits;
+  world._standRichness = richness;
   world._hearthYears = nativeCells.map((cells) => new Float64Array(cells.length));
+  world._hearthDone = nativeCells.map((cells) => new Uint8Array(cells.length));
+  const standCapacities: Float64Array[] = [];
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    const capacity = new Float64Array(landCount);
+    const stand = richness[packageIndex]!;
+    for (let packed = 0; packed < landCount; packed++) {
+      const cell = world._landCells[packed] ?? 0;
+      if ((stand[packed] ?? 0) <= 0) continue;
+      capacity[packed] = PEOPLE_WILD_STAND_CAPACITY_PER_KM2 * (stand[packed] ?? 0);
+      if ((stand[packed] ?? 0) > (world._standBest[cell] ?? 0)) world._standBest[cell] = stand[packed] ?? 0;
+      if ((capacity[packed] ?? 0) > (world._standCapacityBest[cell] ?? 0)) world._standCapacityBest[cell] = capacity[packed] ?? 0;
+    }
+    standCapacities.push(capacity);
+  }
+  world._standCapacity = standCapacities;
 }
 
 /** Derive the compatibility technique cache: the farmed share of each cell. */

@@ -1,6 +1,6 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W5 } from "./constants";
+import { SAVE_VERSION_W8 } from "./constants";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World, type WorldEvent } from "./world";
 import type { HearthState } from "./people/types";
@@ -9,7 +9,7 @@ import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
 import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W5;
+export const SAVE_VERSION = SAVE_VERSION_W8;
 
 export interface SerializedField {
   readonly length: number;
@@ -222,6 +222,7 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
       const serialized = data.people.hearthYears?.[pkg.id];
       if (!serialized) {
         years.fill(0);
+        peopleWorld._hearthDone[index]?.fill(0);
         return;
       }
       const field = fieldFromBase64(serialized, {
@@ -231,6 +232,10 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
       });
       if (field.length !== years.length) throw new Error(`Invalid hearth-years length for ${pkg.id}.`);
       years.set(field);
+      // A cell at or past its lag has ignited, joined, or can never (W8):
+      // the capacities are static, so the flag is a function of the years.
+      const done = peopleWorld._hearthDone[index];
+      if (done) for (let i = 0; i < years.length; i++) done[i] = (years[i] ?? 0) >= pkg.domLagY ? 1 : 0;
     });
     const mask = bytesFromBase64(data.people.peopledMask);
     if (mask.length !== asPeopleWorld(world)._peopledMask.length) {

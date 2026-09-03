@@ -9,6 +9,8 @@ import {
   PEOPLE_DISEASE_RATE,
   PEOPLE_DISEASE_WARMTH_FLOOR,
   PEOPLE_DISEASE_WARMTH_RANGE,
+  PEOPLE_SHORE_STRIP_KM,
+  PEOPLE_FORAGER_AQUATIC_CAPACITY_PER_KM2,
   PEOPLE_FORAGER_CAPACITY_PER_KM2,
   PEOPLE_FORAGER_FERTILITY_BASE,
   PEOPLE_FORAGER_FERTILITY_GAIN,
@@ -81,7 +83,43 @@ export function waterAccess(world: PeopleWorld, cell: number): number {
   );
 }
 
-export function foragerCapacity(world: PeopleWorld, cell: number): number {
+/**
+ * Forager capacity by habitat (W8): the terrestrial density (M2's law) plus
+ * the aquatic density at the cell's water access — shores, rivers and lakes
+ * held foragers at ten to a hundred times the density of the interior
+ * (Binford 2001; Kelly 2013). The wild-stand term is added once the crop
+ * fields exist (`applyWildStands`).
+ */
+/**
+ * Aquatic access for foragers (W8): the shore, rivers, lakes and the
+ * floodplain — the waters a forager fishes — and not rainfall, which is
+ * farming's water. The shore counts as the strip a coastal forager works,
+ * as a share of the cell: a 22 km cell on the coast is nearly all shore, a
+ * 167 km cell is a tenth shore (third cardinal rule — at the reference grid
+ * a third of the peopled cells touch the sea).
+ */
+export function aquaticAccess(world: PeopleWorld, cell: number): number {
+  const substrate = world.substrate;
+  const flood = substrate.floodplain[cell] ?? 0;
+  const river = Math.min(
+    1,
+    (substrate.rivers.magnitude[cell] ?? 0) / PEOPLE_RIVER_ACCESS_DIVISOR,
+  );
+  const lake = (substrate.rivers.lake[cell] ?? MATH_NEGATIVE_ONE) >= 0 ? 1 : 0;
+  const area = world.cellAreaKm2[cell] ?? 0;
+  const shore = (substrate.coast[cell] ?? 0) !== 0 && area > 0
+    ? Math.min(1, PEOPLE_SHORE_STRIP_KM / Math.sqrt(area))
+    : 0;
+  return clamp01(
+    flood * PEOPLE_FLOODPLAIN_ACCESS_WEIGHT
+    + river * PEOPLE_RIVER_ACCESS_WEIGHT
+    + lake * PEOPLE_LAKE_ACCESS_WEIGHT
+    + shore,
+  );
+}
+
+/** The terrestrial forager density: M2's law, the living of the interior. */
+export function foragerTerrestrialCapacity(world: PeopleWorld, cell: number): number {
   const substrate = world.substrate;
   const fertility = Math.max(0, Math.min(1, substrate.fertility[cell] ?? 0));
   const climate = 1 - PEOPLE_DISEASE_RATE * diseaseBurden(world, cell);
@@ -89,6 +127,19 @@ export function foragerCapacity(world: PeopleWorld, cell: number): number {
     * (PEOPLE_FORAGER_FERTILITY_BASE + PEOPLE_FORAGER_FERTILITY_GAIN * fertility)
     * climate
     * reliefMultiplier(world, cell);
+}
+
+export function foragerCapacity(world: PeopleWorld, cell: number): number {
+  const climate = 1 - PEOPLE_DISEASE_RATE * diseaseBurden(world, cell);
+  return foragerTerrestrialCapacity(world, cell)
+    + PEOPLE_FORAGER_AQUATIC_CAPACITY_PER_KM2 * aquaticAccess(world, cell) * climate;
+}
+
+/** Add each cell's richest wild stand to its forager capacity (W8): dense, sedentary foragers on the stands before any farming. */
+export function applyWildStands(world: PeopleWorld): void {
+  for (const cell of world._landCells) {
+    world._foragerCapacity[cell] = (world._foragerCapacity[cell] ?? 0) + (world._standCapacityBest[cell] ?? 0);
+  }
 }
 
 /** Precompute the static per-cell habitability quantities (annual-climate properties). */
@@ -99,6 +150,9 @@ export function fillStaticHabitability(world: PeopleWorld): void {
     world._reliefMult[cell] = reliefMultiplier(world, cell);
     world._foragerCapacity[cell] = world.substrate.landMask[cell]
       ? foragerCapacity(world, cell)
+      : 0;
+    world._foragerTerrestrial[cell] = world.substrate.landMask[cell]
+      ? foragerTerrestrialCapacity(world, cell)
       : 0;
   }
 }

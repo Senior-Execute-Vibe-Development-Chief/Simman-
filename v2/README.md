@@ -1,4 +1,4 @@
-# Simman v2 — W7 where farming begins, and how it travels
+# Simman v2 — W8 who farms what, where, and why
 
 M3a builds on the immutable Earth substrate and seasonal multimodal travel
 field with one real-unit population field. Population grows toward derived
@@ -185,4 +185,20 @@ fudge factors.
   own crossings), which at the shipped grid opens the Aegean, the Marmara
   and the Korea Strait. The dev grid cannot represent those straits, so the
   European rows and Japan are measured at the shipped grid.
+- **Who farms what, where, and why (W8).** Wild stands are a field: each
+  package carries the habitat envelope of its wild ancestor, sampled at the
+  plant's documented localities, and its range is a polygon, so richness
+  has a core and edges. Forager capacity is by habitat — the terrestrial
+  living, plus fishing on shores, rivers, lakes and floodplains (Binford's
+  densities; the shore as a day's strip so it is the same at every grid),
+  plus the richest stand — so dense sedentary foragers sit on the stands
+  and the shores before any farming. A crop's capacity is graded by its
+  climate fit, with a floodplain meeting the water a desert lacks; a cell's
+  capacity is the mixture of the crops its people farm; foragers adopt
+  under pressure (their people against the forager living) and farmers
+  switch to a better crop by the same law. A hearth ignites where a basin's
+  dependence on its stand has run the package's lag and the crop beats
+  foraging there, and it is a region, not one label per 1,000 km. Reality
+  tables: the centres of domestication, the staple by region at 1 CE, the
+  forager density ordering.
 

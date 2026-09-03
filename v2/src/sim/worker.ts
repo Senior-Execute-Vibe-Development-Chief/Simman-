@@ -29,21 +29,21 @@ import type { PeopleWorld } from "./people/types";
  * packages can grow in a cell, and how many are native there. They never
  * change after creation, so they are built once per world, not per batch.
  */
-let overlayCache: { world: PeopleWorld; canGrow: Uint8Array; native: Uint8Array } | undefined;
-function staticOverlays(world: PeopleWorld): { canGrow: Uint8Array; native: Uint8Array } {
+let overlayCache: { world: PeopleWorld; canGrow: Uint8Array; native: Float32Array } | undefined;
+function staticOverlays(world: PeopleWorld): { canGrow: Uint8Array; native: Float32Array } {
   if (overlayCache?.world === world) return overlayCache;
   const canGrow = new Uint8Array(world.N);
-  const native = new Uint8Array(world.N);
+  // The "native" plane is the wild-stand richness (W8): the richest stand of
+  // any package in the cell, 0..1 — the belt a hearth can condense on.
+  const native = new Float32Array(world.N);
   for (let packed = 0; packed < world._landCells.length; packed++) {
     const cell = world._landCells[packed] ?? 0;
     let grows = 0;
-    let natives = 0;
     for (let packageIndex = 0; packageIndex < world._canGrow.length; packageIndex++) {
       grows += world._canGrow[packageIndex]?.[packed] ?? 0;
-      natives += world._nativeRanges[packageIndex]?.[packed] ?? 0;
     }
     canGrow[cell] = grows;
-    native[cell] = natives;
+    native[cell] = world._standBest[cell] ?? 0;
   }
   overlayCache = { world, canGrow, native };
   return overlayCache;
