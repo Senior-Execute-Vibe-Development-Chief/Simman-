@@ -10,7 +10,13 @@ import {
 } from "../constants";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { deriveCapacity } from "./capacity";
-import { activePackageIndices, deriveTechniqueFromFarmers, initializeCropFields, refreshTechniqueShare } from "./crop";
+import {
+  activePackageIndices,
+  deriveTechniqueFromFarmers,
+  initializeCropFields,
+  initializeHearthSiteQuality,
+  refreshTechniqueShare,
+} from "./crop";
 import {
   annualClimateFromSubstrate,
   applyWildStands,
@@ -142,6 +148,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._cropFit = [];
   world._standRichness = [];
   world._standCapacity = [];
+  world._hearthSiteQuality = [];
   world._wildEnvelopes = [];
   world._standBest = new Float64Array(length);
   world._standCapacityBest = new Float64Array(length);
@@ -196,6 +203,10 @@ export function initializePeople(worldInput: World): PeopleWorld {
   if (!world._wasmPeopleKernel) {
     allocateFields(world as unknown as Record<string, unknown>, world.N);
   }
+  // Site quality reads the farmed capacity a FIRST cultivator would get, so
+  // it needs the technique field (all zeros here) — hence after the kernel
+  // or the oracle has allocated the authoritative fields.
+  initializeHearthSiteQuality(world);
   world.ledger.beginPass(
     "people",
     world.people,

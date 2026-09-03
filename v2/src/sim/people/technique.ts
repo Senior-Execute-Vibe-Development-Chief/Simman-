@@ -4,6 +4,7 @@ import {
   MONTHS_PER_YEAR,
   PEOPLE_ADOPTION_RATE_PER_YEAR,
   PEOPLE_CAPACITY_FLOOR_PER_KM2,
+  PEOPLE_FARM_CAPACITY_PER_KM2,
   PEOPLE_HEARTH_BASIN_RADIUS_KM,
   PEOPLE_HEARTH_SEED_FRACTION,
   PEOPLE_TECHNIQUE_PRESENT,
@@ -129,27 +130,36 @@ function seedHearth(world: PeopleWorld, hearth: HearthState, cell: number): void
 
 /**
  * The rate at which a native cell's people domesticate the stand they live
- * on: the basin's fill (people against the basin's forager capacity) times
- * the share of the cell's own subsistence that is still the land's forager
- * yield. An unfarmed cell accrues at its fill; a cell that farming has
- * reached lives on a capacity a hundredfold the forager yield, so its clock
- * all but stops (W7). Spreading pre-empts inventing with no rule for it: the
- * Iranian plateau, western Anatolia and the Nile receive the package before
- * any stand of theirs could mature one, exactly as the record has it.
+ * on. Four factors, each a share, and no constant of its own:
+ *
+ * - the basin's FILL — people against the basin's forager capacity (M2's
+ *   peopled-basin law): domestication is the work of a crowded basin;
+ * - the stand's SHARE of the living its gatherers could otherwise have from
+ *   the land (W8), so a belt has a core and edges. Fishing is not the
+ *   alternative to a stand but its companion (the Natufian gazelle, the
+ *   Yangtze fish), so it is not in the denominator;
+ * - the SITE QUALITY (W10, `initializeHearthSiteQuality`): what the stand
+ *   already feeds here times what farming it would add, as a share of the
+ *   crop's best ground anywhere. Both factors are ABSOLUTE densities: every
+ *   relative form rewards poor land, measurably so — dividing the payoff by
+ *   the forager yield put the Levant 1,300 years late behind an Anatolian
+ *   plateau hearth, and a stand priced as a share of the terrestrial living
+ *   kept hearths on the west Siberian plain. Where a crop only just beats
+ *   foraging the clock effectively never finishes, so a marginal edge of a
+ *   range never mints a hearth without anything naming a place;
+ * - the PRE-EMPTION, forager yield over the living the cell now has (W7): a
+ *   cell farming has reached lives on a capacity many times the forager
+ *   yield and its clock all but stops, so arrival pre-empts invention.
  */
 export function hearthAccrualRate(world: PeopleWorld, cell: number, fill: number, packageIndex: number): number {
   const forager = world._foragerCapacity[cell] ?? 0;
   if (forager <= 0) return 0;
+  const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
+  if (packed < 0) return 0;
+  const site = world._hearthSiteQuality[packageIndex]?.[packed] ?? 0;
+  if (site <= 0) return 0;
   const living = Math.max(PEOPLE_CAPACITY_FLOOR_PER_KM2, world.capField[cell] ?? 0);
-  // Dependence on the stand (W8): the stand's share of the living its
-  // gatherers could otherwise have from the land — the terrestrial forager
-  // yield. Fishing is not the alternative to a stand but its companion (the
-  // Natufian gazelle, the Yangtze fish), so it is not in the denominator.
-  // The core of a belt accrues fast, its edges slowly, and the spread
-  // reaches the edges first.
-  const stand = standCapacity(world, cell, packageIndex);
-  const standShare = stand > 0 ? stand / (stand + (world._foragerTerrestrial[cell] ?? 0)) : 0;
-  return fill * standShare * Math.min(1, forager / living);
+  return fill * site * Math.min(1, forager / living);
 }
 
 /**

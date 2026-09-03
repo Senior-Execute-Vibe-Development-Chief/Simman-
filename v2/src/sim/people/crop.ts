@@ -6,7 +6,7 @@ import {
   PEOPLE_FARM_TECHNIQUE_GAIN,
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
   PEOPLE_WATER_ACCESS_GAIN,
-  PEOPLE_WILD_STAND_CAPACITY_PER_KM2,
+  PEOPLE_WILD_STAND_SHARE,
 } from "../constants";
 import { CROP_PACKAGES, pkgClimateBell, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
 import { occurrenceCellsOf } from "../../ported/worldgen/cropOccurrenceData.js";
@@ -26,12 +26,20 @@ const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
  * carried: a cell where most people farm has cleared, worked land.
  */
 export function packageCapacity(world: PeopleWorld, cell: number, packageIndex: number): number {
+  return packageCapacityAt(world, cell, packageIndex, clamp01(world.technique[cell] ?? 0));
+}
+
+/**
+ * The farmed capacity of a package at a GIVEN technique regime, so a caller
+ * before the technique field exists (the stand law at initialization) can
+ * ask what a first cultivator would get here.
+ */
+export function packageCapacityAt(world: PeopleWorld, cell: number, packageIndex: number, technique: number): number {
   const pkg = CROP_PACKAGES[packageIndex];
   const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
   if (!pkg || packed < 0) return 0;
   if ((world._canGrow[packageIndex]?.[packed] ?? 0) === 0) return 0;
   const fertility = clamp01(world.substrate.fertility[cell] ?? 0);
-  const technique = clamp01(world.technique[cell] ?? 0);
   const access = world._waterAccess[cell] ?? 0;
   // The climate bell gates can-grow and (W8) grades the harvest: a
   // package's capacity in a cell scales with how well the cell suits it.
@@ -157,7 +165,15 @@ export function initializeCropFields(world: PeopleWorld): void {
     for (let packed = 0; packed < landCount; packed++) {
       const cell = world._landCells[packed] ?? 0;
       if ((stand[packed] ?? 0) <= 0) continue;
-      capacity[packed] = PEOPLE_WILD_STAND_CAPACITY_PER_KM2 * (stand[packed] ?? 0);
+      // A wild stand is the crop growing on that ground without husbandry
+      // (W10): a share of what the same ground yields farmed at first
+      // technique, graded by the stand's richness. The flat density it
+      // replaces ignored the land entirely, so a cold thin steppe fed as
+      // many gatherers as a watered hillside and the hearth law could not
+      // tell them apart.
+      capacity[packed] = PEOPLE_WILD_STAND_SHARE
+        * packageCapacityAt(world, cell, packageIndex, 0)
+        * (stand[packed] ?? 0);
       if ((stand[packed] ?? 0) > (world._standBest[cell] ?? 0)) world._standBest[cell] = stand[packed] ?? 0;
       if ((capacity[packed] ?? 0) > (world._standCapacityBest[cell] ?? 0)) world._standCapacityBest[cell] = capacity[packed] ?? 0;
     }
@@ -175,6 +191,55 @@ export function refreshTechniqueShare(world: PeopleWorld): void {
     const farmed = Math.max(0, world._farmerTotal[packed] ?? 0);
     world.technique[cell] = population > 0 ? Math.min(1, farmed / population) : 0;
   }
+}
+
+/**
+ * The site quality of every cell for domesticating a package (W10), static
+ * and built once the stands are in the forager capacity: how good this
+ * ground is for taking the crop up, as a share of the best ground the crop
+ * has anywhere. Two factors, both absolute, and no constant:
+ *
+ * - the STAND, the persons/km2 its wild grain already feeds here, so a belt
+ *   has a core and edges and a thin stand is worth little;
+ * - the PAYOFF, the persons/km2 farming it would ADD over foraging at first
+ *   technique — nobody spends centuries domesticating a plant that would
+ *   barely improve their living, and a marginal edge of a range is worth
+ *   nobody's centuries.
+ *
+ * Dividing by the package's own maximum is what makes the catalogue lag
+ * mean what archaeobotany measured: the duration from cultivation to a
+ * farmable staple AT THE CROP'S BEST SITE. A full basin on that site
+ * accrues a year per year; everywhere else is slower, in proportion to how
+ * much worse the ground is. Without the normalisation each added factor
+ * silently multiplied every lag (the first draft ran the Levant at 0.17
+ * years per year, so a 900-year lag took 5,300).
+ */
+export function initializeHearthSiteQuality(world: PeopleWorld): void {
+  const landCount = world._landCells.length;
+  const quality: Float64Array[] = [];
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    const scores = new Float64Array(landCount);
+    const cells = world._nativeCells[packageIndex];
+    let best = 0;
+    if (cells) {
+      for (const packed of cells) {
+        const cell = world._landCells[packed] ?? 0;
+        const stand = world._standCapacity[packageIndex]?.[packed] ?? 0;
+        if (stand <= 0) continue;
+        const gain = packageCapacityAt(world, cell, packageIndex, 0) - (world._foragerCapacity[cell] ?? 0);
+        if (gain <= 0) continue;
+        // Both factors ABSOLUTE: the food the stand gives its gatherers, and
+        // the food farming it would add. A share of either rewards poor
+        // land, which is what put hearths on the Siberian steppe.
+        const score = stand * gain;
+        scores[packed] = score;
+        if (score > best) best = score;
+      }
+      if (best > 0) for (let packed = 0; packed < landCount; packed++) scores[packed] = (scores[packed] ?? 0) / best;
+    }
+    quality.push(scores);
+  }
+  world._hearthSiteQuality = quality;
 }
 
 export function activePackageIndices(world: PeopleWorld): number[] {
