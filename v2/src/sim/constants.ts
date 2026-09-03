@@ -50,6 +50,7 @@ export const MATH_ATAN_STEP = 2; // spec/09-constants-ledger.md §Units — M0 d
 export const MATH_TAN_EIGHTH_PI = 0.41421356237309503; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (tan(π/8), atan range reduction)
 export const MATH_EXP_MAX = 709; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_EXP_MIN = -745; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const GAUSSIAN_HALF_EXPONENT = -0.5; // spec/09-constants-ledger.md §Units — the exponent of the normal density, exp(-(x/s)^2/2)
 export const MATH_HALF = 0.5; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_THREE = 3; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_FOUR = 4; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
@@ -283,6 +284,7 @@ export const PEOPLE_WILD_STAND_CAPACITY_PER_KM2_RETIRED = 0.5; // spec/09-consta
 export const SAVE_VERSION_W8 = 7; // spec/09-constants-ledger.md §W8 — hearth records carry their region size
 
 export const WILD_RANGE_INTERPOLATION_KM = 200; // spec/09-constants-ledger.md §W9 — the distance a georeferenced record set is interpolated over to become a continuous range: the observations are the range, and this fills the gaps between them without inventing one. Stated in real km, so the same range is derived at either grid
+export const WILD_ENVELOPE_AXES = 4; // spec/09-constants-ledger.md §W9 — the climate signature's axes: the warmth of the warmest and coldest quarters and the moisture of the wettest and driest, the four that separate winter-rain country from monsoon country
 export const WILD_ENVELOPE_QUARTER_MONTHS = 3; // spec/09-constants-ledger.md §W9 — the season a climate signature averages over: a quarter, the bioclim convention (Busby 1991; Hijmans et al. 2005 BIO8-BIO17)
 export const NORMAL_MAD_TO_SIGMA = 1.4826; // spec/09-constants-ledger.md §W9 — the constant taking a median absolute deviation to a standard deviation for a normal distribution (1/Phi^-1(3/4))
 export const WILD_ENVELOPE_SIGMA = 1.5; // spec/09-constants-ledger.md §W9 — the envelope's edge in robust standard deviations of the weighted occurrence spread; a stated statistical convention, so the range's extent is a prediction

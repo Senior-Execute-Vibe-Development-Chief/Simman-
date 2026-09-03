@@ -1,9 +1,11 @@
 import {
+  GAUSSIAN_HALF_EXPONENT,
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
-  PEOPLE_CROP_NEIGHBOR_COUNT,
-  WILD_ENVELOPE_QUARTER_MONTHS,
   NORMAL_MAD_TO_SIGMA,
+  PEOPLE_CROP_NEIGHBOR_COUNT,
+  WILD_ENVELOPE_AXES,
+  WILD_ENVELOPE_QUARTER_MONTHS,
   WILD_ENVELOPE_SIGMA,
   WILD_ENVELOPE_TOLERANCE_FLOOR,
   WILD_RANGE_INTERPOLATION_KM,
@@ -21,7 +23,7 @@ import type { PeopleWorld } from "./types";
  * within a belt than annual means do, which is what gives a wild range a
  * core and edges rather than a saturated interior (W8 finding).
  */
-export const WILD_AXES = 4;
+export const WILD_AXES = WILD_ENVELOPE_AXES;
 
 export function seasonalSignature(world: PeopleWorld, cell: number, out: Float64Array, offset = 0): void {
   const temperature: number[] = [];
@@ -39,10 +41,15 @@ export function seasonalSignature(world: PeopleWorld, cell: number, out: Float64
     for (let index = from; index < from + quarter; index++) total += values[index] ?? 0;
     return total / quarter;
   };
-  out[offset] = mean(temperature, MONTHS_PER_YEAR - quarter);
-  out[offset + 1] = mean(temperature, 0);
-  out[offset + 2] = mean(moisture, MONTHS_PER_YEAR - quarter);
-  out[offset + 3] = mean(moisture, 0);
+  // Warmest quarter, coldest quarter, wettest quarter, driest quarter — the
+  // axis order `WILD_AXES` counts.
+  const axes = [
+    mean(temperature, MONTHS_PER_YEAR - quarter),
+    mean(temperature, 0),
+    mean(moisture, MONTHS_PER_YEAR - quarter),
+    mean(moisture, 0),
+  ];
+  for (let axis = 0; axis < WILD_AXES; axis++) out[offset + axis] = axes[axis] ?? 0;
 }
 
 export interface WildEnvelope {
@@ -114,7 +121,7 @@ export function wildEnvelopeBell(world: PeopleWorld, cell: number, envelope: Wil
   let bell = 1;
   for (let axis = 0; axis < WILD_AXES; axis++) {
     const delta = ((scratch[axis] ?? 0) - (envelope.centre[axis] ?? 0)) / (envelope.tolerance[axis] ?? 1);
-    bell *= dexp(-0.5 * delta * delta);
+    bell *= dexp(GAUSSIAN_HALF_EXPONENT * delta * delta);
   }
   return bell;
 }
@@ -126,7 +133,7 @@ export function wildEnvelopeBell(world: PeopleWorld, cell: number, envelope: Wil
  * then a prediction, checked against the published maps.
  */
 export function wildRangeFloor(): number {
-  return dexp(-0.5 * WILD_ENVELOPE_SIGMA * WILD_ENVELOPE_SIGMA);
+  return dexp(GAUSSIAN_HALF_EXPONENT * WILD_ENVELOPE_SIGMA * WILD_ENVELOPE_SIGMA);
 }
 
 /**

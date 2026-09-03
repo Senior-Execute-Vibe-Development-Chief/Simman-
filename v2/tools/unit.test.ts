@@ -467,14 +467,25 @@ async function main(): Promise<void> {
     }
     assert.ok(standCell >= 0 && bareCell >= 0, "the fixture holds a stand cell and a bare cell");
     const forager = clockWorld._foragerCapacity[standCell] ?? 0;
-    const stand = standCapacity(clockWorld, standCell, standPackage);
-    const share = stand / (stand + (clockWorld._foragerTerrestrial[standCell] ?? 0));
-    assert.ok(share > 0 && share <= 1);
+    // W10: the clock is the basin's fill x the cell's site quality for this
+    // package (its stand times the payoff, as a share of the crop's best
+    // ground) x the pre-emption term. Site quality is 0..1 and reaches 1 at
+    // exactly the crop's best ground, which is what makes the catalogue lag
+    // mean the duration measured AT THAT SITE.
+    const site = clockWorld._hearthSiteQuality[standPackage]?.[clockWorld._packedOf[standCell] ?? 0] ?? 0;
+    assert.ok(site > 0 && site <= 1, "site quality is a share of the crop's best ground");
     clockWorld.capField[standCell] = forager;
-    assert.ok(Math.abs(hearthAccrualRate(clockWorld, standCell, 0.8, standPackage) - 0.8 * share) < 1e-12, "an unfarmed stand cell accrues at fill × stand share");
+    assert.ok(Math.abs(hearthAccrualRate(clockWorld, standCell, 0.8, standPackage) - 0.8 * site) < 1e-12, "an unfarmed stand cell accrues at fill x site quality");
     clockWorld.capField[standCell] = forager * 100;
-    assert.ok(Math.abs(hearthAccrualRate(clockWorld, standCell, 0.8, standPackage) - 0.8 * share / 100) < 1e-12, "a farmed cell's clock slows by its capacity ratio");
+    assert.ok(Math.abs(hearthAccrualRate(clockWorld, standCell, 0.8, standPackage) - 0.8 * site / 100) < 1e-12, "a farmed cell's clock slows by its capacity ratio");
     assert.equal(hearthAccrualRate(clockWorld, bareCell, 1, standPackage), 0, "a cell off the stand never accrues");
+    for (let packageIndex = 0; packageIndex < clockWorld._hearthSiteQuality.length; packageIndex++) {
+      const scores = clockWorld._hearthSiteQuality[packageIndex];
+      if (!scores) continue;
+      let best = 0;
+      for (const score of scores) { assert.ok(score >= 0 && score <= 1, "site quality stays a share"); if (score > best) best = score; }
+      assert.ok(best === 0 || Math.abs(best - 1) < 1e-12, "a package with any site has exactly one best");
+    }
     // The mixture is the capacity: with one package present it is the old
     // dominant-package mixture; with two it is the share-weighted sum.
     const packed = clockWorld._packedOf[standCell] ?? 0;

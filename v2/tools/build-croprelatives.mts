@@ -18,7 +18,27 @@ import { writeFileSync } from "node:fs";
 
 const GRID_DEGREES = 0.25;
 const PAGE = 300;
-const MAX_RECORDS = 2000;
+/**
+ * Every matching record is read (W11). Capping the read at a few thousand
+ * takes whatever datasets GBIF returns first, and that order is
+ * geographically lumpy: green foxtail's Asian records are 3,214 Chinese of
+ * 14,589, but only 23 of the first 300 — enough on its own to centre
+ * millet's fitted envelope on Russia.
+ */
+const MAX_RECORDS = 200_000;
+/**
+ * Collection effort is measured on a coarser grid than abundance: it varies
+ * smoothly with who surveys where, and one query per quarter-degree cell
+ * would be tens of thousands of requests.
+ */
+const BACKGROUND_DEGREES = 1;
+/**
+ * A cell with almost no botany in it cannot say how common anything is
+ * there: five records of a species against five of its whole family is
+ * noise, not abundance. Such cells still seed the range as observations,
+ * they just carry no weight in the envelope fit.
+ */
+const MIN_BACKGROUND_RECORDS = 50;
 
 interface Taxon { readonly name: string; readonly continents: readonly string[]; }
 interface PackageRelatives { readonly packageId: string; readonly note: string; readonly taxa: readonly Taxon[]; }
@@ -79,8 +99,37 @@ async function fetchJson(url: string, attempts = 5): Promise<any> {
   throw new Error(`GBIF request failed after ${attempts} attempts: ${url}`);
 }
 
-async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, number]>; total: number }> {
-  const points: Array<[number, number]> = [];
+const familyKeys = new Map<string, number>();
+async function familyKeyOf(name: string): Promise<number> {
+  const cached = familyKeys.get(name);
+  if (cached !== undefined) return cached;
+  const match = await fetchJson(`https://api.gbif.org/v1/species/match?name=${encodeURIComponent(name)}`);
+  const key = typeof match.familyKey === "number" ? match.familyKey : 0;
+  familyKeys.set(name, key);
+  return key;
+}
+
+/**
+ * The target-group background (W11): how many records of the taxon's own
+ * FAMILY were collected in the same ground, by the same kind of survey. A
+ * record count is abundance multiplied by collection effort, and this is a
+ * direct measure of the effort, so dividing by it leaves the abundance.
+ * Standard practice for presence-only data — Phillips et al. 2009, Sample
+ * selection bias and presence-only distribution models, Ecological
+ * Applications 19:181-197.
+ */
+async function backgroundOf(familyKey: number, continent: string, lon: number, lat: number): Promise<number> {
+  const west = Math.floor(lon / BACKGROUND_DEGREES) * BACKGROUND_DEGREES;
+  const south = Math.floor(lat / BACKGROUND_DEGREES) * BACKGROUND_DEGREES;
+  const url = `https://api.gbif.org/v1/occurrence/search?familyKey=${familyKey}&continent=${continent}`
+    + `&decimalLongitude=${west},${west + BACKGROUND_DEGREES}&decimalLatitude=${south},${south + BACKGROUND_DEGREES}`
+    + "&hasCoordinate=true&hasGeospatialIssue=false&limit=0";
+  const page = await fetchJson(url);
+  return page.count ?? 0;
+}
+
+async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, number, string]>; total: number }> {
+  const points: Array<[number, number, string]> = [];
   let total = 0;
   for (const continent of taxon.continents) {
     const base = `https://api.gbif.org/v1/occurrence/search?scientificName=${encodeURIComponent(taxon.name)}`
@@ -89,11 +138,12 @@ async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, num
     total += head.count ?? 0;
     let offset = 0;
     let page = head;
+    // GBIF caps offset at 100,000; nothing here approaches it.
     while (offset < Math.min(head.count ?? 0, MAX_RECORDS)) {
       for (const record of page.results ?? []) {
         const lat = record.decimalLatitude;
         const lon = record.decimalLongitude;
-        if (typeof lat === "number" && typeof lon === "number") points.push([lon, lat]);
+        if (typeof lat === "number" && typeof lon === "number") points.push([lon, lat, continent]);
       }
       if (page.endOfRecords) break;
       offset += PAGE;
@@ -117,41 +167,70 @@ for (const entry of RELATIVES) {
     // away and left the fitted envelope tracking whichever member had been
     // collected most — the survey-effort bias that put wheat's richest
     // ground in western Anatolia and millet's on the Kazakh steppe.
-    const cells = new Map<string, [number, number, number]>();
-    // Each taxon carries the same total weight, whatever its record count.
-    // Sampling effort differs by orders of magnitude between a surveyed weed
-    // and a rare progenitor (green foxtail 14,589 records against wild
-    // broomcorn millet's 384), and unnormalised counts let the surveyed one
-    // decide where the package's envelope sits.
-    const perRecord = points.length > 0 ? 1 / points.length : 0;
-    for (const [lon, lat] of points) {
+    const cells = new Map<string, { lon: number; lat: number; records: number; continent: string }>();
+    for (const [lon, lat, continent] of points) {
       const key = `${Math.round(lon / GRID_DEGREES)}:${Math.round(lat / GRID_DEGREES)}`;
       const existing = cells.get(key);
-      if (existing) existing[2] += perRecord;
+      if (existing) existing.records += 1;
       else {
-        cells.set(key, [
-          Math.round((Math.round(lon / GRID_DEGREES) * GRID_DEGREES) * 1000) / 1000,
-          Math.round((Math.round(lat / GRID_DEGREES) * GRID_DEGREES) * 1000) / 1000,
-          perRecord,
-        ]);
+        cells.set(key, {
+          lon: Math.round((Math.round(lon / GRID_DEGREES) * GRID_DEGREES) * 1000) / 1000,
+          lat: Math.round((Math.round(lat / GRID_DEGREES) * GRID_DEGREES) * 1000) / 1000,
+          records: 1,
+          continent,
+        });
       }
     }
+    // Divide out the looking (W11). A cell's record count is abundance TIMES
+    // collection effort; the family's own record count in the same ground is
+    // that effort, so the ratio is what we actually want to know — how
+    // common the plant is there. Uncorrected, a well-botanised region wins
+    // for being well botanised: on the four cells that decide where millet
+    // is domesticated, the raw counts put the Kazakh steppe and Omsk beside
+    // the loess, and the corrected shares put north China above both.
+    const familyKey = await familyKeyOf(taxon.name);
+    const backgrounds = new Map<string, number>();
+    let corrected = 0;
+    for (const cell of cells.values()) {
+      const key = `${cell.continent}:${Math.floor(cell.lon / BACKGROUND_DEGREES)}:${Math.floor(cell.lat / BACKGROUND_DEGREES)}`;
+      let background = backgrounds.get(key);
+      if (background === undefined) {
+        background = familyKey > 0 ? await backgroundOf(familyKey, cell.continent, cell.lon, cell.lat) : 0;
+        backgrounds.set(key, background);
+      }
+      if (background >= MIN_BACKGROUND_RECORDS) corrected += cell.records / background;
+    }
+    // Each taxon then carries the same total weight, whatever its record
+    // count: sampling effort differs by orders of magnitude between a
+    // surveyed weed and a rare progenitor (green foxtail 14,589 records
+    // against wild broomcorn millet's 384), and unnormalised weights let the
+    // surveyed one decide where the package's envelope sits.
+    const scale = corrected > 0 ? 1 / corrected : 0;
+    const rows = [...cells.values()].map((cell) => {
+      const key = `${cell.continent}:${Math.floor(cell.lon / BACKGROUND_DEGREES)}:${Math.floor(cell.lat / BACKGROUND_DEGREES)}`;
+      const background = backgrounds.get(key) ?? 0;
+      // A cell with too little botany in it keeps its place as an
+      // observation — the plant IS there — but carries no weight in the fit.
+      const weight = background >= MIN_BACKGROUND_RECORDS ? (cell.records / background) * scale : 0;
+      return [cell.lon, cell.lat, Math.round(weight * 1e8) / 1e8] as [number, number, number];
+    }).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     taxa.push({
       name: taxon.name,
       continents: taxon.continents,
       records: total,
       sampled: points.length,
-      cells: [...cells.values()]
-        .map(([lon, lat, weight]) => [lon, lat, Math.round(weight * 1e6) / 1e6] as [number, number, number])
-        .sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+      backgroundCells: backgrounds.size,
+      weightedCells: rows.filter((row) => row[2] > 0).length,
+      cells: rows,
     });
-    console.error(`${entry.packageId} ${taxon.name}: ${total} records, ${points.length} sampled, ${cells.size} cells`);
+    console.error(`${entry.packageId} ${taxon.name}: ${total} records, ${points.length} read, ${cells.size} cells,`
+      + ` ${backgrounds.size} background cells, ${rows.filter((row) => row[2] > 0).length} weighted`);
   }
   packages.push({ packageId: entry.packageId, note: entry.note, taxa });
 }
 
 writeFileSync("data/reality/crop-occurrences.json", `${JSON.stringify({
-  source: "Each cell is [longitude, latitude, weight]: the weight is the share of its taxon's records that fall in the cell, so every taxon of a package counts equally however well surveyed it is, and it measures how COMMON the plant is there, which is what separates Harlan's massive stands from sporadic occurrences and is what the envelope is fitted against. GBIF occurrence records of each package's WILD progenitors, restricted to the continents the lineage is native to (GBIF's own continent field; the modern spread of a domesticate is thereby excluded — sunflower alone has 44,705 European records). Coordinates are deduplicated to a 0.25-degree grid; the counts are the full matching totals, the sampled figures what this bake read. Cells are listed PER TAXON: the simulation fits an envelope to each member separately, and a package's stand richness is where its members CO-OCCUR — both the founder-package concept and the correction for per-species survey effort, since an intersection cannot be inflated by one over-collected member. No range is drawn.",
+  source: "Each cell is [longitude, latitude, weight]: the weight is the taxon's record count in the cell DIVIDED BY the records of its whole family in the same ground (the target-group background, Phillips et al. 2009), normalised so every taxon of a package counts equally however well surveyed it is. A raw count is abundance times collection effort; the family's count is that effort, so the ratio so every taxon of a package counts equally however well surveyed it is, and it measures how COMMON the plant is there, which is what separates Harlan's massive stands from sporadic occurrences and is what the envelope is fitted against. GBIF occurrence records of each package's WILD progenitors, restricted to the continents the lineage is native to (GBIF's own continent field; the modern spread of a domesticate is thereby excluded — sunflower alone has 44,705 European records). Coordinates are deduplicated to a 0.25-degree grid; the counts are the full matching totals, the sampled figures what this bake read. Cells are listed PER TAXON: the simulation fits an envelope to each member separately, and a package's stand richness is where its members CO-OCCUR — both the founder-package concept and the correction for per-species survey effort, since an intersection cannot be inflated by one over-collected member. No range is drawn.",
   citation: "GBIF.org occurrence search API, api.gbif.org/v1/occurrence/search. Individual dataset citations resolve through each record's datasetKey.",
   fetched: new Date().toISOString().slice(0, 10),
   gridDegrees: GRID_DEGREES,
