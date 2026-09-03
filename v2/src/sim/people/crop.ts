@@ -9,8 +9,9 @@ import {
   PEOPLE_WILD_STAND_SHARE,
 } from "../constants";
 import { CROP_PACKAGES, pkgClimateBell, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
-import { occurrenceCellsOf } from "../../ported/worldgen/cropOccurrenceData.js";
+import { occurrenceTaxaOf } from "../../ported/worldgen/cropOccurrenceData.js";
 import { deriveWildRange, fitWildEnvelope } from "./wildRange";
+import { dpow } from "../dmath";
 import type { PeopleWorld } from "./types";
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -83,7 +84,7 @@ export function standCapacity(world: PeopleWorld, cell: number, packageIndex: nu
 export function initializeCropFields(world: PeopleWorld): void {
   const landCount = world._landCells.length;
   const bells = new Float64Array(landCount);
-  const envelopes: Array<{ readonly cells: number; readonly centre: readonly number[]; readonly tolerance: readonly number[] }> = [];
+  const envelopes: Array<{ readonly taxon: string; readonly cells: number; readonly centre: readonly number[]; readonly tolerance: readonly number[] }> = [];
   const nativeRanges: Uint8Array[] = [];
   const nativeCells: Int32Array[] = [];
   const canGrow: Uint8Array[] = [];
@@ -93,11 +94,47 @@ export function initializeCropFields(world: PeopleWorld): void {
   world._standCapacityBest.fill(0);
   for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
     const pkg = CROP_PACKAGES[packageIndex];
-    const occurrences = occurrenceCellsOf(pkg.id, world.width, world.height)
-      .filter((occurrence: { cell: number }) => world.substrate.landMask[occurrence.cell] === 1);
-    const envelope = fitWildEnvelope(world, occurrences);
-    envelopes.push({ cells: envelope.cells, centre: [...envelope.centre], tolerance: [...envelope.tolerance] });
-    const source = deriveWildRange(world, occurrences, envelope, bells);
+    // One envelope PER MEMBER of the founder set, and the package is rich
+    // where its members CO-OCCUR (W10). A package's range is the union of
+    // its members' ranges — the ground any of them holds — but its stand
+    // richness is the members' MEAN bell, counting an absent member as
+    // zero, so ground that carries one member of three is thin and ground
+    // that carries all three is rich. This is the founder-package concept
+    // (Zohary & Hopf: the Crescent is where the whole set occurs together)
+    // and it is the correction for per-species survey effort, because an
+    // intersection cannot be inflated by one over-collected member. Fitting
+    // one envelope to the merged cloud instead put wheat's richest ground
+    // in western Anatolia, which has wild einkorn but no wild emmer, and
+    // millet's on the Kazakh steppe, which has green foxtail but no wild
+    // broomcorn millet.
+    const taxa = occurrenceTaxaOf(pkg.id, world.width, world.height)
+      .map((taxon: { name: string; cells: Array<{ cell: number; records: number }> }) => ({
+        name: taxon.name,
+        cells: taxon.cells.filter((occurrence) => world.substrate.landMask[occurrence.cell] === 1),
+      }))
+      .filter((taxon: { cells: unknown[] }) => taxon.cells.length > 0);
+    const source = new Uint8Array(landCount);
+    bells.fill(taxa.length > 0 ? 1 : 0);
+    const memberBells = new Float64Array(landCount);
+    const memberRange = new Uint8Array(landCount);
+    for (const taxon of taxa) {
+      const envelope = fitWildEnvelope(world, taxon.cells);
+      envelopes.push({ taxon: taxon.name, cells: envelope.cells, centre: [...envelope.centre], tolerance: [...envelope.tolerance] });
+      memberRange.set(deriveWildRange(world, taxon.cells, envelope, memberBells));
+      for (let packed = 0; packed < landCount; packed++) {
+        // Co-occurrence is a PRODUCT, not an average: the founder set is
+        // rich only where every member is present, so ground carrying one
+        // member of three is not a third as good, it is no package at all.
+        bells[packed] = (bells[packed] ?? 0) * (memberRange[packed] === 1 ? (memberBells[packed] ?? 0) : 0);
+        if (memberRange[packed] === 1) source[packed] = 1;
+      }
+    }
+    if (taxa.length > 1) {
+      const root = 1 / taxa.length;
+      for (let packed = 0; packed < landCount; packed++) {
+        bells[packed] = (bells[packed] ?? 0) > 0 ? dpow(bells[packed] ?? 0, root) : 0;
+      }
+    }
     const native = new Uint8Array(landCount);
     const grow = new Uint8Array(landCount);
     const fit = new Float64Array(landCount);
@@ -125,7 +162,12 @@ export function initializeCropFields(world: PeopleWorld): void {
         }
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;
-      fit[packed] = grow[packed] === 1 ? fitSum / season : 0;
+      // Over the YEAR, not over the qualifying months (W10): a crop's yield
+      // is the total favourable growing time, so eight good months feed more
+      // than five. Averaging over qualifying months alone scored a short
+      // Siberian summer as highly as a long Chinese one, which is what kept
+      // millet's best ground on the west Siberian plain.
+      fit[packed] = grow[packed] === 1 ? fitSum / MONTHS_PER_YEAR : 0;
       // Stand richness (W9): inside the derived range, where the crop can
       // grow, the fitted envelope graded by the habitat that varies at belt
       // scale — the soil and the terrain. A belt then has a core and edges

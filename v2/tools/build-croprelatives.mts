@@ -106,10 +106,18 @@ async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, num
 
 const packages: unknown[] = [];
 for (const entry of RELATIVES) {
-  const cells = new Map<string, [number, number, number]>();
   const taxa: unknown[] = [];
   for (const taxon of entry.taxa) {
     const { points, total } = await occurrencesOf(taxon);
+    // Cells are kept PER TAXON (W10). A package is a founder SET and it is
+    // rich where its members CO-OCCUR: western Anatolia has wild einkorn but
+    // not wild emmer, the south-eastern arc has einkorn, emmer and barley
+    // together; green foxtail runs across Siberia, wild broomcorn millet
+    // does not. Merging the taxa into one cloud threw that intersection
+    // away and left the fitted envelope tracking whichever member had been
+    // collected most — the survey-effort bias that put wheat's richest
+    // ground in western Anatolia and millet's on the Kazakh steppe.
+    const cells = new Map<string, [number, number, number]>();
     // Each taxon carries the same total weight, whatever its record count.
     // Sampling effort differs by orders of magnitude between a surveyed weed
     // and a rare progenitor (green foxtail 14,589 records against wild
@@ -128,21 +136,22 @@ for (const entry of RELATIVES) {
         ]);
       }
     }
-    taxa.push({ name: taxon.name, continents: taxon.continents, records: total, sampled: points.length });
-    console.error(`${entry.packageId} ${taxon.name}: ${total} records, ${points.length} sampled`);
+    taxa.push({
+      name: taxon.name,
+      continents: taxon.continents,
+      records: total,
+      sampled: points.length,
+      cells: [...cells.values()]
+        .map(([lon, lat, weight]) => [lon, lat, Math.round(weight * 1e6) / 1e6] as [number, number, number])
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+    });
+    console.error(`${entry.packageId} ${taxon.name}: ${total} records, ${points.length} sampled, ${cells.size} cells`);
   }
-  packages.push({
-    packageId: entry.packageId,
-    note: entry.note,
-    taxa,
-    cells: [...cells.values()]
-      .map(([lon, lat, weight]) => [lon, lat, Math.round(weight * 1e6) / 1e6] as [number, number, number])
-      .sort((a, b) => a[0] - b[0] || a[1] - b[1]),
-  });
+  packages.push({ packageId: entry.packageId, note: entry.note, taxa });
 }
 
 writeFileSync("data/reality/crop-occurrences.json", `${JSON.stringify({
-  source: "Each cell is [longitude, latitude, weight]: the weight is the share of its taxon's records that fall in the cell, so every taxon of a package counts equally however well surveyed it is, and it measures how COMMON the plant is there, which is what separates Harlan's massive stands from sporadic occurrences and is what the envelope is fitted against. GBIF occurrence records of each package's WILD progenitors, restricted to the continents the lineage is native to (GBIF's own continent field; the modern spread of a domesticate is thereby excluded — sunflower alone has 44,705 European records). Coordinates are deduplicated to a 0.25-degree grid; the counts are the full matching totals, the sampled figures what this bake read. The simulation fits each package's climate envelope to these cells and derives its range; no range is drawn.",
+  source: "Each cell is [longitude, latitude, weight]: the weight is the share of its taxon's records that fall in the cell, so every taxon of a package counts equally however well surveyed it is, and it measures how COMMON the plant is there, which is what separates Harlan's massive stands from sporadic occurrences and is what the envelope is fitted against. GBIF occurrence records of each package's WILD progenitors, restricted to the continents the lineage is native to (GBIF's own continent field; the modern spread of a domesticate is thereby excluded — sunflower alone has 44,705 European records). Coordinates are deduplicated to a 0.25-degree grid; the counts are the full matching totals, the sampled figures what this bake read. Cells are listed PER TAXON: the simulation fits an envelope to each member separately, and a package's stand richness is where its members CO-OCCUR — both the founder-package concept and the correction for per-species survey effort, since an intersection cannot be inflated by one over-collected member. No range is drawn.",
   citation: "GBIF.org occurrence search API, api.gbif.org/v1/occurrence/search. Individual dataset citations resolve through each record's datasetKey.",
   fetched: new Date().toISOString().slice(0, 10),
   gridDegrees: GRID_DEGREES,
