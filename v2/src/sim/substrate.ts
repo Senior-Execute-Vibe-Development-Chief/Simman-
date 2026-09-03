@@ -29,7 +29,6 @@ import {
   provideRealWindData,
   sampleMonthlyWind,
 } from "../ported/worldgen/realWindData.js";
-import { sampleCropRanges } from "../ported/worldgen/cropRangeData.js";
 import { dimensionsFor, type GridPreset } from "./world";
 import precipitation from "../../data/reality/global_precip.json";
 import airTemperature from "../../data/reality/global_airtemp.json";
@@ -100,8 +99,6 @@ export interface Substrate {
   readonly soil: Float32Array;
   readonly fertility: Float32Array;
   readonly wildCropSuitability: Float32Array;
-  /** Wild-progenitor ranges, one immutable raster per catalogue package. */
-  readonly cropNativeRanges?: readonly Uint8Array[];
   readonly crossingCost: Float32Array;
   readonly resources: Readonly<Record<string, Float32Array>>;
   readonly relief: Float32Array;
@@ -348,7 +345,6 @@ export function buildSubstrate(
     soil: territory.tFert,
     fertility: territory.tFert,
     wildCropSuitability: territory.tCrop,
-    cropNativeRanges: sampleCropRanges(width, height),
     crossingCost: territory.tCross,
     resources: territory.deposits,
     relief: territory.tRelief,

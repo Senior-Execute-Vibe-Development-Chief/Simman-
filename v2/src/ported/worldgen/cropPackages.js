@@ -13,17 +13,6 @@ export const CROP_PACKAGES = packageData.packages;
 export const CROP_BY_ID = {};
 for (const crop of CROP_PACKAGES) CROP_BY_ID[crop.id] = crop;
 
-/**
- * The wild-habitat bell (W8): where the package's wild progenitor forms
- * dense stands, on the annual climate indices — the envelope sampled at
- * the plant's documented localities, never the crop's growing envelope.
- */
-export function pkgWildBell(pkg, t, m) {
-  const dt = (t - pkg.tOptWild) / pkg.tTolWild;
-  const dm = (m - pkg.mOptWild) / pkg.mTolWild;
-  return dexp(-0.5 * dt * dt) * dexp(-0.5 * dm * dm);
-}
-
 /** The crop bell's warmth term. */
 export function pkgTemperatureBell(pkg, t) {
   const tTol = pkg.tTolEarly ?? pkg.tTol;

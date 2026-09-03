@@ -142,6 +142,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._cropFit = [];
   world._standRichness = [];
   world._standCapacity = [];
+  world._wildEnvelopes = [];
   world._standBest = new Float64Array(length);
   world._standCapacityBest = new Float64Array(length);
   world._hearthYears = [];

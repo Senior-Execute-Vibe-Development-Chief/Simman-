@@ -55,6 +55,7 @@ export const WORLD_SCRATCH = new Set<string>([
   "_standBest",
   "_standCapacityBest",
   "_nativeRanges",
+  "_wildEnvelopes",
   "_dominantPackage",
   "_neighborTargets",
   "_neighborDistanceKm",

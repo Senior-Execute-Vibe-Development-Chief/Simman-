@@ -1,5 +1,5 @@
 {
- "source": "Archaeobotany syntheses; package envelopes are directional evidence, not named-region rules. Wild-habitat envelopes (tOptWild/tTolWild/mOptWild/mTolWild, W8) are the sim's annual climate indices sampled at the documented dense-stand localities of each progenitor (listed in README.md), mean \u00b1 spread, the spread floored at the climate table's resolution (0.05 temperature, 0.08 moisture; the table is ~1.9\u00b0 cells and a one-valley crop samples a handful of them).",
+ "source": "Archaeobotany syntheses; package envelopes are directional evidence, not named-region rules. Wild-habitat envelopes are no longer carried here: W9 fits each package's envelope to its progenitors' observed occurrences (`crop-occurrences.json`) on a seasonal signature, and derives the range from it.",
  "packages": [
   {
    "id": "wheat",
@@ -17,11 +17,7 @@
     222,
     184,
     70
-   ],
-   "tOptWild": 0.723,
-   "tTolWild": 0.05,
-   "mOptWild": 0.228,
-   "mTolWild": 0.091
+   ]
   },
   {
    "id": "rice",
@@ -39,11 +35,7 @@
     70,
     160,
     95
-   ],
-   "tOptWild": 0.732,
-   "tTolWild": 0.05,
-   "mOptWild": 0.446,
-   "mTolWild": 0.08
+   ]
   },
   {
    "id": "maize",
@@ -62,11 +54,7 @@
     225,
     140,
     55
-   ],
-   "tOptWild": 0.768,
-   "tTolWild": 0.05,
-   "mOptWild": 0.525,
-   "mTolWild": 0.08
+   ]
   },
   {
    "id": "sorghum",
@@ -84,11 +72,7 @@
     196,
     170,
     110
-   ],
-   "tOptWild": 0.878,
-   "tTolWild": 0.05,
-   "mOptWild": 0.019,
-   "mTolWild": 0.08
+   ]
   },
   {
    "id": "millet",
@@ -106,11 +90,7 @@
     214,
     196,
     120
-   ],
-   "tOptWild": 0.672,
-   "tTolWild": 0.05,
-   "mOptWild": 0.249,
-   "mTolWild": 0.08
+   ]
   },
   {
    "id": "tubers",
@@ -128,11 +108,7 @@
     150,
     95,
     175
-   ],
-   "tOptWild": 0.831,
-   "tTolWild": 0.05,
-   "mOptWild": 0.612,
-   "mTolWild": 0.154
+   ]
   },
   {
    "id": "highland-roots",
@@ -150,11 +126,7 @@
     175,
     115,
     195
-   ],
-   "tOptWild": 0.808,
-   "tTolWild": 0.05,
-   "mOptWild": 0.537,
-   "mTolWild": 0.177
+   ]
   },
   {
    "id": "new-guinea-roots",
@@ -172,11 +144,7 @@
     135,
     95,
     185
-   ],
-   "tOptWild": 0.834,
-   "tTolWild": 0.05,
-   "mOptWild": 0.742,
-   "mTolWild": 0.08
+   ]
   },
   {
    "id": "eastern-seeds",
@@ -194,11 +162,7 @@
     190,
     130,
     75
-   ],
-   "tOptWild": 0.712,
-   "tTolWild": 0.05,
-   "mOptWild": 0.524,
-   "mTolWild": 0.08
+   ]
   }
  ]
 }

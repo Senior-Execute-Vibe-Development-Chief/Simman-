@@ -281,3 +281,9 @@ export const PEOPLE_FORAGER_AQUATIC_CAPACITY_PER_KM2 = 0.4; // spec/09-constants
 export const PEOPLE_WILD_STAND_CAPACITY_PER_KM2 = 0.5; // spec/09-constants-ledger.md §W8 — forager density a dense wild stand feeds at full richness: Natufian hamlets on the Levantine stands (Bar-Yosef 1998), Binford 2001's terrestrial-plant groups in warm-temperate settings (0.1–0.5 persons/km²)
 export const SAVE_VERSION_W8 = 7; // spec/09-constants-ledger.md §W8 — hearth records carry their region size
 
+export const WILD_RANGE_INTERPOLATION_KM = 200; // spec/09-constants-ledger.md §W9 — the distance a georeferenced record set is interpolated over to become a continuous range: the observations are the range, and this fills the gaps between them without inventing one. Stated in real km, so the same range is derived at either grid
+export const WILD_ENVELOPE_QUARTER_MONTHS = 3; // spec/09-constants-ledger.md §W9 — the season a climate signature averages over: a quarter, the bioclim convention (Busby 1991; Hijmans et al. 2005 BIO8-BIO17)
+export const NORMAL_MAD_TO_SIGMA = 1.4826; // spec/09-constants-ledger.md §W9 — the constant taking a median absolute deviation to a standard deviation for a normal distribution (1/Phi^-1(3/4))
+export const WILD_ENVELOPE_SIGMA = 1.5; // spec/09-constants-ledger.md §W9 — the envelope's edge in robust standard deviations of the weighted occurrence spread; a stated statistical convention, so the range's extent is a prediction
+export const WILD_ENVELOPE_TOLERANCE_FLOOR = 0.02; // spec/09-constants-ledger.md §W9 — the narrowest spread the climate table can resolve (~1.9-degree cells), so a lineage known from one valley gets no envelope narrower than the data can see
+

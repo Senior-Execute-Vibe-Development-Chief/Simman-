@@ -8,8 +8,9 @@ import {
   PEOPLE_WATER_ACCESS_GAIN,
   PEOPLE_WILD_STAND_CAPACITY_PER_KM2,
 } from "../constants";
-import { CROP_PACKAGES, pkgClimateBell, pkgMoistureBell, pkgTemperatureBell, pkgWildBell } from "../../ported/worldgen/cropPackages.js";
-import { sampleCropRanges } from "../../ported/worldgen/cropRangeData.js";
+import { CROP_PACKAGES, pkgClimateBell, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
+import { occurrenceCellsOf } from "../../ported/worldgen/cropOccurrenceData.js";
+import { deriveWildRange, fitWildEnvelope } from "./wildRange";
 import type { PeopleWorld } from "./types";
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -56,7 +57,16 @@ export function standCapacity(world: PeopleWorld, cell: number, packageIndex: nu
 }
 
 /**
- * Build the annual climate and native-range overlays once at initialization.
+ * Build the climate, range and stand fields once at initialization (W9).
+ *
+ * A package's range is DERIVED, not drawn: its climate envelope is fitted to
+ * the cells its wild progenitors were actually observed in (GBIF, baked to
+ * `crop-occurrences.json`), on a seasonal signature that can tell winter-wet
+ * country from monsoon country, and the range is the land connected to those
+ * observations through cells that clear the envelope's stated floor. The
+ * shape is therefore a prediction against the published range maps rather
+ * than a tracing of them, and the only datum is which landmass each lineage
+ * is native to.
  * The monthly test is intentionally local: a crop can be admissible in an
  * annual climate bell yet fail because the growing season is too short.
  * The native cells of each package are listed once; the hearth law accrues
@@ -64,8 +74,8 @@ export function standCapacity(world: PeopleWorld, cell: number, packageIndex: nu
  */
 export function initializeCropFields(world: PeopleWorld): void {
   const landCount = world._landCells.length;
-  const sourceRanges = world.substrate.cropNativeRanges
-    ?? sampleCropRanges(world.width, world.height);
+  const bells = new Float64Array(landCount);
+  const envelopes: Array<{ readonly cells: number; readonly centre: readonly number[]; readonly tolerance: readonly number[] }> = [];
   const nativeRanges: Uint8Array[] = [];
   const nativeCells: Int32Array[] = [];
   const canGrow: Uint8Array[] = [];
@@ -75,7 +85,11 @@ export function initializeCropFields(world: PeopleWorld): void {
   world._standCapacityBest.fill(0);
   for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
     const pkg = CROP_PACKAGES[packageIndex];
-    const source = sourceRanges[packageIndex];
+    const occurrences = occurrenceCellsOf(pkg.id, world.width, world.height)
+      .filter((occurrence: { cell: number }) => world.substrate.landMask[occurrence.cell] === 1);
+    const envelope = fitWildEnvelope(world, occurrences);
+    envelopes.push({ cells: envelope.cells, centre: [...envelope.centre], tolerance: [...envelope.tolerance] });
+    const source = deriveWildRange(world, occurrences, envelope, bells);
     const native = new Uint8Array(landCount);
     const grow = new Uint8Array(landCount);
     const fit = new Float64Array(landCount);
@@ -83,7 +97,7 @@ export function initializeCropFields(world: PeopleWorld): void {
     const listed: number[] = [];
     for (let packed = 0; packed < landCount; packed++) {
       const cell = world._landCells[packed] ?? 0;
-      native[packed] = source?.[cell] ?? 0;
+      native[packed] = source[packed] ?? 0;
       if (native[packed] === 1) listed.push(packed);
       let season = 0;
       let fitSum = 0;
@@ -104,10 +118,23 @@ export function initializeCropFields(world: PeopleWorld): void {
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;
       fit[packed] = grow[packed] === 1 ? fitSum / season : 0;
-      // Stand richness (W8): inside the range polygon, where the crop can
-      // grow, the wild-habitat bell on the annual climate.
+      // Stand richness (W9): inside the derived range, where the crop can
+      // grow, the fitted envelope graded by the habitat that varies at belt
+      // scale — the soil and the terrain. A belt then has a core and edges
+      // rather than a saturated interior, and its cells cross the
+      // domestication lag over centuries rather than together (W8 finding).
       if (native[packed] === 1 && grow[packed] === 1) {
-        stand[packed] = pkgWildBell(pkg, world._annualTemperature[cell] ?? 0, world._annualMoisture[cell] ?? 0);
+        // A stand feeds people in proportion to what it yields, and a stand
+        // in a five-month season yields less than one in an eight-month
+        // season. The crop's own fit carries that, so a plant present at the
+        // cold margin of its range is a thin stand there — the physics that
+        // separates a Levantine hillside from a Siberian one without anyone
+        // saying so (W9: green foxtail's Siberian records otherwise lit
+        // fifteen hearths across the taiga).
+        stand[packed] = (bells[packed] ?? 0)
+          * (fit[packed] ?? 0)
+          * clamp01(world.substrate.fertility[cell] ?? 0)
+          * (world._reliefMult[cell] ?? 0);
       }
     }
     nativeRanges.push(native);
@@ -137,6 +164,7 @@ export function initializeCropFields(world: PeopleWorld): void {
     standCapacities.push(capacity);
   }
   world._standCapacity = standCapacities;
+  world._wildEnvelopes = envelopes;
 }
 
 /** Derive the compatibility technique cache: the farmed share of each cell. */

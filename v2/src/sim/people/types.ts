@@ -58,6 +58,8 @@ export interface PeopleWorld extends World {
   _canGrow: readonly Uint8Array[];
   /** Per-package climate fit (the crop bell over its growing months, 0..1), packed to land (W8). */
   _cropFit: readonly Float64Array[];
+  /** Per-package fitted wild envelope (W9 provenance: the occurrence count and the seasonal centre and tolerance). */
+  _wildEnvelopes: ReadonlyArray<{ readonly cells: number; readonly centre: readonly number[]; readonly tolerance: readonly number[] }>;
   /** Per-package wild-stand richness (0..1) and the persons/km² the stand feeds, packed to land (W8, static). */
   _standRichness: readonly Float64Array[];
   _standCapacity: readonly Float64Array[];
