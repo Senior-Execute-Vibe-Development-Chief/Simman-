@@ -14,7 +14,9 @@
  * to a coarse grid, per package, with taxa, counts and the fetch date.
  * Run manually when the catalogue changes; CI never fetches.
  */
-import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const GRID_DEGREES = 0.25;
 const PAGE = 300;
@@ -86,17 +88,41 @@ const RELATIVES: readonly PackageRelatives[] = [
   ] },
 ];
 
-async function fetchJson(url: string, attempts = 5): Promise<any> {
+/**
+ * A disk cache, so a bake interrupted by GBIF's weather resumes instead of
+ * starting over. A full read of every progenitor is thousands of requests,
+ * GBIF answers 503 under load, and without this one bad minute at the end
+ * throws away an hour — which it did.
+ */
+const CACHE_DIR = process.env.CROPREL_CACHE ?? ".croprelatives-cache";
+mkdirSync(CACHE_DIR, { recursive: true });
+function cachePath(name: string): string {
+  return join(CACHE_DIR, `${createHash("sha1").update(name).digest("hex")}.json`);
+}
+function cacheGet<T>(name: string): T | undefined {
+  const path = cachePath(name);
+  if (!existsSync(path)) return undefined;
+  try { return JSON.parse(readFileSync(path, "utf8")) as T; } catch { return undefined; }
+}
+function cacheSet(name: string, value: unknown): void {
+  try { writeFileSync(cachePath(name), JSON.stringify(value)); } catch { /* a cache miss is not a failure */ }
+}
+
+async function fetchJson(url: string, attempts = 8): Promise<any> {
+  let last = "";
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const response = await fetch(url);
       if (response.ok) return await response.json();
-    } catch {
-      // the proxy resets under load; back off and retry
+      last = `HTTP ${response.status}`;
+    } catch (error) {
+      last = String(error).split("\n")[0] ?? "network";
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+    // 503 and proxy resets are the normal weather here, not a reason to
+    // throw away the read: back off up to a minute and keep trying.
+    await new Promise((resolve) => setTimeout(resolve, Math.min(60_000, 1000 * 2 ** attempt)));
   }
-  throw new Error(`GBIF request failed after ${attempts} attempts: ${url}`);
+  throw new Error(`GBIF request failed after ${attempts} attempts (${last}): ${url}`);
 }
 
 const familyKeys = new Map<string, number>();
@@ -124,8 +150,12 @@ async function backgroundOf(familyKey: number, continent: string, lon: number, l
   const url = `https://api.gbif.org/v1/occurrence/search?familyKey=${familyKey}&continent=${continent}`
     + `&decimalLongitude=${west},${west + BACKGROUND_DEGREES}&decimalLatitude=${south},${south + BACKGROUND_DEGREES}`
     + "&hasCoordinate=true&hasGeospatialIssue=false&limit=0";
+  const cached = cacheGet<number>(url);
+  if (cached !== undefined) return cached;
   const page = await fetchJson(url);
-  return page.count ?? 0;
+  const count = page.count ?? 0;
+  cacheSet(url, count);
+  return count;
 }
 
 async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, number, string]>; total: number }> {
@@ -158,7 +188,13 @@ const packages: unknown[] = [];
 for (const entry of RELATIVES) {
   const taxa: unknown[] = [];
   for (const taxon of entry.taxa) {
-    const { points, total } = await occurrencesOf(taxon);
+    const readKey = `points:${taxon.name}:${taxon.continents.join(",")}`;
+    let read = cacheGet<{ points: Array<[number, number, string]>; total: number }>(readKey);
+    if (!read) {
+      read = await occurrencesOf(taxon);
+      cacheSet(readKey, read);
+    }
+    const { points, total } = read;
     // Cells are kept PER TAXON (W10). A package is a founder SET and it is
     // rich where its members CO-OCCUR: western Anatolia has wild einkorn but
     // not wild emmer, the south-eastern arc has einkorn, emmer and barley
