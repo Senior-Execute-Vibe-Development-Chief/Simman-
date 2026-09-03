@@ -1,39 +1,40 @@
 import {
   PEOPLE_CAPACITY_FLOOR_PER_KM2,
-  PEOPLE_FARM_CAPACITY_PER_KM2,
-  PEOPLE_FARM_TECHNIQUE_BASE,
-  PEOPLE_FARM_TECHNIQUE_GAIN,
-  PEOPLE_WATER_ACCESS_GAIN,
 } from "../constants";
-
+import { activePackageIndices, dominantPackageOf, packageCapacity } from "./crop";
 import type { PeopleWorld } from "./types";
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 /**
  * Re-derive carrying capacity from the immutable substrate and the current
- * technique field. Capacity is intentionally not a saved population-like
+ * population mix. Capacity is intentionally not a saved population-like
  * quantity: it is a present environmental consequence, not history.
+ *
+ * A cell's capacity is the mixture its people imply: foragers hold the land
+ * at the forager density, farmers at their dominant package's farmed
+ * density, weighted by the farmed share. An unfarmed cell is forager land
+ * even where a package could grow — the farmed capacity opens to a
+ * migration source in proportion to the farmers it sends (`pairSpare`),
+ * never to foragers passing through.
  */
 export function deriveCapacity(world: PeopleWorld): void {
   if (world._wasmPeopleKernel) {
     world._wasmPeopleKernel.deriveCapacity();
     return;
   }
-  const substrate = world.substrate;
   const capacity = world.capField;
-  for (const cell of world._landCells) {
-    const fertility = Math.max(0, Math.min(1, substrate.fertility[cell] ?? 0));
-    const technique = Math.max(0, Math.min(1, world.technique[cell] ?? 0));
-    const access = world._waterAccess[cell] ?? 0;
-    const farmed = fertility
-      * PEOPLE_FARM_CAPACITY_PER_KM2
-      * technique
-      * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
-      * (1 + access * PEOPLE_WATER_ACCESS_GAIN)
-      * (world._reliefMult[cell] ?? 0);
+  const active = activePackageIndices(world);
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    const cell = world._landCells[packed] ?? 0;
+    const dominant = dominantPackageOf(world, packed, active);
+    world._dominantPackage[cell] = dominant;
+    const farmed = packageCapacity(world, cell, dominant);
+    const forager = world._foragerCapacity[cell] ?? 0;
+    const share = clamp01(world.technique[cell] ?? 0);
     capacity[cell] = Math.max(
       PEOPLE_CAPACITY_FLOOR_PER_KM2,
-      world._foragerCapacity[cell] ?? 0,
-      farmed,
+      forager + share * (farmed - forager),
     );
   }
 }

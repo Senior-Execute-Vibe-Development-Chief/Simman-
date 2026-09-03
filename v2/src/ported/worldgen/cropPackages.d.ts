@@ -6,6 +6,8 @@ export interface CropPackage {
   readonly tTolEarly?: number;
   readonly mOpt: number;
   readonly mTol: number;
+  readonly baseTemperature: number;
+  readonly seasonMinimumMonths: number;
   readonly storability: number;
   readonly yield: number;
   readonly domLagY: number;

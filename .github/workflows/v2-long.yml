@@ -1,0 +1,70 @@
+name: Simman v2 long arms
+
+# Everything that simulates history: the 3000-year trajectory, stride and
+# solve-agreement arms of the people gate, the shipped-grid solve arm (the
+# solve regime to 1 CE, minutes), the per-phase cadence bench table, and the
+# full browser matrix. Never on push — on request, or weekly to catch drift.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_long_arm:
+        description: "Also run the full YD→1 CE arm at the shipped grid (hours)"
+        required: false
+        default: "false"
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  trajectory:
+    name: Trajectory gate and cadence bench
+    runs-on: ubuntu-latest
+    timeout-minutes: 600
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: v2/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            v2/rust/router
+            v2/rust/people
+      - run: npm ci
+      - run: rustup target add wasm32-unknown-unknown
+      - run: npm run wasm:build
+      - run: GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1 npx tsx tools/gate-people.ts
+      - run: BENCH_CADENCE=1 npx tsx tools/bench.ts
+      - if: ${{ github.event.inputs.target_long_arm == 'true' }}
+        run: GATE_PEOPLE_LONG=1 npx tsx tools/gate-people.ts
+
+  browsers:
+    name: Chromium, Firefox, WebKit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: v2/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            v2/rust/router
+            v2/rust/people
+      - run: npm ci
+      - run: rustup target add wasm32-unknown-unknown
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run browser

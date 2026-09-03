@@ -4,9 +4,16 @@ import {
   EARTH_HALF_DEGREES,
   EARTH_MERIDIONAL_KM,
   MONTHS_PER_YEAR,
+  PEOPLE_ADOPTION_RATE_PER_YEAR,
+  PEOPLE_CHILD_AGE_YEARS,
+  PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+  PEOPLE_GROWTH_FORAGER_FACTOR,
   PEOPLE_GROWTH_STRIDE_MONTHS,
-  PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR,
+  PEOPLE_GROWTH_TECHNIQUE_GAIN,
+  PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
   PEOPLE_MIGRATION_MAX_SHARE,
+  PEOPLE_MIGRATION_MAX_SUBSTEPS,
+  PEOPLE_R_GROWTH_PER_YEAR,
   TRAVEL_HALF,
 } from "./constants";
 import { dcos } from "./dmath";
@@ -18,9 +25,20 @@ export interface PassSchedule {
   readonly phase: number;
 }
 
+/**
+ * The world runs in one of two regimes. SOLVE: before anything pushes back
+ * on the people field the only thing that moves is the farming front, and
+ * its diffusion bound permits a multi-year stride; every pass fires at that
+ * stride and foragers grow in place. AWAKE: the monthly regime, from the
+ * first caged basin on (W5). The phase is world state — saved, hashed —
+ * and nothing reads it except the scheduler and the wake trigger.
+ */
+export type WorldPhase = "solve" | "awake";
+
 const DEFAULT_PHASE = 0;
 const SCHEDULE_NAMES = [
   "people.technique",
+  "people.conversion",
   "people.capacity",
   "people.growth",
   "people.migration",
@@ -74,50 +92,56 @@ function cellAreaAtRow(width: number, height: number, row: number): number {
  * must inspect the uncapped value or it would incorrectly bless an unstable
  * annual firing merely because the fallback substep hid it.
  */
-export function migrationRawShareForArea(area: number, dtMonths: number): number {
+export function migrationRawShareForArea(
+  area: number,
+  dtMonths: number,
+  diffusivity = PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+): number {
   const safeArea = Math.max(1, area);
-  return PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR
-    * dtMonths / MONTHS_PER_YEAR / safeArea;
+  return diffusivity * dtMonths / MONTHS_PER_YEAR / safeArea;
 }
 
-function derivedMigrationStride(world: World, growthStride: number): number {
-  const override = world.config.peopleMigrationStride;
-  if (override !== undefined) return positiveInteger(override, 1);
+function rowArea(world: World, row: number): number {
+  const configuredArea = world.cellAreaKm2?.[row * world.width] ?? 0;
+  return configuredArea > 0
+    ? configuredArea
+    : cellAreaAtRow(world.width, world.height, row);
+}
 
-  const divisors: number[] = [];
-  for (let stride = 1; stride <= growthStride; stride++) {
-    if (growthStride % stride === 0) divisors.push(stride);
-  }
-  divisors.sort((left, right) => right - left);
+/** The rows anyone lives on: the rows foragers can be sources from. */
+function peopledRows(world: World): boolean[] {
+  const rows: boolean[] = new Array<boolean>(world.height).fill(false);
   const peopled = world.substrate
     ? (world as unknown as { _peopledMask?: Uint8Array })._peopledMask
     : undefined;
-  for (const stride of divisors) {
-    let valid = true;
-    for (let row = 0; row < world.height; row++) {
-      let rowIsPeopled = peopled === undefined;
-      if (peopled) {
-        const first = row * world.width;
-        const last = first + world.width;
-        for (let cell = first; cell < last; cell++) {
-          if (peopled[cell] === 1) {
-            rowIsPeopled = true;
-            break;
-          }
-        }
-      }
-      const configuredArea = world.cellAreaKm2?.[row * world.width] ?? 0;
-      const area = configuredArea > 0
-        ? configuredArea
-        : cellAreaAtRow(world.width, world.height, row);
-      if (rowIsPeopled && migrationRawShareForArea(area, stride) > PEOPLE_MIGRATION_MAX_SHARE) {
-        valid = false;
+  if (!peopled) return rows.fill(true);
+  for (let row = 0; row < world.height; row++) {
+    const first = row * world.width;
+    const last = first + world.width;
+    for (let cell = first; cell < last; cell++) {
+      if (peopled[cell] === 1) {
+        rows[row] = true;
         break;
       }
     }
-    if (valid) return stride;
   }
-  return 1;
+  return rows;
+}
+
+/**
+ * The movement stride of the AWAKE regime (W6): each group's hop share on
+ * the rows it can be a source from, inside the bound the hop kernel
+ * honours without capping, together with the growth, adoption and
+ * cohort-ageing bounds the solve stride already carries — the same
+ * derivation, so the two regimes now differ only in the growth cadence.
+ * A multiple of the growth stride, so a movement firing always follows a
+ * growth firing in the same month; may exceed a year. Never hand-set.
+ */
+function derivedMigrationStride(world: World, growthStride: number): number {
+  const override = world.config.peopleMigrationStride;
+  if (override !== undefined) return positiveInteger(override, 1);
+  const solve = resolveSolveStride(world);
+  return Math.max(growthStride, Math.floor(solve / growthStride) * growthStride);
 }
 
 function scheduleEntry(world: World, name: string, stride: number): PassSchedule {
@@ -129,8 +153,9 @@ function scheduleEntry(world: World, name: string, stride: number): PassSchedule
 }
 
 /**
- * Resolve once per world. The order is the dependency order: technique and
- * capacity feed growth, growth feeds migration, and cohorts close the commit.
+ * Resolve the AWAKE schedule once per world. The order is the dependency
+ * order: technique and capacity feed growth, growth feeds migration, and
+ * cohorts close the commit.
  */
 export function resolveSchedule(world: World): readonly PassSchedule[] {
   const growthStride = positiveInteger(
@@ -142,9 +167,77 @@ export function resolveSchedule(world: World): readonly PassSchedule[] {
     scheduleEntry(world, SCHEDULE_NAMES[0], growthStride),
     scheduleEntry(world, SCHEDULE_NAMES[1], growthStride),
     scheduleEntry(world, SCHEDULE_NAMES[2], growthStride),
-    scheduleEntry(world, SCHEDULE_NAMES[3], migrationStride),
-    scheduleEntry(world, SCHEDULE_NAMES[4], growthStride),
+    scheduleEntry(world, SCHEDULE_NAMES[3], growthStride),
+    scheduleEntry(world, SCHEDULE_NAMES[4], migrationStride),
+    scheduleEntry(world, SCHEDULE_NAMES[5], growthStride),
   ]);
+}
+
+/** The rows any package can grow on: the rows farmers can be sources from. */
+function canGrowRows(world: World): boolean[] {
+  const rows: boolean[] = new Array<boolean>(world.height).fill(false);
+  const people = world as unknown as { _canGrow?: readonly Uint8Array[]; _landCells?: Int32Array };
+  const canGrow = people._canGrow ?? [];
+  const landCells = people._landCells;
+  if (!landCells) return rows;
+  for (let packed = 0; packed < landCells.length; packed++) {
+    let grows = false;
+    for (const table of canGrow) {
+      if ((table[packed] ?? 0) !== 0) {
+        grows = true;
+        break;
+      }
+    }
+    if (grows) rows[Math.floor((landCells[packed] ?? 0) / world.width)] = true;
+  }
+  return rows;
+}
+
+/**
+ * The SOLVE stride: the largest whole-year multiple of 12 months keeping
+ * every explicit per-firing fraction the passes take inside the bound the
+ * kernel honours — farmer growth, adoption and cohort ageing inside the
+ * diffusion bound itself, and each group's hop share on every row it can
+ * be a source from (farmers on can-grow rows, foragers on peopled rows)
+ * inside the bound times the substeps the hop kernel takes before it caps
+ * (a firing it can honour exactly by substepping). The bare
+ * bound would let one near-polar can-grow cell, admitted by a permissive
+ * crop bell, force a yearly stride at the shipped grid (QUESTIONS #40).
+ * Derived from the bounds the passes already carry, printed in provenance,
+ * never hand-set per grid.
+ */
+export function resolveSolveStride(world: World): number {
+  const override = world.config.peopleSolveStride;
+  if (override !== undefined) return positiveInteger(override, MONTHS_PER_YEAR);
+  const farmerGrowth = PEOPLE_R_GROWTH_PER_YEAR
+    * (PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN);
+  let years = Math.min(
+    PEOPLE_MIGRATION_MAX_SHARE / farmerGrowth,
+    PEOPLE_MIGRATION_MAX_SHARE / PEOPLE_ADOPTION_RATE_PER_YEAR,
+    PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_CHILD_AGE_YEARS,
+  );
+  const hopBound = PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS;
+  const farmerRows = canGrowRows(world);
+  const foragerRows = peopledRows(world);
+  for (let row = 0; row < world.height; row++) {
+    if (farmerRows[row]) {
+      years = Math.min(
+        years,
+        hopBound * rowArea(world, row) / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+      );
+    }
+    if (foragerRows[row]) {
+      years = Math.min(
+        years,
+        hopBound * rowArea(world, row) / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+      );
+    }
+  }
+  return Math.max(1, Math.floor(years)) * MONTHS_PER_YEAR;
+}
+
+export function resolveSolveSchedule(world: World, stride: number): readonly PassSchedule[] {
+  return Object.freeze(SCHEDULE_NAMES.map((name) => Object.freeze({ name, stride, phase: DEFAULT_PHASE })));
 }
 
 export function scheduleDigest(schedule: readonly PassSchedule[]): string {

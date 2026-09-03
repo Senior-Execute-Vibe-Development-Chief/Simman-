@@ -12,9 +12,29 @@ import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 import { passDtMonths, passFires, resolveSchedule } from "../src/sim/scheduler";
-import { PEOPLE_GROWTH_STRIDE_MONTHS } from "../src/sim/constants";
+import {
+  HORIZON_OPENING_YEAR,
+  MONTHS_PER_YEAR,
+  PEOPLE_ADOPTION_RATE_PER_YEAR,
+  PEOPLE_CHILD_AGE_YEARS,
+  PEOPLE_FARMED_MARKER_SHARE,
+  PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+  PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+  PEOPLE_GROWTH_FORAGER_FACTOR,
+  PEOPLE_GROWTH_STRIDE_MONTHS,
+  PEOPLE_GROWTH_TECHNIQUE_GAIN,
+  PEOPLE_MIGRATION_MAX_SHARE,
+  PEOPLE_MIGRATION_MAX_SUBSTEPS,
+  PEOPLE_R_GROWTH_PER_YEAR,
+} from "../src/sim/constants";
+import { migrationShareForArea } from "../src/sim/people/migration";
+import { deriveCapacity } from "../src/sim/people/capacity";
+import { deriveTechniqueFromFarmers, markPackageActive } from "../src/sim/people/crop";
+import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
+import { stepFromYear } from "../src/sim/horizon";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const PRIMED_HEARTH_YEARS = 1e6;
 const rngInputs = {
   seed: 123456789,
   system: "golden.system",
@@ -177,15 +197,23 @@ async function main(): Promise<void> {
     if (last !== undefined) assert.ok(last < band.rowHi * packedWorld.width);
   }
   runSteps(peopleWorld, 24);
-  const techniqueBefore = Float64Array.from(peopleWorld.technique);
-  for (const hearth of peopleWorld.hearths) hearth.lagYears = 0;
-  runSteps(peopleWorld, 1);
+  assert.equal(peopleWorld.hearths.length, 0, "a hearth ignited before its range accrued its lag");
+  // Prime every native cell's peopled-basin years past its lag: the next
+  // conversion pass must ignite, seed farmers, and derive technique as the
+  // farmed share of each cell.
+  for (const years of packedWorld._hearthYears) years.fill(PRIMED_HEARTH_YEARS);
+  runSteps(peopleWorld, 12);
   assert.ok(peopleWorld.hearths.some((hearth) => hearth.ignited), "hearths never ignite");
-  for (let cell = 0; cell < peopleWorld.N; cell++) {
-    assert.ok(
-      peopleWorld.technique[cell] >= (techniqueBefore[cell] ?? 0),
-      "technique wave is not a ratchet",
-    );
+  let farmed = 0;
+  for (const field of Object.values(packedWorld.farmers)) for (const value of field) farmed += value;
+  assert.ok(farmed > 0, "ignition seeded no farmers");
+  for (const cell of packedWorld._landCells) {
+    const packed = packedWorld._packedOf[cell] ?? -1;
+    const population = peopleWorld.people[cell] ?? 0;
+    const expected = population > 0
+      ? Math.min(1, Math.max(0, packedWorld._farmerTotal[packed] ?? 0) / population)
+      : 0;
+    assert.equal(peopleWorld.technique[cell], expected, "technique is not the farmed share");
   }
   const peopleSave = serializeWorld(peopleWorld);
   const peopleLoaded = loadWorld(peopleSave, substrate);
@@ -197,6 +225,178 @@ async function main(): Promise<void> {
   const peopleBalance = peopleWorld.ledger.snapshot().people;
   assert.ok(peopleBalance, "people conservation sheet missing");
   assert.equal(peopleBalance?.sources.migration, peopleBalance?.sinks.migration);
+
+  // ── W5: the solve regime and the wake. ──────────────────────────────────
+  // The solve stride is the minimum over the four bounds the passes carry:
+  // farmer hops on the rows a package can grow on (every row of the flat
+  // fixture), farmer growth, adoption, cohort ageing.
+  {
+    const world = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts" }, substrate });
+    const rowAreas: number[] = [];
+    for (let y = 0; y < world.height; y++) rowAreas.push(world.cellAreaKm2[y * world.width] ?? 0);
+    const smallestRow = Math.min(...rowAreas.filter((area) => area > 0));
+    const boundYears = Math.min(
+      PEOPLE_MIGRATION_MAX_SHARE / (PEOPLE_R_GROWTH_PER_YEAR * (PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN)),
+      PEOPLE_MIGRATION_MAX_SHARE / PEOPLE_ADOPTION_RATE_PER_YEAR,
+      PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_CHILD_AGE_YEARS,
+      PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS * smallestRow / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+      PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS * smallestRow / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+    );
+    assert.equal(world.solveStride, Math.max(1, Math.floor(boundYears)) * MONTHS_PER_YEAR, "solve stride is not the bound minimum");
+    assert.equal(world.phase, "solve", "a peopled world must open in the solve regime");
+    const forced = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", peopleSolveStride: 24 }, substrate });
+    assert.equal(forced.solveStride, 24);
+    const awake = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", wake: HORIZON_OPENING_YEAR }, substrate });
+    assert.equal(awake.phase, "awake", "a world whose epoch is the opening must open awake");
+    assert.equal(awake.wakeStep, 0);
+  }
+  // The two hop invariants (W6): in one firing a cell's farmers hop
+  // PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR × dt / area of themselves (after
+  // growth) and its foragers PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR × dt /
+  // area, each on its own weights; and a source with no room beside it for
+  // a group sends none of that group. Both are the kernel's own shares.
+  const seedFarmers = (world: World, share: number): number => {
+    const people = world as PeopleWorld;
+    const cell = Math.floor(world.height / 2) * world.width + Math.floor(world.width / 2);
+    const packed = people._packedOf[cell] ?? -1;
+    assert.ok(packed >= 0);
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(wheat >= 0);
+    people.farmers[CROP_PACKAGES[wheat]!.id]![packed] = share * (world.people[cell] ?? 0);
+    markPackageActive(people, wheat);
+    deriveTechniqueFromFarmers(people);
+    deriveCapacity(people);
+    return cell;
+  };
+  {
+    const world = new World({ seed: 6, grid: "dev", config: { peopleKernel: "ts" }, substrate });
+    const people = world as PeopleWorld;
+    const cell = seedFarmers(world, 0.5);
+    const packed = people._packedOf[cell] ?? -1;
+    runSteps(world, 1);
+    const area = world.cellAreaKm2[cell] ?? 0;
+    const farmers = people._farmerMigrationTotal[packed] ?? 0;
+    const foragers = (people._migrationPopulation[packed] ?? 0) - farmers;
+    const farmerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
+    const foragerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
+    assert.ok(farmers > 0 && foragers > 0);
+    assert.equal(people._migrationOutFarmers[packed], farmers * area * farmerShare, "farmers did not hop their own share");
+    assert.equal(people._migrationOut[packed], foragers * area * foragerShare, "foragers did not hop their own share");
+    assert.ok((world.debug.pricedPairs ?? 0) > 0, "no pair was priced on an unfilled field");
+    const balance = world.ledger.snapshot().people;
+    assert.equal(balance?.sources.migration, balance?.sinks.migration);
+    // Fill every cell to its forager capacity: no room anywhere, so no
+    // source is priced and nothing moves — exactly, not approximately.
+    for (const full of people._landCells) world.people[full] = people._foragerCapacity[full] ?? 0;
+    const wheat = CROP_PACKAGES.find((pkg) => pkg.id === "wheat")!.id;
+    people.farmers[wheat]!.fill(0);
+    deriveTechniqueFromFarmers(people);
+    deriveCapacity(people);
+    runSteps(world, 1);
+    assert.equal(world.debug.pricedPairs, 0, "a full field still priced pairs");
+    assert.equal(world.debug.peopleMigration, 0, "a full field still moved people");
+  }
+  // The switch: a chosen epoch wakes the world at exactly that year; the
+  // solve steps before it match a never-waking world's field for field,
+  // and the monthly steps after it diverge from it.
+  {
+    const epoch = HORIZON_OPENING_YEAR + 20;
+    const chosen = new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts", wake: epoch }, substrate });
+    const never = new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts", wake: "never" }, substrate });
+    seedFarmers(chosen, 0.5);
+    seedFarmers(never, 0.5);
+    const bytes = (world: World) => Buffer.from(world.people.buffer, world.people.byteOffset, world.people.byteLength);
+    runSteps(chosen, 2);
+    runSteps(never, 2);
+    assert.equal(chosen.phase, "solve");
+    assert.deepEqual(bytes(chosen), bytes(never), "solve steps differ between a chosen epoch and never");
+    runSteps(chosen, 1);
+    assert.equal(chosen.step, stepFromYear(epoch), "the world did not wake at exactly its epoch");
+    assert.equal(chosen.phase, "awake");
+    assert.equal(chosen.wakeStep, stepFromYear(epoch));
+    assert.equal(chosen.schedule.find((row) => row.name === "people.migration")?.stride, chosen.solveStride, "movement is not on its derived stride after the wake");
+    assert.ok(chosen.events.some((event) => event.kind === "wake"));
+    const before = chosen.step;
+    runSteps(chosen, 1);
+    assert.equal(chosen.step, before + 1, "an awake step is not one month");
+    runSteps(never, 1);
+    assert.equal(never.phase, "solve");
+    assert.notDeepEqual(bytes(chosen), bytes(never), "the awake and solve regimes did not diverge after the wake");
+    const chosenSave = serializeWorld(chosen);
+    const chosenLoaded = loadWorld(chosenSave, substrate);
+    assert.equal(chosenLoaded.phase, "awake");
+    assert.equal(serializeWorld(chosenLoaded), chosenSave, "an awake save is not byte-identical");
+    const neverSave = serializeWorld(never);
+    const neverLoaded = loadWorld(neverSave, substrate);
+    assert.equal(neverLoaded.phase, "solve");
+    assert.equal(serializeWorld(neverLoaded), neverSave, "a solve-phase save is not byte-identical");
+    runSteps(never, 3);
+    runSteps(neverLoaded, 3);
+    assert.equal(hashWorld(neverLoaded), hashWorld(never), "a loaded solve-phase world diverged");
+  }
+  // The flat-field front: the solve regime against the awake kernel on the
+  // same uniform field from one seeded cell — a check of a law on a flat
+  // field, not a history run. The farmed extent (Σ technique) and the
+  // population after the span agree within a tenth. Beside them, the
+  // linear spreading speed of the same hop-and-grow law is printed as a
+  // diagnostic of the lattice regime (QUESTIONS #39), never as a bound.
+  const frontYears = 280;
+  const frontReport = (() => {
+    const solveWorld = new World({ seed: 8, grid: "dev", config: { peopleKernel: "wasm", peopleWorkers: 1, wake: "never" }, substrate });
+    const awakeWorld = new World({ seed: 8, grid: "dev", config: { peopleKernel: "wasm", peopleWorkers: 1, wake: HORIZON_OPENING_YEAR }, substrate });
+    const seed = seedFarmers(solveWorld, 0.5);
+    seedFarmers(awakeWorld, 0.5);
+    const horizon = stepFromYear(HORIZON_OPENING_YEAR + frontYears);
+    while (solveWorld.step < horizon) runSteps(solveWorld, 1);
+    while (awakeWorld.step < horizon) runSteps(awakeWorld, 1);
+    const extent = (world: World): number => {
+      let sum = 0;
+      for (const cell of (world as PeopleWorld)._landCells) sum += world.technique[cell] ?? 0;
+      return sum;
+    };
+    const reach = (world: World): number => {
+      const people = world as PeopleWorld;
+      const seedY = Math.floor(seed / world.width);
+      const seedX = seed - seedY * world.width;
+      let farthest = 0;
+      for (const cell of people._landCells) {
+        if ((world.technique[cell] ?? 0) < PEOPLE_FARMED_MARKER_SHARE) continue;
+        const y = Math.floor(cell / world.width);
+        if (y !== seedY) continue;
+        farthest = Math.max(farthest, Math.abs(cell - seedY * world.width - seedX));
+      }
+      return farthest;
+    };
+    const solveExtent = extent(solveWorld);
+    const awakeExtent = extent(awakeWorld);
+    const solvePeople = populationTotal(solveWorld);
+    const awakePeople = populationTotal(awakeWorld);
+    const rowKm = (solveWorld as PeopleWorld)._migrationEdgeH[Math.floor(seed / solveWorld.width)] ?? 0;
+    const result = {
+      years: frontYears,
+      solveStep: solveWorld.step,
+      awakeStep: awakeWorld.step,
+      solveExtent,
+      awakeExtent,
+      solvePeople,
+      awakePeople,
+      solveReachCells: reach(solveWorld),
+      awakeReachCells: reach(awakeWorld),
+      rowCellKm: rowKm,
+    };
+    (solveWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
+    (awakeWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
+    return result;
+  })();
+  assert.ok(frontReport.awakeExtent > 0 && frontReport.solveExtent > 0, "the front did not move on the flat field");
+  assert.ok(
+    Math.abs(frontReport.solveExtent - frontReport.awakeExtent) <= 0.1 * frontReport.awakeExtent,
+    `flat-field farmed extent: solve ${frontReport.solveExtent} vs awake ${frontReport.awakeExtent}`,
+  );
+  assert.ok(
+    Math.abs(frontReport.solvePeople - frontReport.awakePeople) <= 0.1 * frontReport.awakePeople,
+    `flat-field population: solve ${frontReport.solvePeople} vs awake ${frontReport.awakePeople}`,
+  );
 
   for (const stride of [1, 3, 12]) {
     for (const phase of [0, 1, stride - 1]) {
@@ -231,8 +431,13 @@ async function main(): Promise<void> {
   assert.equal(named(targetWorld, "people.growth")?.stride, PEOPLE_GROWTH_STRIDE_MONTHS);
   // Unpeopled poles are excluded from derivation; a world with every row
   // treated as peopled (no substrate mask) must pick 1, matching target.
-  assert.equal(named(targetWorld, "people.migration")?.stride, 1);
-  assert.equal(named(devWorld, "people.migration")?.stride, 1);
+  // W6: the awake movement stride is derived per group like the solve
+  // stride and may exceed a year; on a world without a substrate every row
+  // counts as peopled and no row can grow, so only the forager bound and
+  // the pass bounds apply.
+  assert.equal(named(targetWorld, "people.migration")?.stride, targetWorld.solveStride);
+  assert.equal(named(devWorld, "people.migration")?.stride, devWorld.solveStride);
+  assert.equal(targetWorld.solveStride % PEOPLE_GROWTH_STRIDE_MONTHS, 0);
   const forced = new World({
     seed: 1,
     grid: "target",
@@ -247,6 +452,7 @@ async function main(): Promise<void> {
     saveLoad: "byte-identical",
     routing: "ok",
     scheduler: "ok",
+    solve: frontReport,
   }));
 }
 

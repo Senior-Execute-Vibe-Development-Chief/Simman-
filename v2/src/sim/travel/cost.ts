@@ -478,6 +478,22 @@ export function fillMigrationDaysPerKm(
   }
 }
 
+/**
+ * The annual mean of the twelve monthly days/km tables, in month order, for
+ * a migration firing that spans every season (the solve regime, W5). Both
+ * kernels read this one table, so the mean is computed here and copied
+ * into the wasm kernel rather than recomputed there. Water stays unreachable.
+ */
+export function fillMeanMigrationDaysPerKm(substrate: Substrate, out: Float64Array): void {
+  const monthly = new Float64Array(out.length);
+  out.fill(0);
+  for (let month = 0; month < MONTHS_PER_YEAR; month++) {
+    fillMigrationDaysPerKm(substrate, month, monthly);
+    for (let cell = 0; cell < out.length; cell++) out[cell] += monthly[cell] ?? 0;
+  }
+  for (let cell = 0; cell < out.length; cell++) out[cell] = (out[cell] ?? 0) / MONTHS_PER_YEAR;
+}
+
 export function migrationEdgeLengths(
   substrate: Substrate,
 ): { readonly horizontal: Float64Array; readonly vertical: number } {

@@ -19,6 +19,8 @@ Rows below are the seed set, inherited from v1's audited registry
 | FOOD_UNIT | 1 t grain | |
 | RATION | ~1 t/person/year equivalent (v1: 0.003 u/tick·su) `[REDERIVE at v2 tick]` | subsistence flow |
 | TICK | `[DERIVE]` (v1: 0.25 y) | one tick's span in years |
+| HORIZON_OPENING_YEAR / HORIZON_END_YEAR | −9700 / 1 | the world clock's origin (the end of the Younger Dryas) and Phase 1's primary horizon end, as calendar labels: display, provenance, and the conversion of a player's chosen epoch into an initial condition (W5). Never a mechanism input (R1) |
+| HASH_OFFSET_BASIS / HASH_PRIME | 2166136261 / 16777619 | world identity hash: 32-bit FNV-1a over 32-bit words, two lanes (the second seeded with HASH_LANE_SEED 1013904223, the Numerical Recipes LCG increment), 16 hex digits. Replaced the byte-wise 64-bit BigInt FNV-1a (5.5 s per target hash) on 2026-09-03; identity strings before that date are not comparable |
 
 ## Travel & freight (03)
 
@@ -37,7 +39,7 @@ Rows below are the seed set, inherited from v1's audited registry
 |---|---|---|
 | R_GROWTH | ~0.28 %/yr intrinsic | pre-modern recovery band 0.2–0.6 %/yr |
 | GROWTH_REGIME | forager ×0.35 → advanced ×1.65 | Neolithic differential increase |
-| MIGRATE_D | `[REDERIVE]` (v1 measured) | real pre-modern mobility |
+| MIGRATE_D | resolved (W6) | see `PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR` and `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR`; the v1 value was a calibration, never a measurement |
 | URBAN_GRAVEYARD_γ | 0.5 | urban excess-mortality literature (de Vries; contested per Sharlin — recorded) |
 | URBAN_RATE | ~0.13 of regional capacity | 5–15 % agrarian urbanization band |
 | TROPICAL_DISEASE / TSETSE | 0.6 / 0.85 cuts | disease-belt geography |
@@ -197,15 +199,10 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_GROWTH_FORAGER_FACTOR / TECHNIQUE_GAIN` | 0.35 / 1.3 | forager-to-advanced farming growth regime |
 | `PEOPLE_GRAVEYARD_RATE / DENSITY / GAMMA` | 0.0014 / 30 / 0.5 | density-graded urban excess mortality; literature exponent |
 | `PEOPLE_CAPACITY_FLOOR_PER_KM2` | 0.001 | numerical density floor |
-| `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR` | 1200 | real pre-modern mobility correction |
+| `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR` | 1200 → retired (W6) | was "real pre-modern mobility correction": a v1 calibration, `[REDERIVE]` in the seed table; replaced by the grounded forager mobility below (§W6) |
 | `PEOPLE_MIGRATION_MAX_SHARE / SUBSTEPS` | 0.5 / 16 | explicit diffusion stability bound and safety cap |
-| `PEOPLE_TECHNIQUE_WAVE_KMPY` | 1 | Neolithic wave of advance |
 | `PEOPLE_TECHNIQUE_PRESENT / CLIMATE_FLOOR` | 0.01 / 0.05 | reached-technique visibility and package-envelope floor |
-| `PEOPLE_HEARTH_MIN_SEPARATION_KM / BASIN_RADIUS_KM / MAX_COUNT` | 1000 / 500 / 8 | independent-origin spacing, maturity basin, and archaeological count |
-| `PEOPLE_HEARTH_SEARCH_FRACTION / ELEVATION_SCALE / SCORE_REFERENCE` | 0.03 / 0.4 / 5 | coordinate-pin snap window, lowland score scale, fallback score reference |
-| `PEOPLE_HEARTH_FALLBACK_LAG / LAG_RANGE` | 900 / 3600 | wheat anchor and scored-site fallback domestication span in years |
-| `PEOPLE_HEARTH_SCORE_*` | 1.5 / 2 / 1 / 1 | river, fertility, enclosure, and sea terms in the emergent cradle score |
-| `PEOPLE_HEARTH_SUITABILITY_FLOOR` | 0.15 | minimum viable wild-package climate fit |
+| `PEOPLE_HEARTH_MIN_SEPARATION_KM / BASIN_RADIUS_KM` | 1000 / 500 | same-package condensation spacing and maturity-basin radius |
 | `PEOPLE_COHORT_CHILD / WORKING / ELDER_FRACTION` | 0.35 / 0.60 / 0.05 | opening age-structure fractions |
 | `PEOPLE_CHILD / WORKING_AGE_YEARS` | 15 / 45 | fixed compartment cohort spans |
 | `PEOPLE_*_MORTALITY_FACTOR` | 1.2 / 0.8 / 2.4 | child, working, elder mortality weights |
@@ -230,14 +227,41 @@ they are not hidden outcome-fitting levers.
 | `PEOPLE_THREAD_STACK_BYTES` | 1048576 | per-worker shadow stack allocated at instance init |
 | `PEOPLE_WORKER_ERROR_BYTES` | 1024 | shared-memory text capacity through which a band worker reports a failure to a coordinator blocked in Atomics.wait |
 
-## M3a — proposed (review pending)
+## M3a — reviewed (2026-09-02)
 
 | Constant | Value | Unit / grounding |
 |---|---:|---|
-| `PEOPLE_ADOPTION_RATE_PER_YEAR` | `[DERIVE]` | forager→farmer conversion per unit contact × advantage; grounded on the measured European Neolithic front (0.6–1.3 km/yr, Pinhasi et al. 2005) — if only an implausible value fits, the mechanism is wrong |
-| `PEOPLE_COASTAL_HOP_KM` | `[DERIVE]` (tens of km) | longest foot-and-raft water crossing; Cardial coast vs inland arrivals as the check |
-| `PEOPLE_HEARTH_SEED_FRACTION` | `[DERIVE]` | share of a hearth cell's people farming at ignition |
-| `PEOPLE_FORAGER_DENSITY_BAR` | `[DERIVE]` | peopled-basin density the hearth-maturity law already implies, made explicit |
+| `PEOPLE_ADOPTION_RATE_PER_YEAR` | 0.01 | per year; the fraction of a cell's foragers who take up a package per year at full local contact (living wholly among its farmers) and saturated advantage. The front runs at 2·√((r + rate)·D) of the farmer group; with the farmer mobility below and M2's farmer growth regime (0.46 %/yr) the Pinhasi–Fort–Ammerman band (0.6–1.3 km/yr) admits 0.005–0.02, and the long front gate can falsify it. Proposed at 0.08 with an unbounded linear advantage, which converted a cell within a few years of first contact and moved the front one cell per conversion interval — a grid-spacing speed (review) |
+| `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR` | 15 | km²/yr; sedentary farmer mobility, Ammerman & Cavalli-Sforza (1984): 1544 km² mean squared displacement per 25-year generation ÷ 4T. Foragers keep the M2 diffusivity (1200); a farmer mass joins a month's flow at the ratio of the two |
+| `PEOPLE_FARMER_MOBILITY_RATIO` | 15 / 1200 = 0.0125 | derived |
+| `PEOPLE_COASTAL_HOP_KM` | 40 | km; longest foot-and-raft water crossing, checked by Cardial coast vs inland arrivals |
+| `PEOPLE_HEARTH_SEED_FRACTION` | 0.2 | share of a hearth cell's people farming at ignition; a founding sub-population rather than a whole-cell relabel |
+| `PEOPLE_CROP_NEIGHBOR_COUNT` | 8 | neighbours; eight-direction travel stencil with true edge lengths and coastal hops |
+| `SAVE_VERSION_M3A` | 5 | additive farmer-mass and hearth-history persistence format |
+| `PEOPLE_SNAPSHOT_FIELD_COUNT` | 5 | float32 overlay planes in a shell snapshot: population, technique, package, can-grow count, native count |
 | crop packages (data) | per package | climate bell + growing-season minimum + storability + yield + domestication lag; `cropPackages.js` promoted to `data/reality/crop-packages.json` |
-| wild ranges (data) | raster per package | crop biogeography, baked to both grids like `LAKE_MASK` |
+| wild ranges (data) | boxes per package | `data/reality/crop-ranges.json`, longitude/latitude boxes rasterized at the substrate grid; sources still to be cited per box (review finding) |
+| withdrawn | — | `PEOPLE_FORAGER_DENSITY_BAR` (proposed 0.12 × 0.35 × 0.35): the peopled-basin law measures a basin's people against the basin's own static forager capacity (M2, unchanged) and needs no bar; a global bar clamped every peopled basin to "full" from the opening tick |
 | deleted | — | `PEOPLE_TECHNIQUE_WAVE_KMPY`, `PEOPLE_HEARTH_SEARCH_FRACTION`, `PEOPLE_HEARTH_SCORE_*`, `PEOPLE_HEARTH_FALLBACK_LAG_YEARS`, `PEOPLE_HEARTH_LAG_RANGE_YEARS`, `PEOPLE_HEARTH_MAX_COUNT` |
+
+## W5 — proposed (review pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `CAGE_KNEE_FREE_SHARE` | 0.2 | share; the Power row `CAGE_KNEE` (pressure zero while ≳20 % of the basin is free — Carneiro's circumscription, v1-measured ladder) as a named constant. Read by the wake trigger now and by M4's taking later: one quantity, one row |
+| `PEOPLE_FARMED_MARKER_SHARE` | 0.5 | representation threshold (18.3), not a world constant: the farmed share at which arrival instruments count a cell as farmed — the people gate's existing 0.5, named and shared with the arrival recorder |
+| `SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS` | 100 | gate tolerance, never a mechanism input: bound on the median per-cell arrival delta between the solve regime and the awake kernel over the same horizon; a tenth of the narrowest arrival window the tables carry (the Pinhasi rows are 800–1000 years wide) |
+| `SOLVE_AGREEMENT_POP_TOLERANCE` | 0.05 | gate tolerance: relative population delta at every checkpoint band, same comparison; the bands themselves are factors of two to six wide |
+| `SAVE_VERSION_W5` | 6 | saves carry the phase and the wake step |
+| (solve stride) | derived: 84 months at both grids | largest whole-year multiple of 12 months keeping every explicit per-firing fraction inside `PEOPLE_MIGRATION_MAX_SHARE`: the farmer hop share on rows with can-grow cells, farmer growth, adoption, cohort ageing (the binding bound at both grids); printed in provenance like the migration stride, never hand-set per grid. Foragers take the forager share of the same stride, substepped and capped by the kernel's own bound |
+| `config.wake` | auto / never / year | an initial condition (auto = the caged-basin trigger; never = measurement mode; a year = the player's epoch), not a constant, read by no pass |
+
+## W6 — implemented (2026-09-03)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR` | 23 | km²/yr; forager population mobility by the convention the farmer value uses, mean squared displacement per generation ÷ 4T (T = 25 y). Source: the Aka of the Central African Republic, at 0.017–0.031 people/km² (inside the sim's forager density band). Cavalli-Sforza & Hewlett 1982, *Ann. Hum. Genet.* 46:257–270: the mean distance between birthplaces of mates equals the mean exploration range; Hewlett, van de Koppel & Cavalli-Sforza 1982, *Man* 17:418–430: that range is negative-exponential with mean k = 43 km (half-range 30 km; adult-male half-ranges 27.5–58.3 km by locality, females 32.4). Exponential ⇒ ⟨d²⟩ = 2k². Counting one parent's displacement as half the mating distance (21.5 km) gives 925 km² per generation, 9 km²/yr; counting the whole mating distance as the displacement (43 km) gives 3,698 km², 37 km²/yr. The range is carried and the value is its median, 23 — the farmer value's order (15), not eighty times it. Chosen from the sources before any run. Replaces `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR` (1200, a v1 calibration `[REDERIVE]` since the seed table) |
+| `PEOPLE_ADOPTION_RATE_PER_YEAR` | 0.01, re-grounded only inside 0.005–0.02 | if the Balkans → Rhine speed leaves the radiocarbon band once foragers stop flooding farmed cells; the row records the measurement |
+| (movement stride, per group) | derived: 84 months at both grids | foragers on peopled rows at the forager mobility, farmers on can-grow rows at the farmer mobility, each inside `PEOPLE_MIGRATION_MAX_SHARE × PEOPLE_MIGRATION_MAX_SUBSTEPS` per firing, together with the growth, adoption and cohort-ageing bounds the solve stride carries (the cohort bound binds); the awake movement pass fires at that stride, a multiple of the growth stride, printed. The awake and solve regimes now differ only in the growth cadence |
+| room floor | `PEOPLE_CAPACITY_FLOOR_PER_KM2` (0.001, existing) | representation threshold (18.3): room below the numerical floor is no room; a source none of whose neighbours has room for a group is not priced for it, and the skipped flow is below floor × area by construction |
+| deleted | — | `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR`, `PEOPLE_FARMER_MOBILITY_RATIO`; the seed row `MIGRATE_D` resolves here |

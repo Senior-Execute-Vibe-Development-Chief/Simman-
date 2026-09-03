@@ -21,17 +21,21 @@ const PEOPLE_DISEASE_RATE: f64 = 0.35;
 const PEOPLE_GRAVEYARD_RATE: f64 = 0.0014;
 const PEOPLE_GRAVEYARD_DENSITY: f64 = 30.0;
 const PEOPLE_GRAVEYARD_GAMMA: f64 = 0.5;
-const PEOPLE_TECHNIQUE_WAVE_KMPY: f64 = 1.0;
-const PEOPLE_TECHNIQUE_CLIMATE_FLOOR: f64 = 0.05;
 const PEOPLE_CHILD_AGE_YEARS: f64 = 15.0;
 const PEOPLE_WORKING_AGE_YEARS: f64 = 45.0;
 const PEOPLE_CHILD_MORTALITY_FACTOR: f64 = 1.2;
 const PEOPLE_WORKING_MORTALITY_FACTOR: f64 = 0.8;
 const PEOPLE_ELDER_MORTALITY_FACTOR: f64 = 2.4;
-const PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR: f64 = 1200.0;
+const PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR: f64 = 23.0;
 const PEOPLE_MIGRATION_MAX_SHARE: f64 = 0.5;
 const PEOPLE_MIGRATION_MAX_SUBSTEPS: usize = 16;
 const PEOPLE_BAND_COUNT: usize = 16;
+const PEOPLE_CROP_NEIGHBOR_COUNT: usize = 8;
+const PEOPLE_NEIGHBOR_OPPOSITE: [usize; PEOPLE_CROP_NEIGHBOR_COUNT] = [1, 0, 3, 2, 7, 6, 5, 4];
+const TRAVEL_COASTAL_KM_PER_DAY: f64 = 80.0;
+const PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR: f64 = 15.0;
+/// Two weights per neighbour pair: the forager weight, then the farmer weight (W6).
+const PAIR_GROUPS: usize = 2;
 
 // These are implementation coefficients from v2/src/sim/dmath.ts. They are
 // deliberately written out here rather than calling libm: the wasm kernel
@@ -187,6 +191,63 @@ fn dpow(base: f64, exponent: f64) -> f64 {
     dexp(exponent * dln(base))
 }
 
+/// The oracle's `migrationShareForArea`: the per-firing hop share of a
+/// group with the given diffusivity, substepped and capped by the
+/// explicit-diffusion bound.
+fn share_for_area(area: f64, dt_months: f64, diffusivity: f64) -> f64 {
+    let annual_share = diffusivity / area.max(1.0);
+    let raw_share = if dt_months == 1.0 {
+        annual_share / MONTHS_PER_YEAR as f64
+    } else {
+        annual_share * dt_months / MONTHS_PER_YEAR as f64
+    };
+    let substeps = (raw_share / PEOPLE_MIGRATION_MAX_SHARE)
+        .ceil()
+        .max(1.0)
+        .min(PEOPLE_MIGRATION_MAX_SUBSTEPS as f64) as usize;
+    let share = raw_share / substeps as f64;
+    let mut effective = 0.0;
+    for _ in 0..substeps {
+        effective += (1.0 - effective) * share;
+    }
+    effective.min(PEOPLE_MIGRATION_MAX_SHARE)
+}
+
+fn grow_group(
+    population: f64,
+    capacity: f64,
+    disease: f64,
+    regime: f64,
+    dt_months: f64,
+) -> (f64, f64, f64) {
+    if population <= 0.0 || capacity <= 0.0 {
+        return (population, 0.0, 0.0);
+    }
+    let monthly_rate = if dt_months == 1.0 {
+        PEOPLE_R_GROWTH_PER_YEAR / MONTHS_PER_YEAR as f64
+    } else {
+        PEOPLE_R_GROWTH_PER_YEAR * dt_months / MONTHS_PER_YEAR as f64
+    };
+    let rate = monthly_rate * regime / (1.0 + PEOPLE_DISEASE_RATE * disease);
+    let natural_births = population * rate;
+    let density_pressure =
+        clamp01((population - PEOPLE_GRAVEYARD_DENSITY) / PEOPLE_GRAVEYARD_DENSITY);
+    let graveyard_deaths = if density_pressure > 0.0 {
+        population
+            * if dt_months == 1.0 {
+                PEOPLE_GRAVEYARD_RATE
+            } else {
+                PEOPLE_GRAVEYARD_RATE * dt_months
+            }
+            * dpow(density_pressure, PEOPLE_GRAVEYARD_GAMMA)
+    } else {
+        0.0
+    };
+    let crowding_deaths = natural_births * clamp01(population / capacity);
+    let deaths = (graveyard_deaths + crowding_deaths).min(population + natural_births);
+    ((population + natural_births - deaths).max(0.0), natural_births, deaths)
+}
+
 #[wasm_bindgen]
 pub fn wasm_memory() -> JsValue {
     wasm_bindgen::memory()
@@ -205,7 +266,6 @@ pub struct PeopleKernel {
 
     // Immutable substrate inputs copied once at construction. No substrate
     // array is copied through the boundary during a tick.
-    land: Vec<u8>,
     peopled: Vec<u8>,
     fertility: Vec<f64>,
     water_access: Vec<f64>,
@@ -213,13 +273,14 @@ pub struct PeopleKernel {
     forager_capacity: Vec<f64>,
     disease_burden: Vec<f64>,
     cell_area: Vec<f64>,
-    technique_suitability: Vec<f64>,
-    technique_edge_h: Vec<f64>,
-    technique_edge_v: f64,
     migration_days: Vec<f64>,
-    migration_edge_h: Vec<f64>,
-    migration_edge_v: f64,
     migration_share_row: Vec<f64>,
+    package_count: usize,
+    package_yields: Vec<f64>,
+    can_grow: Vec<u8>,
+    neighbor_targets: Vec<i32>,
+    neighbor_distance: Vec<f64>,
+    neighbor_mode: Vec<u8>,
 
     // Authoritative people state and all hot-path scratch live in this
     // instance. JavaScript only keeps typed-array views onto these vectors.
@@ -243,10 +304,45 @@ pub struct PeopleKernel {
     migration_weight: Vec<f64>,
     migration_population: Vec<f64>,
     migration_received_cell: Vec<f64>,
+    farmers: Vec<f64>,
+    farmers_next: Vec<f64>,
+    farmers_migration: Vec<f64>,
+    farmer_total: Vec<f64>,
+    farmer_total_next: Vec<f64>,
+    farmer_migration_total: Vec<f64>,
+    /// Dominant package per cell, written by capacity derivation and read by
+    /// the migration pair spare; the shell lens views it.
+    dominant: Vec<u8>,
+    /// Packages carrying any mass anywhere; loops over packages skip the rest.
+    active_package: Vec<u8>,
+    /// Two flows (W6): the farmers' outflow, weight sum and ratio per source
+    /// (the foragers' are migration_out, migration_weight, migration_ratio);
+    /// per cell whether foragers, and whether the farmers of any active
+    /// package, could enter it this firing; per-band farmer out and
+    /// per-group received sums; the pairs priced by the last firing.
+    migration_out_farmers: Vec<f64>,
+    migration_farmer_weight: Vec<f64>,
+    migration_farmer_ratio: Vec<f64>,
+    room_foragers: Vec<u8>,
+    room_farmers: Vec<u8>,
+    migration_farmer_by_band: [f64; PEOPLE_BAND_COUNT],
+    migration_farmer_received_by_band: [f64; PEOPLE_BAND_COUNT],
+    priced_pairs_by_band: [u64; PEOPLE_BAND_COUNT],
+    /// Per source slot, two weights (forager, farmer) = conductance × room,
+    /// written in the source phase and read back by the target phase through
+    /// the reverse slot so no pair is priced twice; per source, out ÷ weight;
+    /// per source, the cohort fractions of the firing's frozen population.
+    pair_weight: Vec<f64>,
+    migration_ratio: Vec<f64>,
+    children_fraction: Vec<f64>,
+    working_fraction: Vec<f64>,
+    elders_fraction: Vec<f64>,
 
     migration_month: usize,
     migration_dt_months: f64,
     migration_growth_prepared: bool,
+    /// Per-row farmer hop share for the firing (the forager share is migration_share_row).
+    migration_farmer_share_row: Vec<f64>,
     growth_dt_months: f64,
     births_by_band: [f64; PEOPLE_BAND_COUNT],
     deaths_by_band: [f64; PEOPLE_BAND_COUNT],
@@ -270,13 +366,14 @@ impl PeopleKernel {
         forager_capacity: &[f64],
         disease_burden: &[f64],
         cell_area: &[f64],
-        technique_suitability: &[f64],
-        technique_edge_h: &[f64],
-        technique_edge_v: f64,
         migration_days: &[f64],
-        migration_edge_h: &[f64],
-        migration_edge_v: f64,
         migration_share_row: &[f64],
+        package_count: usize,
+        package_yields: &[f64],
+        can_grow: &[u8],
+        neighbor_targets: &[i32],
+        neighbor_distance: &[f64],
+        neighbor_mode: &[u8],
     ) -> PeopleKernel {
         let cells = width.saturating_mul(height);
         let land = copy_u8(land, cells, 0);
@@ -293,7 +390,6 @@ impl PeopleKernel {
             width,
             height,
             cells,
-            land,
             peopled: copy_u8(peopled, cells, 0),
             fertility: copy_f64(fertility, cells),
             water_access: copy_f64(water_access, cells),
@@ -301,13 +397,23 @@ impl PeopleKernel {
             forager_capacity: copy_f64(forager_capacity, cells),
             disease_burden: copy_f64(disease_burden, cells),
             cell_area: copy_f64(cell_area, cells),
-            technique_suitability: copy_f64(technique_suitability, cells),
-            technique_edge_h: copy_f64(technique_edge_h, height),
-            technique_edge_v,
-            migration_days: copy_f64(migration_days, cells.saturating_mul(MONTHS_PER_YEAR)),
-            migration_edge_h: copy_f64(migration_edge_h, height),
-            migration_edge_v,
+            // Twelve monthly tables and their annual mean at index
+            // MONTHS_PER_YEAR (the solve regime's conductance, W5).
+            migration_days: copy_f64(migration_days, cells.saturating_mul(MONTHS_PER_YEAR + 1)),
             migration_share_row: copy_f64(migration_share_row, height),
+            package_count,
+            package_yields: copy_f64(package_yields, package_count),
+            can_grow: copy_u8(can_grow, package_count.saturating_mul(land_count), 0),
+            neighbor_targets: neighbor_targets.to_vec(),
+            neighbor_distance: copy_f64(
+                neighbor_distance,
+                PEOPLE_CROP_NEIGHBOR_COUNT.saturating_mul(land_count),
+            ),
+            neighbor_mode: copy_u8(
+                neighbor_mode,
+                PEOPLE_CROP_NEIGHBOR_COUNT.saturating_mul(land_count),
+                0,
+            ),
             land_cells,
             packed_of,
             people: vec![0.0; cells],
@@ -328,9 +434,36 @@ impl PeopleKernel {
             migration_weight: vec![0.0; land_count],
             migration_population: vec![0.0; land_count],
             migration_received_cell: vec![0.0; land_count],
+            farmers: vec![0.0; package_count.saturating_mul(land_count)],
+            farmers_next: vec![0.0; package_count.saturating_mul(land_count)],
+            farmers_migration: vec![0.0; package_count.saturating_mul(land_count)],
+            farmer_total: vec![0.0; land_count],
+            farmer_total_next: vec![0.0; land_count],
+            farmer_migration_total: vec![0.0; land_count],
+            dominant: vec![0; cells],
+            active_package: vec![0; package_count],
+            migration_out_farmers: vec![0.0; land_count],
+            migration_farmer_weight: vec![0.0; land_count],
+            migration_farmer_ratio: vec![0.0; land_count],
+            room_foragers: vec![0; land_count],
+            room_farmers: vec![0; land_count],
+            migration_farmer_by_band: [0.0; PEOPLE_BAND_COUNT],
+            migration_farmer_received_by_band: [0.0; PEOPLE_BAND_COUNT],
+            priced_pairs_by_band: [0; PEOPLE_BAND_COUNT],
+            pair_weight: vec![
+                0.0;
+                PEOPLE_CROP_NEIGHBOR_COUNT
+                    .saturating_mul(land_count)
+                    .saturating_mul(PAIR_GROUPS)
+            ],
+            migration_ratio: vec![0.0; land_count],
+            children_fraction: vec![0.0; land_count],
+            working_fraction: vec![0.0; land_count],
+            elders_fraction: vec![0.0; land_count],
             migration_month: 0,
             migration_dt_months: 1.0,
             migration_growth_prepared: false,
+            migration_farmer_share_row: vec![0.0; height],
             growth_dt_months: 1.0,
             births_by_band: [0.0; PEOPLE_BAND_COUNT],
             deaths_by_band: [0.0; PEOPLE_BAND_COUNT],
@@ -342,6 +475,10 @@ impl PeopleKernel {
 
     pub fn people_ptr(&self) -> usize {
         self.people.as_ptr() as usize
+    }
+
+    pub fn peopled_ptr(&self) -> usize {
+        self.peopled.as_ptr() as usize
     }
 
     pub fn kernel_ptr(&self) -> usize {
@@ -416,137 +553,93 @@ impl PeopleKernel {
         self.migration_received_cell.as_ptr() as usize
     }
 
+    pub fn farmer_ptr(&self, package_index: usize) -> usize {
+        let offset = package_index.saturating_mul(self.land_cells.len());
+        self.farmers.as_ptr() as usize + offset.saturating_mul(std::mem::size_of::<f64>())
+    }
+
+    pub fn farmer_next_ptr(&self, package_index: usize) -> usize {
+        let offset = package_index.saturating_mul(self.land_cells.len());
+        self.farmers_next.as_ptr() as usize + offset.saturating_mul(std::mem::size_of::<f64>())
+    }
+
+    pub fn farmer_total_ptr(&self) -> usize {
+        self.farmer_total.as_ptr() as usize
+    }
+
+    pub fn farmer_total_next_ptr(&self) -> usize {
+        self.farmer_total_next.as_ptr() as usize
+    }
+
+    pub fn dominant_ptr(&self) -> usize {
+        self.dominant.as_ptr() as usize
+    }
+
+    pub fn set_active_packages(&mut self, mask: &[u8]) {
+        for (index, slot) in self.active_package.iter_mut().enumerate() {
+            *slot = mask.get(index).copied().unwrap_or(0);
+        }
+    }
+
     pub fn derive_capacity_band(&mut self, raw_lo: usize, raw_hi: usize) {
         let hi = raw_hi.min(self.land_cells.len());
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
-            let fertility = clamp01(self.fertility[cell]);
-            let technique = clamp01(self.technique[cell]);
-            let access = self.water_access[cell];
-            let farmed = fertility
-                * PEOPLE_FARM_CAPACITY_PER_KM2
-                * technique
-                * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
-                * (1.0 + access * PEOPLE_WATER_ACCESS_GAIN)
-                * self.relief_multiplier[cell];
+            let dominant = self.dominant_package(packed);
+            self.dominant[cell] = dominant as u8;
+            // A cell's capacity is the mixture its people imply: foragers at
+            // the forager density, farmers at their dominant package's farmed
+            // density, weighted by the farmed share. Unfarmed land is forager
+            // land even where a package could grow; the farmed capacity opens
+            // to a migration source through `pair_spare`, never to foragers.
+            let farmed = self.package_capacity(cell, packed, dominant);
             let forager = self.forager_capacity[cell];
-            let mut capacity = PEOPLE_CAPACITY_FLOOR_PER_KM2;
-            if forager > capacity {
-                capacity = forager;
-            }
-            if farmed > capacity {
-                capacity = farmed;
-            }
-            self.capacity[cell] = capacity;
+            let share = clamp01(self.technique[cell]);
+            let mixture = forager + share * (farmed - forager);
+            self.capacity[cell] = if mixture > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
+                mixture
+            } else {
+                PEOPLE_CAPACITY_FLOOR_PER_KM2
+            };
         }
     }
 
-    pub fn prepare_technique(&mut self) {
-        for packed in 0..self.land_cells.len() {
-            let cell = self.land_cells[packed] as usize;
-            self.technique_next[packed] = self.technique[cell];
-        }
-    }
-
-    pub fn technique_band(&mut self, raw_lo: usize, raw_hi: usize, dt_months: f64) {
-        let hi = raw_hi.min(self.land_cells.len());
-        for packed in raw_lo.min(hi)..hi {
-            let cell = self.land_cells[packed] as usize;
-            if self.peopled[cell] == 0 {
+    /// The largest active farmer mass in a cell, index order breaking ties;
+    /// package 0 where nobody farms. The oracle's `dominantPackageOf`.
+    fn dominant_package(&self, packed: usize) -> usize {
+        let mut dominant = 0;
+        let mut dominant_mass = 0.0;
+        for package_index in 0..self.package_count {
+            if self.active_package[package_index] == 0 {
                 continue;
             }
-            let y = cell / self.width.max(1);
-            let x = cell - y * self.width.max(1);
-            let current = self.technique[cell];
-            let mut candidate = current.max(self.technique_next[packed]);
-
-            // Direction order N, S, W, E is part of the oracle contract.
-            if y > 0 {
-                candidate = self.spread_from(
-                    cell,
-                    cell - self.width,
-                    current,
-                    candidate,
-                    self.technique_edge_v,
-                    dt_months,
-                );
+            let mass = self.farmers[package_index * self.land_cells.len() + packed].max(0.0);
+            if mass > dominant_mass {
+                dominant_mass = mass;
+                dominant = package_index;
             }
-            if y + 1 < self.height {
-                candidate = self.spread_from(
-                    cell,
-                    cell + self.width,
-                    current,
-                    candidate,
-                    self.technique_edge_v,
-                    dt_months,
-                );
-            }
-            let west = y * self.width + if x == 0 { self.width - 1 } else { x - 1 };
-            candidate = self.spread_from(
-                cell,
-                west,
-                current,
-                candidate,
-                self.technique_edge_h[y],
-                dt_months,
-            );
-            let east = y * self.width + if x + 1 == self.width { 0 } else { x + 1 };
-            candidate = self.spread_from(
-                cell,
-                east,
-                current,
-                candidate,
-                self.technique_edge_h[y],
-                dt_months,
-            );
-
-            self.technique_next[packed] = current.max(candidate.min(1.0));
         }
+        dominant
     }
 
-    fn spread_from(
-        &self,
-        cell: usize,
-        source: usize,
-        current: f64,
-        candidate: f64,
-        distance: f64,
-        dt_months: f64,
-    ) -> f64 {
-        if self.land[source] == 0 {
-            return candidate;
+    /// Farmed capacity of a package in a cell, per km², independent of how
+    /// many farmers are there now (review, M3a); the regime term is the
+    /// share-keyed maturity M2 carried.
+    fn package_capacity(&self, cell: usize, packed: usize, package_index: usize) -> f64 {
+        if package_index >= self.package_count
+            || self.can_grow[package_index * self.land_cells.len() + packed] == 0
+        {
+            return 0.0;
         }
-        let source_technique = self.technique[source];
-        if source_technique <= current {
-            return candidate;
-        }
-        let mut progress = if dt_months == 1.0 {
-            PEOPLE_TECHNIQUE_WAVE_KMPY / MONTHS_PER_YEAR as f64 / distance.max(1.0)
-        } else {
-            PEOPLE_TECHNIQUE_WAVE_KMPY * dt_months / MONTHS_PER_YEAR as f64 / distance.max(1.0)
-        };
-        if progress > 1.0 {
-            progress = 1.0;
-        }
-        let suitability = self.technique_suitability[cell];
-        let fit = if suitability < PEOPLE_TECHNIQUE_CLIMATE_FLOOR {
-            0.0
-        } else {
-            suitability
-        };
-        let reached = current + (source_technique - current) * progress * fit;
-        if reached > candidate {
-            reached
-        } else {
-            candidate
-        }
-    }
-
-    pub fn commit_technique(&mut self) {
-        for packed in 0..self.land_cells.len() {
-            let cell = self.land_cells[packed] as usize;
-            self.technique[cell] = self.technique_next[packed];
-        }
+        let fertility = clamp01(self.fertility[cell]);
+        let technique = clamp01(self.technique[cell]);
+        let access = self.water_access[cell];
+        fertility
+            * PEOPLE_FARM_CAPACITY_PER_KM2
+            * self.package_yields[package_index]
+            * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
+            * (1.0 + access * PEOPLE_WATER_ACCESS_GAIN)
+            * self.relief_multiplier[cell]
     }
 
     pub fn begin_growth(&mut self, dt_months: f64) {
@@ -567,41 +660,61 @@ impl PeopleKernel {
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
             let population = self.people[cell].max(0.0);
-            let capacity = self.capacity[cell];
-            if population <= 0.0 || capacity <= 0.0 {
+            if population <= 0.0 {
                 self.people_next[packed] = 0.0;
                 self.children_mass[packed] = 0.0;
                 self.working_mass[packed] = 0.0;
                 self.elders_mass[packed] = 0.0;
+                self.farmer_total_next[packed] = 0.0;
+                for package_index in 0..self.package_count {
+                    if self.active_package[package_index] == 0 {
+                        continue;
+                    }
+                    self.farmers_next[package_index * self.land_cells.len() + packed] = 0.0;
+                }
                 continue;
             }
-            let technique = clamp01(self.technique[cell]);
-            let regime = PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN * technique;
-            let monthly_rate = if self.growth_dt_months == 1.0 {
-                PEOPLE_R_GROWTH_PER_YEAR / MONTHS_PER_YEAR as f64
-            } else {
-                PEOPLE_R_GROWTH_PER_YEAR * self.growth_dt_months / MONTHS_PER_YEAR as f64
-            };
-            let rate = monthly_rate * regime
-                / (1.0 + PEOPLE_DISEASE_RATE * self.disease_burden[cell]);
-            let natural_births = population * rate;
-            let density_pressure =
-                clamp01((population - PEOPLE_GRAVEYARD_DENSITY) / PEOPLE_GRAVEYARD_DENSITY);
-            let graveyard_deaths = if density_pressure > 0.0 {
-                population
-                    * if self.growth_dt_months == 1.0 {
-                        PEOPLE_GRAVEYARD_RATE
-                    } else {
-                        PEOPLE_GRAVEYARD_RATE * self.growth_dt_months
-                    }
-                    * dpow(density_pressure, PEOPLE_GRAVEYARD_GAMMA)
-            } else {
-                0.0
-            };
-            let crowding_deaths = natural_births * clamp01(population / capacity);
-            let cell_deaths = (graveyard_deaths + crowding_deaths).min(population + natural_births);
-            let next_population = (population + natural_births - cell_deaths).max(0.0);
+            // The maintained total, as the oracle's `foragerDensity` reads it.
+            let forager = (self.people[cell] - self.farmer_total[packed]).max(0.0);
+            let (forager_next, forager_births, forager_deaths) = grow_group(
+                forager,
+                self.forager_capacity[cell],
+                self.disease_burden[cell],
+                PEOPLE_GROWTH_FORAGER_FACTOR,
+                self.growth_dt_months,
+            );
+            let mut next_population = forager_next;
+            let mut natural_births = forager_births;
+            let mut cell_deaths = forager_deaths;
+            // Inactive packages carry no mass anywhere and an absent package
+            // needs no capacity: both skips are arithmetic no-ops (zero mass,
+            // zero births, zero deaths) that the oracle applies identically.
+            let mut farmer_total_next = 0.0;
+            for package_index in 0..self.package_count {
+                if self.active_package[package_index] == 0 {
+                    continue;
+                }
+                let farmer_index = package_index * self.land_cells.len() + packed;
+                let farmer = self.farmers[farmer_index].max(0.0);
+                if farmer <= 0.0 {
+                    self.farmers_next[farmer_index] = 0.0;
+                    continue;
+                }
+                let (farmer_next, farmer_births, farmer_deaths) = grow_group(
+                    farmer,
+                    self.package_capacity(cell, packed, package_index),
+                    self.disease_burden[cell],
+                    PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN,
+                    self.growth_dt_months,
+                );
+                self.farmers_next[farmer_index] = farmer_next;
+                farmer_total_next += farmer_next;
+                next_population += farmer_next;
+                natural_births += farmer_births;
+                cell_deaths += farmer_deaths;
+            }
             self.people_next[packed] = next_population;
+            self.farmer_total_next[packed] = farmer_total_next;
             births += natural_births * self.cell_area[cell];
             deaths += cell_deaths * self.cell_area[cell];
 
@@ -656,11 +769,15 @@ impl PeopleKernel {
     }
 
     pub fn begin_migration(&mut self, month: usize, dt_months: f64, growth_prepared: bool) {
-        self.migration_month = month % MONTHS_PER_YEAR;
+        // Month MONTHS_PER_YEAR selects the annual-mean table.
+        self.migration_month = month.min(MONTHS_PER_YEAR);
         self.migration_dt_months = dt_months;
         self.migration_growth_prepared = growth_prepared;
         self.migration_by_band.fill(0.0);
+        self.migration_farmer_by_band.fill(0.0);
         self.migration_received_by_band.fill(0.0);
+        self.migration_farmer_received_by_band.fill(0.0);
+        self.priced_pairs_by_band.fill(0);
         self.migration_total_value = 0.0;
     }
 
@@ -668,20 +785,87 @@ impl PeopleKernel {
         self.migration_days[self.migration_month * self.cells + cell]
     }
 
-    fn add_source_weight(&self, target: usize, edge: f64, sum: &mut f64) {
-        let packed = self.packed_of[target];
-        if packed < 0 || self.peopled[target] == 0 {
+    /// Room by group (W6): foragers see the land's forager capacity, farmers
+    /// the farmed capacity of the package they carry; both see everyone
+    /// already there as occupying it, and room below the numerical floor is
+    /// no room. The oracle's `foragerRoom` / `farmerRoom`.
+    fn forager_room(&self, target: usize, target_packed: usize) -> f64 {
+        let room = self.forager_capacity[target] - self.migration_population[target_packed];
+        if room > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
+            room * self.cell_area[target]
+        } else {
+            0.0
+        }
+    }
+
+    fn farmer_room(&self, source_packed: usize, target: usize, target_packed: usize) -> f64 {
+        let source_cell = self.land_cells[source_packed] as usize;
+        let farmed = self.package_capacity(target, target_packed, self.dominant[source_cell] as usize);
+        let room = farmed - self.migration_population[target_packed];
+        if room > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
+            room * self.cell_area[target]
+        } else {
+            0.0
+        }
+    }
+
+    fn edge_cost(&self, target: usize, distance: f64, mode: u8) -> f64 {
+        if mode == 1 {
+            distance / TRAVEL_COASTAL_KM_PER_DAY
+        } else {
+            self.days(target) * distance
+        }
+    }
+
+    fn any_neighbour_room(&self, packed: usize, farmers: bool) -> bool {
+        for direction in 0..PEOPLE_CROP_NEIGHBOR_COUNT {
+            let target = self
+                .neighbor_targets
+                .get(packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction)
+                .copied()
+                .unwrap_or(-1);
+            if target < 0 {
+                continue;
+            }
+            let target_packed = self.packed_of[target as usize];
+            if target_packed < 0 {
+                continue;
+            }
+            let flag = if farmers {
+                self.room_farmers[target_packed as usize]
+            } else {
+                self.room_foragers[target_packed as usize]
+            };
+            if flag == 1 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Move a farmer flow (persons) between a source's package proportions
+    /// and a target cell; `sign` −1 debits the source, +1 credits the target.
+    fn move_farmers(
+        &mut self,
+        source_packed: usize,
+        target_packed: usize,
+        farmer_flow: f64,
+        target_area: f64,
+        sign: f64,
+    ) {
+        let total = self.farmer_migration_total[source_packed];
+        if farmer_flow <= 0.0 || total <= 0.0 {
             return;
         }
-        let packed = packed as usize;
-        let spare =
-            (self.capacity[target] - self.people_next[packed]).max(0.0) * self.cell_area[target];
-        if spare <= 0.0 {
-            return;
-        }
-        let cost = self.days(target) * edge;
-        if cost.is_finite() && cost >= 0.0 {
-            *sum += (1.0 / (1.0 + cost)) * spare;
+        let land_count = self.land_cells.len();
+        for package_index in 0..self.package_count {
+            if self.active_package[package_index] == 0 {
+                continue;
+            }
+            let share = self.farmers_migration[package_index * land_count + source_packed] / total;
+            let target_index = package_index * land_count + target_packed;
+            let next = self.farmers_next[target_index] + sign * farmer_flow * share / target_area;
+            self.farmers_next[target_index] = if sign < 0.0 { next.max(0.0) } else { next };
         }
     }
 
@@ -689,27 +873,23 @@ impl PeopleKernel {
         let hi = raw_hi.min(self.land_cells.len());
         let row_lo = band_index * self.height / PEOPLE_BAND_COUNT;
         let row_hi = (band_index + 1) * self.height / PEOPLE_BAND_COUNT;
-        if self.migration_dt_months != 1.0 {
-            for row in row_lo..row_hi {
-                let area = self.cell_area[row * self.width].max(1.0);
-                let annual_share = PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR / area;
-                let raw_share = annual_share * self.migration_dt_months / MONTHS_PER_YEAR as f64;
-                let substeps = (raw_share / PEOPLE_MIGRATION_MAX_SHARE)
-                    .ceil()
-                    .max(1.0)
-                    .min(PEOPLE_MIGRATION_MAX_SUBSTEPS as f64) as usize;
-                let share = raw_share / substeps as f64;
-                let mut effective = 0.0;
-                for _ in 0..substeps {
-                    effective += (1.0 - effective) * share;
-                }
-                self.migration_share_row[row] = effective.min(PEOPLE_MIGRATION_MAX_SHARE);
-            }
+        // Every firing prices its own stride, each group its own share (the
+        // oracle's expressions, so a month matches the opening fill bit for bit).
+        for row in row_lo..row_hi {
+            let area = self.cell_area[row * self.width].max(1.0);
+            self.migration_share_row[row] = share_for_area(
+                area,
+                self.migration_dt_months,
+                PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+            );
+            self.migration_farmer_share_row[row] = share_for_area(
+                area,
+                self.migration_dt_months,
+                PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+            );
         }
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
-            self.migration_out[packed] = 0.0;
-            self.migration_weight[packed] = 0.0;
             if self.migration_growth_prepared {
                 self.migration_population[packed] = self.people_next[packed];
                 self.children_next[packed] = self.children_mass[packed];
@@ -726,15 +906,75 @@ impl PeopleKernel {
                 self.working_mass[packed] = self.working_next[packed];
                 self.elders_mass[packed] = self.elders_next[packed];
             }
+            for package_index in 0..self.package_count {
+                if self.active_package[package_index] == 0 {
+                    continue;
+                }
+                let farmer_index = package_index * self.land_cells.len() + packed;
+                let value = if self.migration_growth_prepared {
+                    self.farmers_next[farmer_index]
+                } else {
+                    self.farmers[farmer_index]
+                };
+                self.farmers_migration[farmer_index] = value;
+                self.farmers_next[farmer_index] = value;
+            }
+            let total = if self.migration_growth_prepared {
+                self.farmer_total_next[packed]
+            } else {
+                self.farmer_total[packed]
+            };
+            self.farmer_migration_total[packed] = total;
+            self.farmer_total_next[packed] = total;
+            let population = self.migration_population[packed];
+            self.migration_out[packed] = 0.0;
+            self.migration_out_farmers[packed] = 0.0;
+            self.migration_weight[packed] = 0.0;
+            self.migration_farmer_weight[packed] = 0.0;
+            self.migration_ratio[packed] = 0.0;
+            self.migration_farmer_ratio[packed] = 0.0;
+            for slot in 0..PEOPLE_CROP_NEIGHBOR_COUNT * PAIR_GROUPS {
+                self.pair_weight[packed * PEOPLE_CROP_NEIGHBOR_COUNT * PAIR_GROUPS + slot] = 0.0;
+            }
+            self.room_foragers[packed] =
+                if self.forager_capacity[cell] - population > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
+                    1
+                } else {
+                    0
+                };
+            let mut farmer_room_flag = 0;
+            for package_index in 0..self.package_count {
+                if self.active_package[package_index] == 0 {
+                    continue;
+                }
+                if self.package_capacity(cell, packed, package_index) - population
+                    > PEOPLE_CAPACITY_FLOOR_PER_KM2
+                {
+                    farmer_room_flag = 1;
+                    break;
+                }
+            }
+            self.room_farmers[packed] = farmer_room_flag;
+            if population > 0.0 {
+                self.children_fraction[packed] = self.children_mass[packed] / population;
+                self.working_fraction[packed] = self.working_mass[packed] / population;
+                self.elders_fraction[packed] = self.elders_mass[packed] / population;
+            } else {
+                self.children_fraction[packed] = 0.0;
+                self.working_fraction[packed] = 0.0;
+                self.elders_fraction[packed] = 0.0;
+            }
         }
     }
 
     pub fn migration_source_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
         let hi = raw_hi.min(self.land_cells.len());
-        let mut moved = 0.0;
+        let mut forager_moved = 0.0;
+        let mut farmer_moved = 0.0;
+        let mut priced: u64 = 0;
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
-            let population = self.people_next[packed];
+            let population = self.migration_population[packed];
             if population <= 0.0 {
                 continue;
             }
@@ -742,45 +982,95 @@ impl PeopleKernel {
             if area <= 0.0 {
                 continue;
             }
-            let y = cell / self.width.max(1);
-            let x = cell - y * self.width.max(1);
-            let share = self.migration_share_row[y];
-            let row_length = self.migration_edge_h[y];
-            let mut sum_weight = 0.0;
-            let east = y * self.width + if x + 1 == self.width { 0 } else { x + 1 };
-            self.add_source_weight(east, row_length, &mut sum_weight);
-            let west = y * self.width + if x == 0 { self.width - 1 } else { x - 1 };
-            self.add_source_weight(west, row_length, &mut sum_weight);
-            if y + 1 < self.height {
-                let south = cell + self.width;
-                self.add_source_weight(south, self.migration_edge_v, &mut sum_weight);
+            let farmers = self.farmer_migration_total[packed];
+            let foragers = (population - farmers).max(0.0);
+            let price_foragers = foragers > 0.0 && self.any_neighbour_room(packed, false);
+            let price_farmers = farmers > 0.0 && self.any_neighbour_room(packed, true);
+            if !price_foragers && !price_farmers {
+                continue;
             }
-            if y > 0 {
-                let north = cell - self.width;
-                self.add_source_weight(north, self.migration_edge_v, &mut sum_weight);
+            let mut sum_foragers = 0.0;
+            let mut sum_farmers = 0.0;
+            for direction in 0..PEOPLE_CROP_NEIGHBOR_COUNT {
+                let slot = packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction;
+                let target = self.neighbor_targets.get(slot).copied().unwrap_or(-1);
+                if target < 0 {
+                    continue;
+                }
+                let target = target as usize;
+                let target_packed = self.packed_of[target];
+                if target_packed < 0 {
+                    continue;
+                }
+                let target_packed = target_packed as usize;
+                priced += 1;
+                let cost = self.edge_cost(
+                    target,
+                    self.neighbor_distance.get(slot).copied().unwrap_or(0.0),
+                    self.neighbor_mode.get(slot).copied().unwrap_or(0),
+                );
+                let ease = if cost.is_finite() && cost >= 0.0 {
+                    1.0 / (1.0 + cost)
+                } else {
+                    0.0
+                };
+                if ease <= 0.0 {
+                    continue;
+                }
+                if price_foragers {
+                    let room = self.forager_room(target, target_packed);
+                    if room > 0.0 {
+                        let weight = ease * room;
+                        self.pair_weight[slot * PAIR_GROUPS] = weight;
+                        sum_foragers += weight;
+                    }
+                }
+                if price_farmers {
+                    let room = self.farmer_room(packed, target, target_packed);
+                    if room > 0.0 {
+                        let weight = ease * room;
+                        self.pair_weight[slot * PAIR_GROUPS + 1] = weight;
+                        sum_farmers += weight;
+                    }
+                }
             }
-            if sum_weight > 0.0 {
-                let amount = population * area * share;
-                self.migration_out[packed] = amount;
-                self.migration_weight[packed] = sum_weight;
-                moved += amount;
+            let row = cell / self.width.max(1);
+            if sum_foragers > 0.0 {
+                let out = foragers * area * self.migration_share_row[row];
+                self.migration_out[packed] = out;
+                self.migration_weight[packed] = sum_foragers;
+                self.migration_ratio[packed] = out / sum_foragers;
+                forager_moved += out;
+            }
+            if sum_farmers > 0.0 {
+                let out = farmers * area * self.migration_farmer_share_row[row];
+                self.migration_out_farmers[packed] = out;
+                self.migration_farmer_weight[packed] = sum_farmers;
+                self.migration_farmer_ratio[packed] = out / sum_farmers;
+                farmer_moved += out;
             }
         }
-        self.migration_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += moved;
+        let slot = band_index.min(PEOPLE_BAND_COUNT - 1);
+        self.migration_by_band[slot] += forager_moved;
+        self.migration_farmer_by_band[slot] += farmer_moved;
+        self.priced_pairs_by_band[slot] += priced;
     }
 
     pub fn migration_debit_band(&mut self, raw_lo: usize, raw_hi: usize) {
         let hi = raw_hi.min(self.land_cells.len());
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
-            let amount = self.migration_out[packed];
+            let forager_out = self.migration_out[packed];
+            let farmer_out = self.migration_out_farmers[packed];
+            let amount = forager_out + farmer_out;
             if amount <= 0.0 {
                 continue;
             }
             let area = self.cell_area[cell];
-            let density_moved = amount / if area > 0.0 { area } else { 1.0 };
-            self.people_next[packed] =
-                (self.people_next[packed] - amount / if area > 0.0 { area } else { 1.0 }).max(0.0);
+            let area = if area > 0.0 { area } else { 1.0 };
+            let density_moved = amount / area;
+            self.people_next[packed] = (self.people_next[packed] - amount / area).max(0.0);
+            self.move_farmers(packed, packed, farmer_out, area, -1.0);
             let population = self.migration_population[packed];
             if population > 0.0 {
                 self.children_next[packed] = (self.children_next[packed]
@@ -796,155 +1086,93 @@ impl PeopleKernel {
         }
     }
 
-    fn source_flow(&self, source: Option<usize>, conductance: f64, target_spare: f64) -> f64 {
-        let Some(source) = source else {
-            return 0.0;
-        };
-        let packed = self.packed_of[source];
-        if packed < 0 {
-            return 0.0;
-        }
-        let packed = packed as usize;
-        let amount = self.migration_out[packed];
-        let weight = self.migration_weight[packed];
-        if amount > 0.0 && weight > 0.0 {
-            amount * conductance * target_spare / weight
-        } else {
-            0.0
-        }
-    }
-
-    fn cohort_share(&self, flow: f64, source: usize, mass: &[f64]) -> f64 {
-        let packed = self.packed_of[source];
-        if packed < 0 {
-            return 0.0;
-        }
-        let packed = packed as usize;
-        let population = self.migration_population[packed];
-        if flow <= 0.0 || population <= 0.0 {
-            return 0.0;
-        }
-        flow * mass[packed] / population
-    }
-
     pub fn migration_target_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
         let hi = raw_hi.min(self.land_cells.len());
         for packed in raw_lo.min(hi)..hi {
             self.migration_received_cell[packed] = 0.0;
         }
-        let mut received_in_band = 0.0;
+        let mut foragers_in_band = 0.0;
+        let mut farmers_in_band = 0.0;
         for packed in raw_lo.min(hi)..hi {
             let target = self.land_cells[packed] as usize;
-            if self.peopled[target] == 0 {
-                continue;
-            }
             let target_area = self.cell_area[target];
             if target_area <= 0.0 {
                 continue;
             }
-            let target_spare =
-                (self.capacity[target] - self.migration_population[packed]).max(0.0) * target_area;
-            if target_spare <= 0.0 {
+            let mut received_foragers = 0.0;
+            let mut received_farmers = 0.0;
+            for direction in 0..PEOPLE_CROP_NEIGHBOR_COUNT {
+                let slot = packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction;
+                let source = self.neighbor_targets.get(slot).copied().unwrap_or(-1);
+                if source < 0 {
+                    continue;
+                }
+                let source_packed = self.packed_of[source as usize];
+                if source_packed < 0 {
+                    continue;
+                }
+                let source_packed = source_packed as usize;
+                // The source priced this pair in its own phase; read it back
+                // through the reverse slot. A hop the source does not see in
+                // return (none by construction) stays in the remainder.
+                let reverse =
+                    source_packed * PEOPLE_CROP_NEIGHBOR_COUNT + PEOPLE_NEIGHBOR_OPPOSITE[direction];
+                if self.neighbor_targets.get(reverse).copied().unwrap_or(-1) != target as i32 {
+                    continue;
+                }
+                let forager_flow =
+                    self.migration_ratio[source_packed] * self.pair_weight[reverse * PAIR_GROUPS];
+                let farmer_flow = self.migration_farmer_ratio[source_packed]
+                    * self.pair_weight[reverse * PAIR_GROUPS + 1];
+                let flow = forager_flow + farmer_flow;
+                if flow <= 0.0 {
+                    continue;
+                }
+                received_foragers += forager_flow;
+                received_farmers += farmer_flow;
+                self.move_farmers(source_packed, packed, farmer_flow, target_area, 1.0);
+                self.children_next[packed] += flow * self.children_fraction[source_packed] / target_area;
+                self.working_next[packed] += flow * self.working_fraction[source_packed] / target_area;
+                self.elders_next[packed] += flow * self.elders_fraction[source_packed] / target_area;
+            }
+            let received = received_foragers + received_farmers;
+            if received <= 0.0 {
                 continue;
             }
-            let y = target / self.width.max(1);
-            let x = target - y * self.width.max(1);
-            let target_days = self.days(target);
-            let vertical_cost = target_days * self.migration_edge_v;
-            let vertical_conductance = if vertical_cost.is_finite() && vertical_cost >= 0.0 {
-                1.0 / (1.0 + vertical_cost)
-            } else {
-                0.0
-            };
-            let horizontal_cost = target_days * self.migration_edge_h[y];
-            let horizontal_conductance = if horizontal_cost.is_finite() && horizontal_cost >= 0.0 {
-                1.0 / (1.0 + horizontal_cost)
-            } else {
-                0.0
-            };
-            let north = if y > 0 {
-                Some(target - self.width)
-            } else {
-                None
-            };
-            let south = if y + 1 < self.height {
-                Some(target + self.width)
-            } else {
-                None
-            };
-            let west = Some(y * self.width + if x == 0 { self.width - 1 } else { x - 1 });
-            let east = Some(y * self.width + if x + 1 == self.width { 0 } else { x + 1 });
-            let north_flow = self.source_flow(north, vertical_conductance, target_spare);
-            let south_flow = self.source_flow(south, vertical_conductance, target_spare);
-            let west_flow = self.source_flow(west, horizontal_conductance, target_spare);
-            let east_flow = self.source_flow(east, horizontal_conductance, target_spare);
-            let mut received = 0.0;
-            received += north_flow;
-            received += south_flow;
-            received += west_flow;
-            received += east_flow;
             self.people_next[packed] += received / target_area;
             self.migration_received_cell[packed] = received;
-            received_in_band += received;
-
-            let mut child = self.children_next[packed];
-            child += match north {
-                Some(source) => self.cohort_share(north_flow, source, &self.children_mass),
-                None => 0.0,
-            } / target_area;
-            child += match south {
-                Some(source) => self.cohort_share(south_flow, source, &self.children_mass),
-                None => 0.0,
-            } / target_area;
-            child += self.cohort_share(west_flow, west.unwrap(), &self.children_mass) / target_area;
-            child += self.cohort_share(east_flow, east.unwrap(), &self.children_mass) / target_area;
-            self.children_next[packed] = child;
-
-            let mut working = self.working_next[packed];
-            working += match north {
-                Some(source) => self.cohort_share(north_flow, source, &self.working_mass),
-                None => 0.0,
-            } / target_area;
-            working += match south {
-                Some(source) => self.cohort_share(south_flow, source, &self.working_mass),
-                None => 0.0,
-            } / target_area;
-            working +=
-                self.cohort_share(west_flow, west.unwrap(), &self.working_mass) / target_area;
-            working +=
-                self.cohort_share(east_flow, east.unwrap(), &self.working_mass) / target_area;
-            self.working_next[packed] = working;
-
-            let mut elders = self.elders_next[packed];
-            elders += match north {
-                Some(source) => self.cohort_share(north_flow, source, &self.elders_mass),
-                None => 0.0,
-            } / target_area;
-            elders += match south {
-                Some(source) => self.cohort_share(south_flow, source, &self.elders_mass),
-                None => 0.0,
-            } / target_area;
-            elders += self.cohort_share(west_flow, west.unwrap(), &self.elders_mass) / target_area;
-            elders += self.cohort_share(east_flow, east.unwrap(), &self.elders_mass) / target_area;
-            self.elders_next[packed] = elders;
+            foragers_in_band += received_foragers;
+            farmers_in_band += received_farmers;
+            self.peopled[target] = 1;
         }
-        self.migration_received_by_band[band_index.min(PEOPLE_BAND_COUNT - 1)] += received_in_band;
+        let slot = band_index.min(PEOPLE_BAND_COUNT - 1);
+        self.migration_received_by_band[slot] += foragers_in_band;
+        self.migration_farmer_received_by_band[slot] += farmers_in_band;
     }
 
     pub fn finish_migration(&mut self) {
-        // Band-slot folds are ledger-only. The remainder written back onto
-        // people must use the oracle's left-to-right land-cell association
-        // or a 1-ulp total difference lands on the first peopled cell.
-        let migration_total = self
+        // Band-slot folds are ledger-only. Each group's remainder written back
+        // onto people must use the oracle's left-to-right land-cell
+        // association or a 1-ulp total difference lands on the first peopled cell.
+        let forager_total = self
             .migration_by_band
             .iter()
             .fold(0.0, |total, value| total + value);
-        let migration_received = self
+        let farmer_total = self
+            .migration_farmer_by_band
+            .iter()
+            .fold(0.0, |total, value| total + value);
+        let forager_received = self
             .migration_received_by_band
             .iter()
             .fold(0.0, |total, value| total + value);
-        self.migration_total_value = migration_total;
-        let remainder = migration_total - migration_received;
+        let farmer_received = self
+            .migration_farmer_received_by_band
+            .iter()
+            .fold(0.0, |total, value| total + value);
+        self.migration_total_value = forager_total + farmer_total;
+        let forager_remainder = forager_total - forager_received;
+        let farmer_remainder = farmer_total - farmer_received;
         let mut remainder_packed = None;
         for (packed, &cell) in self.land_cells.iter().enumerate() {
             if self.peopled[cell as usize] != 0 {
@@ -956,7 +1184,7 @@ impl PeopleKernel {
             let cell = self.land_cells[packed] as usize;
             let area = self.cell_area[cell];
             if area > 0.0 {
-                let density = remainder / area;
+                let density = (forager_remainder + farmer_remainder) / area;
                 self.people_next[packed] += density;
                 let population = self.migration_population[packed];
                 if population > 0.0 {
@@ -964,15 +1192,73 @@ impl PeopleKernel {
                     self.working_next[packed] += density * self.working_mass[packed] / population;
                     self.elders_next[packed] += density * self.elders_mass[packed] / population;
                 }
+                if farmer_remainder != 0.0 {
+                    let total = self.farmer_migration_total[packed];
+                    let land_count = self.land_cells.len();
+                    if total > 0.0 {
+                        for package_index in 0..self.package_count {
+                            if self.active_package[package_index] == 0 {
+                                continue;
+                            }
+                            let farmer_index = package_index * land_count + packed;
+                            self.farmers_next[farmer_index] += farmer_remainder / area
+                                * self.farmers_migration[farmer_index]
+                                / total;
+                        }
+                    } else if let Some(first) =
+                        (0..self.package_count).find(|&index| self.active_package[index] != 0)
+                    {
+                        let farmer_index = first * land_count + packed;
+                        self.farmers_next[farmer_index] =
+                            (self.farmers_next[farmer_index] + farmer_remainder / area).max(0.0);
+                    }
+                }
             }
         }
         self.children_mass.copy_from_slice(&self.children_next);
         self.working_mass.copy_from_slice(&self.working_next);
         self.elders_mass.copy_from_slice(&self.elders_next);
+        self.farmers.copy_from_slice(&self.farmers_next);
+        // The farmer total is always the package sum in package order, as
+        // the oracle rebuilds it from a save; an incrementally maintained
+        // total drifts from that sum by rounding.
+        let land_count = self.land_cells.len();
+        for packed in 0..land_count {
+            let mut farmer_total = 0.0;
+            for package_index in 0..self.package_count {
+                if self.active_package[package_index] == 0 {
+                    continue;
+                }
+                farmer_total += self.farmers_next[package_index * land_count + packed];
+            }
+            self.farmer_total[packed] = farmer_total;
+        }
+    }
+
+    pub fn priced_pairs(&self) -> f64 {
+        self.priced_pairs_by_band.iter().sum::<u64>() as f64
     }
 
     pub fn migration_total(&self) -> f64 {
         self.migration_total_value
+    }
+
+    /// Commit the grown farmer masses and rebuild the total as the package
+    /// sum: the movement pass's own tail, for a firing in which growth ran
+    /// and movement did not (W6).
+    pub fn commit_farmers(&mut self) {
+        self.farmers.copy_from_slice(&self.farmers_next);
+        let land_count = self.land_cells.len();
+        for packed in 0..land_count {
+            let mut farmer_total = 0.0;
+            for package_index in 0..self.package_count {
+                if self.active_package[package_index] == 0 {
+                    continue;
+                }
+                farmer_total += self.farmers_next[package_index * land_count + packed];
+            }
+            self.farmer_total[packed] = farmer_total;
+        }
     }
 
     pub fn commit_population(&mut self) {
@@ -1010,11 +1296,6 @@ unsafe fn kernel_mut(pointer: usize) -> &'static mut PeopleKernel {
 #[wasm_bindgen]
 pub fn people_dispatch_capacity(pointer: usize, raw_lo: usize, raw_hi: usize) {
     unsafe { kernel_mut(pointer).derive_capacity_band(raw_lo, raw_hi) }
-}
-
-#[wasm_bindgen]
-pub fn people_dispatch_technique(pointer: usize, raw_lo: usize, raw_hi: usize, dt_months: f64) {
-    unsafe { kernel_mut(pointer).technique_band(raw_lo, raw_hi, dt_months) }
 }
 
 #[wasm_bindgen]

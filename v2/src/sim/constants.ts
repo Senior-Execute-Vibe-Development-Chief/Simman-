@@ -62,10 +62,11 @@ export const M0_DEFAULT_SEED = 42042; // spec/09-constants-ledger.md §Units —
 export const HASH_NUMBER_BYTES = 8; // spec/09-constants-ledger.md §Units — M0 world identity hash
 
 // FNV-1a 64-bit-ish world hash parameters.
-export const HASH_OFFSET_BASIS = 14695981039346656037n; // spec/09-constants-ledger.md §Units — M0 world identity hash
-export const HASH_PRIME = 1099511628211n; // spec/09-constants-ledger.md §Units — M0 world identity hash
-export const HASH_MASK = 18446744073709551615n; // spec/09-constants-ledger.md §Units — M0 world identity hash
-export const HASH_HEX_WIDTH = 16; // spec/09-constants-ledger.md §Units — M0 world identity hash
+export const HASH_OFFSET_BASIS = 2166136261; // spec/09-constants-ledger.md §Units — world identity hash, 32-bit FNV-1a offset basis
+export const HASH_PRIME = 16777619; // spec/09-constants-ledger.md §Units — world identity hash, 32-bit FNV-1a prime
+export const HASH_LANE_SEED = 1013904223; // spec/09-constants-ledger.md §Units — world identity hash, second-lane seed (Numerical Recipes LCG increment)
+export const HASH_WORD_BYTES = 4; // spec/09-constants-ledger.md §Units — world identity hash consumes 32-bit words
+export const HASH_HEX_WIDTH = 8; // spec/09-constants-ledger.md §Units — hex digits per 32-bit hash lane
 export const HASH_RADIX = 16; // spec/09-constants-ledger.md §Units — M0 world identity hash
 export const BASE64_CHUNK_SIZE = 32768; // spec/09-constants-ledger.md §Units — M0 persistence envelope
 
@@ -222,26 +223,13 @@ export const PEOPLE_GRAVEYARD_RATE = 0.0014; // spec/09-constants-ledger.md §M2
 export const PEOPLE_GRAVEYARD_DENSITY = 30; // spec/09-constants-ledger.md §M2 proposed — density where urban excess mortality starts
 export const PEOPLE_GRAVEYARD_GAMMA = 0.5; // spec/09-constants-ledger.md §People — urban graveyard exponent
 export const PEOPLE_CAPACITY_FLOOR_PER_KM2 = 0.001; // spec/09-constants-ledger.md §M2 proposed — numerical density floor
-export const PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR = 1200; // spec/09-constants-ledger.md §M2 proposed — pre-modern mobility correction
+export const PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR = 23; // spec/09-constants-ledger.md §W6 — forager population mobility, Aka mating/exploration range (Cavalli-Sforza & Hewlett 1982) by the parent–offspring displacement convention; replaces the v1 diffusivity of 1200
 export const PEOPLE_MIGRATION_MAX_SHARE = 0.5; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion stability bound
-export const PEOPLE_MIGRATION_REFERENCE_CELL_KM = EARTH_CIRCUMFERENCE_KM / DEV_GRID_WIDTH; // spec/09-constants-ledger.md §M2 proposed — reference-grid scale
 export const PEOPLE_MIGRATION_MAX_SUBSTEPS = 16; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion substep cap
-export const PEOPLE_TECHNIQUE_WAVE_KMPY = 1; // spec/09-constants-ledger.md §People — Neolithic wave of advance
 export const PEOPLE_TECHNIQUE_PRESENT = 0.01; // spec/09-constants-ledger.md §M2 proposed — reached-technique visibility threshold
 export const PEOPLE_TECHNIQUE_CLIMATE_FLOOR = 0.05; // spec/09-constants-ledger.md §M2 proposed — package-envelope spread floor
 export const PEOPLE_HEARTH_MIN_SEPARATION_KM = 1000; // spec/09-constants-ledger.md §M2 proposed — independent hearth spacing
 export const PEOPLE_HEARTH_BASIN_RADIUS_KM = 500; // spec/09-constants-ledger.md §M2 proposed — peopled-basin maturity radius
-export const PEOPLE_HEARTH_MAX_COUNT = 8; // spec/09-constants-ledger.md §People — archaeological independent-origin count
-export const PEOPLE_HEARTH_SEARCH_FRACTION = 0.03; // spec/09-constants-ledger.md §M2 proposed — pin snap search window
-export const PEOPLE_HEARTH_ELEVATION_SCALE = 0.4; // spec/09-constants-ledger.md §M2 proposed — lowland score scale
-export const PEOPLE_HEARTH_SCORE_REFERENCE = 5; // spec/09-constants-ledger.md §M2 proposed — scored-site lag reference
-export const PEOPLE_HEARTH_FALLBACK_LAG_YEARS = 900; // spec/09-constants-ledger.md §People — wheat domestication lag anchor
-export const PEOPLE_HEARTH_LAG_RANGE_YEARS = 3600; // spec/09-constants-ledger.md §M2 proposed — package-lag fallback range
-export const PEOPLE_HEARTH_SCORE_RIVER_GAIN = 1.5; // spec/09-constants-ledger.md §M2 proposed — water-access hearth score
-export const PEOPLE_HEARTH_SCORE_FERTILITY_GAIN = 2; // spec/09-constants-ledger.md §M2 proposed — fertile-basin hearth score
-export const PEOPLE_HEARTH_SCORE_CIRCUMSCRIPTION_GAIN = 1; // spec/09-constants-ledger.md §M2 proposed — basin enclosure hearth score
-export const PEOPLE_HEARTH_SCORE_SEA_PENALTY = 1; // spec/09-constants-ledger.md §M2 proposed — open-ocean hearth penalty
-export const PEOPLE_HEARTH_SUITABILITY_FLOOR = 0.15; // spec/09-constants-ledger.md §M2 proposed — viable crop package floor
 export const PEOPLE_COHORT_CHILD_FRACTION = 0.35; // spec/09-constants-ledger.md §M2 proposed — opening child cohort share
 export const PEOPLE_COHORT_WORKING_FRACTION = 0.6; // spec/09-constants-ledger.md §M2 proposed — opening working cohort share
 export const PEOPLE_COHORT_ELDER_FRACTION = 0.05; // spec/09-constants-ledger.md §M2 proposed — opening elder cohort share
@@ -264,3 +252,27 @@ export const PEOPLE_WASM_MEMORY_INITIAL_PAGES = 1024; // spec/09-constants-ledge
 export const PEOPLE_WASM_MEMORY_MAXIMUM_PAGES = 32768; // spec/09-constants-ledger.md §W3 proposed — shared-memory wasm max pages (2 GiB)
 export const PEOPLE_THREAD_STACK_BYTES = 1048576; // spec/09-constants-ledger.md §W3 proposed — per-worker wasm shadow stack
 export const PEOPLE_WORKER_ERROR_BYTES = 1024; // spec/09-constants-ledger.md §W3 proposed — shared-memory error text capacity for a failed band worker
+
+// M3a wave-and-crops constants. These are mechanisms/data contracts, not
+// outcome targets: the front speed is an output of farmer growth and travel.
+export const PEOPLE_ADOPTION_RATE_PER_YEAR = 0.01; // spec/09-constants-ledger.md §M3a — foragers adopting per year at full local contact and saturated advantage
+export const PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR = 15; // spec/09-constants-ledger.md §M3a — sedentary farmer mobility, Ammerman & Cavalli-Sforza 1544 km²/generation ÷ 4T
+export const PEOPLE_COASTAL_HOP_KM = 40; // spec/09-constants-ledger.md §M3a proposed — foot-and-raft crossing scale
+export const PEOPLE_HEARTH_SEED_FRACTION = 0.2; // spec/09-constants-ledger.md §M3a proposed — ignition farmer share
+export const PEOPLE_CROP_NEIGHBOR_COUNT = 8; // spec/09-constants-ledger.md §M3a proposed — eight-neighbour travel/contact stencil
+export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed — farmer-field save format
+export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
+export const PEOPLE_NEIGHBOR_DY = [-1, 1, 0, 0, -1, -1, 1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
+export const PEOPLE_NEIGHBOR_OPPOSITE = [1, 0, 3, 2, 7, 6, 5, 4] as const; // spec/09-constants-ledger.md §M3a proposed — reverse stencil directions
+export const PEOPLE_SNAPSHOT_FIELD_COUNT = 5; // spec/09-constants-ledger.md §M3a proposed — population, technique, package, can-grow, native overlays
+
+// W5: the peopling solve and the wake. No physical constant is added; the
+// knee is the Power row CAGE_KNEE made concrete, the marker is the gate's
+// existing instrument threshold, the tolerances are gate tolerances.
+export const CAGE_KNEE_FREE_SHARE = 0.2; // spec/09-constants-ledger.md §W5 proposed — free farmable share below which a basin is caged (CAGE_KNEE, Carneiro)
+export const PEOPLE_FARMED_MARKER_SHARE = 0.5; // spec/09-constants-ledger.md §W5 proposed — farmed share at which arrival instruments count a cell as farmed
+export const SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS = 100; // spec/09-constants-ledger.md §W5 proposed — gate tolerance: median arrival delta, solve vs awake kernel
+export const SOLVE_AGREEMENT_POP_TOLERANCE = 0.05; // spec/09-constants-ledger.md §W5 proposed — gate tolerance: checkpoint population delta, solve vs awake kernel
+export const SAVE_VERSION_W5 = 6; // spec/09-constants-ledger.md §W5 proposed — phase, wake and caged steps, events in the envelope
+export const HORIZON_OPENING_YEAR = -9700; // spec/09-constants-ledger.md §Units — Phase 1 opening, the end of the Younger Dryas (calendar label and the clock's origin)
+export const HORIZON_END_YEAR = 1; // spec/09-constants-ledger.md §Units — Phase 1 primary horizon end (calendar label)

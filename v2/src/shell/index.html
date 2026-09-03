@@ -34,6 +34,9 @@
           <option value="crops">Crop suitability</option>
           <option value="population">Population density</option>
           <option value="technique">Farming technique</option>
+          <option value="package">Crop package</option>
+          <option value="can-grow">Can grow</option>
+          <option value="native">Wild range</option>
           <option value="rivers">River passability</option>
           <option value="wind">Wind</option>
         </select>
@@ -44,6 +47,16 @@
         <button id="run" type="button">Pause</button>
         <label for="speed">Speed <span id="speed-label">1×</span></label>
         <input id="speed" type="range" min="0" max="6" step="1" value="0" />
+        <label for="timeline">Timeline <span id="timeline-label">solving…</span></label>
+        <input id="timeline" type="range" min="0" max="0" step="1" value="0" disabled />
+        <label for="wake">Wake the world</label>
+        <select id="wake">
+          <option value="auto">at the first caged basin</option>
+          <option value="never">never (solve to 1 CE)</option>
+          <option value="year">at a chosen year</option>
+        </select>
+        <input id="wake-year" type="number" step="1" value="-3000" hidden />
+        <button id="restart" type="button">Restart world</button>
         <div id="population">Population: waiting for worker…</div>
         <div id="status">Building immutable Earth substrate…</div>
         <div id="route">Click two land cells to query a travel route.</div>

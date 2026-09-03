@@ -1,184 +1,25 @@
-import hearthData from "../../../data/reality/hearths.json";
 import {
-  DEG_TO_RAD,
   EARTH_CIRCUMFERENCE_KM,
-  EARTH_DEGREES,
-  EARTH_HALF_DEGREES,
-  EARTH_MERIDIONAL_KM,
   MATH_NEGATIVE_ONE,
-  PEOPLE_HEARTH_BASIN_RADIUS_KM,
-  PEOPLE_HEARTH_ELEVATION_SCALE,
-  PEOPLE_HEARTH_FALLBACK_LAG_YEARS,
-  PEOPLE_HEARTH_LAG_RANGE_YEARS,
-  PEOPLE_HEARTH_MAX_COUNT,
-  PEOPLE_HEARTH_MIN_SEPARATION_KM,
-  PEOPLE_HEARTH_SCORE_REFERENCE,
-  PEOPLE_HEARTH_SCORE_CIRCUMSCRIPTION_GAIN,
-  PEOPLE_HEARTH_SCORE_FERTILITY_GAIN,
-  PEOPLE_HEARTH_SCORE_RIVER_GAIN,
-  PEOPLE_HEARTH_SCORE_SEA_PENALTY,
-  PEOPLE_HEARTH_SEARCH_FRACTION,
-  PEOPLE_HEARTH_SUITABILITY_FLOOR,
-  PEOPLE_RIVER_ACCESS_DIVISOR,
-  PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
-  PEOPLE_TECHNIQUE_PRESENT,
-  PEOPLE_TECHNIQUE_WAVE_KMPY,
   MONTHS_PER_YEAR,
-  TRAVEL_HALF,
+  PEOPLE_ADOPTION_RATE_PER_YEAR,
+  PEOPLE_HEARTH_BASIN_RADIUS_KM,
+  PEOPLE_HEARTH_MIN_SEPARATION_KM,
+  PEOPLE_HEARTH_SEED_FRACTION,
+  PEOPLE_TECHNIQUE_PRESENT,
 } from "../constants";
-import { dcos } from "../dmath";
-import { CROP_PACKAGES, pkgClimateBell } from "../../ported/worldgen/cropPackages.js";
-import type { PeopleWorld, HearthState } from "./types";
+import { migrationEdgeLengths } from "../travel/cost";
+import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
+import {
+  activePackageIndices,
+  deriveTechniqueFromFarmers,
+  foragerDensity,
+  markPackageActive,
+  packageCapacity,
+} from "./crop";
+import type { HearthState, PeopleWorld } from "./types";
 
-interface HearthPin {
-  readonly id: string;
-  readonly name: string;
-  readonly latitude: number;
-  readonly longitude: number;
-  readonly packageId: string;
-  readonly domesticationLagYears: number;
-}
-
-interface HearthFixture {
-  readonly source: string;
-  readonly hearths: readonly HearthPin[];
-}
-
-const fixtures = hearthData as HearthFixture;
-const NEIGHBOR_DX = [0, 0, MATH_NEGATIVE_ONE, 1] as const;
-const NEIGHBOR_DY = [MATH_NEGATIVE_ONE, 1, 0, 0] as const;
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
-
-function peopled(world: PeopleWorld, cell: number): boolean {
-  return world._peopledMask[cell] === 1;
-}
-
-/** Per-row 4-neighbor edge lengths, edgeKm's exact arithmetic for |d|=1. */
-function fillTechniqueEdgeLengths(world: PeopleWorld): void {
-  const horizontal = new Float64Array(world.height);
-  const northSouth = EARTH_MERIDIONAL_KM / world.height;
-  for (let y = 0; y < world.height; y++) {
-    // 90 - 180*f, matching travel/cost.ts row geometry: the ported edgeKm
-    // used the full-circle span here, zeroing horizontal edges south of 45N.
-    const eastWest = EARTH_CIRCUMFERENCE_KM / world.width
-      * Math.max(0, dcos(
-        (EARTH_HALF_DEGREES * TRAVEL_HALF
-          - ((y + TRAVEL_HALF) / world.height) * EARTH_HALF_DEGREES) * DEG_TO_RAD,
-      ));
-    horizontal[y] = Math.sqrt((1 * eastWest) * (1 * eastWest) + (0 * northSouth) * (0 * northSouth));
-  }
-  world._techniqueEdgeH = horizontal;
-  world._techniqueEdgeV = Math.sqrt((0 * 0) * (0 * 0) + (1 * northSouth) * (1 * northSouth));
-}
-
-function cellAt(world: PeopleWorld, latitude: number, longitude: number): number {
-  const x = ((longitude + EARTH_HALF_DEGREES) / EARTH_DEGREES * world.width) % world.width;
-  // Latitude spans 180 degrees, not 360: the original EARTH_DEGREES here put
-  // every hearth pin at HALF its real latitude (the Fertile Crescent ignited
-  // in Yemen, the Nile in the Sahara) — measured on the first YD->1 CE run.
-  const y = Math.max(
-    0,
-    Math.min(world.height - 1, (EARTH_HALF_DEGREES * TRAVEL_HALF - latitude) / EARTH_HALF_DEGREES * world.height),
-  );
-  return Math.floor(y) * world.width + Math.floor((x + world.width) % world.width);
-}
-
-function landNear(world: PeopleWorld, center: number, radius: number): number {
-  const substrate = world.substrate;
-  if (substrate.landMask[center]) return center;
-  const cy = Math.floor(center / world.width);
-  const cx = center - cy * world.width;
-  let best = center;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let dy = -radius; dy <= radius; dy++) {
-    const y = cy + dy;
-    if (y < 0 || y >= world.height) continue;
-    for (let dx = -radius; dx <= radius; dx++) {
-      const x = (cx + dx + world.width) % world.width;
-      const candidate = y * world.width + x;
-      if (!substrate.landMask[candidate]) continue;
-      const distance = dx * dx + dy * dy;
-      if (distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
-      }
-    }
-  }
-  return best;
-}
-
-function climateSuitability(world: PeopleWorld, cell: number): number {
-  if (world._techniqueSuitability.length === world.N) {
-    return world._techniqueSuitability[cell] ?? 0;
-  }
-  const temperature = world._annualTemperature[cell] ?? 0;
-  const moisture = world._annualMoisture[cell] ?? 0;
-  let best = 0;
-  for (const pkg of CROP_PACKAGES) {
-    const fit = pkgClimateBell(pkg, temperature, moisture);
-    if (fit > best) best = fit;
-  }
-  return best;
-}
-
-function packageAt(world: PeopleWorld, cell: number): string {
-  const temperature = world._annualTemperature[cell] ?? 0;
-  const moisture = world._annualMoisture[cell] ?? 0;
-  let bestId = CROP_PACKAGES[0]?.id ?? "wheat";
-  let bestFit = 0;
-  for (const pkg of CROP_PACKAGES) {
-    const fit = pkgClimateBell(pkg, temperature, moisture);
-    if (fit > bestFit) {
-      bestFit = fit;
-      bestId = pkg.id;
-    }
-  }
-  return bestId;
-}
-
-function fillTechniqueSuitability(world: PeopleWorld): void {
-  const target = world._techniqueSuitability;
-  for (let cell = 0; cell < world.N; cell++) {
-    const temperature = world._annualTemperature[cell] ?? 0;
-    const moisture = world._annualMoisture[cell] ?? 0;
-    let best = 0;
-    for (const pkg of CROP_PACKAGES) {
-      const fit = pkgClimateBell(pkg, temperature, moisture);
-      if (fit > best) best = fit;
-    }
-    target[cell] = best;
-  }
-}
-
-function scoreAt(world: PeopleWorld, cell: number): number {
-  const substrate = world.substrate;
-  const fertility = clamp01(substrate.fertility[cell] ?? 0);
-  const crop = climateSuitability(world, cell);
-  if (crop < PEOPLE_HEARTH_SUITABILITY_FLOOR) return 0;
-  const river = clamp01(
-    (substrate.rivers.magnitude[cell] ?? 0) / PEOPLE_RIVER_ACCESS_DIVISOR
-    + (substrate.floodplain[cell] ?? 0),
-  );
-  const lowland = 1 - clamp01(
-    (substrate.elevation[cell] ?? 0) / PEOPLE_HEARTH_ELEVATION_SCALE,
-  );
-  const enclosed = clamp01(
-    1 - (substrate.coastDistanceKm[cell] ?? 0) / PEOPLE_HEARTH_BASIN_RADIUS_KM,
-  );
-  const seaPenalty = substrate.coast[cell]
-    ? PEOPLE_HEARTH_SCORE_SEA_PENALTY * clamp01(
-      1 - (substrate.coastDistanceKm[cell] ?? 0) / PEOPLE_HEARTH_BASIN_RADIUS_KM,
-    )
-    : 0;
-  return Math.max(
-    0,
-    PEOPLE_HEARTH_SCORE_FERTILITY_GAIN * fertility
-      + PEOPLE_HEARTH_SCORE_RIVER_GAIN * river
-      + PEOPLE_HEARTH_SCORE_CIRCUMSCRIPTION_GAIN * (lowland + enclosed)
-      + crop
-      - seaPenalty,
-  );
-}
 
 function separated(world: PeopleWorld, candidate: number, chosen: readonly number[]): boolean {
   const candidateY = Math.floor(candidate / world.width);
@@ -196,243 +37,227 @@ function separated(world: PeopleWorld, candidate: number, chosen: readonly numbe
   return true;
 }
 
-function pinnedHearths(world: PeopleWorld): HearthState[] {
-  if (world.substrate.preset !== "earth" && world.substrate.preset !== "earth_sim") return [];
-  const search = Math.max(
-    1,
-    Math.round(world.width * PEOPLE_HEARTH_SEARCH_FRACTION),
-  );
-  const chosen: number[] = [];
-  const result: HearthState[] = [];
-  for (const pin of fixtures.hearths) {
-    const cell = landNear(world, cellAt(world, pin.latitude, pin.longitude), search);
-    if (!world.substrate.landMask[cell] || !separated(world, cell, chosen)) continue;
-    chosen.push(cell);
-    result.push({
-      id: pin.id,
-      cell,
-      packageId: pin.packageId,
-      lagYears: pin.domesticationLagYears,
-      score: scoreAt(world, cell),
-      armedYears: 0,
-      ignited: false,
-    });
-  }
-  return result;
-}
-
-function scoredHearths(world: PeopleWorld, existing: readonly HearthState[]): HearthState[] {
-  const candidates: Array<{ cell: number; score: number }> = [];
-  const remaining = Math.max(0, PEOPLE_HEARTH_MAX_COUNT - existing.length);
-  for (let cell = 0; cell < world.N; cell++) {
-    if (!world.substrate.landMask[cell] || !peopled(world, cell)) continue;
-    const score = scoreAt(world, cell);
-    if (score <= 0 || remaining <= 0) continue;
-    if (candidates.length < remaining) {
-      candidates.push({ cell, score });
-      continue;
-    }
-    let lowest = 0;
-    for (let index = 1; index < candidates.length; index++) {
-      if ((candidates[index]?.score ?? 0) < (candidates[lowest]?.score ?? 0)) lowest = index;
-    }
-    if (score > (candidates[lowest]?.score ?? 0)) candidates[lowest] = { cell, score };
-  }
-  candidates.sort((left, right) => right.score - left.score || left.cell - right.cell);
-  const chosen = existing.map((hearth) => hearth.cell);
-  const result: HearthState[] = [];
-  for (const candidate of candidates) {
-    if (existing.length + result.length >= PEOPLE_HEARTH_MAX_COUNT) break;
-    if (!separated(world, candidate.cell, chosen)) continue;
-    chosen.push(candidate.cell);
-    result.push({
-      id: `scored-${candidate.cell}`,
-      cell: candidate.cell,
-      packageId: packageAt(world, candidate.cell),
-      lagYears: PEOPLE_HEARTH_FALLBACK_LAG_YEARS
-        + (1 - clamp01(candidate.score / PEOPLE_HEARTH_SCORE_REFERENCE))
-        * PEOPLE_HEARTH_LAG_RANGE_YEARS,
-      score: candidate.score,
-      armedYears: 0,
-      ignited: false,
-    });
-  }
-  return result;
-}
-
-export function chooseHearths(world: PeopleWorld): HearthState[] {
-  const pinned = pinnedHearths(world);
-  return [...pinned, ...scoredHearths(world, pinned)];
-}
-
-function neighbor(world: PeopleWorld, cell: number, dx: number, dy: number): number {
-  const y = Math.floor(cell / world.width);
-  const x = cell - y * world.width;
-  const targetY = y + dy;
-  if (targetY < 0 || targetY >= world.height) return MATH_NEGATIVE_ONE;
-  return targetY * world.width + ((x + dx + world.width) % world.width);
-}
-
-function spreadSuitability(world: PeopleWorld, cell: number): number {
-  const fit = climateSuitability(world, cell);
-  return fit < PEOPLE_TECHNIQUE_CLIMATE_FLOOR ? 0 : fit;
-}
-
-function basinFill(world: PeopleWorld, cell: number): number {
-  const radius = Math.max(
+export function basinRadiusCells(world: PeopleWorld): number {
+  return Math.max(
     1,
     Math.round(PEOPLE_HEARTH_BASIN_RADIUS_KM / (EARTH_CIRCUMFERENCE_KM / world.width)),
   );
-  const y = Math.floor(cell / world.width);
-  const x = cell - y * world.width;
-  let people = 0;
-  let capacity = 0;
-  for (let dy = -radius; dy <= radius; dy++) {
-    const yy = y + dy;
-    if (yy < 0 || yy >= world.height) continue;
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy > radius * radius) continue;
-      const xx = (x + dx + world.width) % world.width;
-      const index = yy * world.width + xx;
-      people += (world.people[index] ?? 0) * (world.cellAreaKm2[index] ?? 0);
-      // Peopled-basin years measure fill against the STATIC forager capacity —
-      // a basin full of people. Measuring against current capField stalled
-      // every pin the moment a neighboring wave lifted the basin to farmed
-      // capacity (fill collapsed ~10x): measured on the first YD->1 CE run,
-      // the Fertile Crescent ignited ~6,000 years late for exactly this
-      // reason while hearths beyond the wave's reach ignited on time.
-      capacity += (world._foragerCapacity[index] ?? 0) * (world.cellAreaKm2[index] ?? 0);
+}
+
+/**
+ * Summed-area table of value × cell area over the full grid, (width+1) ×
+ * (height+1) so a window sum is four reads. Basins are square windows of
+ * the basin radius; the table does not wrap at the dateline, and no native
+ * range sits within a basin radius of it.
+ */
+export function fillSummedArea(world: PeopleWorld, values: ArrayLike<number>, out: Float64Array): void {
+  const width = world.width;
+  const stride = width + 1;
+  out.fill(0, 0, stride);
+  for (let y = 0; y < world.height; y++) {
+    let rowSum = 0;
+    const rowBase = (y + 1) * stride;
+    out[rowBase] = 0;
+    for (let x = 0; x < width; x++) {
+      const cell = y * width + x;
+      rowSum += (values[cell] ?? 0) * (world.cellAreaKm2[cell] ?? 0);
+      out[rowBase + x + 1] = (out[rowBase - stride + x + 1] ?? 0) + rowSum;
     }
   }
-  return capacity > 0 ? clamp01(people / capacity) : 0;
+}
+
+export function windowSum(world: PeopleWorld, table: Float64Array, cell: number, radius: number): number {
+  const width = world.width;
+  const stride = width + 1;
+  const y = Math.floor(cell / width);
+  const x = cell - y * width;
+  const x0 = Math.max(0, x - radius);
+  const x1 = Math.min(width - 1, x + radius) + 1;
+  const y0 = Math.max(0, y - radius);
+  const y1 = Math.min(world.height - 1, y + radius) + 1;
+  return (table[y1 * stride + x1] ?? 0)
+    - (table[y0 * stride + x1] ?? 0)
+    - (table[y1 * stride + x0] ?? 0)
+    + (table[y0 * stride + x0] ?? 0);
+}
+
+/**
+ * Peopled-basin fill: people in the basin against the basin's STATIC forager
+ * capacity — the M2 law, unchanged. Measuring against the live capacity
+ * stalled every hearth the moment a neighbouring wave lifted the basin to
+ * farmed capacity (M2 finding); measuring against a global density bar
+ * clamped every peopled basin to "full" from the opening tick (M3a review),
+ * which reduced the maturity law to the catalogue lag alone.
+ */
+function basinFill(world: PeopleWorld, cell: number, radius: number): number {
+  const capacity = windowSum(world, world._basinCapacitySum, cell, radius);
+  if (capacity <= 0) return 0;
+  return clamp01(windowSum(world, world._basinPeopleSum, cell, radius) / capacity);
+}
+
+function packageIndexOf(packageId: string): number {
+  for (let index = 0; index < CROP_PACKAGES.length; index++) {
+    if (CROP_PACKAGES[index]?.id === packageId) return index;
+  }
+  return MATH_NEGATIVE_ONE;
+}
+
+function canGrowAt(world: PeopleWorld, packageIndex: number, cell: number): boolean {
+  const packed = world._packedOf[cell] ?? MATH_NEGATIVE_ONE;
+  return packed >= 0 && (world._canGrow[packageIndex]?.[packed] ?? 0) !== 0;
+}
+
+function seedHearth(world: PeopleWorld, hearth: HearthState): void {
+  const packageIndex = packageIndexOf(hearth.packageId);
+  if (packageIndex < 0) return;
+  const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
+  const farmers = world.farmers[hearth.packageId];
+  if (packed < 0 || !farmers || !canGrowAt(world, packageIndex, hearth.cell)) return;
+  const people = Math.max(0, world.people[hearth.cell] ?? 0);
+  const current = Math.max(0, farmers[packed] ?? 0);
+  const available = foragerDensity(world, hearth.cell);
+  const amount = Math.min(available, Math.max(0, people * PEOPLE_HEARTH_SEED_FRACTION - current));
+  farmers[packed] = current + amount;
+  world._farmerTotal[packed] += amount;
+  markPackageActive(world, packageIndex);
+}
+
+/**
+ * Hearths condense. Every cell of a package's native range where the crop
+ * can grow accrues peopled-basin years at its basin's fill; the first cells
+ * to reach the package's domestication lag ignite, and a cell within the
+ * separation bar of an ignited hearth of the same package is the same
+ * hearth. No search window, no score, no pin: which range ignites first,
+ * and where on it, is the population history of that range.
+ */
+function updateHearths(world: PeopleWorld, dtMonths: number): void {
+  const dtYears = dtMonths / MONTHS_PER_YEAR;
+  const radius = basinRadiusCells(world);
+  fillSummedArea(world, world.people, world._basinPeopleSum);
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    const pkg = CROP_PACKAGES[packageIndex];
+    const cells = world._nativeCells[packageIndex];
+    const years = world._hearthYears[packageIndex];
+    const canGrow = world._canGrow[packageIndex];
+    if (!pkg || !cells || !years || !canGrow) continue;
+    const ignited = world.hearths
+      .filter((hearth) => hearth.ignited && hearth.packageId === pkg.id)
+      .map((hearth) => hearth.cell);
+    for (let index = 0; index < cells.length; index++) {
+      const packed = cells[index] ?? MATH_NEGATIVE_ONE;
+      if (packed < 0 || canGrow[packed] !== 1) continue;
+      const cell = world._landCells[packed] ?? 0;
+      const fill = basinFill(world, cell, radius);
+      if (fill <= 0) continue;
+      const accrued = (years[index] ?? 0) + fill * dtYears;
+      years[index] = accrued;
+      if (accrued < pkg.domLagY) continue;
+      if ((world.people[cell] ?? 0) <= 0) continue;
+      if (!separated(world, cell, ignited)) continue;
+      const hearth: HearthState = {
+        id: `hearth-${pkg.id}-${cell}`,
+        cell,
+        packageId: pkg.id,
+        lagYears: pkg.domLagY,
+        score: fill,
+        armedYears: accrued,
+        ignited: true,
+        ignitedStep: world.step,
+      };
+      world.hearths.push(hearth);
+      world.events.push({ step: world.step, kind: "hearth", cell, packageId: pkg.id });
+      ignited.push(cell);
+      seedHearth(world, hearth);
+    }
+  }
+}
+
+/**
+ * Farming is a label carried by people. The annual conversion pass moves
+ * labels only: foragers living among farmers adopt their package where it
+ * out-yields foraging, and farmers whose package cannot feed them revert.
+ * Contact is LOCAL — the farmer share of the cell — so a cell converts at a
+ * rate, never at a distance: a neighbour-stencil contact term moves the
+ * front one cell per conversion interval and its speed is the grid spacing
+ * (review, M3a; the third cardinal rule). Spread is the farmers moving.
+ * The advantage saturates, adv/(1+adv): a package ten times better than
+ * foraging is adopted at the rate, not ten times faster than one twice as
+ * good.
+ */
+export function convertFarmers(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): void {
+  updateHearths(world, dtMonths);
+  const dtYears = dtMonths / MONTHS_PER_YEAR;
+  const active = activePackageIndices(world);
+  if (active.length > 0) {
+    for (let packed = 0; packed < world._landCells.length; packed++) {
+      const cell = world._landCells[packed] ?? 0;
+      const population = Math.max(0, world.people[cell] ?? 0);
+      if (population <= 0) continue;
+      const foragerCapacity = world._foragerCapacity[cell] ?? 0;
+      let available = foragerDensity(world, cell);
+      for (const packageIndex of active) {
+        const pkg = CROP_PACKAGES[packageIndex];
+        const farmer = pkg ? world.farmers[pkg.id] : undefined;
+        if (!farmer) continue;
+        const present = Math.max(0, farmer[packed] ?? 0);
+        const farmCapacity = packageCapacity(world, cell, packageIndex);
+        const advantage = foragerCapacity > 0
+          ? (farmCapacity - foragerCapacity) / foragerCapacity
+          : 0;
+        if (advantage > 0) {
+          if (available <= 0 || present <= 0) continue;
+          const contact = Math.min(1, present / population);
+          const amount = Math.min(
+            available,
+            available * PEOPLE_ADOPTION_RATE_PER_YEAR * dtYears * contact * (advantage / (1 + advantage)),
+          );
+          farmer[packed] = present + amount;
+          world._farmerTotal[packed] += amount;
+          available -= amount;
+        } else if (advantage < 0 && present > 0) {
+          const amount = Math.min(
+            present,
+            present * PEOPLE_ADOPTION_RATE_PER_YEAR * dtYears * Math.min(1, -advantage),
+          );
+          farmer[packed] = Math.max(0, present - amount);
+          world._farmerTotal[packed] = Math.max(0, (world._farmerTotal[packed] ?? 0) - amount);
+          available += amount;
+        }
+      }
+    }
+  }
+  deriveTechniqueFromFarmers(world);
 }
 
 export function prepareTechnique(world: PeopleWorld): void {
-  if (world._techniqueSuitability.length !== world.N) {
-    world._techniqueSuitability = new Float64Array(world.N);
+  if (world._canGrow.length !== CROP_PACKAGES.length) {
+    throw new Error("Crop fields were not initialized before the people pass.");
   }
-  fillTechniqueEdgeLengths(world);
-  fillTechniqueSuitability(world);
+  const lengths = migrationEdgeLengths(world.substrate);
+  world._techniqueEdgeH = lengths.horizontal;
+  world._techniqueEdgeV = lengths.vertical;
+  fillSummedArea(world, world._foragerCapacity, world._basinCapacitySum);
 }
 
 export function initializeTechnique(world: PeopleWorld): void {
-  prepareTechnique(world);
   world.technique.fill(0);
   world._techniqueNext.fill(0);
-  world.hearths = chooseHearths(world);
+  deriveTechniqueFromFarmers(world);
+  world.hearths = [];
+  for (const years of world._hearthYears) years.fill(0);
 }
 
-export function stepTechnique(world: PeopleWorld, dtMonths = 1): number {
-  const technique = world.technique;
-  const next = world._techniqueNext;
-  const wasm = world._wasmPeopleKernel;
-  if (wasm) {
-    wasm.prepareTechnique();
-    for (const hearth of world.hearths) {
-      if (hearth.ignited) {
-        technique[hearth.cell] = 1;
-        const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
-        if (packed >= 0) next[packed] = 1;
-        continue;
-      }
-      hearth.armedYears += basinFill(world, hearth.cell) * dtMonths / MONTHS_PER_YEAR;
-      if (hearth.armedYears >= hearth.lagYears) {
-        hearth.ignited = true;
-        technique[hearth.cell] = 1;
-        const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
-        if (packed >= 0) next[packed] = 1;
-      }
-    }
-    wasm.spreadTechnique(dtMonths);
-    wasm.commitTechnique();
-    let covered = 0;
-    let land = 0;
-    for (const cell of world._landCells) {
-      land++;
-      if ((technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;
-    }
-    return land > 0 ? covered / land : 0;
-  }
-  for (let packed = 0; packed < world._landCells.length; packed++) {
-    const cell = world._landCells[packed] ?? 0;
-    next[packed] = technique[cell] ?? 0;
-  }
-  for (const hearth of world.hearths) {
-    if (hearth.ignited) {
-      technique[hearth.cell] = 1;
-      const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
-      if (packed >= 0) next[packed] = 1;
-      continue;
-    }
-    hearth.armedYears += basinFill(world, hearth.cell) * dtMonths / MONTHS_PER_YEAR;
-    if (hearth.armedYears >= hearth.lagYears) {
-      hearth.ignited = true;
-      technique[hearth.cell] = 1;
-      const packed = world._packedOf[hearth.cell] ?? MATH_NEGATIVE_ONE;
-      if (packed >= 0) next[packed] = 1;
-    }
-  }
-  if (world._techniqueEdgeH === undefined || world._techniqueEdgeH.length !== world.height) {
-    fillTechniqueEdgeLengths(world);
-  }
-  const width = world.width;
-  const landMask = world.substrate.landMask;
-  const edgeH = world._techniqueEdgeH;
-  const edgeV = world._techniqueEdgeV;
-  for (const band of world._peopleBands) {
-    for (let packed = band.rawLo; packed < band.rawHi; packed++) {
-      const cell = world._landCells[packed] ?? 0;
-      if (world._peopledMask[cell] !== 1) continue;
-      const y = (cell / width) | 0;
-      const x = cell - y * width;
-      const current = technique[cell] ?? 0;
-      let candidate = Math.max(current, next[packed] ?? 0);
-    // Direction order N, S, W, E — the original NEIGHBOR_DX/DY order — with
-    // row-local index math producing the same values as neighbor()/edgeKm.
-    for (let direction = 0; direction < NEIGHBOR_DX.length; direction++) {
-      let source: number;
-      let distance: number;
-      if (direction === 0) {
-        if (y === 0) continue;
-        source = cell - width;
-        distance = edgeV;
-      } else if (direction === 1) {
-        if (y + 1 >= world.height) continue;
-        source = cell + width;
-        distance = edgeV;
-      } else if (direction === 2) {
-        source = y * width + (x === 0 ? width - 1 : x - 1);
-        distance = edgeH[y] ?? 0;
-      } else {
-        source = y * width + (x + 1 === width ? 0 : x + 1);
-        distance = edgeH[y] ?? 0;
-      }
-      if (!landMask[source]) continue;
-      const sourceTechnique = technique[source] ?? 0;
-      if (sourceTechnique <= current) continue;
-      const progress = Math.min(
-        1,
-        dtMonths === 1
-          ? PEOPLE_TECHNIQUE_WAVE_KMPY / MONTHS_PER_YEAR / Math.max(1, distance)
-          : PEOPLE_TECHNIQUE_WAVE_KMPY * dtMonths / MONTHS_PER_YEAR / Math.max(1, distance),
-      );
-      const fit = spreadSuitability(world, cell);
-      const reached = current + (sourceTechnique - current) * progress * fit;
-      if (reached > candidate) candidate = reached;
-    }
-      next[packed] = Math.max(current, Math.min(1, candidate));
-    }
-  }
-  for (let packed = 0; packed < world._landCells.length; packed++) {
-    const cell = world._landCells[packed] ?? 0;
-    technique[cell] = next[packed] ?? 0;
-  }
+/**
+ * Compatibility wrapper: technique is the farmed share, kept current by the
+ * commit epilogue after every growth/migration month, so the scheduled
+ * pass only reports coverage (a second derivation here cost a full pass
+ * over every package per year for no change in state).
+ */
+export function stepTechnique(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): number {
+  void dtMonths;
   let covered = 0;
-  let land = 0;
   for (const cell of world._landCells) {
-    land++;
-    if ((technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;
+    if ((world.technique[cell] ?? 0) >= PEOPLE_TECHNIQUE_PRESENT) covered++;
   }
-  return land > 0 ? covered / land : 0;
+  return world._landCells.length > 0 ? covered / world._landCells.length : 0;
 }
-

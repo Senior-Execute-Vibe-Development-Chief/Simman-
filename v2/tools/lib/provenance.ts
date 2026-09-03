@@ -11,6 +11,11 @@ export interface Provenance {
   readonly step: number;
   readonly configDigest: string;
   readonly schedule: World["schedule"];
+  /** W5: the regime, its derived stride, and the wake/caged steps (−1 while not yet). */
+  readonly phase: World["phase"];
+  readonly solveStride: number;
+  readonly wakeStep: number;
+  readonly cagedStep: number;
 }
 
 function gitValue(args: string[]): string {
@@ -33,7 +38,11 @@ export function provenance(world: World): Provenance {
     grid: world.grid,
     step: world.step,
     configDigest,
-    schedule: world.schedule,
+    schedule: world.awakeSchedule,
+    phase: world.phase,
+    solveStride: world.solveStride,
+    wakeStep: world.wakeStep,
+    cagedStep: world.cagedStep,
   };
 }
 

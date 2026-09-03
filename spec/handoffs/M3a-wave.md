@@ -89,7 +89,7 @@ Before any change, at the target grid: the technique map at −8000, −6000,
 −4000 and the arrival table. The target long-arm rows in
 `known-misses-people.json` are the baseline; if they are still absent
 when you start, run `GATE_PEOPLE_LONG=1 npm run gate:people` once at the
-target grid (~35 min on a 4-core box with the packed threaded kernel) and
+target grid (the shipped and the stride-1 trajectories, ~2 h on a 4-core box with the threaded kernel; the gate no longer pins one worker) and
 write them with physical reasons before touching the wave. QUESTIONS #36
 has the dev numbers. This is what the wave is judged against, before and
 after.
@@ -244,3 +244,61 @@ irrigation works (M3b). No paleoclimate or sea-level tracks (P9/P10,
 owner rulings pending). No long sea voyages (14). No speed constant of
 any kind. No place names in code. No touching the scheduler, the thread
 pool, or the band layout. No tolerance edits to pass the front table.
+
+---
+
+## Status (review and merge, 2026-09-02)
+
+Delivered as a commit on the working branch (77db7935) rather than a
+`cursor/v2-m3a` PR; reviewed line by line against this document and
+merged with corrections. QUESTIONS #37 carries the review note, the
+measurements and the tables; DECISIONS 26 the review rulings.
+
+**Kept as delivered:** deliverables 1 (catalogue + can-grow + native
+overlays, three added packages), 2's structure (farmer masses, derived
+technique, split growth, migration carrying labels, annual conversion),
+3 (eight-neighbour LUT with true edge lengths and coastal hops), 6's
+reality table and the Balkans→Rhine speed check, 7's parity coverage of
+the new arrays, save v5, the shell lenses.
+
+**Corrected at the cause (QUESTIONS #37 for each):** farmed capacity no
+longer scales with the farmer share (it went as share² and every
+founding group reverted); a cell's capacity is the mixture of its
+people and the pair spare opens farmed land to a farming source; the
+hearth law is M2's peopled-basin fill against the basin's own forager
+capacity, accrued per native cell, the first to cross the lag igniting
+(the delivered bar clamped every basin to "full" and took the first
+row-major cell); contact is local and the advantage saturates (the
+stencil form moved the front one cell per conversion interval, a
+grid-spacing speed — deliverable 3's "applies to contact alike" is
+withdrawn, DECISIONS 26 a); farmers carry their own mobility
+(`PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR`, deliverable 2's "exactly as it
+moves the cohort masses" is amended — a farmer mass joins the flow at
+15/1200 of a forager mass); the farmer total is the package sum at every
+commit (save/load was not byte-identical once farmers existed); the
+parity harness primes the hearths so farmer paths are compared.
+
+**Deliverable 7, the budget:** the +8 ms cap was an estimate that did
+not count the pairs — an eight-neighbour stencil doubles the dominant
+phase's pairs. Measured on the review runner with the long arm paused
+(target, shipped schedule, serial / 3 threads): W4 89 / 41 ms per tick,
+the delivered kernel 390 / 184, the merged kernel 166 / 97 after pricing
+each pair once (QUESTIONS #37, cost table). `bench -- --check` passes
+under the existing cap; the baseline is not re-anchored. Parity is
+byte-exact at both grids with every native range primed to ignite at
+tick 1 — the delivered harness never compared a farmer path.
+
+**Withdrawn from deliverable 6:** the front-isotropy aspect check (it
+measures nothing about diamonds); the stencil is the mechanism and was
+reviewed as such. The Danube-corridor check was not delivered and is not
+added.
+
+**Not done, recorded as findings (owner rulings):** the wild-range boxes
+carry no citations and three decide history on their own (wheat into the
+Indus, rice into Japan and peninsular India, sorghum across the whole
+Sahel — DECISIONS 26 g); the catalogue lags run from the Younger Dryas
+peopling, so every basin of a range ignites within a century or two of
+the others and the Sahel/East Africa farm at −6800 (P10 pending); the
+share-keyed capacity regime reaches M2's matured farmed capacity within
+centuries of arrival, which with no mortality physics puts the world at
+1.95 B people by −1000 on dev (M3b).

@@ -1,9 +1,11 @@
-# Simman v2 — M2 people
+# Simman v2 — W5 the peopling solve and the wake
 
-M2 builds on the immutable Earth substrate and seasonal multimodal travel field
-with one real-unit population field. Population grows toward derived
-carrying capacity, migrates through the travel field's local costs, and learns
-farming through a climate-tolerated wave from real and emergent hearths.
+M3a builds on the immutable Earth substrate and seasonal multimodal travel
+field with one real-unit population field. Population grows toward derived
+carrying capacity, migrates through the travel field's local costs, and farming
+emerges as per-package farmer populations carried by that migration. W5 runs
+that kernel in two regimes: SOLVE, the same passes at a multi-year stride
+until the first basin is caged, and AWAKE, the monthly kernel from there.
 
 ## Setup and commands
 
@@ -15,7 +17,7 @@ npm ci
 npm run lint       # ESLint restrictions plus constants-ledger lint
 npm run test       # smoke gate plus unit checks
 npm run smoke      # M0 integrity plus layered WASM routing battery
-npm run gate       # travel reality gate followed by M2 people gate
+npm run gate       # travel reality gate followed by M3a people gate
                    # (hard-fails on any failure NOT acknowledged in
                    #  data/reality/known-misses.json, and on any stale
                    #  manifest entry that now passes — a one-way ratchet)
@@ -28,16 +30,25 @@ npm run browser    # Node + Chromium + Firefox + WebKit identity checks
 npm run dev        # Vite development server
 ```
 
-`npm run gate:people` runs the people arm directly. Its opening-window checks
-run at both grids and every run adds a ~3000-year dev trajectory arm (first
-hearth ignitions, curve checkpoints inside the window). The full YD→1 CE
-dev and shipped target batteries — population checkpoint bands, farming arrival
-order and timing, density ordering — run with
-`GATE_PEOPLE_LONG=1 npm run gate:people`; misses are acknowledged in
-`data/reality/known-misses-people.json` or fail the gate. The default gate
-also runs a cadence stride arm (all-strides-1 vs shipped schedule) at the
-dev 3000-year horizon. The target-grid long battery is the primary
-verdict; the dev battery is retained for comparison.
+`npm run gate:people` runs the people arm directly. Per commit it is
+mechanical: the opening-window checks at both grids over twelve firings,
+plus the SOLVE arm at dev — the solve regime from the opening to 1 CE with
+`wake: "never"`, measured with every reality instrument (population bands,
+both arrival tables, the barrier box, the Europe front band, the density
+ordering) and the step the world would have woken at, in seconds. At the
+shipped grid a solve step is about 0.3 s serial and the horizon 1,386 of
+them, so the target solve arm runs with `GATE_PEOPLE_SOLVE_TARGET=1` (the
+long workflow). **Nothing that simulates monthly history runs per commit**
+(owner directive, 2026-09-03). The 3000-year dev trajectory arm, the
+cadence stride arm and the solve agreement arm (awake kernel against the
+solve regime) run with `GATE_PEOPLE_TRAJECTORY=1`; the full YD→1 CE dev
+and shipped-grid batteries with `GATE_PEOPLE_LONG=1`. Misses are acknowledged in
+`data/reality/known-misses-people.json` or fail the gate. The bench's
+per-phase cadence table (six configurations per grid) runs with
+`BENCH_CADENCE=1`; `bench -- --check` alone is the ratchet. In CI the
+mechanical checks run as four parallel jobs on every push
+(`.github/workflows/v2-ci.yml`); the long arms and the full browser matrix
+are `v2-long.yml`, on request or weekly.
 
 The W1 water bake is reproducible with `npx tsx tools/build-waterdata.mts
 <etopo.nc> <HydroLAKES_polys_v10.shp>` when refreshing the committed
@@ -57,7 +68,7 @@ src/ported/    byte-compatible RNG and copied v1 worldgen supplier
 src/shell/     terrain/climate/travel demo (Equal Earth display projection; sim grid stays lat-lon)
 rust/router/   wasm-bindgen layered routing engine
 rust/people/   wasm-bindgen banded people kernel
-data/reality/  cited travel reality fixture
+data/reality/  cited travel, crop-package, range, and arrival fixtures
 tools/         smoke, gate, oracle, bench, browser runner, collector
 ```
 
@@ -67,7 +78,7 @@ The first reality-table landing is allowed to fail its hard route rows; such
 failures are findings for the next mechanism revision, never route-specific
 fudge factors.
 
-## M2 guarantees
+## M3a guarantees
 
 - The v1 worldgen chain is copied under `src/ported/worldgen` and only
   consumed through the typed `buildSubstrate` boundary.
@@ -84,17 +95,52 @@ fudge factors.
   and the three cohort fractions ride the same field.
 - Births and deaths are named sources/sinks; migration is a balanced channel
   in the per-pass conservation sheet.
-- The farming technique field is monotone, climate-tolerated, and driven by
-  hearth maturity measured in peopled-basin years rather than calendar gates.
-- Save format v4 persists people, technique, cohorts, hearth progress, and
-  the resolved pass schedule; terrain remains immutable substrate rebuilt
-  from its identity.
+- Farming is a derived share of per-package farmer masses. Climate bells,
+  growing-season minima, wild ranges, and travel costs determine where the
+  demic wave can move; farmers move at their own grounded mobility and
+  foragers adopt the package of the farmers they live among, so the front's
+  speed is 2·√((r + adoption)·D) of the farmer group — no speed constant or
+  hearth pin drives it. A cell's capacity is the mixture of its people, and
+  the land a farming source can enter opens in proportion to the farmers it
+  sends; a hearth ignites where a native range has been a peopled basin for
+  the package's domestication lag (the M2 law).
+- Save format v6 persists people, farmer masses, derived technique, cohorts,
+  peopled arrivals, hearth progress, the resolved pass schedules, the regime
+  (phase, wake and caged steps) and the event log; terrain remains immutable
+  substrate rebuilt from its identity.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
   technique coverage, weighted cohort shares, and per-pass firing counts.
 - Every people field pass uses aggregated named source/sink accounting.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
   fire annually; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
+- **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
+  pass fires at one stride derived from the bounds the passes already carry
+  (each group's hops on the rows it can be a source from, farmer growth,
+  adoption, cohort ageing — 84 months at both grids, printed in provenance),
+  and conductance is the annual mean of the twelve monthly tables. The world
+  WAKES into the AWAKE regime at the first caged basin: the first hearth-law window centred on a
+  farmed cell whose free farmable room falls below the caging knee
+  (`CAGE_KNEE_FREE_SHARE`, Carneiro's circumscription, the precondition of
+  M4's taking). `config.wake` is an initial condition — `"auto"` (the
+  trigger), `"never"` (measurement mode), or a year, the player's epoch —
+  read by nothing after the switch. The phase, wake step and caged step are
+  world state (saved, hashed, in provenance); hearth ignitions and the wake
+  are the event log's first entries. The shell plays the peopling while it
+  solves, scrubs the solved span through reconstructed frames (a rendering,
+  never state), and runs the awake kernel from the wake.
+- **Two flows, room by group (W6).** Foragers see forager room (the land's
+  forager capacity minus everyone there), farmers see farmed room (the
+  capacity of the package they carry minus everyone there); each group is
+  split among the eight neighbours by conductance × its own room and hops
+  its own share of the firing (`PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR`, 23,
+  grounded on Aka mating and exploration ranges; `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR`,
+  15). Room below the numerical floor is no room, and a source none of
+  whose neighbours has room for a group is not priced for it, so a full
+  region costs nothing. The awake movement stride derives per group like
+  the solve stride and is 84 months at both grids: growth fires yearly,
+  movement every seven years, and most months are empty ticks. The two
+  regimes differ only in the growth cadence.
 - The wasm people kernel uses a row-major land index and 16 fixed,
   grid-derived row bands. Only scratch and iteration are land-packed; the
   saved people, technique, cohort, and capacity views remain full-grid.
@@ -103,7 +149,8 @@ fudge factors.
   `ensurePeopleWasm({ workers })` and borrowed by kernels; the dispatch
   descriptor lives in shared memory and barriers wait in 1 ms slices;
   hashes are identical for 1, 2, and N workers and identical to the serial
-  TypeScript oracle. Hosts without isolation fall back to serial wasm,
+  TypeScript oracle. Hosts without isolation, and a browser main thread
+  (which may not block in `Atomics.wait`), fall back to serial wasm,
   logged in the status line; a worker that fails mid-phase raises an error
   through shared memory rather than hanging the coordinator. Band partials
   accumulate in locals (per-cell writes to adjacent slots false-shared a
@@ -112,6 +159,14 @@ fudge factors.
   for YD→1 CE); the ≤15.5 ms ceiling remains open. QUESTIONS #34 has the
   W3 thread table and review corrections, #36 the W4 traffic ledger, the
   false-sharing finding and the measurements.
+- M3a adds a catalogue-backed crop system: one can-grow LUT and one native
+  wild-range mask per package, farmer masses in the same land-packed order as
+  the kernel's cohort state, and an annual local adoption/reversion pass.
+  Migration uses an eight-neighbour true-distance stencil with coastal hops
+  capped by the grounded crossing length. The package, can-grow, and native
+  overlays are available in the shell. QUESTIONS #37 has the M3a review:
+  what the delivered mechanisms did, what the corrections are, and the
+  measurements.
 - `collect()` measures numeric leaves and distributions by default; its
   fail-open scratch list is exported from the collector.
 - Node, Chromium, Firefox, and WebKit agree on world hashes, math bit goldens,

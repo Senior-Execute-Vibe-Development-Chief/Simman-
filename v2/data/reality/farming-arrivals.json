@@ -7,6 +7,10 @@
     { "id": "yellow-river", "latitude": 35, "longitude": 112, "earliest": -8000, "latest": -5500 },
     { "id": "indus", "latitude": 28, "longitude": 70, "earliest": -7000, "latest": -3500 },
     { "id": "mesoamerica", "latitude": 19, "longitude": -99, "earliest": -7000, "latest": -2500 },
-    { "id": "andes", "latitude": -13, "longitude": -72, "earliest": -5000, "latest": -2500 }
+    { "id": "andes", "latitude": -13, "longitude": -72, "earliest": -5000, "latest": -2500 },
+    { "id": "sahel", "latitude": 15, "longitude": 0, "earliest": -3500, "latest": -2500 },
+    { "id": "ganges", "latitude": 25, "longitude": 82, "earliest": -3000, "latest": -2000 },
+    { "id": "south-india", "latitude": 15, "longitude": 78, "earliest": -3500, "latest": -2500 },
+    { "id": "japan", "latitude": 36, "longitude": 138, "earliest": -1200, "latest": -500 }
   ]
 }

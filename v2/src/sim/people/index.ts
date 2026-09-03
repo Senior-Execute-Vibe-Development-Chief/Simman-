@@ -2,16 +2,19 @@ import {
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_BAND_COUNT,
+  PEOPLE_CROP_NEIGHBOR_COUNT,
   PEOPLE_COHORT_CHILD_FRACTION,
   PEOPLE_COHORT_ELDER_FRACTION,
   PEOPLE_COHORT_WORKING_FRACTION,
   PEOPLE_INITIAL_FILL_FRACTION,
 } from "../constants";
+import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { deriveCapacity } from "./capacity";
+import { activePackageIndices, deriveTechniqueFromFarmers, initializeCropFields, refreshTechniqueShare } from "./crop";
 import { cellAreasKm2, annualClimateFromSubstrate, fillStaticHabitability } from "./habitability";
 import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
-import { initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
+import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
@@ -19,9 +22,11 @@ import { createPeopleKernel, defaultPeopleWorkers } from "../peopleKernel";
 import { allocateFields } from "../fields";
 import { passDtMonths, passFires } from "../scheduler";
 import { fixedPeopleBands } from "./bands";
+import { buildPeopleNeighborTable } from "./neighbors";
 
 export const peoplePhaseMilliseconds: Record<string, number> = {
   technique: 0,
+  conversion: 0,
   capacity: 0,
   growth: 0,
   migration: 0,
@@ -61,10 +66,47 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._childrenNext = new Float64Array(landCount);
   world._workingNext = new Float64Array(landCount);
   world._eldersNext = new Float64Array(landCount);
+  world.farmers = {};
+  world._farmersNext = {};
+  world._farmersMigration = {};
+  world._farmerTotal = new Float64Array(landCount);
+  world._farmerTotalNext = new Float64Array(landCount);
+  world._farmerMigrationTotal = new Float64Array(landCount);
+  world._activePackage = new Uint8Array(CROP_PACKAGES.length);
+  for (const pkg of CROP_PACKAGES) {
+    world.farmers[pkg.id] = new Float64Array(landCount);
+    world._farmersNext[pkg.id] = new Float64Array(landCount);
+    world._farmersMigration[pkg.id] = new Float64Array(landCount);
+  }
   world._migrationOut = new Float64Array(landCount);
   world._migrationWeight = new Float64Array(landCount);
   world._migrationPopulation = new Float64Array(landCount);
   world._migrationReceived = new Float64Array(landCount);
+  world._migrationOutFarmers = new Float64Array(landCount);
+  world._migrationFarmerWeight = new Float64Array(landCount);
+  world._migrationFarmerRatio = new Float64Array(landCount);
+  world._migrationFarmerShareRow = new Float64Array(world.height);
+  world._roomForagers = new Uint8Array(landCount);
+  world._roomFarmers = new Uint8Array(landCount);
+  world._migrationFarmerByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._migrationFarmerReceivedByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  // Two weights per pair: the forager weight, then the farmer weight.
+  world._pairWeight = new Float64Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT * 2);
+  world._migrationRatio = new Float64Array(landCount);
+  world._childrenFraction = new Float64Array(landCount);
+  world._workingFraction = new Float64Array(landCount);
+  world._eldersFraction = new Float64Array(landCount);
+  world._basinCapacitySum = new Float64Array((world.width + 1) * (world.height + 1));
+  world._basinPeopleSum = new Float64Array((world.width + 1) * (world.height + 1));
+  world._basinRoom = new Float64Array(length);
+  world._basinFree = new Float64Array(length);
+  world._basinRoomSum = new Float64Array((world.width + 1) * (world.height + 1));
+  world._basinFreeSum = new Float64Array((world.width + 1) * (world.height + 1));
+  world._bestYield = new Float64Array(landCount);
+  world._bestYieldDigest = "";
+  world._arrivalStep = new Int32Array(landCount);
+  world._arrivalStep.fill(MATH_NEGATIVE_ONE);
+  world._arrivalPackage = new Uint8Array(landCount);
   world._birthsByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._deathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._migrationByBand = new Float64Array(PEOPLE_BAND_COUNT);
@@ -80,12 +122,23 @@ function allocatePeopleScratch(world: PeopleWorld): void {
     world._peopledMask[cell] = peopled ? 1 : 0;
   }
   world._migrationDaysPerKm = new Float64Array(length);
-  world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR).fill(undefined);
+  // Twelve monthly tables and, at index MONTHS_PER_YEAR, their mean: the
+  // solve regime's conductance (a stride of a year or more sees every season).
+  world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR + 1).fill(undefined);
   world._waterAccess = new Float64Array(length);
   world._reliefMult = new Float64Array(length);
   world._foragerCapacity = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
   world._migrationShareRow = new Float64Array(world.height);
+  world._canGrow = [];
+  world._nativeRanges = [];
+  world._nativeCells = [];
+  world._hearthYears = [];
+  world._dominantPackage = new Uint8Array(length);
+  const neighbors = buildPeopleNeighborTable(world);
+  world._neighborTargets = neighbors.targets;
+  world._neighborDistanceKm = neighbors.distanceKm;
+  world._neighborMode = neighbors.mode;
 }
 
 function seedPopulation(world: PeopleWorld): number {
@@ -112,6 +165,7 @@ export function initializePeople(worldInput: World): PeopleWorld {
   annualClimateFromSubstrate(world);
   fillStaticHabitability(world);
   fillMigrationShareRows(world);
+  initializeCropFields(world);
   prepareTechnique(world);
   const forceTypeScript = world.config.peopleKernel === "ts";
   if (!forceTypeScript) {
@@ -145,6 +199,26 @@ export function initializePeople(worldInput: World): PeopleWorld {
   return world;
 }
 
+/** Commit the grown farmer masses and rebuild the total as the package sum (the movement pass's own tail). */
+function commitFarmers(world: PeopleWorld): void {
+  if (world._wasmPeopleKernel) {
+    world._wasmPeopleKernel.commitFarmers();
+    return;
+  }
+  const active = activePackageIndices(world);
+  for (const packageIndex of active) {
+    const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+    world.farmers[id]!.set(world._farmersNext[id]!);
+  }
+  for (let packed = 0; packed < world._landCells.length; packed++) {
+    let total = 0;
+    for (const packageIndex of active) {
+      total += world._farmersNext[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0;
+    }
+    world._farmerTotal[packed] = total;
+  }
+}
+
 function normalizeCohorts(world: PeopleWorld): void {
   for (let packed = 0; packed < world._landCells.length; packed++) {
     const cell = world._landCells[packed] ?? 0;
@@ -163,22 +237,31 @@ function normalizeCohorts(world: PeopleWorld): void {
   }
 }
 
-export function stepPeople(worldInput: World): void {
+/**
+ * One firing of the people passes. In the AWAKE regime each pass fires on
+ * its own stride; in the SOLVE regime (`solveDtMonths` given) every pass
+ * fires with that dt, foragers do not hop, and conductance is the annual
+ * mean — the kernel's own passes on the clock the farmer bound permits (W5).
+ */
+export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   const world = initializePeople(worldInput);
+  const solve = solveDtMonths !== undefined;
   const due = new Map(
-    world.schedule.map((schedule) => [schedule.name, passFires(world, schedule)]),
+    world.schedule.map((schedule) => [schedule.name, solve || passFires(world, schedule)]),
   );
   const techniqueSchedule = world.schedule.find(({ name }) => name === "people.technique");
+  const conversionSchedule = world.schedule.find(({ name }) => name === "people.conversion");
   const capacitySchedule = world.schedule.find(({ name }) => name === "people.capacity");
   const growthSchedule = world.schedule.find(({ name }) => name === "people.growth");
   const migrationSchedule = world.schedule.find(({ name }) => name === "people.migration");
   const cohortsSchedule = world.schedule.find(({ name }) => name === "people.cohorts");
   const techniqueDue = due.get("people.technique") === true;
+  const conversionDue = due.get("people.conversion") === true;
   const capacityDue = due.get("people.capacity") === true;
   const growthDue = due.get("people.growth") === true;
   const migrationDue = due.get("people.migration") === true;
   const cohortsDue = due.get("people.cohorts") === true;
-  if (!techniqueDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return;
+  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return false;
 
   world.ledger.beginPass(
     "people",
@@ -190,8 +273,13 @@ export function stepPeople(worldInput: World): void {
   );
   if (techniqueDue) {
     const started = performance.now();
-    stepTechnique(world, passDtMonths(techniqueSchedule!));
+    stepTechnique(world, solve ? solveDtMonths : passDtMonths(techniqueSchedule!));
     addPhaseTime("technique", started);
+  }
+  if (conversionDue) {
+    const started = performance.now();
+    convertFarmers(world, solve ? solveDtMonths : passDtMonths(conversionSchedule!));
+    addPhaseTime("conversion", started);
   }
   if (capacityDue) {
     const started = performance.now();
@@ -201,7 +289,7 @@ export function stepPeople(worldInput: World): void {
   const growth = growthDue
     ? (() => {
       const started = performance.now();
-      const result = grow(world, passDtMonths(growthSchedule!));
+      const result = grow(world, solve ? solveDtMonths : passDtMonths(growthSchedule!));
       addPhaseTime("growth", started);
       return result;
     })()
@@ -209,10 +297,12 @@ export function stepPeople(worldInput: World): void {
   const migration = migrationDue
     ? (() => {
       const started = performance.now();
+      // A firing of a year or more sees every season: the annual-mean table.
+      const dt = solve ? solveDtMonths : passDtMonths(migrationSchedule!);
       const result = migrate(
         world,
-        world.calendarMonth,
-        passDtMonths(migrationSchedule!),
+        dt >= MONTHS_PER_YEAR ? MONTHS_PER_YEAR : world.calendarMonth,
+        dt,
         growthDue,
       );
       addPhaseTime("migration", started);
@@ -227,6 +317,14 @@ export function stepPeople(worldInput: World): void {
         world.people[cell] = world._peopleNext[packed] ?? 0;
       }
     }
+    // Movement commits the farmer masses it moved; a growth-only firing
+    // must commit the masses growth wrote, or a year's farmer growth is
+    // lost while the people it belongs to are kept (W6: before the movement
+    // stride exceeded the growth stride the two always fired together, and
+    // the flat-field check found the awake front falling behind).
+    if (growthDue && !migrationDue) commitFarmers(world);
+    refreshTechniqueShare(world);
+    deriveCapacity(world);
     // Cohort normalization is a commit invariant, including migration-only
     // months. The scheduled cohorts pass records the annual ageing cadence;
     // this epilogue keeps fractions valid between those firings.
@@ -241,12 +339,13 @@ export function stepPeople(worldInput: World): void {
   addPhaseTime("ledger", ledgerStarted);
   world.debug.conservationChecks++;
   for (const schedule of world.schedule) {
-    if (!passFires(world, schedule)) continue;
+    if (!solve && !passFires(world, schedule)) continue;
     world.debug.peoplePasses[schedule.name] = (world.debug.peoplePasses[schedule.name] ?? 0) + 1;
   }
   world.debug.peopleBirths = growth.births;
   world.debug.peopleDeaths = growth.deaths;
   world.debug.peopleMigration = migration;
+  return growthDue || migrationDue;
 }
 
 export function populationTotal(worldInput: World): number {

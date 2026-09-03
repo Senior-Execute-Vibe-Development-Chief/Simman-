@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { readFileSync } from "node:fs";
-import { MONTHS_PER_YEAR, PEOPLE_BENCH_LONG_YEARS } from "../src/sim/constants";
+import { HORIZON_OPENING_YEAR, MONTHS_PER_YEAR, PEOPLE_BENCH_LONG_YEARS } from "../src/sim/constants";
 import { printProvenance, provenance } from "./lib/provenance";
 import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
@@ -13,7 +13,11 @@ import {
 import type { PeopleWorld } from "../src/sim/people/types";
 import os from "node:os";
 
-const BENCH_TICKS = 10;
+// One movement cycle of the awake regime (W6: movement fires every solve
+// stride, growth yearly, most months are empty), so the tick row is the
+// mean month over a whole cycle rather than ten months that hold one firing.
+const BENCH_TICKS = 84;
+const SOLVE_TICKS = 10;
 const CADENCE_TICKS = 12;
 
 interface BenchRow {
@@ -24,6 +28,9 @@ interface BenchRow {
   readonly queryMilliseconds: number;
   readonly distanceMapMilliseconds: number;
   readonly tickMilliseconds: number;
+  /** W5: one solve-regime firing (serial), the ratchet's companion to the awake tick, and the derived stride. */
+  readonly solveStepMilliseconds: number;
+  readonly solveStride: number;
   readonly longRunMilliseconds?: number;
   readonly provenance: ReturnType<typeof provenance>;
 }
@@ -34,10 +41,12 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
   const substrateStart = performance.now();
   const substrate = buildSubstrate(stamp.seed, { preset: "earth_sim" }, grid);
   const substrateMilliseconds = performance.now() - substrateStart;
+  // The tick row is the AWAKE (monthly) kernel, as it always was; the solve
+  // rows below open a second world in the solve regime.
   const world = new World({
     seed: 42042,
     grid,
-    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1 },
+    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1, wake: HORIZON_OPENING_YEAR },
     substrate,
   });
 
@@ -72,6 +81,15 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
       return performance.now() - start;
     })()
     : undefined;
+  const solveWorld = new World({
+    seed: 42042,
+    grid,
+    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1, wake: "never" },
+    substrate,
+  });
+  const solveStart = performance.now();
+  runSteps(solveWorld, SOLVE_TICKS);
+  const solveStepMilliseconds = (performance.now() - solveStart) / SOLVE_TICKS;
   const result = {
     grid,
     substrateMilliseconds,
@@ -80,10 +98,13 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     queryMilliseconds,
     distanceMapMilliseconds,
     tickMilliseconds,
+    solveStepMilliseconds,
+    solveStride: solveWorld.solveStride,
     ...(longRunMilliseconds === undefined ? {} : { longRunMilliseconds }),
     provenance: provenance(world),
   };
   (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+  (solveWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
   return result;
 }
 
@@ -116,7 +137,7 @@ async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> 
     const world = new World({
       seed: 42042,
       grid,
-      config: { preset: "earth_sim", peopleKernel: "wasm", ...config },
+      config: { preset: "earth_sim", peopleKernel: "wasm", wake: HORIZON_OPENING_YEAR, ...config },
       substrate,
     });
     runSteps(world, CADENCE_TICKS);
@@ -153,7 +174,11 @@ async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> 
 
 if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 const rows = [await benchmark("dev"), await benchmark("target")];
-const cadence = [await cadenceBench("dev"), await cadenceBench("target")];
+// The cadence table (six configurations per grid) is the review's
+// per-phase measurement, not the per-commit ratchet; BENCH_CADENCE=1.
+const cadence = process.env.BENCH_CADENCE === "1"
+  ? [await cadenceBench("dev"), await cadenceBench("target")]
+  : [];
 if (process.argv.includes("--check")) {
   const baselines = JSON.parse(
     readFileSync(new URL("../bench-baselines.json", import.meta.url), "utf8"),
@@ -165,6 +190,7 @@ if (process.argv.includes("--check")) {
     "queryMilliseconds",
     "distanceMapMilliseconds",
     "tickMilliseconds",
+    "solveStepMilliseconds",
   ] as const;
   for (const row of rows) {
     const baseline = baselines[row.grid];
@@ -182,6 +208,7 @@ console.log(JSON.stringify({
   cadence,
   format: "milliseconds",
   peopleTickSamples: BENCH_TICKS,
+  solveStepSamples: SOLVE_TICKS,
   cadenceTickSamples: CADENCE_TICKS,
   ceilingMilliseconds: 15.5,
   horizonTicks: TARGET_HORIZON_TICKS,

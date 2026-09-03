@@ -6,8 +6,9 @@ import init, {
 import initThreads, {
   PeopleKernel as ThreadedPeopleKernel,
 } from "../wasm/people-threads/people.js";
-import { fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
+import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
 import type { PeopleWorld } from "./people/types";
+import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import {
   BAND_CONTROL_BAND_COUNT,
   BAND_CONTROL_BANDS_OFFSET,
@@ -63,6 +64,7 @@ interface PeopleKernelLike {
   free(): void;
   kernel_ptr(): number;
   people_ptr(): number;
+  peopled_ptr(): number;
   technique_ptr(): number;
   children_ptr(): number;
   working_ptr(): number;
@@ -80,10 +82,13 @@ interface PeopleKernelLike {
   migration_weight_ptr(): number;
   migration_population_ptr(): number;
   migration_received_ptr(): number;
+  farmer_ptr(packageIndex: number): number;
+  farmer_next_ptr(packageIndex: number): number;
+  farmer_total_ptr(): number;
+  farmer_total_next_ptr(): number;
+  dominant_ptr(): number;
+  set_active_packages(mask: Uint8Array): void;
   derive_capacity_band(rawLo: number, rawHi: number): void;
-  prepare_technique(): void;
-  technique_band(rawLo: number, rawHi: number, dtMonths: number): void;
-  commit_technique(): void;
   begin_growth(dtMonths: number): void;
   growth_band(rawLo: number, rawHi: number, bandIndex: number): void;
   births(): number;
@@ -95,13 +100,14 @@ interface PeopleKernelLike {
   migration_target_band(rawLo: number, rawHi: number, bandIndex: number): void;
   finish_migration(): void;
   migration_total(): number;
+  priced_pairs(): number;
   commit_population(): void;
+  commit_farmers(): void;
   normalize_cohorts(): void;
 }
 
 type BandOperation =
   | "capacity"
-  | "technique"
   | "growth"
   | "migration-prepare"
   | "migration-source"
@@ -111,7 +117,6 @@ type BandOperation =
 /** Operation codes written into the control plane; the worker script mirrors this order. */
 const BAND_OPERATIONS: readonly BandOperation[] = [
   "capacity",
-  "technique",
   "growth",
   "migration-prepare",
   "migration-source",
@@ -299,7 +304,10 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
   const lengths = migrationEdgeLengths(world.substrate);
   world._migrationEdgeH = lengths.horizontal;
   world._migrationEdgeV = lengths.vertical;
-  const days = new Float64Array(world.N * MONTHS_PER_YEAR);
+  // Twelve monthly tables and their annual mean at index MONTHS_PER_YEAR,
+  // the solve regime's conductance; the mean is computed once here so both
+  // kernels read the same numbers.
+  const days = new Float64Array(world.N * (MONTHS_PER_YEAR + 1));
   for (let month = 0; month < MONTHS_PER_YEAR; month++) {
     fillMigrationDaysPerKm(
       world.substrate,
@@ -307,6 +315,18 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
       days.subarray(month * world.N, (month + 1) * world.N),
     );
   }
+  fillMeanMigrationDaysPerKm(
+    world.substrate,
+    days.subarray(MONTHS_PER_YEAR * world.N, (MONTHS_PER_YEAR + 1) * world.N),
+  );
+  const canGrow = new Uint8Array(CROP_PACKAGES.length * world._landCells.length);
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    canGrow.set(
+      world._canGrow[packageIndex] ?? new Uint8Array(world._landCells.length),
+      packageIndex * world._landCells.length,
+    );
+  }
+  const yields = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.yield ?? 1);
   return [
     world.width,
     world.height,
@@ -318,13 +338,14 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     world._foragerCapacity,
     world._diseaseBurden,
     world.cellAreaKm2,
-    world._techniqueSuitability,
-    world._techniqueEdgeH,
-    world._techniqueEdgeV,
     days,
-    world._migrationEdgeH,
-    world._migrationEdgeV,
     world._migrationShareRow,
+    CROP_PACKAGES.length,
+    yields,
+    canGrow,
+    world._neighborTargets,
+    world._neighborDistanceKm,
+    world._neighborMode,
   ];
 }
 
@@ -343,6 +364,24 @@ export interface PeopleWasmOptions {
 // borrow it (dispatch carries the kernel pointer). Node may still build a
 // private pool of another size synchronously (the parity harness does).
 let sharedPool: PeopleBandWorkerPool | undefined;
+
+/**
+ * The coordinator blocks in Atomics.wait between bands. A browser's main
+ * thread may not block, so a world created there (the browser smoke checks
+ * do; the shell's worker does not) must run serial wasm rather than throw
+ * mid-tick. The probe waits on a value that is already different, which
+ * returns "not-equal" at once where waiting is allowed and throws where it
+ * is not.
+ */
+function coordinatorCanWait(): boolean {
+  try {
+    const probe = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    Atomics.wait(probe, 0, 1, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function ensurePeopleWasm(options: PeopleWasmOptions = {}): Promise<boolean> {
   if (initialized) return true;
@@ -384,7 +423,8 @@ export async function ensurePeopleWasm(options: PeopleWasmOptions = {}): Promise
         workerConstructor = workers.Worker as unknown as WorkerConstructor;
         workerIsNode = true;
       } else if (typeof globalThis.Worker === "function"
-        && typeof crossOriginIsolated !== "undefined" && crossOriginIsolated) {
+        && typeof crossOriginIsolated !== "undefined" && crossOriginIsolated
+        && coordinatorCanWait()) {
         workerConstructor = globalThis.Worker as unknown as WorkerConstructor;
         workerIsNode = false;
       }
@@ -432,9 +472,6 @@ export interface PeopleKernelRuntime {
   readonly bands: readonly PeopleBand[];
   readonly control: BandControl;
   deriveCapacity(): void;
-  prepareTechnique(): void;
-  spreadTechnique(dtMonths?: number): void;
-  commitTechnique(): void;
   beginGrowth(dtMonths?: number): void;
   grow(): void;
   beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
@@ -444,11 +481,13 @@ export interface PeopleKernelRuntime {
   gatherMigration(): void;
   finishMigration(): void;
   commitPopulation(): void;
+  commitFarmers(): void;
   normalizeCohorts(): void;
   dispose(): void;
   births(): number;
   deaths(): number;
   migrationTotal(): number;
+  pricedPairs(): number;
 }
 
 type KernelFieldName =
@@ -528,6 +567,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     return new Float64Array(this.memoryBuffer, pointer, length);
   }
 
+  private byteView(pointer: number, length: number): Uint8Array {
+    return new Uint8Array(this.memoryBuffer, pointer, length);
+  }
+
   private attachFields(world: PeopleWorld): void {
     const pointers: Record<KernelFieldName, number> = {
       people: this.kernel.people_ptr(),
@@ -562,8 +605,30 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       target[name] = this.view(pointer, fullGrid.has(name as KernelFieldName)
         ? world.N : world._landCells.length);
     }
+    world._peopledMask = this.byteView(this.kernel.peopled_ptr(), world.N);
+    world._dominantPackage = this.byteView(this.kernel.dominant_ptr(), world.N);
+    world._farmerTotal = this.view(
+      this.kernel.farmer_total_ptr(),
+      world._landCells.length,
+    );
+    world._farmerTotalNext = this.view(
+      this.kernel.farmer_total_next_ptr(),
+      world._landCells.length,
+    );
+    for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+      const packageId = CROP_PACKAGES[packageIndex]?.id;
+      if (!packageId) continue;
+      world.farmers[packageId] = this.view(
+        this.kernel.farmer_ptr(packageIndex),
+        world._landCells.length,
+      );
+      world._farmersNext[packageId] = this.view(
+        this.kernel.farmer_next_ptr(packageIndex),
+        world._landCells.length,
+      );
+    }
     world._migrationDaysPerKm = new Float64Array(world.N);
-    world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR).fill(undefined);
+    world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR + 1).fill(undefined);
   }
 
   private dispatchBands(operation: BandOperation, dtMonths = 1): void {
@@ -574,8 +639,6 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     for (const band of this.bands) {
       if (operation === "capacity") {
         this.kernel.derive_capacity_band(band.rawLo, band.rawHi);
-      } else if (operation === "technique") {
-        this.kernel.technique_band(band.rawLo, band.rawHi, dtMonths);
       } else if (operation === "growth") {
         this.kernel.growth_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-prepare") {
@@ -590,28 +653,20 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     }
   }
 
+  /** The active-package mask is oracle state; the kernel reads a copy per pass. */
+  private syncActivePackages(): void {
+    this.kernel.set_active_packages(this.world._activePackage);
+  }
+
   deriveCapacity(): void {
     this.assertMemoryStable();
+    this.syncActivePackages();
     this.dispatchBands("capacity");
-  }
-
-  prepareTechnique(): void {
-    this.assertMemoryStable();
-    this.kernel.prepare_technique();
-  }
-
-  spreadTechnique(dtMonths = 1): void {
-    this.assertMemoryStable();
-    this.dispatchBands("technique", dtMonths);
-  }
-
-  commitTechnique(): void {
-    this.assertMemoryStable();
-    this.kernel.commit_technique();
   }
 
   beginGrowth(dtMonths = 1): void {
     this.assertMemoryStable();
+    this.syncActivePackages();
     this.kernel.begin_growth(dtMonths);
   }
 
@@ -622,6 +677,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 
   beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
     this.assertMemoryStable();
+    this.syncActivePackages();
     this.kernel.begin_migration(month, dtMonths, growthPrepared);
   }
 
@@ -655,6 +711,12 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.kernel.commit_population();
   }
 
+  commitFarmers(): void {
+    this.assertMemoryStable();
+    this.syncActivePackages();
+    this.kernel.commit_farmers();
+  }
+
   normalizeCohorts(): void {
     this.assertMemoryStable();
     this.kernel.normalize_cohorts();
@@ -670,6 +732,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 
   migrationTotal(): number {
     return this.kernel.migration_total();
+  }
+
+  pricedPairs(): number {
+    return this.kernel.priced_pairs();
   }
 
   get barrierMilliseconds(): number {

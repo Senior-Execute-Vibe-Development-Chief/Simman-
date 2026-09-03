@@ -474,6 +474,108 @@ lawyered.
     produces. Spec: `spec/handoffs/M3a-wave.md`. Branches from the merge
     of the working branch into main.
 
+    **Review rulings (2026-09-02, merge of the M3a implementation;
+    QUESTIONS #37).** (a) *Contact is local.* Foragers adopt the package
+    of the farmers they live among; the neighbour-stencil contact term of
+    the spec is withdrawn because its front moves one cell per conversion
+    interval, a speed equal to the grid spacing (third cardinal rule).
+    Spread is farmers moving; a cultural diffusion with a diffusivity of
+    its own is an M3b-or-later design question, not a stencil. (b) *The
+    advantage saturates*, adv/(1+adv): the linear form converted a cell
+    within years of first contact whatever the rate. (c) *Farmers carry
+    their own mobility.* A farmer mass joins a month's flow at
+    `PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR` / the forager diffusivity
+    (15 / 1200, Ammerman & Cavalli-Sforza); riding the forager
+    diffusivity gave 2√(rD) ≈ 4.7 km/yr, five times the radiocarbon
+    front. The adoption rate is then grounded on the front band given
+    that mobility, as the spec said it would be. (d) *A package's farmed
+    capacity is independent of the farmer share*; a cell's capacity is
+    the mixture of its people, and the land a farming source can enter
+    opens in proportion to the farmers it sends (the pair spare). (e)
+    *The peopled-basin law is M2's* — a basin's people against the
+    basin's own static forager capacity, accrued per native cell; the
+    proposed global density bar is withdrawn. (f) *The front-isotropy
+    gate check is withdrawn*: a bounding-box aspect of the farmed set
+    measures nothing about diamonds, and on Earth the climate bounds most
+    of the front; the stencil is the mechanism and is reviewed as such.
+    (g) *The wild-range boxes are data awaiting citations* — three
+    (wheat into the Indus, rice into Japan, sorghum across the whole
+    Sahel) decide whether those regions ignite on their own or are
+    reached, and the owner rules on the sources.
+
+## 2026-09-03 — Solve round
+
+27. **W5: the peopling solve and the wake.** (Ratified — owner: "write
+    the spec", after the prehistory conversation: "do we NEED to model
+    several thousand years of predictable people growth?" and "do we
+    REALLY need to simulate actual year by year movement?") No. Before
+    anything pushes back on the people field the only thing that moves is
+    the farming front, and its diffusion bound permits a multi-year step
+    where the forager bound forces a monthly one (15 against 1200 km²/yr).
+    The kernel gains a second schedule regime, SOLVE: every pass at one
+    stride derived from the bounds the passes already carry (farmer hops
+    on can-grow rows, farmer growth, adoption, cohort ageing — 84 months
+    at both grids, printed, never set); foragers hop at the forager share
+    of the stride, substepped and capped by the kernel's own bound (the
+    spec proposed leaving them in place; the flat-field check showed the
+    omission first-order at the front — a farmed cell's mixture capacity
+    draws foragers in and the newcomers dilute contact — so the named
+    remedy applied before the wave landed, QUESTIONS #40); conductance at
+    the annual mean. The world WAKES into the monthly
+    regime at the first caged basin: the first hearth-law window whose
+    free farmable share falls below the ledger's caging knee — M4's own
+    precondition (Carneiro), so M4 inherits the trigger instead of
+    redefining it. Sub-rulings: (a) the wake is a state trigger;
+    `config.wake` (auto / never / a year) is an initial condition like the
+    seed, read by nothing after the switch; a chosen year later than the
+    trigger is the player knowingly accepting the solve past its
+    validity, and provenance says so. (b) The window is the hearth-law
+    basin, centred on farmed cells, until M4 derives its flight radius (the
+    forager diffusion length over a generation is the candidate); then the
+    wake follows that derivation. (c) The scrubber's prehistory frames are a rendering
+    condensation (02, box 5): reconstructed from recorded arrival steps
+    and the passes' own constants, never state, never saved. (d) The
+    reality tables for the front and the population curve are measured
+    per commit at both grids from a full-horizon solve, inside the
+    dev-loop directive (a minute, not hours; demotable to the long
+    workflow by a flag); the awake kernel's agreement with the solve is a
+    long-workflow arm whose bounds are gate tolerances — a failure lowers
+    the stride or restores forager hops, never a tolerance. (e) No
+    physical constant is added; the new constants are the named knee, the
+    named farmed marker, two gate tolerances and a save version. (f) The
+    awake kernel's cost is untouched: the row-cadence question W3 left
+    open stays open, and this wave replaces the performance wave sketched
+    after the M3a review. Spec: `spec/handoffs/W5-solve.md`. Branches
+    from the merge of the working branch into main.
+
+28. **W6: the base population stays.** (Ratified — owner: "write the
+    spec for that change", after asking why foragers need to move at
+    all.) They barely do, and the one place W5 measured their movement
+    as consequential was an artefact: a forager source saw a farmed
+    cell's MIXTURE capacity as room, so the foragers of every neighbour
+    poured into a new farming cell and were converted there — the flood
+    the flat-field check measured at 58 %. Rulings: (a) foragers see
+    forager room (the land's forager capacity minus everyone there),
+    farmers see farmed room; 26 (d)'s "foragers see the target's
+    capacity as it stands" is revised accordingly. (b) Each group flows
+    on its own weights and conserves itself; the M3a mixed flow with
+    farmers riding at a ratio is retired. (c) The forager mobility is
+    re-grounded by the farmer value's own convention (parent–offspring
+    displacement per generation ÷ 4T) from the forager literature, cited
+    in the ledger and chosen before any run; `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR`
+    (1200, a v1 calibration the ledger has carried as `[REDERIVE]` since
+    M2) is retired. (d) Each group's movement stride derives from its own
+    bound as W5 derives the solve stride, may exceed a year, and a source
+    with no room beside it (room below the numerical floor) is not priced
+    — so the awake kernel loses its monthly pass by physics, not by a
+    switch. (e) The adoption rate may be re-grounded inside the range its
+    row already admits if the front leaves the radiocarbon band once the
+    flood is gone; nothing else moves. Spec: `spec/handoffs/W6-foragers.md`.
+    Implemented the same day (QUESTIONS #41): the mobility grounded at 23
+    km²/yr on the Aka measurements, the front inside the band at 1.08
+    km/yr so (e) was not needed, the awake month at the shipped grid down
+    tenfold.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
