@@ -1351,8 +1351,13 @@ Review corrections to the M1 build (all validated before merge):
 
     Local, this runner, after: unit 3 s, smoke 25 s, parity 165 s,
     mechanical people gate 51 s, bench ratchet 62 s — 5.1 min in series
-    where the same tools took 21 min on CI. CI wall time after:
-    {{CI_AFTER}}.
+    where the same tools took 21 min on CI. CI wall time after
+    (run 33700049046, dd691a79): 4 min 53 s from push to the last job's
+    end, against 21 min 37 s for the previous green run — lint + unit +
+    smoke + build 1:52, Chromium 1:44, parity 3:12, gates + ratchet +
+    oracle 4:50 (the critical path: wasm build 46 s, travel gate 42 s,
+    people gate 45 s, bench ratchet 49 s, oracle 75 s — four target
+    substrate builds).
 
     What is left on the path is the target substrate build, about 41 s per
     tool and rebuilt by every tool (parity, smoke, both gates, bench,
