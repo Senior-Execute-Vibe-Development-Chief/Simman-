@@ -1,9 +1,9 @@
 {
   "live": {
     "branch": "main",
-    "sha": "4773209d43d90bedd90512d8baa04581ac42e9dd",
+    "sha": "060ec94b95a5980a33b80f9619b8fd8eaf51567d",
     "slug": "main",
-    "builtAt": "2026-09-02T14:06:25.024Z",
+    "builtAt": "2026-09-03T04:36:52.521Z",
     "channel": "live",
     "saveVersion": 67,
     "path": "/"
