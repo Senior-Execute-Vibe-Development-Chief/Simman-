@@ -1,9 +1,11 @@
-# Simman v2 — M3a wave and crops
+# Simman v2 — W5 the peopling solve and the wake
 
 M3a builds on the immutable Earth substrate and seasonal multimodal travel
 field with one real-unit population field. Population grows toward derived
 carrying capacity, migrates through the travel field's local costs, and farming
-emerges as per-package farmer populations carried by that migration.
+emerges as per-package farmer populations carried by that migration. W5 runs
+that kernel in two regimes: SOLVE, the same passes at a multi-year stride
+until the first basin is caged, and AWAKE, the monthly kernel from there.
 
 ## Setup and commands
 
@@ -29,13 +31,18 @@ npm run dev        # Vite development server
 ```
 
 `npm run gate:people` runs the people arm directly. Per commit it is
-mechanical: the opening-window checks at both grids over twelve ticks
-(seconds, plus the substrate builds). **Nothing that simulates history runs
-per commit** (owner directive, 2026-09-03). The 3000-year dev trajectory
-arm and the cadence stride arm run with `GATE_PEOPLE_TRAJECTORY=1`; the
-full YD→1 CE dev and shipped-grid batteries — population checkpoint bands,
-farming arrival order and timing, density ordering — with
-`GATE_PEOPLE_LONG=1`. Misses are acknowledged in
+mechanical: the opening-window checks at both grids over twelve firings,
+plus the SOLVE arm at dev — the solve regime from the opening to 1 CE with
+`wake: "never"`, measured with every reality instrument (population bands,
+both arrival tables, the barrier box, the Europe front band, the density
+ordering) and the step the world would have woken at, in seconds. At the
+shipped grid a solve step is about 0.3 s serial and the horizon 1,386 of
+them, so the target solve arm runs with `GATE_PEOPLE_SOLVE_TARGET=1` (the
+long workflow). **Nothing that simulates monthly history runs per commit**
+(owner directive, 2026-09-03). The 3000-year dev trajectory arm, the
+cadence stride arm and the solve agreement arm (awake kernel against the
+solve regime) run with `GATE_PEOPLE_TRAJECTORY=1`; the full YD→1 CE dev
+and shipped-grid batteries with `GATE_PEOPLE_LONG=1`. Misses are acknowledged in
 `data/reality/known-misses-people.json` or fail the gate. The bench's
 per-phase cadence table (six configurations per grid) runs with
 `BENCH_CADENCE=1`; `bench -- --check` alone is the ratchet. In CI the
@@ -97,16 +104,32 @@ fudge factors.
   the land a farming source can enter opens in proportion to the farmers it
   sends; a hearth ignites where a native range has been a peopled basin for
   the package's domestication lag (the M2 law).
-- Save format v5 persists people, farmer masses, derived technique, cohorts,
-  peopled arrivals, hearth progress, and the resolved pass schedule; terrain
-  remains immutable substrate rebuilt
-  from its identity.
+- Save format v6 persists people, farmer masses, derived technique, cohorts,
+  peopled arrivals, hearth progress, the resolved pass schedules, the regime
+  (phase, wake and caged steps) and the event log; terrain remains immutable
+  substrate rebuilt from its identity.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
   technique coverage, weighted cohort shares, and per-pass firing counts.
 - Every people field pass uses aggregated named source/sink accounting.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
   fire annually; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
+- **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
+  pass fires at one stride derived from the bounds the passes already carry
+  (farmer hops on the rows a package can grow on, farmer growth, adoption,
+  cohort ageing — 84 months at both grids, printed in provenance), foragers
+  and farmers each hop their own share of the stride, and conductance is the
+  annual mean of the twelve monthly tables. The world WAKES into the monthly
+  regime at the first caged basin: the first hearth-law window centred on a
+  farmed cell whose free farmable room falls below the caging knee
+  (`CAGE_KNEE_FREE_SHARE`, Carneiro's circumscription, the precondition of
+  M4's taking). `config.wake` is an initial condition — `"auto"` (the
+  trigger), `"never"` (measurement mode), or a year, the player's epoch —
+  read by nothing after the switch. The phase, wake step and caged step are
+  world state (saved, hashed, in provenance); hearth ignitions and the wake
+  are the event log's first entries. The shell plays the peopling while it
+  solves, scrubs the solved span through reconstructed frames (a rendering,
+  never state), and runs the monthly kernel from the wake.
 - The wasm people kernel uses a row-major land index and 16 fixed,
   grid-derived row bands. Only scratch and iteration are land-packed; the
   saved people, technique, cohort, and capacity views remain full-grid.

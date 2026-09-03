@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
 import populationCurve from "../data/reality/population-curve.json";
 import farmingArrivals from "../data/reality/farming-arrivals.json";
 import neolithicArrivals from "../data/reality/neolithic-arrivals.json";
 import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
 import type { PeopleWorld } from "../src/sim/people/types";
-import { runSteps, type GridPreset, World } from "../src/sim/world";
+import { runSteps, stepWorld, type GridPreset, World } from "../src/sim/world";
+import { stepFromYear, yearFromStep } from "../src/sim/horizon";
 import { provenance } from "./lib/provenance";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 import {
   CADENCE_TRAJECTORY_ARRIVAL_TOLERANCE_YEARS,
   CADENCE_TRAJECTORY_POP_TOLERANCE,
+  HORIZON_END_YEAR,
+  HORIZON_OPENING_YEAR,
+  MONTHS_PER_YEAR,
+  PEOPLE_FARMED_MARKER_SHARE,
+  SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS,
+  SOLVE_AGREEMENT_POP_TOLERANCE,
 } from "../src/sim/constants";
 
 interface GridResult {
@@ -25,7 +33,7 @@ interface GridResult {
   readonly provenance: ReturnType<typeof provenance>;
 }
 
-const FAST_MONTHS = 12;
+const FAST_STEPS = 12;
 
 if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
 
@@ -42,7 +50,7 @@ function measure(grid: GridPreset): GridResult {
     substrate,
   });
   const initialPeople = populationTotal(world);
-  runSteps(world, FAST_MONTHS);
+  runSteps(world, FAST_STEPS);
   const finalPeople = populationTotal(world);
   let land = 0;
   let covered = 0;
@@ -89,15 +97,16 @@ assert.ok(Math.abs(target.conservationError) < 0.001);
 const initialParity = Math.abs(dev.initialPeople - target.initialPeople)
   / Math.max(dev.initialPeople, target.initialPeople, 1);
 
-// ── The horizon arms (M2 review). ──────────────────────────────────────────
-// Default: a ~3000-year dev trajectory arm — long enough for the first hearth
-// ignitions and the early wave, cheap enough for every gate run. With
-// GATE_PEOPLE_LONG=1 both grids run the full YD→1 CE primary horizon; target
-// is the shipped-grid verdict and dev remains the fast cross-grid comparison.
-const YD_START_YEAR = -9700;
-const monthsFromYear = (year: number): number => Math.round((year - YD_START_YEAR) * 12);
+// ── The horizon arms. ──────────────────────────────────────────────────────
+// The awake (monthly) kernel simulates history and never runs per commit:
+// its ~3000-year dev trajectory and the stride arm run under
+// GATE_PEOPLE_TRAJECTORY=1, the full YD→1 CE batteries at both grids under
+// GATE_PEOPLE_LONG=1 (the long workflow). The SOLVE regime (W5) is the same
+// passes on the clock the farmer bound permits — seconds at either grid —
+// and runs the full horizon with every reality instrument on every commit.
 const longArm = process.env.GATE_PEOPLE_LONG === "1";
-const horizonYears = longArm ? 1 - YD_START_YEAR : 3000;
+const horizonYears = longArm ? HORIZON_END_YEAR - HORIZON_OPENING_YEAR : 3000;
+const fullHorizonStep = stepFromYear(HORIZON_END_YEAR);
 
 interface KnownPeopleMiss { readonly id: string; readonly reason: string; }
 let peopleMisses: readonly KnownPeopleMiss[] = [];
@@ -112,17 +121,74 @@ const failures: string[] = [];
 const measured = new Set<string>();
 const findings: Record<string, unknown> = {};
 
+interface RegionRow {
+  readonly id: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly earliest: number;
+  readonly latest: number;
+  readonly barrier?: readonly number[];
+}
+
 interface TrajectorySample {
-  readonly curve: Array<{ year: number; people: number; inBand: boolean }>;
+  readonly curve: Array<{ year: number; step: number; people: number; inBand: boolean }>;
   readonly arrivalStep: Map<string, number>;
   readonly detailedArrivalStep: Map<string, number>;
   readonly southOfClimateBarrierBeforeWindow: boolean;
   readonly world: World;
+  readonly wallMilliseconds: number;
 }
 
+function regionCellsOf(world: World, regions: readonly RegionRow[]): Map<string, readonly number[]> {
+  const substrate = world.substrate!;
+  const regionCells = new Map<string, readonly number[]>();
+  for (const region of regions) {
+    const cells: number[] = [];
+    for (let cell = 0; cell < world.N; cell++) {
+      if (!substrate.landMask[cell]) continue;
+      const y = Math.floor(cell / world.width);
+      const x = cell - y * world.width;
+      const lat = 90 - ((y + 0.5) / world.height) * 180;
+      const lon = ((x + 0.5) / world.width) * 360 - 180;
+      if (Math.abs(lat - region.latitude) <= 3 && Math.abs(lon - region.longitude) <= 3) cells.push(cell);
+    }
+    regionCells.set(region.id, cells);
+  }
+  return regionCells;
+}
+
+/** The first step any cell of the region counted as farmed, from the world's arrival recorder. */
+function regionArrival(world: World, cells: readonly number[]): number | undefined {
+  const people = world as PeopleWorld;
+  let first: number | undefined;
+  for (const cell of cells) {
+    const packed = people._packedOf[cell] ?? -1;
+    if (packed < 0) continue;
+    const step = people._arrivalStep[packed] ?? -1;
+    if (step >= 0 && (first === undefined || step < first)) first = step;
+  }
+  return first;
+}
+
+function insideBox(world: World, cell: number, box: readonly number[]): boolean {
+  const y = Math.floor(cell / world.width);
+  const x = cell - y * world.width;
+  const latitude = 90 - ((y + 0.5) / world.height) * 180;
+  const longitude = ((x + 0.5) / world.width) * 360 - 180;
+  return longitude >= (box[0] ?? 0) && longitude <= (box[1] ?? 0)
+    && latitude >= (box[2] ?? 0) && latitude <= (box[3] ?? 0);
+}
+
+/**
+ * Run a world to a horizon in whichever regime its config puts it, sampling
+ * the population at every checkpoint band (the first step at or past it —
+ * a solve step may overshoot by up to its stride; the step is recorded) and
+ * the barrier box when its window opens. Arrivals come from the recorder.
+ */
 function collectTrajectory(
   grid: GridPreset,
-  config: Record<string, string | number | boolean> = {},
+  config: Record<string, string | number | boolean>,
+  horizonStep: number,
 ): TrajectorySample {
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const world = new World({
@@ -138,92 +204,64 @@ function collectTrajectory(
     },
     substrate,
   });
-  const checkpointSteps = populationCurve.bands
-    .map((band) => ({ band, step: monthsFromYear(band.year) }))
-    .filter(({ step }) => step >= 0 && step <= monthsFromYear(YD_START_YEAR + horizonYears));
-  const arrivalStep = new Map<string, number>();
-  const detailedArrivalStep = new Map<string, number>();
-  const regionCells = new Map<string, readonly number[]>();
-  const regionTables = [
-    ...farmingArrivals.regions,
-    ...neolithicArrivals.regions,
-  ];
-  for (const region of regionTables) {
-    const cells: number[] = [];
-    for (let cell = 0; cell < world.N; cell++) {
-      if (!substrate.landMask[cell]) continue;
-      const y = Math.floor(cell / world.width);
-      const x = cell - y * world.width;
-      const lat = 90 - ((y + 0.5) / world.height) * 180;
-      const lon = ((x + 0.5) / world.width) * 360 - 180;
-      if (Math.abs(lat - region.latitude) <= 3 && Math.abs(lon - region.longitude) <= 3) cells.push(cell);
-    }
-    regionCells.set(region.id, cells);
-  }
-  const curve: Array<{ year: number; people: number; inBand: boolean }> = [];
+  const checkpoints = populationCurve.bands
+    .map((band) => ({ band, step: stepFromYear(band.year) }))
+    .filter(({ step }) => step >= 0 && step <= horizonStep)
+    .sort((left, right) => left.step - right.step);
+  const barrier = neolithicArrivals.regions.find((region) => region.barrier !== undefined);
+  const barrierStep = barrier ? stepFromYear(barrier.earliest) : Number.POSITIVE_INFINITY;
+  const curve: TrajectorySample["curve"] = [];
   let southOfClimateBarrierBeforeWindow = false;
+  let barrierChecked = false;
   let nextCheckpoint = 0;
-  const totalSteps = monthsFromYear(YD_START_YEAR + horizonYears);
-  for (let step = 0; step <= totalSteps; step++) {
-    if (step > 0) runSteps(world, 1);
-    while (nextCheckpoint < checkpointSteps.length
-      && checkpointSteps[nextCheckpoint]!.step === step) {
-      const { band } = checkpointSteps[nextCheckpoint]!;
+  const started = performance.now();
+  const sample = (): void => {
+    while (nextCheckpoint < checkpoints.length && checkpoints[nextCheckpoint]!.step <= world.step) {
+      const { band } = checkpoints[nextCheckpoint]!;
       const people = populationTotal(world);
-      curve.push({ year: band.year, people, inBand: people >= band.minimum && people <= band.maximum });
+      curve.push({ year: band.year, step: world.step, people, inBand: people >= band.minimum && people <= band.maximum });
       nextCheckpoint++;
     }
-    if (step % 120 === 0) {
-      for (const region of farmingArrivals.regions) {
-        if (arrivalStep.has(region.id)) continue;
-        const cells = regionCells.get(region.id) ?? [];
-        for (const cell of cells) {
-          if ((world.technique[cell] ?? 0) >= 0.5) { arrivalStep.set(region.id, step); break; }
-        }
-      }
-      for (const region of neolithicArrivals.regions) {
-        if (detailedArrivalStep.has(region.id)) continue;
-        const cells = regionCells.get(region.id) ?? [];
-        for (const cell of cells) {
-          if ((world.technique[cell] ?? 0) >= 0.5) {
-            detailedArrivalStep.set(region.id, step);
-            break;
-          }
-        }
-      }
-    }
-    // The wall: nothing farmed inside the barrier box (data, not a mechanism)
-    // when its window opens. A bare latitude limit caught every tropic on
-    // Earth — Mesoamerica, India, New Guinea — not the Sahara.
-    const barrier = neolithicArrivals.regions.find((region) => region.barrier !== undefined);
-    if (barrier && step === monthsFromYear(barrier.earliest)) {
-      const box = barrier.barrier ?? [];
-      const minLon = box[0] ?? 0;
-      const maxLon = box[1] ?? 0;
-      const minLat = box[2] ?? 0;
-      const maxLat = box[3] ?? 0;
+    // The wall: nothing farmed inside the barrier box (data, not a
+    // mechanism) when its window opens. A bare latitude limit caught every
+    // tropic on Earth — Mesoamerica, India, New Guinea — not the Sahara.
+    if (barrier && !barrierChecked && world.step >= barrierStep && barrierStep <= horizonStep) {
+      barrierChecked = true;
       for (let cell = 0; cell < world.N; cell++) {
         if (!substrate.landMask[cell]) continue;
-        const y = Math.floor(cell / world.width);
-        const x = cell - y * world.width;
-        const latitude = 90 - ((y + 0.5) / world.height) * 180;
-        const longitude = ((x + 0.5) / world.width) * 360 - 180;
-        if (longitude >= minLon && longitude <= maxLon && latitude >= minLat && latitude <= maxLat
-          && (world.technique[cell] ?? 0) >= 0.5) {
+        if (insideBox(world, cell, barrier.barrier ?? []) && (world.technique[cell] ?? 0) >= PEOPLE_FARMED_MARKER_SHARE) {
           southOfClimateBarrierBeforeWindow = true;
           break;
         }
       }
     }
+  };
+  sample();
+  while (world.step < horizonStep) {
+    stepWorld(world);
+    sample();
   }
-  return { curve, arrivalStep, detailedArrivalStep, southOfClimateBarrierBeforeWindow, world };
+  const wallMilliseconds = performance.now() - started;
+  const arrivalStep = new Map<string, number>();
+  const detailedArrivalStep = new Map<string, number>();
+  const regionCells = regionCellsOf(world, [...farmingArrivals.regions, ...neolithicArrivals.regions]);
+  for (const region of farmingArrivals.regions) {
+    const step = regionArrival(world, regionCells.get(region.id) ?? []);
+    if (step !== undefined) arrivalStep.set(region.id, step);
+  }
+  for (const region of neolithicArrivals.regions) {
+    const step = regionArrival(world, regionCells.get(region.id) ?? []);
+    if (step !== undefined) detailedArrivalStep.set(region.id, step);
+  }
+  return { curve, arrivalStep, detailedArrivalStep, southOfClimateBarrierBeforeWindow, world, wallMilliseconds };
 }
 
-function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
+function runCadenceArm(grid: GridPreset, shipped: TrajectorySample, horizonStep: number): void {
   const reference = collectTrajectory(grid, {
+    wake: HORIZON_OPENING_YEAR,
     peopleGrowthStride: 1,
     peopleMigrationStride: 1,
-  });
+  }, horizonStep);
   const popDeltas = reference.curve.map((point, index) => {
     const shippedPoint = shipped.curve[index];
     const people = shippedPoint?.people ?? 0;
@@ -238,8 +276,8 @@ function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
   const arrivalDeltas = farmingArrivals.regions.map((region) => {
     const refStep = reference.arrivalStep.get(region.id);
     const shippedStep = shipped.arrivalStep.get(region.id);
-    const refYear = refStep === undefined ? null : YD_START_YEAR + refStep / 12;
-    const shippedYear = shippedStep === undefined ? null : YD_START_YEAR + shippedStep / 12;
+    const refYear = refStep === undefined ? null : yearFromStep(refStep);
+    const shippedYear = shippedStep === undefined ? null : yearFromStep(shippedStep);
     const deltaYears = refYear !== null && shippedYear !== null
       ? Math.abs(shippedYear - refYear)
       : null;
@@ -252,8 +290,8 @@ function runCadenceArm(grid: GridPreset, shipped: TrajectorySample): void {
   findings.cadence = {
     ...(findings.cadence as Record<string, unknown> ?? {}),
     [grid]: {
-      schedule: shipped.world.schedule,
-      referenceSchedule: reference.world.schedule,
+      schedule: shipped.world.awakeSchedule,
+      referenceSchedule: reference.world.awakeSchedule,
       population: popDeltas,
       arrivals: arrivalDeltas,
     },
@@ -275,19 +313,38 @@ function arrivalSpeed(
   const dx = (second.longitude - first.longitude) * 111 * Math.cos((first.latitude * Math.PI) / 180);
   const dy = (second.latitude - first.latitude) * 111;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  return distance / Math.abs(secondStep - firstStep) * 12;
+  return distance / Math.abs(secondStep - firstStep) * MONTHS_PER_YEAR;
 }
 
-function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
-  const {
-    curve,
-    arrivalStep,
-    detailedArrivalStep,
-    southOfClimateBarrierBeforeWindow,
-    world,
-  } = shipped ?? collectTrajectory(grid);
+function densityOrdering(world: World): { river: number; rainfed: number; forager: number } {
   const substrate = world.substrate!;
-  const scope = `${grid}`;
+  let riverPeople = 0; let riverArea = 0;
+  let rainfedPeople = 0; let rainfedArea = 0;
+  let foragerPeople = 0; let foragerArea = 0;
+  for (let cell = 0; cell < world.N; cell++) {
+    if (!substrate.landMask[cell]) continue;
+    const area = world.cellAreaKm2[cell] ?? 0;
+    const technique = world.technique[cell] ?? 0;
+    const flood = substrate.floodplain[cell] ?? 0;
+    if (technique >= PEOPLE_FARMED_MARKER_SHARE && flood > 0.1) { riverPeople += (world.people[cell] ?? 0) * area; riverArea += area; }
+    else if (technique >= PEOPLE_FARMED_MARKER_SHARE) { rainfedPeople += (world.people[cell] ?? 0) * area; rainfedArea += area; }
+    else { foragerPeople += (world.people[cell] ?? 0) * area; foragerArea += area; }
+  }
+  return {
+    river: riverArea > 0 ? riverPeople / riverArea : 0,
+    rainfed: rainfedArea > 0 ? rainfedPeople / rainfedArea : 0,
+    forager: foragerArea > 0 ? foragerPeople / foragerArea : 0,
+  };
+}
+
+/**
+ * The reality instruments over a completed run: population bands, both
+ * arrival tables, the Europe front speed band, the wall, the density
+ * ordering. `scope` names the arm and grid in every id; `full` says the run
+ * reached the horizon's end so the long-horizon rows are measured.
+ */
+function judgeTrajectory(sample: TrajectorySample, scope: string, full: boolean): Record<string, unknown> {
+  const { curve, arrivalStep, detailedArrivalStep, southOfClimateBarrierBeforeWindow, world } = sample;
   for (const point of curve) {
     const id = `population:${point.year}:${scope}`;
     measured.add(id);
@@ -295,74 +352,62 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
   }
   const arrivals = farmingArrivals.regions.map((region) => {
     const step = arrivalStep.get(region.id);
-    const year = step === undefined ? null : YD_START_YEAR + step / 12;
+    const year = step === undefined ? null : yearFromStep(step);
     const inWindow = year !== null && year >= region.earliest - 800 && year <= region.latest + 800;
     return { id: region.id, year, earliest: region.earliest, latest: region.latest, inWindow };
   });
-  const trajectory = (findings.trajectory ?? {}) as Record<string, unknown>;
   const detailedArrivals = neolithicArrivals.regions.map((region) => {
     const step = detailedArrivalStep.get(region.id);
-    const year = step === undefined ? null : YD_START_YEAR + step / 12;
+    const year = step === undefined ? null : yearFromStep(step);
     const inWindow = year !== null && year >= region.earliest - 800 && year <= region.latest + 800;
     return { id: region.id, year, earliest: region.earliest, latest: region.latest, inWindow };
   });
-  trajectory[grid] = { curve, arrivals, detailedArrivals };
+  const result: Record<string, unknown> = { curve, arrivals, detailedArrivals, wallMilliseconds: sample.wallMilliseconds };
+  if (!full) return result;
+  for (const arrival of arrivals) {
+    const id = `arrival:${arrival.id}:${scope}`;
+    measured.add(id);
+    if (!arrival.inWindow) failures.push(id);
+  }
+  for (const arrival of detailedArrivals) {
+    const id = `arrival:${arrival.id}:${scope}`;
+    measured.add(id);
+    if (!arrival.inWindow) failures.push(id);
+  }
+  const detailedById = new Map(neolithicArrivals.regions.map((region) => [region.id, region]));
+  const meanSpeed = arrivalSpeed(
+    detailedById.get("balkans")!,
+    detailedById.get("rhine")!,
+    detailedArrivalStep.get("balkans"),
+    detailedArrivalStep.get("rhine"),
+  );
+  result.front = { meanSpeedKmPerYear: meanSpeed, southOfClimateBarrierBeforeWindow };
+  if (meanSpeed !== null && (meanSpeed < 0.6 || meanSpeed > 1.3)) {
+    const id = `europe-front-speed:${scope}`;
+    measured.add(id);
+    failures.push(id);
+  }
+  if (southOfClimateBarrierBeforeWindow) {
+    const id = `climate-barrier:${scope}`;
+    measured.add(id);
+    failures.push(id);
+  }
+  const ordering = densityOrdering(world);
+  result.densityOrdering = ordering;
+  measured.add(`density-ordering:${scope}`);
+  if (!(ordering.river > ordering.rainfed && ordering.rainfed > ordering.forager)) {
+    failures.push(`density-ordering:${scope}`);
+  }
+  return result;
+}
+
+function runTrajectory(grid: GridPreset, shipped: TrajectorySample): void {
+  const { world } = shipped;
+  const scope = `${grid}`;
+  const trajectory = (findings.trajectory ?? {}) as Record<string, unknown>;
+  trajectory[grid] = judgeTrajectory(shipped, scope, longArm);
   findings.trajectory = trajectory;
-  if (longArm) {
-    for (const arrival of arrivals) {
-      const id = `arrival:${arrival.id}:${scope}`;
-      measured.add(id);
-      if (!arrival.inWindow) failures.push(id);
-    }
-    for (const arrival of detailedArrivals) {
-      const id = `arrival:${arrival.id}:${scope}`;
-      measured.add(id);
-      if (!arrival.inWindow) failures.push(id);
-    }
-    const detailedById = new Map(neolithicArrivals.regions.map((region) => [region.id, region]));
-    const europeanSpeed = arrivalSpeed(
-      detailedById.get("balkans")!,
-      detailedById.get("rhine")!,
-      detailedArrivalStep.get("balkans"),
-      detailedArrivalStep.get("rhine"),
-    );
-    const meanSpeed = europeanSpeed;
-    findings.front = {
-      meanSpeedKmPerYear: meanSpeed,
-      southOfClimateBarrierBeforeWindow,
-    };
-    if (meanSpeed !== null && (meanSpeed < 0.6 || meanSpeed > 1.3)) {
-      const id = `europe-front-speed:${scope}`;
-      measured.add(id);
-      failures.push(id);
-    }
-    if (southOfClimateBarrierBeforeWindow) {
-      const id = `climate-barrier:${scope}`;
-      measured.add(id);
-      failures.push(id);
-    }
-    // Density ordering at the final primary-horizon state.
-    let riverPeople = 0; let riverArea = 0;
-    let rainfedPeople = 0; let rainfedArea = 0;
-    let foragerPeople = 0; let foragerArea = 0;
-    for (let cell = 0; cell < world.N; cell++) {
-      if (!substrate.landMask[cell]) continue;
-      const area = world.cellAreaKm2[cell] ?? 0;
-      const technique = world.technique[cell] ?? 0;
-      const flood = substrate.floodplain[cell] ?? 0;
-      if (technique >= 0.5 && flood > 0.1) { riverPeople += (world.people[cell] ?? 0) * area; riverArea += area; }
-      else if (technique >= 0.5) { rainfedPeople += (world.people[cell] ?? 0) * area; rainfedArea += area; }
-      else { foragerPeople += (world.people[cell] ?? 0) * area; foragerArea += area; }
-    }
-    const river = riverArea > 0 ? riverPeople / riverArea : 0;
-    const rainfed = rainfedArea > 0 ? rainfedPeople / rainfedArea : 0;
-    const forager = foragerArea > 0 ? foragerPeople / foragerArea : 0;
-    const ordering = (findings.densityOrdering ?? {}) as Record<string, unknown>;
-    ordering[grid] = { river, rainfed, forager };
-    findings.densityOrdering = ordering;
-    measured.add(`density-ordering:${scope}`);
-    if (!(river > rainfed && rainfed > forager)) failures.push(`density-ordering:${scope}`);
-  } else {
+  if (!longArm) {
     // The short arm keeps one trajectory horizon in the default gate.
     let ignited = 0;
     for (const hearth of world.hearths) if (hearth.ignited) ignited++;
@@ -373,27 +418,140 @@ function runTrajectory(grid: GridPreset, shipped?: TrajectorySample): void {
     measured.add(id);
     if (ignited < 1) failures.push(id);
   }
-  disposePeople(world);
 }
 
-// The stride arm and trajectory run at dev by default; the target grid
-// (two 3000-year runs, ~1 h on a 4-core box) joins under GATE_PEOPLE_LONG=1
-// or GATE_PEOPLE_TARGET=1 — the W4 review ran it once and recorded the
-// deltas (QUESTIONS #36), the per-commit gate stays minutes.
-// The trajectory and stride arms simulate 3000 years (two dev runs, ~4 min
-// on a CI runner) and are not part of the per-commit gate: nothing that
-// runs the simulation is (owner directive, 2026-09-03). They run under
-// GATE_PEOPLE_TRAJECTORY=1 in the long workflow and on request.
+function cellLonLat(world: World, cell: number): { lon: number; lat: number } | null {
+  if (cell < 0) return null;
+  const y = Math.floor(cell / world.width);
+  const x = cell - y * world.width;
+  return {
+    lat: Math.round((90 - ((y + 0.5) / world.height) * 180) * 10) / 10,
+    lon: Math.round((((x + 0.5) / world.width) * 360 - 180) * 10) / 10,
+  };
+}
+
+/**
+ * The solve arm (W5): the solve regime to the end of the horizon, with the
+ * caged-basin trigger recorded but not acted on (`wake: "never"`), so every
+ * reality instrument is measured at both grids on every commit, and the
+ * step the world WOULD have woken at is printed as a development clock.
+ */
+function runSolveArm(grid: GridPreset): TrajectorySample {
+  const sample = collectTrajectory(grid, { wake: "never" }, fullHorizonStep);
+  const scope = `solve:${grid}`;
+  const { world } = sample;
+  const solve = (findings.solve ?? {}) as Record<string, unknown>;
+  solve[grid] = {
+    ...judgeTrajectory(sample, scope, true),
+    stride: world.solveStride,
+    steps: world.debug.ticks,
+    cagedStep: world.cagedStep,
+    cagedYear: world.cagedStep >= 0 ? yearFromStep(world.cagedStep) : null,
+    cagedWindowCentre: cellLonLat(world, world.cagedCell),
+    hearths: world.hearths.map((hearth) => ({
+      packageId: hearth.packageId,
+      cell: hearth.cell,
+      year: yearFromStep(hearth.ignitedStep),
+    })),
+  };
+  findings.solve = solve;
+  return sample;
+}
+
+/**
+ * The agreement arm: the awake kernel from the opening against the solve
+ * regime over the same horizon. Bounds on the median per-cell arrival delta
+ * and the checkpoint populations; the 90th percentile, the reached-set
+ * difference, the hearth deltas and the dominant-package difference are
+ * reported until the first measurement says what they are.
+ */
+function runAgreementArm(grid: GridPreset, awake: TrajectorySample, horizonStep: number): void {
+  const solve = collectTrajectory(grid, { wake: "never" }, horizonStep);
+  const left = awake.world as PeopleWorld;
+  const right = solve.world as PeopleWorld;
+  const deltas: number[] = [];
+  let onlyAwake = 0;
+  let onlySolve = 0;
+  let farmedBoth = 0;
+  let packageDiffers = 0;
+  for (let packed = 0; packed < left._landCells.length; packed++) {
+    const a = left._arrivalStep[packed] ?? -1;
+    const b = right._arrivalStep[packed] ?? -1;
+    if (a >= 0 && b >= 0) {
+      deltas.push(Math.abs(a - b) / MONTHS_PER_YEAR);
+      farmedBoth++;
+      const cell = left._landCells[packed] ?? 0;
+      if (left._dominantPackage[cell] !== right._dominantPackage[cell]) packageDiffers++;
+    } else if (a >= 0) onlyAwake++;
+    else if (b >= 0) onlySolve++;
+  }
+  deltas.sort((x, y) => x - y);
+  const median = deltas.length > 0 ? deltas[Math.floor(deltas.length / 2)] ?? 0 : 0;
+  const p90 = deltas.length > 0 ? deltas[Math.min(deltas.length - 1, Math.floor(0.9 * deltas.length))] ?? 0 : 0;
+  const population = awake.curve.map((point, index) => {
+    const other = solve.curve[index];
+    const relative = point.people > 0 && other ? Math.abs(other.people - point.people) / point.people : 0;
+    return { year: point.year, awake: point.people, solve: other?.people ?? null, relative };
+  });
+  const hearthDeltas = awake.world.hearths.map((hearth) => {
+    const match = solve.world.hearths
+      .filter((other) => other.packageId === hearth.packageId)
+      .sort((x, y) => Math.abs(x.ignitedStep - hearth.ignitedStep) - Math.abs(y.ignitedStep - hearth.ignitedStep))[0];
+    return {
+      packageId: hearth.packageId,
+      awakeYear: yearFromStep(hearth.ignitedStep),
+      solveYear: match ? yearFromStep(match.ignitedStep) : null,
+      deltaYears: match ? Math.abs(match.ignitedStep - hearth.ignitedStep) / MONTHS_PER_YEAR : null,
+    };
+  });
+  const agreement = (findings.solveAgreement ?? {}) as Record<string, unknown>;
+  agreement[grid] = {
+    arrival: { medianYears: median, p90Years: p90, farmedBoth, onlyAwake, onlySolve, landCells: left._landCells.length },
+    population,
+    hearths: { awake: awake.world.hearths.length, solve: solve.world.hearths.length, deltas: hearthDeltas },
+    dominantPackageDiffers: farmedBoth > 0 ? packageDiffers / farmedBoth : 0,
+    solveWallMilliseconds: solve.wallMilliseconds,
+    awakeWallMilliseconds: awake.wallMilliseconds,
+  };
+  findings.solveAgreement = agreement;
+  const arrivalId = `solve-agreement-arrival:${grid}`;
+  measured.add(arrivalId);
+  if (median > SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS) failures.push(arrivalId);
+  const popId = `solve-agreement-population:${grid}`;
+  measured.add(popId);
+  if (population.some((row) => row.relative > SOLVE_AGREEMENT_POP_TOLERANCE)) failures.push(popId);
+  disposePeople(solve.world);
+}
+
+// The per-commit solve arm at dev (seconds). At the shipped grid a solve
+// step is about 0.3 s serial and the full horizon 1,386 of them — minutes,
+// past the per-commit budget the W5 spec set — so the target solve arm
+// joins under GATE_PEOPLE_SOLVE_TARGET=1 (the long workflow, and any long
+// arm). The awake trajectory, stride and agreement arms run at dev under
+// GATE_PEOPLE_TRAJECTORY=1 and at both grids under GATE_PEOPLE_LONG=1 /
+// GATE_PEOPLE_TARGET=1 (two 3000-year monthly runs at target are an hour).
+const solveGrids: readonly GridPreset[] = process.env.GATE_PEOPLE_SOLVE_TARGET === "1"
+  || process.env.GATE_PEOPLE_LONG === "1" || process.env.GATE_PEOPLE_TARGET === "1"
+  ? ["dev", "target"]
+  : ["dev"];
+for (const grid of solveGrids) {
+  const sample = runSolveArm(grid);
+  disposePeople(sample.world);
+}
+
 const trajectoryArm = process.env.GATE_PEOPLE_TRAJECTORY === "1" || longArm
   || process.env.GATE_PEOPLE_TARGET === "1";
 const trajectoryGrids = longArm || process.env.GATE_PEOPLE_TARGET === "1"
   ? (["dev", "target"] as const)
   : (["dev"] as const);
 if (trajectoryArm) {
+  const horizonStep = stepFromYear(HORIZON_OPENING_YEAR + horizonYears);
   for (const grid of trajectoryGrids) {
-    const shipped = collectTrajectory(grid);
-    runCadenceArm(grid, shipped);
+    const shipped = collectTrajectory(grid, { wake: HORIZON_OPENING_YEAR }, horizonStep);
+    runCadenceArm(grid, shipped, horizonStep);
     runTrajectory(grid, shipped);
+    runAgreementArm(grid, shipped, horizonStep);
+    disposePeople(shipped.world);
   }
 }
 
@@ -409,8 +567,9 @@ assert.deepEqual(stale, [], `stale people known-misses: ${stale.join(", ")}`);
 
 console.log(JSON.stringify({
   gate: "pass",
-  horizon: longArm ? "YD-to-1CE-full" : trajectoryArm ? "YD-plus-3000y-trajectory" : "mechanical-12-ticks",
-  mode: longArm ? "long-dev-arm" : trajectoryArm ? "fast-mechanical-plus-trajectory" : "fast-mechanical",
+  horizon: longArm ? "YD-to-1CE-full" : trajectoryArm ? "YD-plus-3000y-trajectory" : "mechanical-12-steps-plus-solve",
+  mode: longArm ? "long-dev-arm" : trajectoryArm ? "fast-mechanical-plus-trajectory" : "fast-mechanical-plus-solve",
+  solveGrids,
   populationCurve: populationCurve.source,
   farmingArrivals: farmingArrivals.source,
   crossGridInitialRelativeDifference: initialParity,

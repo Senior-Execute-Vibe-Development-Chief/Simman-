@@ -267,3 +267,14 @@ export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/
 export const PEOPLE_NEIGHBOR_DY = [-1, 1, 0, 0, -1, -1, 1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_OPPOSITE = [1, 0, 3, 2, 7, 6, 5, 4] as const; // spec/09-constants-ledger.md §M3a proposed — reverse stencil directions
 export const PEOPLE_SNAPSHOT_FIELD_COUNT = 5; // spec/09-constants-ledger.md §M3a proposed — population, technique, package, can-grow, native overlays
+
+// W5: the peopling solve and the wake. No physical constant is added; the
+// knee is the Power row CAGE_KNEE made concrete, the marker is the gate's
+// existing instrument threshold, the tolerances are gate tolerances.
+export const CAGE_KNEE_FREE_SHARE = 0.2; // spec/09-constants-ledger.md §W5 proposed — free farmable share below which a basin is caged (CAGE_KNEE, Carneiro)
+export const PEOPLE_FARMED_MARKER_SHARE = 0.5; // spec/09-constants-ledger.md §W5 proposed — farmed share at which arrival instruments count a cell as farmed
+export const SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS = 100; // spec/09-constants-ledger.md §W5 proposed — gate tolerance: median arrival delta, solve vs awake kernel
+export const SOLVE_AGREEMENT_POP_TOLERANCE = 0.05; // spec/09-constants-ledger.md §W5 proposed — gate tolerance: checkpoint population delta, solve vs awake kernel
+export const SAVE_VERSION_W5 = 6; // spec/09-constants-ledger.md §W5 proposed — phase, wake and caged steps, events in the envelope
+export const HORIZON_OPENING_YEAR = -9700; // spec/09-constants-ledger.md §Units — Phase 1 opening, the end of the Younger Dryas (calendar label and the clock's origin)
+export const HORIZON_END_YEAR = 1; // spec/09-constants-ledger.md §Units — Phase 1 primary horizon end (calendar label)

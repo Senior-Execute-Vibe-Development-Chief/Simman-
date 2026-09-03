@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { readFileSync } from "node:fs";
-import { MONTHS_PER_YEAR, PEOPLE_BENCH_LONG_YEARS } from "../src/sim/constants";
+import { HORIZON_OPENING_YEAR, MONTHS_PER_YEAR, PEOPLE_BENCH_LONG_YEARS } from "../src/sim/constants";
 import { printProvenance, provenance } from "./lib/provenance";
 import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
@@ -24,6 +24,9 @@ interface BenchRow {
   readonly queryMilliseconds: number;
   readonly distanceMapMilliseconds: number;
   readonly tickMilliseconds: number;
+  /** W5: one solve-regime firing (serial), the ratchet's companion to the awake tick, and the derived stride. */
+  readonly solveStepMilliseconds: number;
+  readonly solveStride: number;
   readonly longRunMilliseconds?: number;
   readonly provenance: ReturnType<typeof provenance>;
 }
@@ -34,10 +37,12 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
   const substrateStart = performance.now();
   const substrate = buildSubstrate(stamp.seed, { preset: "earth_sim" }, grid);
   const substrateMilliseconds = performance.now() - substrateStart;
+  // The tick row is the AWAKE (monthly) kernel, as it always was; the solve
+  // rows below open a second world in the solve regime.
   const world = new World({
     seed: 42042,
     grid,
-    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1 },
+    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1, wake: HORIZON_OPENING_YEAR },
     substrate,
   });
 
@@ -72,6 +77,15 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
       return performance.now() - start;
     })()
     : undefined;
+  const solveWorld = new World({
+    seed: 42042,
+    grid,
+    config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1, wake: "never" },
+    substrate,
+  });
+  const solveStart = performance.now();
+  runSteps(solveWorld, BENCH_TICKS);
+  const solveStepMilliseconds = (performance.now() - solveStart) / BENCH_TICKS;
   const result = {
     grid,
     substrateMilliseconds,
@@ -80,10 +94,13 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     queryMilliseconds,
     distanceMapMilliseconds,
     tickMilliseconds,
+    solveStepMilliseconds,
+    solveStride: solveWorld.solveStride,
     ...(longRunMilliseconds === undefined ? {} : { longRunMilliseconds }),
     provenance: provenance(world),
   };
   (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+  (solveWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
   return result;
 }
 
@@ -116,7 +133,7 @@ async function cadenceBench(grid: GridPreset): Promise<Record<string, unknown>> 
     const world = new World({
       seed: 42042,
       grid,
-      config: { preset: "earth_sim", peopleKernel: "wasm", ...config },
+      config: { preset: "earth_sim", peopleKernel: "wasm", wake: HORIZON_OPENING_YEAR, ...config },
       substrate,
     });
     runSteps(world, CADENCE_TICKS);
@@ -169,6 +186,7 @@ if (process.argv.includes("--check")) {
     "queryMilliseconds",
     "distanceMapMilliseconds",
     "tickMilliseconds",
+    "solveStepMilliseconds",
   ] as const;
   for (const row of rows) {
     const baseline = baselines[row.grid];

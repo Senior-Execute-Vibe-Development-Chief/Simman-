@@ -37,7 +37,7 @@ function separated(world: PeopleWorld, candidate: number, chosen: readonly numbe
   return true;
 }
 
-function basinRadiusCells(world: PeopleWorld): number {
+export function basinRadiusCells(world: PeopleWorld): number {
   return Math.max(
     1,
     Math.round(PEOPLE_HEARTH_BASIN_RADIUS_KM / (EARTH_CIRCUMFERENCE_KM / world.width)),
@@ -50,7 +50,7 @@ function basinRadiusCells(world: PeopleWorld): number {
  * the basin radius; the table does not wrap at the dateline, and no native
  * range sits within a basin radius of it.
  */
-function fillSummedArea(world: PeopleWorld, values: ArrayLike<number>, out: Float64Array): void {
+export function fillSummedArea(world: PeopleWorld, values: ArrayLike<number>, out: Float64Array): void {
   const width = world.width;
   const stride = width + 1;
   out.fill(0, 0, stride);
@@ -66,7 +66,7 @@ function fillSummedArea(world: PeopleWorld, values: ArrayLike<number>, out: Floa
   }
 }
 
-function windowSum(world: PeopleWorld, table: Float64Array, cell: number, radius: number): number {
+export function windowSum(world: PeopleWorld, table: Float64Array, cell: number, radius: number): number {
   const width = world.width;
   const stride = width + 1;
   const y = Math.floor(cell / width);
@@ -162,8 +162,10 @@ function updateHearths(world: PeopleWorld, dtMonths: number): void {
         score: fill,
         armedYears: accrued,
         ignited: true,
+        ignitedStep: world.step,
       };
       world.hearths.push(hearth);
+      world.events.push({ step: world.step, kind: "hearth", cell, packageId: pkg.id });
       ignited.push(cell);
       seedHearth(world, hearth);
     }

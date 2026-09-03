@@ -35,3 +35,8 @@ bells, growing-season minimum, storability, yield, domestication lag) and
 rasterized at the substrate grid) are the M3a data inputs; there are no
 hearth pins — a hearth condenses wherever a native range is peopled long
 enough.
+
+`known-misses-people.json` rows are scoped by arm and grid: `…:dev` and
+`…:target` are the awake (monthly) kernel's long arms; `…:solve:dev` and
+`…:solve:target` are the per-commit solve arm (W5), the same instruments
+over the solve regime to 1 CE. The ratchet applies to both scopes.

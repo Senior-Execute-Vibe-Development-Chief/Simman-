@@ -1,10 +1,26 @@
 import {
   HASH_NUMBER_BYTES,
+  MATH_NEGATIVE_ONE,
+  MONTHS_PER_YEAR,
+  PEOPLE_ADOPTION_RATE_PER_YEAR,
+  PEOPLE_DISEASE_RATE,
+  PEOPLE_FARM_CAPACITY_PER_KM2,
+  PEOPLE_FARM_TECHNIQUE_BASE,
+  PEOPLE_FARM_TECHNIQUE_GAIN,
+  PEOPLE_FARMED_MARKER_SHARE,
+  PEOPLE_GROWTH_FORAGER_FACTOR,
+  PEOPLE_GROWTH_TECHNIQUE_GAIN,
+  PEOPLE_INITIAL_FILL_FRACTION,
+  PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_SNAPSHOT_FIELD_COUNT,
+  PEOPLE_WATER_ACCESS_GAIN,
 } from "./constants";
+import { dexp } from "./dmath";
 import { ensurePeopleWasm } from "./peopleKernel";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
 import { populationTotal } from "./people";
+import { yearFromStep } from "./horizon";
+import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import type { Substrate } from "./substrate";
 import type { PeopleWorld } from "./people/types";
 
@@ -33,7 +49,6 @@ function staticOverlays(world: PeopleWorld): { canGrow: Uint8Array; native: Uint
   return overlayCache;
 }
 
-
 interface CreateMessage {
   readonly type: "create";
   readonly seed: number;
@@ -52,7 +67,13 @@ interface RecycleMessage {
   readonly buffer: ArrayBuffer;
 }
 
-type WorkerMessage = CreateMessage | TickMessage | RecycleMessage;
+/** A frame of the solved prehistory at a world step before the wake: a reconstruction, never state (W5). */
+interface SeekMessage {
+  readonly type: "seek";
+  readonly step: number;
+}
+
+type WorkerMessage = CreateMessage | TickMessage | RecycleMessage | SeekMessage;
 
 interface WorkerScope {
   addEventListener(type: "message", listener: (event: MessageEvent<WorkerMessage>) => void): void;
@@ -63,15 +84,154 @@ let world: World | undefined;
 const snapshotPool: ArrayBuffer[] = [];
 let snapshotVersion = 0;
 
+function regimeOf(target: World): Record<string, unknown> {
+  return {
+    phase: target.phase,
+    solveStride: target.solveStride,
+    wakeStep: target.wakeStep,
+    cagedStep: target.cagedStep,
+    cagedCell: target.cagedCell,
+    year: yearFromStep(target.step),
+  };
+}
+
+interface SnapshotPlanes {
+  readonly buffer: ArrayBuffer;
+  readonly people: Float32Array;
+  readonly technique: Float32Array;
+  readonly packageView: Float32Array;
+}
+
+function snapshotPlanes(target: World): SnapshotPlanes {
+  const bytes = HASH_NUMBER_BYTES + target.N * Float32Array.BYTES_PER_ELEMENT * PEOPLE_SNAPSHOT_FIELD_COUNT;
+  const recycled = snapshotPool.pop();
+  const buffer = recycled?.byteLength === bytes ? recycled : new ArrayBuffer(bytes);
+  const plane = (index: number): Float32Array => new Float32Array(
+    buffer,
+    HASH_NUMBER_BYTES + target.N * Float32Array.BYTES_PER_ELEMENT * index,
+    target.N,
+  );
+  const people = plane(0);
+  const technique = plane(1);
+  const packageView = plane(2);
+  const canGrowView = plane(2 + 1);
+  const nativeView = plane(2 + 2);
+  if (target.substrate) {
+    const overlays = staticOverlays(target as PeopleWorld);
+    canGrowView.set(overlays.canGrow);
+    nativeView.set(overlays.native);
+  }
+  return { buffer, people, technique, packageView };
+}
+
+function liveSnapshot(target: World): Record<string, unknown> {
+  const planes = snapshotPlanes(target);
+  new Float64Array(planes.buffer, 0, 1)[0] = target.step;
+  planes.people.set(target.people);
+  planes.technique.set(target.technique);
+  if (target.substrate) planes.packageView.set((target as PeopleWorld)._dominantPackage);
+  // No world hash per snapshot: hashWorld walks every field with BigInt
+  // arithmetic (5.3 s at the target grid — measured, review W3), which
+  // made every tick batch take seconds regardless of the kernel. The hash
+  // is reported once at creation; harnesses hash on demand.
+  return {
+    type: "snapshot",
+    step: target.step,
+    reconstructed: false,
+    version: snapshotVersion++,
+    cells: target.N,
+    population: target.substrate ? populationTotal(target) : 0,
+    ...regimeOf(target),
+    buffer: planes.buffer,
+  };
+}
+
+/**
+ * The timeline's reconstruction of a pre-wake step from the recorded
+ * arrival steps and the passes' own constants: foragers as the logistic fill
+ * from the opening at the cell's forager rate; from the recorded arrival,
+ * farmers as a logistic toward the recorded package's matured capacity at
+ * the farmer rate while the remaining foragers convert at the adoption
+ * rate; technique as the farmed share. A rendering condensation (02, box
+ * 5): derived, evictable, never state, never read by a pass.
+ */
+function reconstructedSnapshot(target: World, step: number): Record<string, unknown> {
+  const people = target as PeopleWorld;
+  const planes = snapshotPlanes(target);
+  new Float64Array(planes.buffer, 0, 1)[0] = step;
+  planes.people.fill(0);
+  planes.technique.fill(0);
+  planes.packageView.fill(0);
+  const years = step / MONTHS_PER_YEAR;
+  let total = 0;
+  for (let packed = 0; packed < people._landCells.length; packed++) {
+    const cell = people._landCells[packed] ?? 0;
+    const foragerCapacity = people._foragerCapacity[cell] ?? 0;
+    const disease = people._diseaseBurden[cell] ?? 0;
+    const peopled = people._peopledMask[cell] === 1 && foragerCapacity > 0;
+    const foragerRate = PEOPLE_R_GROWTH_PER_YEAR * PEOPLE_GROWTH_FORAGER_FACTOR / (1 + PEOPLE_DISEASE_RATE * disease);
+    const opening = foragerCapacity * PEOPLE_INITIAL_FILL_FRACTION;
+    const foragersAt = (t: number): number => (
+      peopled && opening > 0
+        ? foragerCapacity / (1 + (foragerCapacity / opening - 1) * dexp(-foragerRate * t))
+        : 0
+    );
+    const arrival = people._arrivalStep[packed] ?? MATH_NEGATIVE_ONE;
+    let density = foragersAt(years);
+    let technique = 0;
+    let packageIndex = 0;
+    if (arrival >= 0 && arrival <= step) {
+      const arrivalYears = arrival / MONTHS_PER_YEAR;
+      const since = years - arrivalYears;
+      const foragersThen = foragersAt(arrivalYears);
+      const seedFarmers = PEOPLE_FARMED_MARKER_SHARE * foragersThen;
+      packageIndex = people._arrivalPackage[packed] ?? 0;
+      const pkg = CROP_PACKAGES[packageIndex];
+      const fertility = Math.max(0, Math.min(1, people.substrate.fertility[cell] ?? 0));
+      const matured = fertility
+        * PEOPLE_FARM_CAPACITY_PER_KM2
+        * (pkg?.yield ?? 1)
+        * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN)
+        * (1 + (people._waterAccess[cell] ?? 0) * PEOPLE_WATER_ACCESS_GAIN)
+        * (people._reliefMult[cell] ?? 0);
+      const farmerRate = PEOPLE_R_GROWTH_PER_YEAR
+        * (PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN)
+        / (1 + PEOPLE_DISEASE_RATE * disease);
+      const farmers = matured > 0 && seedFarmers > 0
+        ? matured / (1 + (matured / seedFarmers - 1) * dexp(-farmerRate * since))
+        : seedFarmers;
+      const remaining = foragersThen * (1 - PEOPLE_FARMED_MARKER_SHARE) * dexp(-PEOPLE_ADOPTION_RATE_PER_YEAR * since);
+      density = farmers + remaining;
+      technique = density > 0 ? farmers / density : 0;
+    }
+    planes.people[cell] = density;
+    planes.technique[cell] = technique;
+    planes.packageView[cell] = packageIndex;
+    total += density * (people.cellAreaKm2[cell] ?? 0);
+  }
+  return {
+    type: "snapshot",
+    step,
+    reconstructed: true,
+    version: snapshotVersion++,
+    cells: target.N,
+    population: total,
+    ...regimeOf(target),
+    year: yearFromStep(step),
+    buffer: planes.buffer,
+  };
+}
+
 export async function handleWorkerMessage(message: WorkerMessage): Promise<Record<string, unknown>> {
   if (message.type === "create") {
     if (message.config?.peopleKernel !== "ts") await ensurePeopleWasm();
+    overlayCache = undefined;
     world = new World(message);
     const peopleKernel = (world as unknown as {
       _wasmPeopleKernel?: { workerCount: number; usesThreads: boolean; control: { shared: boolean } };
     })._wasmPeopleKernel;
-    const growth = world.schedule.find((row) => row.name === "people.growth")?.stride ?? 1;
-    const migration = world.schedule.find((row) => row.name === "people.migration")?.stride ?? 1;
+    const growth = world.awakeSchedule.find((row) => row.name === "people.growth")?.stride ?? 1;
+    const migration = world.awakeSchedule.find((row) => row.name === "people.migration")?.stride ?? 1;
     const isolated = typeof crossOriginIsolated === "undefined" || crossOriginIsolated;
     return {
       type: "created",
@@ -82,8 +242,9 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
       workerCount: peopleKernel?.workerCount ?? 1,
       usesThreads: peopleKernel?.usesThreads === true,
       isolated,
-      scheduleLabel: `growth ${growth} · migration ${migration}`,
+      scheduleLabel: `growth ${growth} · migration ${migration} · solve ${world.solveStride}`,
       sharedBands: peopleKernel?.control.shared === true,
+      ...regimeOf(world),
     };
   }
   if (message.type === "recycle") {
@@ -91,37 +252,15 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
     return { type: "recycled" };
   }
   if (!world) throw new Error("The worker world has not been created.");
-  runSteps(world, message.steps);
-  const bytes = HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * PEOPLE_SNAPSHOT_FIELD_COUNT;
-  const recycled = snapshotPool.pop();
-  const buffer = recycled?.byteLength === bytes ? recycled : new ArrayBuffer(bytes);
-  new Float64Array(buffer, 0, 1)[0] = world.step;
-  const people = new Float32Array(buffer, HASH_NUMBER_BYTES, world.N);
-  const technique = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT, world.N);
-  const packageView = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * 2, world.N);
-  const canGrowView = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * (2 + 1), world.N);
-  const nativeView = new Float32Array(buffer, HASH_NUMBER_BYTES + world.N * Float32Array.BYTES_PER_ELEMENT * (2 + 2), world.N);
-  people.set(world.people);
-  technique.set(world.technique);
-  if (world.substrate) {
-    const peopleWorld = world as PeopleWorld;
-    const overlays = staticOverlays(peopleWorld);
-    packageView.set(peopleWorld._dominantPackage);
-    canGrowView.set(overlays.canGrow);
-    nativeView.set(overlays.native);
+  if (message.type === "seek") {
+    // Only the solved span reconstructs; a step at or past the wake (or
+    // past the present while still solving) is the live world.
+    const solvedEnd = world.phase === "solve" ? world.step : world.wakeStep;
+    if (!world.substrate || message.step >= solvedEnd) return liveSnapshot(world);
+    return reconstructedSnapshot(world, Math.max(0, Math.floor(message.step)));
   }
-  // No world hash per snapshot: hashWorld walks every field with BigInt
-  // arithmetic (5.3 s at the target grid — measured, review W3), which
-  // made every tick batch take seconds regardless of the kernel. The hash
-  // is reported once at creation; harnesses hash on demand.
-  return {
-    type: "snapshot",
-    step: world.step,
-    version: snapshotVersion++,
-    cells: world.N,
-    population: world.substrate ? populationTotal(world) : 0,
-    buffer,
-  };
+  runSteps(world, message.steps);
+  return liveSnapshot(world);
 }
 
 const scope = globalThis as unknown as Partial<WorkerScope>;

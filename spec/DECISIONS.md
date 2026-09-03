@@ -514,12 +514,14 @@ lawyered.
     where the forager bound forces a monthly one (15 against 1200 km²/yr).
     The kernel gains a second schedule regime, SOLVE: every pass at one
     stride derived from the bounds the passes already carry (farmer hops
-    on can-grow rows, farmer growth, adoption, cohort ageing — about 84
-    months expected at both grids, printed, never set); foragers grow in
-    place without hopping (their opening fill is a uniform fraction of
-    capacity, so their diffusion carries no net mass to first order; the
-    second-order effect is measured by an agreement arm, never assumed);
-    conductance at the annual mean. The world WAKES into the monthly
+    on can-grow rows, farmer growth, adoption, cohort ageing — 84 months
+    at both grids, printed, never set); foragers hop at the forager share
+    of the stride, substepped and capped by the kernel's own bound (the
+    spec proposed leaving them in place; the flat-field check showed the
+    omission first-order at the front — a farmed cell's mixture capacity
+    draws foragers in and the newcomers dilute contact — so the named
+    remedy applied before the wave landed, QUESTIONS #40); conductance at
+    the annual mean. The world WAKES into the monthly
     regime at the first caged basin: the first hearth-law window whose
     free farmable share falls below the ledger's caging knee — M4's own
     precondition (Carneiro), so M4 inherits the trigger instead of
@@ -528,9 +530,9 @@ lawyered.
     seed, read by nothing after the switch; a chosen year later than the
     trigger is the player knowingly accepting the solve past its
     validity, and provenance says so. (b) The window is the hearth-law
-    basin until M4 derives its flight radius (the forager diffusion length
-    over a generation is the candidate); then the wake follows that
-    derivation. (c) The scrubber's prehistory frames are a rendering
+    basin, centred on farmed cells, until M4 derives its flight radius (the
+    forager diffusion length over a generation is the candidate); then the
+    wake follows that derivation. (c) The scrubber's prehistory frames are a rendering
     condensation (02, box 5): reconstructed from recorded arrival steps
     and the passes' own constants, never state, never saved. (d) The
     reality tables for the front and the population curve are measured

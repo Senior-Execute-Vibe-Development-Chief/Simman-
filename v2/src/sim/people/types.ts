@@ -11,6 +11,8 @@ export interface HearthState {
   readonly score: number;
   armedYears: number;
   ignited: boolean;
+  /** The world step the hearth ignited at (the event log's first entries). */
+  readonly ignitedStep: number;
 }
 
 export interface PeopleWorld extends World {
@@ -61,9 +63,22 @@ export interface PeopleWorld extends World {
   /** Summed-area tables (width+1)×(height+1) of forager capacity × area (static) and people × area (per pass). */
   _basinCapacitySum: Float64Array;
   _basinPeopleSum: Float64Array;
-  /** Per-cell mobile mass (foragers + farmers × mobility ratio) and farmer share frozen for the month's flow. */
+  /** Wake trigger scratch: per-cell farmer room and free room, their summed-area tables, the best active yield per cell. */
+  _basinRoom: Float64Array;
+  _basinFree: Float64Array;
+  _basinRoomSum: Float64Array;
+  _basinFreeSum: Float64Array;
+  _bestYield: Float64Array;
+  _bestYieldDigest: string;
+  /** Rendering state for the timeline (never saved or hashed): first farmed step and package per land cell. */
+  _arrivalStep: Int32Array;
+  _arrivalPackage: Uint8Array;
+  /** Per-cell mobile mass (foragers × forager weight + farmers × farmer weight), the farmer weight, and the farmer share frozen for the firing's flow. */
   _migrationMobile: Float64Array;
+  _migrationFarmerWeight: Float64Array;
   _migrationFarmerShare: Float64Array;
+  /** Per-row farmer hop share for a solve firing (the forager share is `_migrationShareRow`). */
+  _migrationFarmerShareRow: Float64Array;
   /** Per source slot conductance × pair spare (source phase), per source out ÷ weight, per source cohort fractions. */
   _pairWeight: Float64Array;
   _migrationRatio: Float64Array;

@@ -1,8 +1,9 @@
 name: Simman v2 long arms
 
-# Everything that simulates history: the 3000-year trajectory and stride
-# arms of the people gate, the per-phase cadence bench table, and the full
-# browser matrix. Never on push — on request, or weekly to catch drift.
+# Everything that simulates history: the 3000-year trajectory, stride and
+# solve-agreement arms of the people gate, the shipped-grid solve arm (the
+# solve regime to 1 CE, minutes), the per-phase cadence bench table, and the
+# full browser matrix. Never on push — on request, or weekly to catch drift.
 
 on:
   workflow_dispatch:
@@ -40,7 +41,7 @@ jobs:
       - run: npm ci
       - run: rustup target add wasm32-unknown-unknown
       - run: npm run wasm:build
-      - run: GATE_PEOPLE_TRAJECTORY=1 npx tsx tools/gate-people.ts
+      - run: GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1 npx tsx tools/gate-people.ts
       - run: BENCH_CADENCE=1 npx tsx tools/bench.ts
       - if: ${{ github.event.inputs.target_long_arm == 'true' }}
         run: GATE_PEOPLE_LONG=1 npx tsx tools/gate-people.ts

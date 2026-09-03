@@ -5,7 +5,8 @@
     "customizeMilliseconds": 50,
     "queryMilliseconds": 60,
     "distanceMapMilliseconds": 32,
-    "tickMilliseconds": 12
+    "tickMilliseconds": 12,
+    "solveStepMilliseconds": 8
   },
   "target": {
     "substrateMilliseconds": 52000,
@@ -13,7 +14,8 @@
     "customizeMilliseconds": 2300,
     "queryMilliseconds": 2600,
     "distanceMapMilliseconds": 2700,
-    "tickMilliseconds": 220
+    "tickMilliseconds": 220,
+    "solveStepMilliseconds": 300
   },
-  "notes": "W3 review re-anchor (2026-09-02) of the ROUTING rows only, upward: the router is untouched by W2/W3 but today's review container measures the target customize/query/distance-map phases ~20% above the W2 numbers (2183/2515/2626 ms vs 1800/2100/2200) and dev query fluctuates 43-72 ms; runner drift, not a regression, so the caps follow the measurement. People-tick rows unchanged: target 206 ms/tick serial cold here (W2: 169 cold / 210 pre-W2), dev 1.6 ms. Cursor's runner measured 2.6 / 122 ms; cross-runner numbers are not comparable, so baselines always come from the review runner. Values carry headroom; CI fails above 120%. Threads are real since W3 (shared-memory dispatch, 1 ms barrier slices); the cadence table in the bench output carries the per-config numbers and the <=30-minute Phase-1 ceiling remains open (W4). BENCH_LONG=1 adds the 1000-year target arm."
+  "notes": "W5 (2026-09-03): solveStepMilliseconds is one solve-regime firing (84 months at both grids), ten serial firings from the opening, measured 5.6 ms dev / 233 ms target on the review runner (with hearths active a target firing is ~294 ms: the annual passes fire every firing); baselines 8 / 300 carry the same headroom as the tick rows. The awake tick measured 2.2 / 163 ms here (the migration pass now recomputes its row shares every firing and the arrival recorder runs per commit, +4 ms at target); tick baselines unchanged. W3 review re-anchor (2026-09-02) of the ROUTING rows only, upward: the router is untouched by W2/W3 but today's review container measures the target customize/query/distance-map phases ~20% above the W2 numbers (2183/2515/2626 ms vs 1800/2100/2200) and dev query fluctuates 43-72 ms; runner drift, not a regression, so the caps follow the measurement. People-tick rows unchanged: target 206 ms/tick serial cold here (W2: 169 cold / 210 pre-W2), dev 1.6 ms. Cursor's runner measured 2.6 / 122 ms; cross-runner numbers are not comparable, so baselines always come from the review runner. Values carry headroom; CI fails above 120%. Threads are real since W3 (shared-memory dispatch, 1 ms barrier slices); the cadence table in the bench output carries the per-config numbers and the <=30-minute Phase-1 ceiling remains open (W4). BENCH_LONG=1 adds the 1000-year target arm."
 }

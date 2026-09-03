@@ -19,6 +19,7 @@ Rows below are the seed set, inherited from v1's audited registry
 | FOOD_UNIT | 1 t grain | |
 | RATION | ~1 t/person/year equivalent (v1: 0.003 u/tick·su) `[REDERIVE at v2 tick]` | subsistence flow |
 | TICK | `[DERIVE]` (v1: 0.25 y) | one tick's span in years |
+| HORIZON_OPENING_YEAR / HORIZON_END_YEAR | −9700 / 1 | the world clock's origin (the end of the Younger Dryas) and Phase 1's primary horizon end, as calendar labels: display, provenance, and the conversion of a player's chosen epoch into an initial condition (W5). Never a mechanism input (R1) |
 | HASH_OFFSET_BASIS / HASH_PRIME | 2166136261 / 16777619 | world identity hash: 32-bit FNV-1a over 32-bit words, two lanes (the second seeded with HASH_LANE_SEED 1013904223, the Numerical Recipes LCG increment), 16 hex digits. Replaced the byte-wise 64-bit BigInt FNV-1a (5.5 s per target hash) on 2026-09-03; identity strings before that date are not comparable |
 
 ## Travel & freight (03)
@@ -252,5 +253,5 @@ they are not hidden outcome-fitting levers.
 | `SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS` | 100 | gate tolerance, never a mechanism input: bound on the median per-cell arrival delta between the solve regime and the awake kernel over the same horizon; a tenth of the narrowest arrival window the tables carry (the Pinhasi rows are 800–1000 years wide) |
 | `SOLVE_AGREEMENT_POP_TOLERANCE` | 0.05 | gate tolerance: relative population delta at every checkpoint band, same comparison; the bands themselves are factors of two to six wide |
 | `SAVE_VERSION_W5` | 6 | saves carry the phase and the wake step |
-| (solve stride) | derived | largest whole-year multiple of 12 months keeping every explicit per-firing fraction inside `PEOPLE_MIGRATION_MAX_SHARE`: the farmer hop share on rows with can-grow cells, farmer growth, adoption, cohort ageing; printed in provenance like the migration stride, never hand-set per grid |
+| (solve stride) | derived: 84 months at both grids | largest whole-year multiple of 12 months keeping every explicit per-firing fraction inside `PEOPLE_MIGRATION_MAX_SHARE`: the farmer hop share on rows with can-grow cells, farmer growth, adoption, cohort ageing (the binding bound at both grids); printed in provenance like the migration stride, never hand-set per grid. Foragers take the forager share of the same stride, substepped and capped by the kernel's own bound |
 | `config.wake` | auto / never / year | an initial condition (auto = the caged-basin trigger; never = measurement mode; a year = the player's epoch), not a constant, read by no pass |

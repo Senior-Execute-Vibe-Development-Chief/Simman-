@@ -6,7 +6,7 @@ import init, {
 import initThreads, {
   PeopleKernel as ThreadedPeopleKernel,
 } from "../wasm/people-threads/people.js";
-import { fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
+import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
 import type { PeopleWorld } from "./people/types";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import {
@@ -93,7 +93,7 @@ interface PeopleKernelLike {
   growth_band(rawLo: number, rawHi: number, bandIndex: number): void;
   births(): number;
   deaths(): number;
-  begin_migration(month: number, dtMonths: number, growthPrepared: boolean): void;
+  begin_migration(month: number, dtMonths: number, growthPrepared: boolean, solve: boolean): void;
   migration_prepare_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_source_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_debit_band(rawLo: number, rawHi: number): void;
@@ -302,7 +302,10 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
   const lengths = migrationEdgeLengths(world.substrate);
   world._migrationEdgeH = lengths.horizontal;
   world._migrationEdgeV = lengths.vertical;
-  const days = new Float64Array(world.N * MONTHS_PER_YEAR);
+  // Twelve monthly tables and their annual mean at index MONTHS_PER_YEAR,
+  // the solve regime's conductance; the mean is computed once here so both
+  // kernels read the same numbers.
+  const days = new Float64Array(world.N * (MONTHS_PER_YEAR + 1));
   for (let month = 0; month < MONTHS_PER_YEAR; month++) {
     fillMigrationDaysPerKm(
       world.substrate,
@@ -310,6 +313,10 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
       days.subarray(month * world.N, (month + 1) * world.N),
     );
   }
+  fillMeanMigrationDaysPerKm(
+    world.substrate,
+    days.subarray(MONTHS_PER_YEAR * world.N, (MONTHS_PER_YEAR + 1) * world.N),
+  );
   const canGrow = new Uint8Array(CROP_PACKAGES.length * world._landCells.length);
   for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
     canGrow.set(
@@ -465,7 +472,7 @@ export interface PeopleKernelRuntime {
   deriveCapacity(): void;
   beginGrowth(dtMonths?: number): void;
   grow(): void;
-  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
+  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean, solve?: boolean): void;
   prepareMigration(): void;
   migrateSources(): void;
   debitMigration(): void;
@@ -617,7 +624,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       );
     }
     world._migrationDaysPerKm = new Float64Array(world.N);
-    world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR).fill(undefined);
+    world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR + 1).fill(undefined);
   }
 
   private dispatchBands(operation: BandOperation, dtMonths = 1): void {
@@ -664,10 +671,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.dispatchBands("growth");
   }
 
-  beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
+  beginMigration(month: number, dtMonths = 1, growthPrepared = true, solve = false): void {
     this.assertMemoryStable();
     this.syncActivePackages();
-    this.kernel.begin_migration(month, dtMonths, growthPrepared);
+    this.kernel.begin_migration(month, dtMonths, growthPrepared, solve);
   }
 
   prepareMigration(): void {

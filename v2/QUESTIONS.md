@@ -1484,3 +1484,112 @@ Review corrections to the M1 build (all validated before merge):
     solve arm, budgeted at 60 s and reported; it sits inside the
     directive's letter (nothing that takes hours) and the spec names the
     one-line demotion to `v2-long.yml` if the owner wants it out.
+
+40. **W5 landed: the solve regime and the wake (2026-09-03, owner: "you
+    must now implement the spec, here in this chat").** Implemented on
+    the working branch against `spec/handoffs/W5-solve.md`; the handoff's
+    status section lists what was kept and what the measurements changed.
+    The findings, in the order they were made:
+
+    **The stride is 84 months at both grids, but not for the reason the
+    spec expected.** The bare farmer hop bound (`share ≤ 0.5` per firing
+    on every row a package can grow on) came out at 12 months at the
+    shipped grid: the crop bells admit can-grow cells on near-polar rows —
+    the highland-roots bell reaches 83.3° S (the Antarctic coast, a row of
+    58 km² cells), wheat and the eastern seed crops 78° N, sorghum 71° N —
+    where a seven-year farmer share is 1.8. That is a data finding about
+    the bells (M3a review ruling g, the range and bell citations), not a
+    reason to substep by hand. The derivation now uses the bound the hop
+    kernel honours without capping — `PEOPLE_MIGRATION_MAX_SHARE ×
+    PEOPLE_MIGRATION_MAX_SUBSTEPS` per firing, the same substep mechanism
+    every firing already goes through — under which the polar rows bind
+    at 31 years and the cohort-ageing bound (7 years) is the minimum at
+    both grids. W3's forager stride keeps the bare bound, because there
+    the cap beyond sixteen substeps is what hides an unstable firing; a
+    farmer firing inside sixteen substeps is not hidden, it is substepped.
+
+    **Foragers hop in the solve regime.** The spec proposed leaving them
+    in place (a uniform opening fill, so no net flux to first order). The
+    flat-field unit check — one seeded cell on a uniform dev field, the
+    solve regime against the awake kernel over 280 years — measured the
+    omission at 58 % in farmed extent (Σ technique 2.09 against 1.33): a
+    farmed cell's mixture capacity opens room, foragers from every
+    neighbour hop into it at the forager share, and the newcomers dilute
+    contact, so adoption in and around the seed runs slower in the awake
+    kernel than in a solve without them. First order at the front, not
+    second. The spec's named remedy applied: each group takes its own row
+    share of the stride (foragers the forager share, substepped and capped
+    by the kernel's bound; farmers the farmer share, inside it), and the
+    mobile mass is the weighted sum. With that the flat field agrees to
+    5.3 % in extent and 0.02 % in population. The awake regime is the
+    kernel as it was, bit for bit (forager weight one, farmer weight the
+    mobility ratio, the row's forager share as the out-share).
+
+    **A bug caught re-reading the diff.** A monthly firing after the wake
+    inherited the solve regime's 84-month row shares: the awake path only
+    recomputed them when its dt was not one. Every firing now prices its
+    own stride in both kernels; a month is the opening fill's expression,
+    bit for bit. Parity (three regimes at both grids, TS ↔ serial wasm ↔
+    1/2/8 workers, byte-exact) and the smoke's continuation across the
+    wake would not have caught it on their own — both sides shared it.
+
+    **The wake trigger is sequential TypeScript**, like the hearth law: it
+    reads the authoritative arrays (views onto wasm memory under the wasm
+    kernel) and computes two summed-area tables, so both kernels agree by
+    construction and Rust carries nothing for it. The windows are centred
+    on farmed cells (a window without farmers cannot be caged; the scan is
+    the farmed set, not the land).
+
+    **Measurements (review runner, 4 cores).** Dev: the full-horizon solve
+    (`wake: "never"`, 1,386 firings of 84 months) in 14 s serial; the
+    world wakes (`auto`) at −6144, 508 firings, in the Lower Egypt window
+    (29.2° N, 30.8° E). Target: a solve firing 233 ms serial over the
+    opening firings (the bench's ten) and 294 ms with hearths active, by
+    phase — migration 134, conversion 38 (the hearth SAT in TypeScript),
+    growth 34, capacity 14, technique 10, cohorts 5, ledger 3, the
+    trigger 21, the recorder 4 — against 163 ms for an awake tick: the
+    annual passes fire every firing. Dev: 5.6 ms a firing against a 2.2
+    ms tick. Opening to the wake at the shipped grid is
+    therefore about 150 s serial (the awake kernel: 69 min at 97 ms on
+    three threads for the same 42,672 months); the full horizon about 7
+    min serial, past the per-commit budget the spec set, so the target
+    solve arm runs under `GATE_PEOPLE_SOLVE_TARGET=1` in `v2-long` and the
+    dev arm per commit. Bench rows: `solveStepMilliseconds` (ten serial
+    firings) beside `tickMilliseconds`, in the ratchet.
+
+    **The dev solve arm against the awake kernel's dev long arm**
+    (QUESTIONS #37, the same instruments; the solve reads arrivals from
+    the recorder, the awake arm sampled every ten years):
+
+    | dev, YD→1 CE | awake (monthly) | solve (84-month) | reality window |
+    |---|---:|---:|---|
+    | Levant | −7570 | −7551 | −9500 … −7000 |
+    | Nile | −7730 | −7726 | −8500 … −5000 |
+    | Indus | −7680 | −7677 | −7000 … −3500 |
+    | Yellow River | −6880 | −6865 | −8000 … −5500 |
+    | Balkans | −4790 | −4324 | −7000 … −6000 |
+    | Central Europe | −3750 | −3267 | −6000 … −5000 |
+    | Rhine | −3270 | −2791 | −5600 … −4800 |
+    | Cardial coast | −4060 | −3582 | −6500 … −5500 |
+    | Mesoamerica | −3820 | −4534 | −7000 … −2500 |
+    | Andes | −4560 | −4562 | −5000 … −2500 |
+    | Balkans → Rhine, km/yr | 1.05 | 1.04 | 0.6 … 1.3 |
+    | people −5000 / −3000 / −1000 / 1 | 282 M / 1.27 B / 1.95 B / >2 B | 265 M / 1.23 B / 1.90 B / 2.18 B | ≤ 60 / 100 / 200 / 400 M |
+    | density, river : rainfed : forager | ordered | 31.5 : 19.2 : 0.04 | ordered |
+
+    The Old World hearth rows agree within 20 years and the front speed
+    within 1 %; Europe is reached about 470 years later and Mesoamerica
+    700 years earlier in the solve. Those are the regional deltas the
+    agreement arm is built to bound at the per-cell median over the
+    horizon (long workflow, not yet run); the misses themselves are the
+    awake kernel's, manifested under `:solve:dev` with the same physical
+    reasons. The first caged basin on the current kernel is the Nile
+    delta at −6144 — the sim's Egypt fills first — and it is early for
+    the reason the population is high: nothing dies yet.
+
+    **What is not in this landing.** The agreement arm has the instrument
+    and its unit checks and has not been run (a monthly 3000-year run is
+    a long-workflow arm). The target solve arm's reality table waits on
+    the same workflow. The shell's timeline reconstructs frames from the
+    recorded arrivals and the passes' constants; it is a rendering, never
+    state, and is not saved.

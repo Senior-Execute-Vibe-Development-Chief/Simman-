@@ -7,6 +7,7 @@ import {
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
 } from "../sim/constants";
 import { buildSubstrate, type Substrate } from "../sim/substrate";
+import { yearFromStep } from "../sim/horizon";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
 import { riverReachGradient, type Capability, type TravelMetric } from "../sim/travel/cost";
@@ -41,8 +42,14 @@ const speedInput = document.querySelector<HTMLInputElement>("#speed")!;
 const speedLabel = document.querySelector<HTMLElement>("#speed-label")!;
 const projectionSelect = document.querySelector<HTMLSelectElement>("#projection")!;
 const centreLabel = document.querySelector<HTMLElement>("#centre-label")!;
+const timeline = document.querySelector<HTMLInputElement>("#timeline")!;
+const timelineLabel = document.querySelector<HTMLElement>("#timeline-label")!;
+const wakeSelect = document.querySelector<HTMLSelectElement>("#wake")!;
+const wakeYearInput = document.querySelector<HTMLInputElement>("#wake-year")!;
+const restartButton = document.querySelector<HTMLButtonElement>("#restart")!;
 if (!canvas || !lens || !month || !monthLabel || !zoomInput || !zoomLabel || !status || !route
-  || !population || !runButton || !speedInput || !speedLabel || !projectionSelect || !centreLabel) {
+  || !population || !runButton || !speedInput || !speedLabel || !projectionSelect || !centreLabel
+  || !timeline || !timelineLabel || !wakeSelect || !wakeYearInput || !restartButton) {
   throw new Error("M2 shell markup is incomplete.");
 }
 
@@ -105,17 +112,53 @@ function applyProjection(name: ProjectionName): void {
 applyProjection(projectionSelect.value as ProjectionName);
 
 const worker = new Worker(new URL("../sim/worker.ts", import.meta.url), { type: "module" });
-worker.postMessage({ type: "create", seed: M0_DEFAULT_SEED, grid: GRID, substrate });
+/** `config.wake` from the wake control: an initial condition, like the seed (W5). */
+function wakeConfig(): Record<string, string | number> {
+  if (wakeSelect.value === "never") return { wake: "never" };
+  if (wakeSelect.value === "year") return { wake: Number(wakeYearInput.value) };
+  return {};
+}
+function createWorld(): void {
+  worldReady = false;
+  tickPending = false;
+  worker.postMessage({ type: "create", seed: M0_DEFAULT_SEED, grid: GRID, substrate, config: wakeConfig() });
+}
 let playing = true;
 let speed = 1;
+// The regime the worker reports with every snapshot: while the world solves,
+// a batch is several multi-year steps and the map plays the peopling; after
+// the wake the timeline scrubs the solved span through reconstructed frames.
+let phase = "solve";
+let solveStride = 1;
+let wakeStep = -1;
+let cagedStep = -1;
+let liveStep = 0;
+let scrubbing = false;
+const BATCH_SOLVE_STEPS = 8;
 let overlayPopulation: Float32Array | undefined;
 let overlayTechnique: Float32Array | undefined;
 let overlayPackage: Float32Array | undefined;
 let overlayCanGrow: Float32Array | undefined;
 let overlayNative: Float32Array | undefined;
 function displayDate(step: number): string {
-  const year = -9700 + step / MONTHS_PER_YEAR;
+  const year = yearFromStep(step);
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
+}
+function regimeLabel(): string {
+  if (phase === "solve") return `solving · ${solveStride / MONTHS_PER_YEAR}-year steps`;
+  if (wakeStep >= 0) return `awake since ${displayDate(wakeStep)}${cagedStep >= 0 && cagedStep !== wakeStep ? ` · caged ${displayDate(cagedStep)}` : ""}`;
+  return "awake";
+}
+function updateTimeline(): void {
+  // The scrubbable span is the solved prehistory: up to the present while
+  // solving, up to the wake after it.
+  const solvedEnd = phase === "solve" ? liveStep : wakeStep;
+  timeline.max = String(Math.max(0, solvedEnd));
+  timeline.disabled = solvedEnd <= 0;
+  if (!scrubbing) timeline.value = timeline.max;
+  timelineLabel.textContent = solvedEnd > 0
+    ? `${displayDate(Number(timeline.value))}${scrubbing ? " · reconstructed" : ""}`
+    : "solving…";
 }
 worker.addEventListener("message", (event) => {
   if (event.data?.type === "error") {
@@ -128,6 +171,13 @@ worker.addEventListener("message", (event) => {
   }
   if (event.data?.type === "created") {
     worldReady = true;
+    phase = String(event.data.phase ?? "solve");
+    solveStride = Number(event.data.solveStride ?? 1);
+    wakeStep = Number(event.data.wakeStep ?? -1);
+    cagedStep = Number(event.data.cagedStep ?? -1);
+    liveStep = Number(event.data.step ?? 0);
+    scrubbing = false;
+    updateTimeline();
     const isolated = event.data.isolated === true;
     const threaded = event.data.usesThreads === true;
     const kernel = event.data.kernel !== "wasm"
@@ -138,7 +188,7 @@ worker.addEventListener("message", (event) => {
           ? "serial WASM"
           : "serial WASM · host is not cross-origin isolated";
     const schedule = typeof event.data.scheduleLabel === "string" ? ` · ${event.data.scheduleLabel}` : "";
-    status.textContent = `Worker ready · ${kernel}${schedule} · ${event.data.hash}`;
+    status.textContent = `Worker ready · ${kernel}${schedule} · ${regimeLabel()} · ${event.data.hash}`;
   }
   if (event.data?.type === "snapshot" && event.data.buffer instanceof ArrayBuffer) {
     tickPending = false;
@@ -159,7 +209,17 @@ worker.addEventListener("message", (event) => {
     overlayPackage.set(packageView);
     overlayCanGrow.set(canGrowView);
     overlayNative.set(nativeView);
-    population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}`;
+    const reconstructed = event.data.reconstructed === true;
+    if (!reconstructed) {
+      const wokeNow = phase === "solve" && event.data.phase === "awake";
+      phase = String(event.data.phase ?? phase);
+      wakeStep = Number(event.data.wakeStep ?? wakeStep);
+      cagedStep = Number(event.data.cagedStep ?? cagedStep);
+      liveStep = Number(event.data.step ?? liveStep);
+      if (wokeNow) status.textContent = `The world woke · ${regimeLabel()}`;
+      updateTimeline();
+    }
+    population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}${reconstructed ? " · reconstructed" : ` · ${regimeLabel()}`}`;
     baseKey = "";
     lastFrameKey = "";
     draw();
@@ -172,11 +232,12 @@ worker.addEventListener("message", (event) => {
 let tickPending = false;
 let worldReady = false;
 function requestTicks(): void {
-  if (!playing || tickPending || !worldReady) return;
+  if (!playing || tickPending || !worldReady || scrubbing) return;
   tickPending = true;
-  worker.postMessage({ type: "tick", steps: speed });
+  worker.postMessage({ type: "tick", steps: phase === "solve" ? speed * BATCH_SOLVE_STEPS : speed });
 }
 window.setInterval(requestTicks, 250);
+createWorld();
 
 month.max = String(MONTHS_PER_YEAR - 1);
 month.value = "0";
@@ -666,6 +727,35 @@ zoomInput.addEventListener("input", () => {
 runButton.addEventListener("click", () => {
   playing = !playing;
   runButton.textContent = playing ? "Pause" : "Run";
+  if (playing && scrubbing) {
+    // Leaving the scrub returns the map to the live world.
+    scrubbing = false;
+    updateTimeline();
+    worker.postMessage({ type: "seek", step: Number.MAX_SAFE_INTEGER });
+  }
+});
+timeline.addEventListener("input", () => {
+  if (timeline.disabled || !worldReady) return;
+  // Scrubbing pauses the run and asks for a reconstructed frame; the
+  // frame is a rendering, not state, and the label says so.
+  scrubbing = true;
+  playing = false;
+  runButton.textContent = "Run";
+  updateTimeline();
+  if (!tickPending) {
+    tickPending = true;
+    worker.postMessage({ type: "seek", step: Number(timeline.value) });
+  }
+});
+wakeSelect.addEventListener("change", () => {
+  wakeYearInput.hidden = wakeSelect.value !== "year";
+});
+restartButton.addEventListener("click", () => {
+  playing = true;
+  runButton.textContent = "Pause";
+  scrubbing = false;
+  status.textContent = "Restarting the world…";
+  createWorld();
 });
 speedInput.addEventListener("input", () => {
   speed = Math.max(1, Math.pow(2, Number(speedInput.value)));

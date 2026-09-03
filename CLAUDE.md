@@ -12,7 +12,12 @@ diagnostics; v2 changes use the acceptance suite in `v2/`.
 smoke, parity, the 12-tick gates, the bench ratchet, the oracle. Anything that
 simulates history — the 3000-year trajectory arms, the cadence table, the full
 YD→1 CE run — is the `v2-long` workflow on request, never a step in a review or
-a push. A finding that needs a long arm is recorded as needing one, not run.
+a push. A finding that needs a long arm is recorded as needing one, not run. The
+W5 SOLVE regime is the exception the directive allows: the same passes at
+an 84-month stride reach 1 CE in seconds at dev, so the people gate
+measures every reality table over it at dev on every commit; at the
+shipped grid the same arm is minutes and runs in `v2-long`
+(`GATE_PEOPLE_SOLVE_TARGET=1`).
 
 If you ADD STATE to the world, also run `npm run coverage`: it proves, by
 perturbation rather than by name-matching, that every measurable property is

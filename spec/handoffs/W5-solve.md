@@ -381,3 +381,59 @@ No forager hops re-enabled without the measurement that demands them. No
 saving or hashing of the reconstruction. No tolerance edits. No long-arm
 runs. No touching the thread pool, worldgen, the substrate builders, the
 awake schedule, or the band layout.
+
+---
+
+## Status (implemented on the working branch, 2026-09-03)
+
+Implemented in the spec session itself (owner: "you must now implement
+the spec, here in this chat"), not by a `cursor/v2-w5` PR; reviewed
+against this document as if it were one. QUESTIONS #40 carries the
+findings and measurements.
+
+**Delivered as specified:** deliverable 1 (two regimes; `world.phase`,
+saved and hashed; the solve schedule at one derived stride; `stepWorld`
+advancing by it; `runUntil`; the switch re-resolving the schedule), 2's
+structure (the kernel's own passes at the stride; the annual-mean
+conductance as a thirteenth table both kernels read; no new dispatch
+phases), 3 (the caged-basin trigger over the hearth-law window through
+summed-area tables; `config.wake` auto / never / a year with the exact
+landing on a chosen epoch; the wake and the hearth ignitions in the event
+log, `HearthState.ignitedStep`), 4 (the worker plays the solve in
+batches, `seek` returns a reconstructed frame, the shell's timeline, wake
+control and regime status line), 5's parity (three regimes at both grids,
+byte-exact across TS, serial wasm and 1/2/8 workers) and the agreement
+arm as an instrument, 6's solve arm with the manifest rows under
+`:solve:dev`, 7 (save v6 with phase, wake and caged steps and the events;
+the solve-regime smoke at dev; the bench row), 8's four unit checks.
+
+**Changed by measurement (each recorded in QUESTIONS #40):**
+
+- *Foragers hop in the solve regime.* The flat-field check measured the
+  spec's omission at 58 % in farmed extent; the named remedy applied:
+  each group takes its own row share of the stride, and the awake regime
+  is unchanged bit for bit. Agreement on the flat field is 5.3 % in
+  extent and 0.02 % in population.
+- *The stride derivation uses the substepped hop bound.* The bare bound
+  gave 12 months at the shipped grid because the crop bells admit
+  can-grow cells on near-polar rows (a data finding: highland roots to
+  83° S, wheat to 78° N). The bound the hop kernel honours without
+  capping gives 84 months at both grids, the cohort-ageing minimum.
+- *The target solve arm is a long-workflow arm.* A solve firing at the
+  shipped grid costs 294 ms serial (the annual passes fire every firing),
+  so the full horizon is about seven minutes serial, past the 60 s
+  budget; per the spec it moved behind `GATE_PEOPLE_SOLVE_TARGET=1` in
+  `v2-long.yml`, and the dev solve arm (14 s for the horizon) runs per
+  commit. Opening to the wake at the shipped grid is about 150 s serial
+  against the awake kernel's 69 min on three threads.
+- *The bench row is per firing* (`solveStepMilliseconds`, ten serial
+  firings beside `tickMilliseconds`), not opening-to-wake: the ratchet
+  compares like with like and the wake year is the gate's to print.
+- *The trigger is sequential TypeScript*, like the hearth law, over the
+  authoritative arrays; Rust computes nothing for it. Windows are centred
+  on farmed cells.
+
+**Not run:** the agreement arm (a monthly 3000-year run) and the target
+solve arm's reality table; both are `v2-long` arms. The wake year and the
+solve regime's full table at the shipped grid therefore come from the
+long workflow, not from this landing.

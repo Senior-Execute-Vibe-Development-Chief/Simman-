@@ -6,6 +6,7 @@ import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
 import { float64Bits } from "./lib/dmath-check";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
+import { HORIZON_OPENING_YEAR, MONTHS_PER_YEAR } from "../src/sim/constants";
 
 const PEOPLE_FIELDS = [
   "people",
@@ -95,28 +96,45 @@ function makeWorld(
   return world;
 }
 
-async function runParity(grid: GridPreset, steps: number): Promise<void> {
-  const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
-  const reference = makeWorld(grid, substrate, { peopleKernel: "ts" });
-  const wasm = makeWorld(grid, substrate, { peopleKernel: "wasm", peopleWorkers: 1 });
-  assert.ok((wasm as PeopleWorld)._wasmPeopleKernel, `${grid} did not select the WASM kernel`);
+async function runParity(
+  grid: GridPreset,
+  steps: number,
+  substrate: ReturnType<typeof buildSubstrate>,
+  config: Record<string, string | number | boolean>,
+  label: string,
+): Promise<Record<string, unknown>> {
+  const reference = makeWorld(grid, substrate, { peopleKernel: "ts", ...config });
+  const wasm = makeWorld(grid, substrate, { peopleKernel: "wasm", peopleWorkers: 1, ...config });
+  assert.ok((wasm as PeopleWorld)._wasmPeopleKernel, `${grid} ${label} did not select the WASM kernel`);
   assert.equal((wasm as PeopleWorld)._wasmPeopleKernel?.usesThreads, false);
+  assert.equal(wasm.phase, reference.phase, `${grid} ${label} regimes differ at creation`);
   comparePeopleState(reference, wasm, grid, 0);
   for (let step = 1; step <= steps; step++) {
     runSteps(reference, 1);
     runSteps(wasm, 1);
+    assert.equal(wasm.phase, reference.phase, `${grid} ${label} regimes diverged at firing ${step}`);
+    assert.equal(wasm.step, reference.step, `${grid} ${label} clocks diverged at firing ${step}`);
     comparePeopleState(reference, wasm, grid, step);
   }
   const serialHash = hashWorld(wasm);
-  assert.equal(serialHash, hashWorld(reference), `${grid} serial hash diverged after ${steps} ticks`);
+  assert.equal(serialHash, hashWorld(reference), `${grid} ${label} serial hash diverged after ${steps} firings`);
+  const result = {
+    label,
+    firings: steps,
+    phaseAtEnd: wasm.phase,
+    wakeStep: wasm.wakeStep,
+    cagedStep: wasm.cagedStep,
+    clock: wasm.step,
+  };
   (wasm as PeopleWorld)._wasmPeopleKernel?.dispose();
 
-  const threadedReference = makeWorld(grid, substrate, { peopleKernel: "ts" });
+  const threadedReference = makeWorld(grid, substrate, { peopleKernel: "ts", ...config });
   assert.ok(await resizePeoplePool(1), `${grid} could not start a 1-worker pool`);
   const threadedOne = makeWorld(grid, substrate, {
     peopleKernel: "wasm",
     peopleWorkers: 1,
     peopleThreads: true,
+    ...config,
   });
   const threadedKernel = (threadedOne as PeopleWorld)._wasmPeopleKernel;
   assert.ok(threadedKernel?.usesThreads, `${grid} 1-worker threaded path did not use the worker pool`);
@@ -130,7 +148,7 @@ async function runParity(grid: GridPreset, steps: number): Promise<void> {
   assert.equal(
     hashWorld(threadedOne),
     hashWorld(threadedReference),
-    `${grid} 1-worker hash diverged after ${steps} ticks`,
+    `${grid} ${label} 1-worker hash diverged after ${steps} firings`,
   );
   (threadedOne as PeopleWorld)._wasmPeopleKernel?.dispose();
 
@@ -140,6 +158,7 @@ async function runParity(grid: GridPreset, steps: number): Promise<void> {
     const workerWorld = makeWorld(grid, substrate, {
       peopleKernel: "wasm",
       peopleWorkers: workerCount,
+      ...config,
     });
     assert.equal((workerWorld as PeopleWorld)._wasmPeopleKernel?.workerCount, workerCount);
     assert.ok(
@@ -150,8 +169,30 @@ async function runParity(grid: GridPreset, steps: number): Promise<void> {
     hashes[workerCount] = hashWorld(workerWorld);
     (workerWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
   }
-  assert.equal(hashes[2], hashes[1], `${grid} 2-worker hash changed`);
-  assert.equal(hashes[8], hashes[1], `${grid} 8-worker hash changed`);
+  assert.equal(hashes[2], hashes[1], `${grid} ${label} 2-worker hash changed`);
+  assert.equal(hashes[8], hashes[1], `${grid} ${label} 8-worker hash changed`);
+  return result;
+}
+
+/**
+ * Three regimes per grid (W5): the SOLVE regime as the world opens by
+ * default (at dev the primed hearths cage a basin inside the horizon, so
+ * the trigger-driven switch is compared too), the AWAKE regime from the
+ * opening (the monthly kernel as before), and a chosen-epoch switch inside
+ * the horizon (the solve steps, the shortened last step, the monthly steps
+ * after it, all compared firing by firing).
+ */
+async function runGrid(grid: GridPreset, steps: number): Promise<Record<string, unknown>[]> {
+  const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
+  const probe = makeWorld(grid, substrate, { peopleKernel: "ts" });
+  const switchYear = HORIZON_OPENING_YEAR
+    + Math.floor(steps / 2) * probe.solveStride / MONTHS_PER_YEAR
+    + 1;
+  return [
+    await runParity(grid, steps, substrate, {}, "solve"),
+    await runParity(grid, steps, substrate, { wake: HORIZON_OPENING_YEAR }, "awake"),
+    await runParity(grid, steps, substrate, { wake: switchYear }, "switch"),
+  ];
 }
 
 function checkWasmDmath(): number {
@@ -171,11 +212,12 @@ async function main(): Promise<void> {
     throw new Error("People kernel parity requires a built WASM module.");
   }
   const dmathGoldens = checkWasmDmath();
-  await runParity("dev", 240);
-  await runParity("target", 24);
+  const dev = await runGrid("dev", 240);
+  const target = await runGrid("target", 24);
   console.log(JSON.stringify({
     parity: "ok",
     grids: { dev: 240, target: 24 },
+    regimes: { dev, target },
     workerCounts: [1, 2, 8],
     wasmDmathGoldens: dmathGoldens,
   }));
