@@ -548,6 +548,30 @@ lawyered.
     after the M3a review. Spec: `spec/handoffs/W5-solve.md`. Branches
     from the merge of the working branch into main.
 
+28. **W6: the base population stays.** (Ratified — owner: "write the
+    spec for that change", after asking why foragers need to move at
+    all.) They barely do, and the one place W5 measured their movement
+    as consequential was an artefact: a forager source saw a farmed
+    cell's MIXTURE capacity as room, so the foragers of every neighbour
+    poured into a new farming cell and were converted there — the flood
+    the flat-field check measured at 58 %. Rulings: (a) foragers see
+    forager room (the land's forager capacity minus everyone there),
+    farmers see farmed room; 26 (d)'s "foragers see the target's
+    capacity as it stands" is revised accordingly. (b) Each group flows
+    on its own weights and conserves itself; the M3a mixed flow with
+    farmers riding at a ratio is retired. (c) The forager mobility is
+    re-grounded by the farmer value's own convention (parent–offspring
+    displacement per generation ÷ 4T) from the forager literature, cited
+    in the ledger and chosen before any run; `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR`
+    (1200, a v1 calibration the ledger has carried as `[REDERIVE]` since
+    M2) is retired. (d) Each group's movement stride derives from its own
+    bound as W5 derives the solve stride, may exceed a year, and a source
+    with no room beside it (room below the numerical floor) is not priced
+    — so the awake kernel loses its monthly pass by physics, not by a
+    switch. (e) The adoption rate may be re-grounded inside the range its
+    row already admits if the front leaves the radiocarbon band once the
+    flood is gone; nothing else moves. Spec: `spec/handoffs/W6-foragers.md`.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,

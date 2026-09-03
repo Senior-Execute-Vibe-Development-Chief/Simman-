@@ -255,3 +255,12 @@ they are not hidden outcome-fitting levers.
 | `SAVE_VERSION_W5` | 6 | saves carry the phase and the wake step |
 | (solve stride) | derived: 84 months at both grids | largest whole-year multiple of 12 months keeping every explicit per-firing fraction inside `PEOPLE_MIGRATION_MAX_SHARE`: the farmer hop share on rows with can-grow cells, farmer growth, adoption, cohort ageing (the binding bound at both grids); printed in provenance like the migration stride, never hand-set per grid. Foragers take the forager share of the same stride, substepped and capped by the kernel's own bound |
 | `config.wake` | auto / never / year | an initial condition (auto = the caged-basin trigger; never = measurement mode; a year = the player's epoch), not a constant, read by no pass |
+
+## W6 — proposed (spec written 2026-09-03, implementation pending)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR` | from the literature, cited by the implementer | km²/yr; forager population mobility by the convention the farmer value uses (mean squared parent–offspring displacement per generation ÷ 4T): forager displacements of tens of km per generation (Wijsman & Cavalli-Sforza 1984; MacDonald & Hewlett 1999; Fix 1999) give a few to some twenty km²/yr — the farmer value's order, not eighty times it. Replaces `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR` (1200), the M2 row whose grounding was a v1 calibration, `[REDERIVE]` since the seed table |
+| `PEOPLE_ADOPTION_RATE_PER_YEAR` | 0.01, re-grounded only inside 0.005–0.02 | if the Balkans → Rhine speed leaves the radiocarbon band once foragers stop flooding farmed cells; the row records the measurement |
+| (movement stride, per group) | derived | foragers on peopled rows at the forager mobility, farmers on can-grow rows at the farmer mobility, each inside `PEOPLE_MIGRATION_MAX_SHARE × PEOPLE_MIGRATION_MAX_SUBSTEPS` per firing; the pass fires at the smaller, a multiple of the growth stride, printed |
+| deleted | — | `PEOPLE_MIGRATION_DIFFUSIVITY_KM2_PER_YEAR`, `PEOPLE_FARMER_MOBILITY_RATIO`; the seed row `MIGRATE_D` resolves here |
