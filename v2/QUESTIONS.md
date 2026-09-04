@@ -2308,9 +2308,10 @@ Review corrections to the M1 build (all validated before merge):
     Per the owner's own fallback for this attempt, hearths are set down for
     the session and the target-grid failures (#46) are the next work.
 
-53. **The target-only arrival failures are one cause: east of the Zagros the
-    viable ground is disconnected islands (2026-09-04, owner: "go" to the
-    target-grid work).** Nine findings fail at the shipped grid while passing
+53. **~~The target-only arrival failures are one cause: east of the Zagros the
+    viable ground is disconnected islands~~ WITHDRAWN — see #54. The corridor
+    is not broken; this was built on point samples that landed in desert
+    beside a passable route (2026-09-04).** Nine findings fail at the shipped grid while passing
     at dev (#46). The arrivals among them have a single mechanism, and it is
     measurable statically — no run needed.
 
@@ -2358,3 +2359,51 @@ Review corrections to the M1 build (all validated before merge):
     above it, not from a channel resolved inside it — and it should be scoped
     as one, because it also owns the Nile row and part of the European
     arrivals.
+
+54. **Correction: nothing is blocked, the front is too SLOW (2026-09-04).**
+    #53 claimed the viable ground east of the Zagros is disconnected islands
+    and that Herat and Helmand are unreachable. That is false, and the error
+    was method: I sampled a dozen points along a route and read the gaps
+    between them as a barrier. A flood fill answers it properly — from the
+    Crescent hearth over land where farming beats foraging (the front's own
+    precondition), 8-connected, at the SHIPPED grid:
+
+    | region | cells in box | viable | reached by land |
+    | --- | --- | --- | --- |
+    | fertile-crescent | 900 | 213 | 204 |
+    | indus | 900 | **143** | **140** |
+    | ganges | 900 | **900** | **900** |
+    | south-india | 816 | 500 | 495 |
+    | nile | 599 | **49** | **10** |
+    | yellow-river | 900 | 900 | 900 |
+
+    The Indus and the Ganges are connected and viable, and the fill runs from
+    the Crescent to 144E. Herat and Helmand are reached. The corridor is open.
+
+    **So the null arrivals are a SPEED failure.** `arrival:indus` and
+    `arrival:ganges` are null at target over ground the front could stand on
+    the whole way. Crescent to Indus is roughly 2,500 km and the measured
+    front runs about 1 km/yr, which would arrive near -5200 from a -7761
+    hearth — but the front's rate scales with capacity, and two thousand km of
+    that line is marginal ground where the rate is a fraction of it. The front
+    does not stop, it crawls. That is P15, the frontier growth rate, already
+    an open ruling.
+
+    **The Nile is the exception and is genuinely constrained.** Only 49 of its
+    599 cells are viable and only 10 reachable by land — a 2 % thread. So
+    `arrival:nile` is a real bottleneck rather than a speed failure, and the
+    Sinai measurements in #53 stand (wheat grows the whole way to Aswan at fit
+    0.060-0.081 against 0.156 at Cairo).
+
+    **And the piedmont-water fix proposed in #53 is refuted before building.**
+    `flowAccum` does not separate passable from impassable ground — Fars is
+    impassable with 1.5, Herat passable with 0.1 — and river magnitude is 0 at
+    every point on the corridor, passing and blocked alike. What separates the
+    sampled points is plain rainfall, every passing one >= 0.041 and every
+    blocked one 0.019-0.021, which is just the difference between steppe and
+    desert, correctly modelled. There is no missing water term here.
+
+    **The method lesson, which is the durable part.** For "can a front cross
+    this?", fill from the source; never sample the route. Point samples cannot
+    distinguish a barrier from a gap beside a corridor, and they read as
+    evidence because each one is individually true.
