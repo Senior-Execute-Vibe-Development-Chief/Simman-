@@ -2536,3 +2536,44 @@ Review corrections to the M1 build (all validated before merge):
     width stays bounded. Only (3) is a real fix, and it is a substrate change
     well beyond this wave. Owner's call, which is what I should have said
     before starting.
+
+58. **There is no cheap version: the stride bound falls smoothly with
+    latitude, so any budget big enough to help costs most of the world
+    (2026-09-04, owner: "cheap for now").** Measured before building, which is
+    the only reason it was not built.
+
+    **First, a correction to #57.** The stride bound is NOT a safety
+    requirement. `migrationShareForArea` already clamps at
+    `PEOPLE_MIGRATION_MAX_SHARE` on its last line, so the scheme is stable at
+    any stride; when the clamp bites those cells merely under-mix. The stride
+    bound is an ACCURACY BUDGET, not a stability one — which is what made an
+    explicit budget look defensible rather than a fudge.
+
+    **And the budget is unaffordable.** The bound is
+    `0.5 * <d^2> / (4 * D)` and `<d^2> = 0.75*(h_ew^2 + h_ns^2)` with
+    `h_ew = h_ns * cos(lat)`, so it falls SMOOTHLY from the equator poleward —
+    there is no cliff at the Arctic to cut against. At the shipped grid, the
+    share of world population whose movement you must give up to reach each
+    stride:
+
+    | stride | population given up | rows | poleward of |
+    | ---: | ---: | ---: | ---: |
+    | 25 months | 0.46 % | 20 | 79.9 deg |
+    | 28 months | 6.09 % | 85 | 66.9 deg |
+    | 30 months | 11.30 % | 115 | 60.9 deg |
+    | 36 months | 28.49 % | 240 | 45.9 deg |
+    | 48 months | **89.39 %** | 624 | 7.5 deg |
+
+    The 24-month bound really is set by three Arctic cells, but excluding them
+    buys 0.5 months. Reaching the 48 months I quoted as "half the cost" would
+    mean under-mixing 89 % of humanity — everything outside the tropics. The
+    smooth falloff is the whole difficulty: any cut deep enough to matter cuts
+    through Europe and north China.
+
+    **So the structural fix is the only one, and it is now well-motivated.**
+    Merge cells east-west near the poles so their physical width stays near
+    the north-south spacing. Then `h_ew ~ h_ns` at every latitude, `<d^2>` is
+    uniform, and the bound is ~48 months EVERYWHERE with no accuracy given up
+    anywhere — it removes the problem rather than trading against it, and it
+    is the same over-resolution that is the prime suspect for the Antarctic
+    can-grow oddity. A substrate change, and the right next wave for the front.
