@@ -2307,3 +2307,54 @@ Review corrections to the M1 build (all validated before merge):
 
     Per the owner's own fallback for this attempt, hearths are set down for
     the session and the target-grid failures (#46) are the next work.
+
+53. **The target-only arrival failures are one cause: east of the Zagros the
+    viable ground is disconnected islands (2026-09-04, owner: "go" to the
+    target-grid work).** Nine findings fail at the shipped grid while passing
+    at dev (#46). The arrivals among them have a single mechanism, and it is
+    measurable statically — no run needed.
+
+    **What the shipped grid does.** Farming NEVER reaches the Indus or the
+    Ganges (`year: null` at target, against -4156 and -3288 at dev), and yet
+    reaches south India at -5479 and Japan at -3603, both far too early and
+    both ahead of the Indus that ought to precede them. Ordering that
+    backwards is the signature of a SEA route arriving while the LAND route is
+    shut: `PEOPLE_COASTAL_HOP_KM` is 100 km, which is under one cell at dev
+    and four and a half at target, so coastal hopping barely exists at the
+    reference grid and works well at the shipped one.
+
+    **Why the land route is shut.** Walking the corridor the Neolithic
+    actually used — Zagros piedmont, northern Iranian foothills, Mehrgarh —
+    and asking at each step whether farming beats foraging (`packageCapacity >
+    foragerCapacity`, the front's own precondition), at target:
+
+    | | Crescent | N Jazira | Zagros | Kermanshah | C Zagros | Tehran | Semnan | Khorasan | Herat | Helmand | Mehrgarh | Indus |
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | beats foraging | YES | YES | YES | YES | YES | YES | **no** | **no** | YES | YES | **no** | **no** |
+
+    The front reaches Tehran and stops. Herat and Helmand are viable and
+    UNREACHABLE — islands behind 350 km of ground where farming loses. The
+    southern line is worse: Fars, Kerman, Baluchistan and Bolan are all "no"
+    at target where Fars and Bolan are "YES" at dev, which is the route dev
+    actually uses to reach the Indus.
+
+    **So it is the 1-D water gap, again.** The corridors that carried farming
+    east are threads: piedmont alluvial fans fed by mountain runoff (the
+    Kopet Dag strip that carried Jeitun), oases, the Bolan fan into Mehrgarh.
+    `waterAccess` reads 0.019-0.020 — the floor — at every blocked step, so
+    the model has no piedmont water at all. At 167 km cells the averaging
+    invents stepping stones and the front crosses; at 22 km the arid ground
+    is honestly arid and it cannot. The third cardinal rule says the fine grid
+    is the truth, so the honest reading is that the model is RIGHT that dry
+    farming cannot cross Iran, and is missing the thread of water that in fact
+    let it. Same family as `arrival:nile` (measured: wheat grows the whole way
+    to Aswan, fit 0.060-0.081 across Sinai against 0.156 at Cairo — passable
+    but so thin the front crawls, 4,500 years) and as the documented
+    ~1.3-2.2x capacity dilution from 1-D coast and river terms.
+
+    **What it is not.** Not the dev-grid straits class, not the hearth law,
+    and not resolution noise: four consecutive blocked steps on both candidate
+    routes. It is a missing term — water the land gives a cell from the relief
+    above it, not from a channel resolved inside it — and it should be scoped
+    as one, because it also owns the Nile row and part of the European
+    arrivals.
