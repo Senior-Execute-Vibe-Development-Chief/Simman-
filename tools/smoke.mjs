@@ -108,7 +108,10 @@ console.log(`[smoke] identity field: per-tile mirror tracks the entities`);
   stepPeopleSim(world, 3000);
   mirrorIdentityField(world);                 // exact comparison at a known point
   const rep = auditIdentityField(world);
-  check(`field covers owned land (${rep.checked} tiles)`, rep.checked > 100, `${rep.checked} checked`);
+  // Soft floor on owned-land sample size — not a polity-size claim. Was >100;
+  // the road both-endpoint short-circuit (mint-ready ocean-flood fix) correctly
+  // slows early coastal exit-from-road sprawl on this toy grid (~98 tiles).
+  check(`field covers owned land (${rep.checked} tiles)`, rep.checked >= 80, `${rep.checked} checked`);
   check("field culture matches entities", rep.mismatches.culture === 0, `${rep.mismatches.culture} mismatched`);
   check("field faith matches entities", rep.mismatches.faith === 0, `${rep.mismatches.faith} mismatched`);
   check("field language matches entities", rep.mismatches.language === 0, `${rep.mismatches.language} mismatched`);

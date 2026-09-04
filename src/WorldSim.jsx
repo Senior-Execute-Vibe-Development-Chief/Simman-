@@ -340,6 +340,7 @@ const canvasRef=useRef(null);
 const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[genBusy,setGenBusy]=useState(false);   // a world is being forged — show it (regens keep the old map up for ~a minute, which read as a dead control)
+const[genesisProg,setGenesisProg]=useState(null); // mint-ready gather progress from the sim worker {phase,step,inventStep}
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 // A sim/worker failure the user must SEE: {where:'step'|'snapshot'|'message'|'worker', step, message}.
 // Before this, a worker error was console-only — a thrown step left the game silently frozen at its
@@ -715,11 +716,17 @@ try{
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
   if(_pendRW)throw new Error('real-wind save — loading on the main thread');
   setSimError(null);   // a fresh worker/world starts with a clean bill
+  setGenesisProg({ phase: "starting", step: 0 });
   const sw=new PeopleSimWorker();
   const sawSnap={current:false};   // has this worker ever delivered a frame? gates the onerror fallback below
   sw.onmessage=(e)=>{
     const d=e.data;
-    if(d.type==='snapshot'){sawSnap.current=true;if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    if(d.type==='snapshot'){sawSnap.current=true;setGenesisProg(null);if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='genesisProgress'){
+      // Worker still inside initPeopleSim's mint-ready gather — ticks won't move
+      // until this finishes; surface it so "play does nothing" isn't a mystery.
+      setGenesisProg(d);
+    }
     else if(d.type==='timelineFrame'){
       // The scrubbed frame rides a RENDER-ONLY override (_scrubClaim) — never
       // the authoritative layer (in fallback mode that array IS the sim's).
@@ -782,7 +789,7 @@ try{
       // Surface it. A STEP error means the worker paused the sim on a mid-step
       // throw — mirror that here so the play button tells the truth; the world
       // is still alive in the worker, so Save/Export can rescue the run.
-      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error'});
+      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error',stack:d.stack||null});
       if(d.where==='step'){playRef.current=false;setPlaying(false);}
     }
   };
@@ -798,7 +805,7 @@ try{
     //    let the user save.
     if(sawSnap.current){
       console.error('[SimWorker] uncaught worker error mid-run:',err.message);
-      setSimError({where:'worker',message:err.message||'uncaught worker error'});
+      setSimError({where:'worker',message:err.message||'uncaught worker error',stack:err.filename?`${err.filename}:${err.lineno}`:null});
       return;
     }
     console.warn('[SimWorker] error before first frame — falling back to main-thread sim:',err.message);
@@ -4591,7 +4598,7 @@ return(
     style={{fontSize:11,whiteSpace:"nowrap"}}>⚑{Math.round(psStats.beltShare*100)}%</span>}
   {/* Quiet-ages chip: the sim is fast-forwarding the pre-nation ages. */}
   {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
-    title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
+    title={fastEpoch?"The ages before the first NATION fly by — Max speed until a realm rises (first cities still mint on camera). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
     style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
@@ -4939,6 +4946,20 @@ return(
   <span className="au-era" style={{fontSize:12,color:"var(--au-ch-gold)"}}>Forging a new world…</span>
 </div>}
 
+{/* Mint-ready genesis: sim worker is blocked gathering to the first city.
+    Play/UI stay live but ticks won't advance until this completes (then a
+    sudden jump to ~20-30k). */}
+{!genBusy&&genesisProg&&genesisProg.phase!=="done"&&<div className="au-chrome au-glass" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
+  zIndex:25,padding:"7px 16px",fontSize:13,display:"flex",gap:9,alignItems:"center",whiteSpace:"nowrap"}}>
+  <span style={{display:"inline-block",width:11,height:11,border:"2px solid var(--au-ch-gold)",borderTopColor:"transparent",
+    borderRadius:"50%",animation:"au-spin 0.9s linear infinite"}}/>
+  <span className="au-era" style={{fontSize:12,color:"var(--au-ch-gold)"}}>
+    {genesisProg.phase==="mint-ready"
+      ?`Gathering to first city… step ${(genesisProg.step||0).toLocaleString()}${genesisProg.inventStep!=null?` (farming @ ${genesisProg.inventStep.toLocaleString()})`:""}`
+      :"Starting civilization…"}
+  </span>
+</div>}
+
 {/* ─── Epochal-event toasts (plan §8) ─── */}
 <ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
 
@@ -4950,17 +4971,24 @@ return(
     still running, a step error means it paused itself. */}
 {simError&&(
   <div className="au-parchment" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
-    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"center",padding:"8px 12px",
-    maxWidth:"min(560px,80%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
-    <span style={{fontSize:16,flexShrink:0}}>⚠</span>
-    <span style={{fontSize:12.5,lineHeight:1.4}}>
+    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"flex-start",padding:"8px 12px",
+    maxWidth:"min(640px,90%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
+    <span style={{fontSize:16,flexShrink:0,lineHeight:1.4}}>⚠</span>
+    <span style={{fontSize:12.5,lineHeight:1.4,minWidth:0}}>
       {simError.where==='step'
         ?`The simulation hit an internal error at step ${simError.step??'?'} and paused itself. The world is intact — use Save to keep it, then report seed ${world&&world.seed!=null?world.seed:seed}.`
         :simError.where==='snapshot'
         ?`The map view failed to refresh at step ${simError.step??'?'} — the simulation itself is still running. Save works; the view may recover on its own.`
         :`The simulation worker reported an error${simError.step!=null?` at step ${simError.step}`:''}. The world is intact — use Save to keep it.`}
-      <span style={{opacity:0.75}}> ({simError.message})</span>
+      <div style={{opacity:0.85,marginTop:4,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:11,wordBreak:"break-word"}}>
+        {simError.message}
+      </div>
     </span>
+    <button onClick={()=>{
+      const text=`where=${simError.where} step=${simError.step} seed=${world&&world.seed!=null?world.seed:seed}\n${simError.message}${simError.stack?"\n"+simError.stack:""}`;
+      try{navigator.clipboard.writeText(text);}catch{/* ignore */}
+    }} title="Copy error details"
+      style={{background:"transparent",border:"1px solid rgba(180,60,40,0.45)",cursor:"pointer",color:"var(--au-ink)",fontSize:11,padding:"2px 6px",flexShrink:0,borderRadius:3}}>Copy</button>
     <button onClick={()=>setSimError(null)} title="Dismiss"
       style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:16,padding:"0 2px",flexShrink:0}}>×</button>
   </div>
