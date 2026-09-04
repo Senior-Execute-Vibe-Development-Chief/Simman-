@@ -2222,3 +2222,47 @@ Review corrections to the M1 build (all validated before merge):
     440 tickets. That is the contingency item on the owner's open list, and it
     is now load-bearing rather than optional — the axis separation cannot ship
     without it. Owner's ruling.
+
+51. **The separated score works in the live sim; the draw's SCALE is not
+    determined by anything in the ledger (2026-09-04, owner: "go" to building
+    both).** Built and measured at both grids. Reverted, with the bracketing
+    recorded — it is the useful part.
+
+    **The score half is confirmed in the sim, not just in the harness.** With
+    `gain / alternatives` in place of `stand x gain`, centres that had NEVER
+    lit at either grid lit: Ethiopia, Kuk, north China, the Amazon margin and
+    the northwest Neotropics. That is the separation working end to end, and
+    it is the first thing all session to move those rows at all.
+
+    **The draw's scale is the unsolved part, and it brackets hard.**
+
+    - Per CELL (`chance = rate x dt / lag`): 73 hearths at dev, 113 at target.
+      Every centre ignites within a century or two of the horizon opening —
+      north China -9189, Kuk -9448, the Amazon -9623 against an opening near
+      -9700. With N candidate cells the first of them fires after lag/N, and N
+      is in the hundreds. Findings 27 -> 47.
+    - Per RANGE, split by area: 9 hearths at dev, 8 at target; north China,
+      Kuk, the Amazon, the Balsas, the Yangtze and the northwest Neotropics
+      never light at all. Findings 27 -> 37.
+    - Per RANGE, split by site x area (so good ground carries the
+      probability rather than the range's mean): essentially unchanged, 9 and
+      8 hearths. Findings 27 -> 38.
+
+    Two orders of magnitude between the two formulations, and neither has a
+    free parameter — the first divides by nothing, the second by the whole
+    range. The answer is between them, and the thing that sets it is the
+    number of INDEPENDENT ATTEMPTS a range carries, which is neither 1 nor the
+    cell count. Physically it is the number of human groups working the stand,
+    people over band size — but the archaeobotanical lag is the observed
+    DURATION OF A PROCESS in a region, not one band's expected wait, so it
+    cannot calibrate a per-band hazard. Nothing in the ledger fixes the scale.
+
+    **Which is where it has to stop.** Choosing the scale by trying values
+    until the hearth count looks right is fitting the outcome, and the count
+    it would be fitted to (about ten centres on Earth) is exactly the
+    published answer the simulation is supposed to predict. That is the second
+    cardinal rule, so the constant needs grounding from outside the gate —
+    a band size and a per-band rate, or a different formulation of the wait —
+    and that is the owner's ruling. The score change is ready to land the
+    moment the draw has a scale; it cannot land without one, because on its
+    own it floods (QUESTIONS #50).
