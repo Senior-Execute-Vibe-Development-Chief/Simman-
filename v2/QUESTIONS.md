@@ -2266,3 +2266,44 @@ Review corrections to the M1 build (all validated before merge):
     and that is the owner's ruling. The score change is ready to land the
     moment the draw has a scale; it cannot land without one, because on its
     own it floods (QUESTIONS #50).
+
+52. **The draw's scale brackets to between one cell and one basin, and the
+    LAG is probably the reason it will not calibrate (2026-09-04, owner: "go"
+    to trying the reformulation once).** Tried, failed, reverted. Fourth
+    attempt at the same constant; recording the bracket and stopping.
+
+    The basin is the model's own unit of one peopled catchment, defined in km
+    and therefore grid-invariant, so splitting the draw by each cell's share
+    of a basin looked like the missing middle with no free parameter. It is
+    the middle, and it is still too slow: 13 hearths at dev and 7 at target,
+    the Fertile Crescent dark at the shipped grid, findings 27 -> 48.
+
+    The four formulations, all constant-free, in order of the hazard they give:
+
+    | split by | hearths dev/target | findings |
+    | --- | --- | --- |
+    | cell | 73 / 113 | 47 |
+    | basin (1000 km square) | 13 / 7 | 48 |
+    | range, by area | 9 / 8 | 37 |
+    | range, by site x area | 9 / 8 | 38 |
+
+    Per cell is far too fast and per basin already too slow, so the answer
+    sits between them — between one catchment and one grid cell, which is not
+    a unit anything in the model means.
+
+    **The likely reason it will not calibrate, which is worth more than the
+    bracket.** `domLagY` is the archaeobotanical duration from CULTIVATION to
+    a farmable staple. The model spends it from the moment CONDITIONS ARE
+    RIGHT to a farmable staple. Those are not the same interval and the first
+    is the tail of the second: people cultivated wild stands for a long time
+    before any of it took, and the published lag measures only the part after
+    it took. Using the tail as the whole is what forces the draw's scale to
+    absorb the difference, and no split of a wrongly-measured wait will
+    calibrate. Fixing it needs a second duration — how long from conditions
+    to the first persistent cultivation — which the catalogue does not carry
+    and which is the ruling. Until then the score change (#50, #51) is
+    complete and correct and cannot ship, because its tightness depends on
+    this draw.
+
+    Per the owner's own fallback for this attempt, hearths are set down for
+    the session and the target-grid failures (#46) are the next work.
