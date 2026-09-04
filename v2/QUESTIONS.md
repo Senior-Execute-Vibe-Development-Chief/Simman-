@@ -2492,3 +2492,47 @@ Review corrections to the M1 build (all validated before merge):
     the old area path for any caller that omitted it — which the unit test
     promptly did, asserting the buggy value and passing. A default that
     preserves a bug is worse than a compile error.
+
+57. **The solve stride is set by three Arctic cells holding 25 people, and I
+    could not find a threshold-free way to ignore them (2026-09-04, owner:
+    "do it" — the polar-cell stride bound).** Measured, not fixed. I told the
+    owner this was contained and needed no ruling from them; that was wrong,
+    and this entry is the correction.
+
+    **What binds.** `resolveSolveStride` takes the MINIMUM bound over every
+    peopled or can-grow row. At the shipped grid the tightest peopled row is
+    row 31, 83.7 N — the tip of Ellesmere — with **three land cells and 25
+    people out of 4.37 million, 0.0006 % of the world.** It sets 24.5 months.
+    The tightest can-grow row is row 866, 83.3 S: 1,800 land cells of
+    Antarctica with **zero people**, setting 24.6 months. The whole
+    simulation's step is decided by ground nobody lives on.
+
+    **Why the obvious escapes do not work.**
+
+    - *Substep the tight rows.* Substepping the PASS at dt/N costs exactly
+      what a shorter stride costs, and rows are coupled north-south so a row
+      cannot be substepped alone. It collapses to the thing it was meant to
+      avoid.
+    - *Bound only where crops grow.* The tightest can-grow row is Antarctica,
+      so this changes nothing — and it surfaces a separate defect worth its
+      own look: some package reports `canGrow` across Antarctic rows.
+      (Sampled mid-row, no package grows; the true cell is somewhere on that
+      latitude, and the substrate's temperature field there reads 0.02-0.40
+      in its normalised units rather than anything like polar cold.)
+    - *Use the representation floor.* `PEOPLE_CAPACITY_FLOOR_PER_KM2` is
+      0.001/km2 and row 31 carries 0.156/km2 — a hundred and fifty times the
+      floor. The floor does not exclude it.
+    - *Floor the mean square hop at the north-south spacing.* It already is
+      dominated by it: `<d^2> = 0.75*(h_ew^2 + h_ns^2)` only falls from 745
+      km2 at the equator to 373 at the pole, a factor of two, which is
+      exactly the 48 -> 24 month gap. There is no headroom to reclaim.
+
+    **So the honest position.** The bound is real: the explicit scheme genuinely
+    is inaccurate on those rows at a longer stride. Uniform accuracy costs
+    3.5x on the shipped grid, and the payoff — the front's remaining gap from
+    0.670 to its 0.936 design — is unmeasured. The options are (1) pay it,
+    (2) leave the front slow, or (3) fix the grid's polar over-resolution
+    properly, by merging cells east-west near the poles so their physical
+    width stays bounded. Only (3) is a real fix, and it is a substrate change
+    well beyond this wave. Owner's call, which is what I should have said
+    before starting.
