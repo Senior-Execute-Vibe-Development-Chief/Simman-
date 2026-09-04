@@ -3665,3 +3665,70 @@ does; it prevents the trade instead.
    the above measures clean.
 5. **Zipf −1.23** sits marginally past the steep edge of the −0.8..−1.2 envelope.
    Watch, not act.
+
+---
+
+## 51. IS THE BORDER VETO REALISTIC? — no, but the honest answer is a COST, not a free pass
+
+> Owner: *"is this realistic? the border thing?"*
+
+### 51.1 The case that borders do NOT stop grain
+
+Every great pre-industrial city ate across a border:
+
+- **Rome** bought Ptolemaic Egyptian grain long before it annexed Egypt.
+- **Athens** ran on Black Sea wheat from the Bosporan Kingdom — a foreign state — and
+  built its entire strategic posture around protecting that route.
+- **Amsterdam's** *moedernegotie*, the "mother trade", was Baltic rye out of
+  Poland-Lithuania.
+- The **Hansa** moved Baltic grain across a dozen polities as its core business.
+
+Cross-border grain purchase is not the exception in the record. It is the normal way
+a large city is fed.
+
+### 51.2 The case that borders DO matter, stated fairly
+
+Grain was the **most politically controlled commodity in history**, and for good
+reason:
+
+- **Export bans in famine years** were routine and severe — cities and states closed
+  the gates on grain first.
+- **Tolls and customs** made every border crossing dearer.
+- **Requisition regimes** — Rome's annona, China's ever-normal granaries, the Corn
+  Laws — existed precisely to keep grain home.
+
+So a border is a real obstacle. It raises the price and adds political risk.
+
+### 51.3 The verdict, and the code already agrees with it
+
+**A border is a cost, not a veto.** The current `inCountry` gate is an absolute
+prohibition, and no period in the record supports that.
+
+The strongest evidence is internal: **this codebase already models it the right way,
+one layer up.** `roads.js`:
+
+> *"Buyer pays the toll on top of the trade price; seller's revenue is unchanged …
+> Food trade has a LOWER rate: famine-era food tolls were politically charged, and a
+> 5% toll on grain to a starving city…"*
+
+So the grain **trade** crosses borders and pays a toll, with a rate deliberately
+tuned down because food tolls were politically fraught. The land **assignment**
+forbids the crossing outright. Two layers of the same simulation, modelling the same
+physical act, and they disagree — one has read the history and the other has not.
+
+### 51.4 What that means for the fix
+
+Not "delete the clip". `CATCHMENT_CLIP` exists so the economic catchment cannot
+**create** a political border — a real concern, and a different one. The resolution
+is the separation §50.3 named:
+
+- **the tile's political owner** does not move when a foreign market buys its
+  harvest — buying grain is trade, not conquest;
+- **the harvest** flows to the best farm-gate net, **with the crossing priced** —
+  reusing the toll the trade layer already levies rather than inventing a new term.
+
+That is one mechanism honouring both facts: Athens really did eat Bosporan wheat, and
+it really did pay for the privilege.
+
+**Not built.** This is the next build and it is the owner's call whether to take it
+now.
