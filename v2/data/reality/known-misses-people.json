@@ -54,15 +54,15 @@
     },
     {
       "id": "population:-3000:solve:dev",
-      "reason": "Measured 493M vs band max 100M on the dev solve arm (765M under W7): the same missing-mortality physics as population:-5000."
+      "reason": "Measured 357M vs band max 100M on the dev solve arm (765M under W7): the same missing-mortality physics as population:-5000. Re-measured 2026-09-04 after the WCVP native-range screen: 357M, down from 493M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
     },
     {
       "id": "population:-1000:solve:dev",
-      "reason": "Measured 999M vs band max 200M on the dev solve arm (1.64B under W7): the same missing-mortality physics as population:-5000."
+      "reason": "Measured 744M vs band max 200M on the dev solve arm (1.64B under W7): the same missing-mortality physics as population:-5000. Re-measured 2026-09-04 after the WCVP native-range screen: 744M, down from 999M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
     },
     {
       "id": "population:1:solve:dev",
-      "reason": "Measured 1.11B vs band max 400M on the dev solve arm (1.94B under W7): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000."
+      "reason": "Measured 868M vs band max 400M on the dev solve arm (1.94B under W7): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000. Re-measured 2026-09-04 after the WCVP native-range screen: 868M, down from 1.11B — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
     },
     {
       "id": "arrival:balkans:solve:dev",
@@ -90,15 +90,15 @@
     },
     {
       "id": "population:-3000:solve:target",
-      "reason": "Measured 397M vs band max 100M on the target solve arm (W7; −5000 is inside its band at 53.0M): the same missing-mortality physics as population:-5000:dev. M3b owns this miss."
+      "reason": "Measured 125M vs band max 100M on the target solve arm (W7; −5000 is inside its band at 53.0M): the same missing-mortality physics as population:-5000:dev. M3b owns this miss. Re-measured 2026-09-04 after the WCVP native-range screen: 125M, down from 397M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
     },
     {
       "id": "population:-1000:solve:target",
-      "reason": "Measured 937M vs band max 200M on the target solve arm: the same missing-mortality physics as population:-5000:dev."
+      "reason": "Measured 346M vs band max 200M on the target solve arm: the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-04 after the WCVP native-range screen: 346M, down from 937M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
     },
     {
       "id": "population:1:solve:target",
-      "reason": "Measured 1.17B vs band max 400M on the target solve arm: the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000:dev."
+      "reason": "Measured 463M vs band max 400M on the target solve arm: the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-04 after the WCVP native-range screen: 463M, down from 1.17B — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
     },
     {
       "id": "arrival:central-europe:solve:target",
