@@ -1844,3 +1844,66 @@ Review corrections to the M1 build (all validated before merge):
     warmth terms hand the Nile to sorghum and Mesoamerica to the eastern
     seeds. All recorded in the manifest with their causes; nothing dialed.
 
+44. **The stray hearths are a SPREAD problem, not a RANK problem
+    (2026-09-04, owner: "so what", then "yes" to landing the dietary-share
+    gate).** The gate's five `hearth-outside` rows were one undifferentiated
+    list. Measuring, per package, where the cited centre of domestication
+    ranks among every cell of that crop's derived wild range — scored by the
+    W10 site quality, `stand x gain` normalised to the crop's best ground —
+    splits them in two.
+
+    **The ranking.** Wheat, maize, sorghum and eastern-seeds already rank
+    their cited centre #1. Millet ranks north China #3 of 483 (0.889 of a
+    Kazakh leader) and manioc ranks the Amazon margin #2 of 431 (0.993) —
+    near-ties. Rice ranks the Yangtze #89 of 114 (0.001), enset ranks
+    Ethiopia #15 of 88 (0.407), taro ranks Kuk #9 of 76 (0.341) — genuinely
+    mis-scored, and all three the same way: the score prefers the hot wet
+    lowland end of the range (Bengal, the Congo, coastal Queensland) over the
+    seasonal upland end that actually domesticated.
+
+    **The attempt.** Replace the absolute stand with the DIETARY SHARE,
+    `stand / foragerCapacity` — a true share in [0,1] because
+    `applyWildStands` sums the cell's richest stand into its forager
+    capacity. The argument is mechanism, not fit: the domestication syndrome
+    fixes under cumulative selection; people select on a plant only by
+    harvesting it hard; they harvest hard only what they live on. So a big
+    stand on ground that also teems with game and fish selects nobody. The
+    payoff term stays ABSOLUTE, so it does not repeat the relative-gain
+    failure that once put hearths on the Siberian steppe.
+
+    It improved every ranking it was meant to: manioc's Amazon margin to #1,
+    enset 0.407 -> 0.691, taro 0.341 -> 0.693, no rank regression on the four
+    already correct. **And it made the gate worse — strays 16 -> 27,
+    unacknowledged 9 -> 10, a new maize stray.** Dividing by forager capacity
+    COMPRESSES the score range, because stand and forager capacity are
+    positively correlated (rich ground has both): cells at >=0.80 of best
+    went 5 -> 12 for manioc, 2 -> 4 for taro, 2 -> 3 for maize, and rice went
+    from one stray to five. Reverted; the measurement is the keeper.
+
+    **What that establishes.** `hearth-outside` tests the SPREAD of the site
+    score, not its rank — it fails on any ignition outside a cited centre, and
+    the leader being right does nothing about the runners-up. Under the
+    current law a cell at 0.99 of best accrues at 0.99 of the rate and ignites
+    about twenty years later, while pre-emption (`min(1, forager/living)`)
+    cannot bite until farming has physically ARRIVED, which for a runner-up a
+    thousand km away is far too late. No re-ranking closes these rows. What is
+    missing is a reason marginal ground never completes the syndrome at all.
+
+    **The suspect.** The normalisation itself. Dividing by the package's own
+    maximum guarantees every crop has a cell at exactly 1.0, and therefore
+    ignites somewhere at a year per year, however poor its best ground is
+    globally — the law is structurally unable to say "not here". That
+    normalisation is also what makes the catalogue lag mean what
+    archaeobotany measured (the duration at the crop's BEST site), so it
+    cannot simply be dropped: replacing it needs an absolute lag scale, and
+    the grounding for one is not in the ledger. Owner's call, with P10 and
+    contingency.
+
+    **Bookkeeping.** Two acknowledgements in `known-misses-people.json` had
+    gone stale — `population:-5000:solve:dev` (51.0M, inside its band) and
+    `arrival:sahel:solve:dev` — and are removed. The gate now reports 9
+    unacknowledged and 0 stale. The rest of the chain is green at this commit:
+    lint, build, smoke, unit, kernel parity (both grids, all three regimes,
+    byte-exact), the bench ratchet, the oracle, the Chromium browser smoke and
+    the travel gate. W9-W11 remain undocumented in the ledger and in a handoff
+    spec.

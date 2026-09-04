@@ -53,10 +53,6 @@
       "reason": "Measured -5960 vs earliest -1200 (-2000 with the grace) on dev. An independent ignition inside a range box rather than a reached region: the rice range box reaches Japan (review ruling g)."
     },
     {
-      "id": "population:-5000:solve:dev",
-      "reason": "Measured 67.0M vs band max 60M on the dev solve arm (78.8M under W7, 247M before): the same missing-mortality physics as population:-5000:dev — without famine variance, harvest failure, plagues or exhausted soil, growth runs to farmed capacity. M3b owns this miss; no rate is dialed."
-    },
-    {
       "id": "population:-3000:solve:dev",
       "reason": "Measured 493M vs band max 100M on the dev solve arm (765M under W7): the same missing-mortality physics as population:-5000."
     },
@@ -83,10 +79,6 @@
     {
       "id": "arrival:cardial-coast:solve:dev",
       "reason": "Measured −3918 vs latest −5500 (−4700 with the grace) on the dev solve arm: reached overland through the Balkans, because at 167 km cells no Mediterranean crossing is within the 100 km boat hop. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
-    },
-    {
-      "id": "arrival:sahel:solve:dev",
-      "reason": "Measured −5703 vs earliest −3500 (−4300 with the grace) on the dev solve arm: sorghum hearths across the Sahelian belt from −5885 (see hearth:sahel-sudan:solve:dev; P10)."
     },
     {
       "id": "climate-barrier:solve:dev",
