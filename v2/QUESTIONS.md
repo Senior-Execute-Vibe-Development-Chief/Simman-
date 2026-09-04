@@ -1969,3 +1969,61 @@ Review corrections to the M1 build (all validated before merge):
     by barely existing. Co-occurrence is right for a founder set gathered
     together (emmer with einkorn); yam and sugarcane are independent crops of
     one complex, and requiring both is a claim the archaeology does not make.
+
+46. **The shipped grid is far less validated than the reference grid, and the
+    New Guinea fix does not survive it (2026-09-04, owner: "keep iterating, do
+    the full grid size sometimes for real diagnosing").** The people gate's
+    target solve arm runs only under `GATE_PEOPLE_SOLVE_TARGET=1`, so nobody
+    had looked at it since W9. Run: **20 unacknowledged findings at target
+    against 7 at dev.** Nine of them fail at target while passing at dev —
+    `arrival:fertile-crescent`, `arrival:indus`, `hearth:kuk`,
+    `hearth:northwest-neotropics`, `hearth-outside:new-guinea-roots`,
+    `staple:south-china`, `staple:lower-yangtze`, and both European arrivals.
+    The third cardinal rule, measured: the reference grid was carrying an
+    optimistic picture.
+
+    **Kuk is one of them.** #45 reported Kuk lighting at -5500 in its window;
+    that is the DEV arm. At the shipped grid it does not light at all, and the
+    package's best ground is the Bismarck Archipelago — New Ireland at 1.000,
+    Kuk seventh at 0.704. The cause is resolution, and it is measurable:
+    forager capacity at Kuk, the Papuan lowland and New Ireland is 0.089 /
+    0.101 / 0.099 at dev, three numbers within 14 % of each other, against
+    0.030 / 0.053 / 0.272 at target, a 9x spread. At 167 km cells the model
+    cannot tell a highland valley from a small island; at 22 km it can, and
+    the island wins on shore access.
+
+    **The widening that was tried and rejected.** Greater yam's screened set
+    is 26 records in 11 cells, because the catalogue restricts it to Oceania —
+    and the continent field is a crude proxy for the native-range screen, so
+    where the screen applies the proxy is redundant and starves the fit. Yam
+    is native from Assam to New Guinea, and Asia holds 1,791 of its records to
+    Oceania's 289. Widening it to both continents gives 461 screened records
+    in 139 cells and DOES fix the shipped grid: Kuk first at 1.000, lighting
+    at -5549 in its window, `hearth:kuk:solve:target` clears.
+
+    It was rejected anyway, because of what else it does: at target the
+    package then takes six strays across Vietnam, Java, Timor, Cambodia,
+    Thailand and the Philippines, and becomes the DOMINANT STAPLE of south
+    China and the lower Yangtze — 809 and 815 farmed cells, displacing rice.
+    Combined findings went 27 -> 30. Buying one hearth by turning a New Guinea
+    root crop into a pan-Asian one that beats rice in China is a worse error
+    than a missing hearth. Reverted; the Oceania restriction stands as an
+    acknowledged crutch rather than a correct screen.
+
+    **The pattern across three attempts, which is the real finding.** The
+    dietary-share gate (#44) fixed the site RANK and lost on SPREAD. Yam at
+    Oceania fixed DEV and lost at TARGET. Yam at Asia+Oceania fixed TARGET and
+    lost at DEV, and lost China with it. Every change of the data or of the
+    score has RELOCATED the failures rather than reduced them, and that is
+    what a missing absolute bar looks like: normalising site quality to each
+    package's own maximum guarantees every crop ignites somewhere at a year
+    per year, and near-best ground ignites soon after, so whichever ground
+    happens to score highest is where the hearth goes. Until the law can say
+    "not here", moving the scores only moves the hearths. That is the
+    normalisation ruling from #44, now with three independent measurements
+    behind it.
+
+    **Also measured.** The world never cages at the shipped grid — `cagedYear`
+    is null across the whole horizon at target, against -1972 at dev — so the
+    W5 wake trigger review is not a dev curiosity: at the grid that ships, the
+    auto wake would never fire at all.
