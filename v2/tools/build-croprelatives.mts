@@ -54,6 +54,16 @@ const RELATIVES: readonly PackageRelatives[] = [
   // heavily Russian) put millet's envelope in Siberia and lit hearths there,
   // and Hordeum spontaneum (9,503, Morocco to Tibet) put wheat's in north
   // China. The founder crop's own progenitor is the tightest honest choice.
+  //
+  // The second contamination is the crop's OWN SPREAD (W12). A modern
+  // occurrence map of a cultivated plant, or of a weed of cultivation, is a
+  // map of where farming took it — using it to decide where farming BEGAN is
+  // circular. GBIF's occurrence `establishmentMeans` cannot screen this out
+  // (populated on 379 of 19,550 taro records), so the screen is WCVP's native
+  // ranges, read per taxon: measured, taro is introduced to New Guinea, while
+  // green foxtail really is native across temperate Eurasia and wild enset
+  // really is native from Ethiopia to South Africa — those two ranges are
+  // honest and their hearths are the model's problem, not the data's.
   { packageId: "wheat", note: "wild emmer and wild einkorn, the founders (Zohary, Hopf & Weiss 2012); wild barley is excluded, its range spanning Morocco to Tibet", taxa: [
     { name: "Triticum dicoccoides", continents: ["ASIA"] },
     { name: "Triticum boeoticum", continents: ["ASIA"] },
@@ -86,8 +96,26 @@ const RELATIVES: readonly PackageRelatives[] = [
   { packageId: "highland-roots", note: "enset (Harlan 1969); wild teff is excluded, being pan-African", taxa: [
     { name: "Ensete ventricosum", continents: ["AFRICA"] },
   ] },
-  { packageId: "new-guinea-roots", note: "wild taro on its own landmass (Denham et al. 2003)", taxa: [
-    { name: "Colocasia esculenta", continents: ["OCEANIA"] },
+  // Kuk's complex is yam, banana, taro and sugarcane (Denham et al. 2003).
+  // The package was taro alone, and that was measurably the wrong taxon: WCVP
+  // lists Colocasia esculenta as native to mainland South and Southeast Asia
+  // and INTRODUCED to 109 regions, New Guinea among them — so its Oceanian
+  // occurrences are the places people CARRIED it, and the sim lit hearths on
+  // them (Queensland, Fiji, New Caledonia, the Bismarcks) while Kuk itself,
+  // where the plant is not native, never lit.
+  //
+  // Greater yam ALONE, though wild sugarcane (Saccharum robustum) is native
+  // to New Guinea and nowhere else and was the tighter signal. Adding it
+  // made the package dead: stand richness is the members' CO-OCCURRENCE, a
+  // product zeroed wherever any member is out of range, and sugarcane's 27
+  // Oceanian records derive a range so small that the intersection was empty
+  // — measured, the nine Kuk-area cells came out canGrow=1 with climate fit
+  // 0.50-0.92 and richness EXACTLY 0. That rule is right for a founder set
+  // that must be gathered together (emmer with einkorn); yam and sugarcane
+  // are independent crops of one complex, so requiring both is a claim the
+  // archaeology does not make.
+  { packageId: "new-guinea-roots", note: "greater yam, native to New Guinea (Denham et al. 2003; WCVP native ranges); wild taro is excluded, introduced to New Guinea and native to mainland Asia", taxa: [
+    { name: "Dioscorea alata", continents: ["OCEANIA"] },
   ] },
   { packageId: "eastern-seeds", note: "marsh elder, chenopod and Ozark gourd, the Eastern Agricultural Complex's own founders (Smith 2006); wild sunflower is excluded, spanning the continent", taxa: [
     { name: "Iva annua", continents: ["NORTH_AMERICA"] },
@@ -195,6 +223,138 @@ async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, num
   return { points, total };
 }
 
+/**
+ * The NATIVE-RANGE SCREEN (W12). A modern occurrence map of a cultivated
+ * plant, or of a weed of cultivation, is a map of where farming CARRIED it;
+ * using it to decide where farming BEGAN is circular. Measured: wild taro is
+ * native to mainland South and Southeast Asia and introduced to 109 regions,
+ * New Guinea among them, so the sim lit taro hearths in Queensland, Fiji and
+ * New Caledonia — the places people took it — while Kuk never lit.
+ *
+ * GBIF's per-record `establishmentMeans` cannot screen this: it is populated
+ * on 379 of taro's 19,550 records. The authority that can is the World
+ * Checklist of Vascular Plants, which states native versus introduced range
+ * per taxon over the WGSRPD level-3 regions, and is published as a GBIF
+ * checklist dataset. So: take WCVP's native regions for the taxon, take
+ * their polygons from the WGSRPD, and drop every occurrence outside them.
+ *
+ * Where WCVP carries no distribution for a taxon the screen does not apply
+ * and the read is unchanged — the tool says so per taxon rather than
+ * silently passing everything.
+ */
+const WCVP_DATASET = "f382f0ce-323a-4091-bb9f-add557f3a9a2";
+const WGSRPD_LEVEL3 = "https://raw.githubusercontent.com/tdwg/wgsrpd/master/geojson/level3.geojson";
+
+interface Ring { readonly points: readonly (readonly [number, number])[]; }
+interface Poly { readonly outer: Ring; readonly holes: readonly Ring[]; readonly west: number; readonly east: number; readonly south: number; readonly north: number; }
+
+let level3: Map<string, Poly[]> | undefined;
+async function regionPolygons(): Promise<Map<string, Poly[]>> {
+  if (level3) return level3;
+  let geo = cacheGet<any>(WGSRPD_LEVEL3);
+  if (!geo) { geo = await fetchJson(WGSRPD_LEVEL3); cacheSet(WGSRPD_LEVEL3, geo); }
+  const map = new Map<string, Poly[]>();
+  const ringOf = (coords: any[]): Ring => ({ points: coords.map((c: any[]) => [Number(c[0]), Number(c[1])] as const) });
+  const polyOf = (rings: any[]): Poly => {
+    const outer = ringOf(rings[0] ?? []);
+    let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
+    for (const [lon, lat] of outer.points) {
+      if (lon < west) west = lon; if (lon > east) east = lon;
+      if (lat < south) south = lat; if (lat > north) north = lat;
+    }
+    return { outer, holes: rings.slice(1).map(ringOf), west, east, south, north };
+  };
+  for (const feature of geo.features ?? []) {
+    const name = feature?.properties?.LEVEL3_NAM;
+    if (typeof name !== "string") continue;
+    const g = feature.geometry;
+    const polys: Poly[] = g?.type === "MultiPolygon"
+      ? (g.coordinates ?? []).map((rings: any[]) => polyOf(rings))
+      : g?.type === "Polygon" ? [polyOf(g.coordinates ?? [])] : [];
+    map.set(name, [...(map.get(name) ?? []), ...polys]);
+  }
+  level3 = map;
+  return map;
+}
+
+/** Ray casting, outer ring minus holes. */
+function inRing(ring: Ring, lon: number, lat: number): boolean {
+  let inside = false;
+  const pts = ring.points;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i]!, b = pts[j]!;
+    if ((a[1] > lat) !== (b[1] > lat)
+      && lon < ((b[0] - a[0]) * (lat - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+function inPolys(polys: readonly Poly[], lon: number, lat: number): boolean {
+  for (const poly of polys) {
+    if (lon < poly.west || lon > poly.east || lat < poly.south || lat > poly.north) continue;
+    if (!inRing(poly.outer, lon, lat)) continue;
+    if (poly.holes.some((hole) => inRing(hole, lon, lat))) continue;
+    return true;
+  }
+  return false;
+}
+
+/** WCVP's native regions for a taxon, or undefined where it carries none. */
+async function nativeRegionsOf(name: string): Promise<string[] | undefined> {
+  const key = `wcvp-native:${name}`;
+  const cached = cacheGet<{ regions: string[] | null }>(key);
+  if (cached) return cached.regions ?? undefined;
+  // WCVP writes canonical names without the rank marker, so the catalogue's
+  // "Zea mays subsp. parviglumis" is its "Zea mays parviglumis".
+  const canonical = name.replace(/\b(subsp\.|var\.|f\.|ssp\.)\s*/g, "").replace(/\s+/g, " ").trim();
+  const search = await fetchJson(
+    `https://api.gbif.org/v1/species/search?datasetKey=${WCVP_DATASET}&q=${encodeURIComponent(name)}&limit=20`);
+  const same = (a: unknown): boolean =>
+    typeof a === "string" && a.toLowerCase() === canonical.toLowerCase();
+  let hit = (search.results ?? []).find((r: any) => same(r?.canonicalName));
+  // Distributions hang off the ACCEPTED name, so a synonym carries none.
+  // Follow it — but never UP a rank: a wild subspecies whose accepted name is
+  // the crop species would import the crop's range, which is the very
+  // circularity this screen exists to remove.
+  if (hit && hit.taxonomicStatus === "SYNONYM" && hit.acceptedKey) {
+    const accepted = await fetchJson(`https://api.gbif.org/v1/species/${hit.acceptedKey}`);
+    const acceptedCanonical = typeof accepted?.canonicalName === "string" ? accepted.canonicalName : "";
+    if (acceptedCanonical.split(/\s+/).length >= canonical.split(/\s+/).length) hit = accepted;
+  }
+  let regions: string[] | null = null;
+  if (hit?.key) {
+    const dist = await fetchJson(`https://api.gbif.org/v1/species/${hit.key}/distributions?limit=400`);
+    const native = new Set<string>();
+    let sawAny = false;
+    for (const row of dist.results ?? []) {
+      if (typeof row?.locality !== "string") continue;
+      sawAny = true;
+      // WCVP marks introduced explicitly and leaves native unmarked.
+      if (row.establishmentMeans === null || row.establishmentMeans === undefined) native.add(row.locality);
+    }
+    if (sawAny && native.size > 0) regions = [...native];
+  }
+  cacheSet(key, { regions });
+  return regions ?? undefined;
+}
+
+/** Drop occurrences outside the taxon's native regions; returns all points where WCVP is silent. */
+async function screenToNative(taxon: Taxon, points: Array<[number, number, string]>): Promise<{ kept: Array<[number, number, string]>; note: string }> {
+  const regions = await nativeRegionsOf(taxon.name);
+  if (!regions) return { kept: points, note: "no WCVP native range; unscreened" };
+  const all = await regionPolygons();
+  const polys: Poly[] = [];
+  const missing: string[] = [];
+  for (const region of regions) {
+    const found = all.get(region);
+    if (found && found.length > 0) polys.push(...found); else missing.push(region);
+  }
+  if (polys.length === 0) return { kept: points, note: `WCVP regions matched no WGSRPD polygon; unscreened` };
+  const kept = points.filter(([lon, lat]) => inPolys(polys, lon, lat));
+  const note = `native to ${regions.length} region(s), ${kept.length}/${points.length} records inside`
+    + (missing.length > 0 ? `; ${missing.length} region name(s) unmatched` : "");
+  return { kept, note };
+}
+
 const packages: unknown[] = [];
 for (const entry of RELATIVES) {
   const taxa: unknown[] = [];
@@ -205,7 +365,10 @@ for (const entry of RELATIVES) {
       read = await occurrencesOf(taxon);
       cacheSet(readKey, read);
     }
-    const { points, total } = read;
+    const screened = await screenToNative(taxon, read.points);
+    const points = screened.kept;
+    const total = read.total;
+    console.log(`  ${taxon.name}: ${screened.note}`);
     // Cells are kept PER TAXON (W10). A package is a founder SET and it is
     // rich where its members CO-OCCUR: western Anatolia has wild einkorn but
     // not wild emmer, the south-eastern arc has einkorn, emmer and barley

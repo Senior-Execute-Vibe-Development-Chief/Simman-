@@ -1907,3 +1907,65 @@ Review corrections to the M1 build (all validated before merge):
     byte-exact), the bench ratchet, the oracle, the Chromium browser smoke and
     the travel gate. W9-W11 remain undocumented in the ledger and in a handoff
     spec.
+
+45. **The wild ranges carried the crops' own spread; WCVP screens it out
+    (2026-09-04, owner: "yes" to re-baking the ranges).** A modern occurrence
+    map of a cultivated plant, or of a weed of cultivation, is a map of where
+    farming CARRIED it. Deciding where farming BEGAN from that map is
+    circular, and it was measurably doing so.
+
+    **What the screen could not be.** GBIF's per-record `establishmentMeans`
+    is populated on 379 of taro's 19,550 records (1.9 %) — unusable. Taxon
+    substitution alone does not work either: every candidate progenitor of a
+    tropical root crop is itself a plant people carried, so swapping taro for
+    greater yam moved the strays without removing them (16 -> 15). And rice
+    cannot be split by name at all: `Oryza nivara` is a SYNONYM of
+    `O. rufipogon` in the GBIF backbone, both returning the same 9,386
+    records, so the annual northern-margin form Fuller identifies is not
+    separately addressable.
+
+    **What it is.** The World Checklist of Vascular Plants states native
+    versus introduced range per taxon over the WGSRPD level-3 regions, and is
+    published as a GBIF checklist dataset (`f382f0ce`). So: take WCVP's native
+    regions for the taxon, take their polygons from the WGSRPD level-3
+    geojson, and drop every occurrence outside them. Two details earn their
+    keep — WCVP writes canonical names without the rank marker (the
+    catalogue's `Zea mays subsp. parviglumis` is its `Zea mays parviglumis`),
+    and distributions hang off the ACCEPTED name, so a synonym carries none
+    and must be followed. Following it is guarded to never widen a rank: a
+    wild subspecies whose accepted name is the crop species would import the
+    CROP's range, which is the circularity the screen exists to remove. That
+    guard fires on `Manihot esculenta subsp. flabellifolia`, which is
+    correctly left unscreened.
+
+    **What it removed.** 11 of 13 taxa screen (the other two carry no WCVP
+    distribution). Greater yam 289 -> 26 Oceanian records, 91 % of them in its
+    introduced range; wild einkorn 2,963 -> 1,513; wild sorghum 1,854 ->
+    1,535; green foxtail 14,589 -> 12,940 and wild enset 367 -> 327, both
+    about 11 % — those two ranges really are as wide as they looked.
+
+    **What it bought.** Unacknowledged gate findings 9 -> 7, stray hearths
+    16 -> 10. `hearth:kuk` clears: Kuk lights at -5500 inside its window,
+    where before it never lit at all, because on WCVP's authority wild taro
+    is native to mainland South and Southeast Asia and INTRODUCED to New
+    Guinea — the package had been asking the model to domesticate a crop
+    where its ancestor does not grow. `hearth-outside:new-guinea-roots`
+    clears with it: Queensland, Fiji, New Caledonia and the Bismarcks are
+    gone, and the package now holds no stray at all.
+
+    **What it refuted.** Millet and enset are NOT contaminated — green foxtail
+    really is native across 102 regions of temperate Eurasia (Kazakhstan
+    included) and wild enset really is native across 14 from Ethiopia to
+    South Africa. Their hearths are the model's problem, not the data's, and
+    that is now established rather than assumed. Rice is unresolved by this
+    route for the synonym reason above.
+
+    **The dead end worth recording.** Yam plus wild sugarcane looked better on
+    the gate (13 strays) and was dishonest: stand richness is the members'
+    CO-OCCURRENCE, a product zeroed wherever any member is out of range, and
+    `Saccharum robustum`'s 27 Oceanian records derive a range so small that
+    the intersection was empty — the nine Kuk-area cells measured canGrow=1
+    with climate fit 0.50-0.92 and richness EXACTLY 0. The package scored well
+    by barely existing. Co-occurrence is right for a founder set gathered
+    together (emmer with einkorn); yam and sugarcane are independent crops of
+    one complex, and requiring both is a claim the archaeology does not make.
