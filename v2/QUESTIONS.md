@@ -2184,3 +2184,41 @@ Review corrections to the M1 build (all validated before merge):
     single axis. Separating them is worth doing whether or not it fixes all
     four crops; the affluent-forager resistance W8 aimed at cannot exist until
     it is done.
+
+50. **Separating the axes works, and proves the tightness must come from
+    somewhere else (2026-09-04, owner: "yes" to separating them).** The
+    harness now evaluates candidate SCORES within crop, and measures both
+    properties a hearth score needs: does it SEPARATE (the real centre
+    outscores every false hearth of the same crop) and how far does it SPREAD
+    (with the bar at the lowest level that rejects those false hearths, how
+    many cells of the package still clear it — each one a hearth waiting to
+    light). #44 measured only the first and that is why it failed.
+
+    **The separated form wins on separation, at both grids.** `gain / alt` —
+    what farming adds over the fallback, divided by the food that is not this
+    crop — separates 4 of 5 at dev and 4 of 5 at target, against the current
+    `stand x gain` at 1 of 5 and 2 of 5. No other candidate of eleven reaches
+    4. It is dimensionless, and it means something on its own: the advantage
+    of farming measured against the outside option.
+
+    **And it floods.** 149 cells above the bar at dev, 440 at target, against
+    5-9 and 45-133 for every stand-bearing form. Putting stand back in trades
+    the separation away, smoothly, along one dial (dev): exponent 1 gives 2/5
+    and 7 cells, 0.5 gives 2/5 and 15, 0.25 gives 2/5 and 41, 0 gives 4/5 and
+    149. Eleven candidates, both grids, no exception.
+
+    **So the two properties are mutually exclusive in the quantities the model
+    has.** `stand` is the ONLY term that concentrates hearths spatially, and
+    it is also the term that pulls them into the crop's heartland, which is
+    what breaks the separation. There is no function of stand, gain, forager,
+    alt, lean and fit that both picks the right places and keeps the count
+    down, because the information is not there.
+
+    **Which settles the design.** The score's job is to SEPARATE, and
+    `gain / alt` does it. Tightness cannot come from the score being spatially
+    peaked, so it has to come from ignition being a DRAW: a hazard rate rather
+    than a countdown, one winner among the candidates above the bar, and
+    pre-emption for the rest. The 440 cells stop being 440 hearths and become
+    440 tickets. That is the contingency item on the owner's open list, and it
+    is now load-bearing rather than optional — the axis separation cannot ship
+    without it. Owner's ruling.

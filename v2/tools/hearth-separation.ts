@@ -75,16 +75,30 @@ function best(p: number, lat0: number, lon0: number, r: number): Row | null {
   return out;
 }
 const idx = (id: string) => CROP_PACKAGES.findIndex((k) => k.id === id);
-console.log(`grid=${grid}  ${w.width}x${w.height}`);
-console.log("\n=== REAL CENTRES (these DID domesticate; a correct bar must pass every one) ===");
-console.log("centre                   package            stand    gain   forager  LEAN   FIT    ALT    where");
-for (const c of hearthCentres.centres as any[]) {
-  const p = idx(c.packageId); if (p < 0) continue;
-  const r = c.radiusDegrees ?? (hearthCentres as any).radiusDegrees;
-  const b = best(p, c.latitude, c.longitude, r);
-  console.log(`${c.id.padEnd(24)} ${c.packageId.padEnd(18)} ${b ? `${b.stand.toFixed(4)}  ${b.gain.toFixed(4)}  ${b.forager.toFixed(3)}  ${b.lean.toFixed(3)}  ${b.fit.toFixed(3)}  ${b.alt.toFixed(3)}  ${b.lat.toFixed(1)}N ${b.lon.toFixed(1)}E` : "NO NATIVE CELL"}`);
+
+/** Every cell of a package inside a box, not just the best — the bar has to admit and reject cells. */
+function rowsIn(p: number, lat0: number, lon0: number, r: number): Row[] {
+  const nat = w._nativeCells[p]; const sc = w._standCapacity[p];
+  if (!nat || !sc) return [];
+  const out: Row[] = [];
+  for (const packed of Array.from(nat as ArrayLike<number>)) {
+    const cell = w._landCells[packed] ?? 0;
+    const a = ll(cell);
+    const dLon = Math.abs(((a.lon - lon0 + 540) % 360) - 180);
+    if (dLon > r || Math.abs(a.lat - lat0) > r) continue;
+    const stand = Number(sc[packed] ?? 0);
+    if (stand <= 0) continue;
+    const forager = w._foragerCapacity[cell] ?? 0;
+    const gain = packageCapacityAt(w, cell, p, 0) - forager;
+    if (gain <= 0) continue;
+    const fit = Number(w._cropFit?.[p]?.[packed] ?? 0);
+    const alt = Math.max(0, forager - stand);
+    out.push({ stand, gain, forager, lean: leanOf(cell), fit, alt, lat: a.lat, lon: a.lon });
+  }
+  return out;
 }
-console.log("\n=== FALSE HEARTHS (these did NOT; a correct bar must reject every one) ===");
+
+/** Places the sim lights that never domesticated anything. */
 const FALSE: Array<[string, string, number, number]> = [
   ["millet", "Kazakh steppe", 45.8, 77.3], ["millet", "N Kazakhstan", 50.3, 68.3],
   ["millet", "Korea", 36.8, 129.8], ["millet", "Caucasus", 44.3, 38.2],
@@ -93,9 +107,76 @@ const FALSE: Array<[string, string, number, number]> = [
   ["highland-roots", "Congo", -6.7, 15.7], ["highland-roots", "Kenya", -0.7, 35.3],
   ["highland-roots", "Angola", -12.7, 17.3], ["new-guinea-roots", "New Ireland", -3.1, 151.7],
 ];
-console.log("package            where              stand    gain   forager  LEAN   FIT    ALT");
-for (const [pid, name, lat, lon] of FALSE) {
+
+const cited = new Map<string, Row[]>();
+const wrong = new Map<string, Row[]>();
+for (const c of hearthCentres.centres as any[]) {
+  const p = idx(c.packageId); if (p < 0) continue;
+  const r = c.radiusDegrees ?? (hearthCentres as any).radiusDegrees;
+  const rows = rowsIn(p, c.latitude, c.longitude, r);
+  if (rows.length > 0) cited.set(c.packageId, [...(cited.get(c.packageId) ?? []), ...rows]);
+}
+for (const [pid, , lat, lon] of FALSE) {
   const p = idx(pid); if (p < 0) continue;
-  const b = best(p, lat, lon, 1.5);
-  console.log(`${pid.padEnd(18)} ${name.padEnd(16)} ${b ? `${b.stand.toFixed(4)}  ${b.gain.toFixed(4)}  ${b.forager.toFixed(3)}  ${b.lean.toFixed(3)}  ${b.fit.toFixed(3)}  ${b.alt.toFixed(3)}` : "no native cell"}`);
+  const rows = rowsIn(p, lat, lon, 1.5);
+  if (rows.length > 0) wrong.set(pid, [...(wrong.get(pid) ?? []), ...rows]);
+}
+
+/**
+ * A candidate score SEPARATES a package when a threshold exists that admits
+ * its real centre and rejects every false hearth of the same crop: the best
+ * cited cell must outscore the best false one. Compared WITHIN crop only —
+ * a wheat number beside a manioc number means nothing (QUESTIONS #48).
+ */
+const CANDIDATES: Array<[string, (r: Row) => number]> = [
+  ["stand x gain (current)", (r) => r.stand * r.gain],
+  ["share x gain", (r) => (r.forager > 0 ? r.stand / r.forager : 0) * r.gain],
+  ["stand x gain / alt", (r) => (r.alt > 0 ? (r.stand * r.gain) / r.alt : 0)],
+  ["gain / alt", (r) => (r.alt > 0 ? r.gain / r.alt : 0)],
+  ["stand / alt", (r) => (r.alt > 0 ? r.stand / r.alt : 0)],
+  ["stand x gain x lean", (r) => r.stand * r.gain * r.lean],
+  ["stand x gain / (alt x fit)", (r) => (r.alt > 0 && r.fit > 0 ? (r.stand * r.gain) / (r.alt * r.fit) : 0)],
+  // Composites: gain/alt is the only term that SEPARATES (it answers "is
+  // farming worth it against the fallback"), stand is the only one that keeps
+  // hearths TIGHT (it answers "is the belt dense here"). Give them separate
+  // jobs rather than one product and see whether both properties survive.
+  ["stand x gain^2 / alt", (r) => (r.alt > 0 ? (r.stand * r.gain * r.gain) / r.alt : 0)],
+  ["stand x (gain/alt)^2", (r) => (r.alt > 0 ? r.stand * (r.gain / r.alt) ** 2 : 0)],
+  ["sqrt(stand) x gain / alt", (r) => (r.alt > 0 ? Math.sqrt(r.stand) * r.gain / r.alt : 0)],
+  ["stand^0.25 x gain / alt", (r) => (r.alt > 0 ? r.stand ** 0.25 * r.gain / r.alt : 0)],
+];
+
+console.log(`grid=${grid}  ${w.width}x${w.height}`);
+console.log(`\nPackages with a false hearth to reject: ${[...wrong.keys()].join(", ")}`);
+console.log("\ncandidate score              separates  cells>bar  detail");
+for (const [name, f] of CANDIDATES) {
+  const verdicts: string[] = [];
+  let passed = 0; let total = 0; let above = 0;
+  for (const [pid, bad] of wrong) {
+    const good = cited.get(pid);
+    if (!good || good.length === 0) continue;
+    total++;
+    const bestGood = Math.max(...good.map(f));
+    const bestBad = Math.max(...bad.map(f));
+    const ok = bestGood > bestBad;
+    if (ok) passed++;
+    verdicts.push(`${pid} ${ok ? "PASS" : "fail"}`);
+    // SPREAD, the measurement #44 lacked: with the bar set at the lowest
+    // level that rejects every known false hearth of this crop, how many
+    // cells of the whole package still clear it? Each is a hearth waiting to
+    // light, so a score can separate perfectly and still flood the map.
+    const p = idx(pid);
+    const nat = w._nativeCells[p];
+    if (nat) for (const packed of Array.from(nat as ArrayLike<number>)) {
+      const cell = w._landCells[packed] ?? 0;
+      const stand = Number(w._standCapacity[p]?.[packed] ?? 0);
+      if (stand <= 0) continue;
+      const forager = w._foragerCapacity[cell] ?? 0;
+      const gain = packageCapacityAt(w, cell, p, 0) - forager;
+      if (gain <= 0) continue;
+      const row: Row = { stand, gain, forager, lean: leanOf(cell), fit: Number(w._cropFit?.[p]?.[packed] ?? 0), alt: Math.max(0, forager - stand), lat: 0, lon: 0 };
+      if (f(row) > bestBad) above++;
+    }
+  }
+  console.log(`${name.padEnd(28)} ${String(passed)}/${String(total)}   ${String(above).padStart(6)}    ${verdicts.join(", ")}`);
 }
