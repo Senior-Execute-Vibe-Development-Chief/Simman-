@@ -2407,3 +2407,44 @@ Review corrections to the M1 build (all validated before merge):
     this?", fill from the source; never sample the route. Point samples cannot
     distinguish a barrier from a gap beside a corridor, and they read as
     evidence because each one is individually true.
+
+55. **Europe is late because the front delivers 41 % less than its own
+    constants predict — and no constant can fix it (2026-09-04, owner: "so
+    surely if it is half speed, everywhere, we just double the speed?").**
+
+    **Europe, measured at the shipped grid.** Balkans -5178 against a -6000
+    latest (822 yr late), Cardial coast -4289 against -5500 (1,211), inland
+    Europe -3862 against -4800 (938), central Europe -3099 against -5000
+    (1,901), Rhine -2301 against -4800 (2,499). The lateness grows with
+    distance from the Levant, which is a front too slow rather than anything
+    local to Europe, and the implied speed on every overland route is
+    0.49-0.52 km/yr.
+
+    **The gate already measures it: 1.077 km/yr at dev, 0.553 at target.**
+
+    **And the ledger already predicts what it should be.** The M3a row for
+    `PEOPLE_ADOPTION_RATE_PER_YEAR` states the design: the front runs at
+    `2*sqrt((r + rate)*D)`. With the shipped constants — farmer growth 0.46
+    %/yr, adoption 0.01/yr, farmer mobility 15 km2/yr — that is **0.936
+    km/yr**, inside the cited Pinhasi-Fort-Ammerman band of 0.6-1.3. The
+    shipped grid delivers 0.553: **41 % under its own design, and below the
+    band's floor.**
+
+    **So raising the mobility is not available, for a measured reason rather
+    than a principled one.** Speed goes as the square root, so doubling it
+    means QUADRUPLING a constant cited from Ammerman & Cavalli-Sforza, whose
+    own wave of advance is the ~1 km/yr being chased. Worse, dev already
+    measures 1.077, ABOVE design: quadrupling D puts dev near 2.15 km/yr,
+    twice the real wave and far outside the band. The discrepancy has
+    OPPOSITE SIGNS at the two grids, so no value of the constant satisfies
+    both. That is proof the defect is in the mechanism.
+
+    **Where the 41 % might be going.** Candidates, none yet tested: the front
+    cells never reaching the fill the Fisher form assumes (it wants the growth
+    and adoption rates at the leading edge, and both are throttled by room and
+    contact terms); the adoption term damped by the forager/living pre-emption
+    it shares with the hearth law; and the 84-month movement stride quantising
+    an advance the continuum form treats as smooth. The target is explicit —
+    0.936 predicted against 0.553 measured — which makes this a bug hunt
+    rather than a tuning question, and it owns Europe, the null Indus and
+    Ganges arrivals, and the grid dependence together.
