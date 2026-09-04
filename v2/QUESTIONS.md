@@ -2148,3 +2148,39 @@ Review corrections to the M1 build (all validated before merge):
     envelope fitted across enset's whole observed range, with Ethiopia off its
     centre — not in a margin effect. Any candidate mechanism must be run
     through `tools/hearth-separation.ts` WITHIN crop before it is built.
+
+49. **Two axes, not one: the alternative-food term (2026-09-04, owner: "so you
+    are saying that the ideal domestication land is a thin strip IN BETWEEN
+    high fertility and low crop yield?").** Half right, and the half that is
+    right is structural. Not a strip: crop fit at the correct centres runs
+    0.281 (Yangtze) to 0.755 (Sahel, the highest reading on the board) and
+    both are right, so there is no middling band on crop quality. The pattern
+    is a CORNER — the crop is worth having AND there is little else to eat.
+
+    Measured at the shipped grid, ALT = forager capacity minus this crop's own
+    stand, the food available that is not this crop:
+
+    - rice: Yangtze **0.047** against Bengal 0.243 and Andhra 0.260 — five
+      times less. The delta full of fish, exactly.
+    - enset: Ethiopia **0.061** against Kenya 0.083 and Angola 0.089 — lowest
+      of its crop, and this is the case that REFUTED #48's margin story
+      (Ethiopia has the best fit of its package and still loses on stand). ALT
+      explains it where fit could not.
+    - yam: Kuk 0.273 against New Ireland 0.272 — no separation at all.
+    - manioc: northwest Neotropics 0.285 against Venezuela 0.144 — backwards.
+
+    Two of the four broken packages, including the awkward one. As a combined
+    rule (gain over ALT) it would BREAK millet, which currently works: north
+    China 7.2 against N Kazakhstan 10.6. So it is an ingredient, not the
+    recipe, and it must not be applied as a single ratio.
+
+    **The structural point stands on its own merits.** `_foragerCapacity`
+    has the cell's richest stand summed into it (`applyWildStands`) and
+    `gain = packageCapacityAt(...) - foragerCapacity`, so food-from-this-crop
+    is inside total-food-available and the payoff subtracts one from the
+    other. A cell therefore CANNOT be good for the crop and poor in
+    alternatives — the model has one axis where reality has two, and every
+    quantity tested so far (stand, gain, lean, fit) is a projection of that
+    single axis. Separating them is worth doing whether or not it fixes all
+    four crops; the affluent-forager resistance W8 aimed at cannot exist until
+    it is done.
