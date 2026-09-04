@@ -2037,7 +2037,18 @@ Review corrections to the M1 build (all validated before merge):
     sim lights wrongly. That is a two-sided test, it is static, and it settles
     a mechanism before anyone builds it. `tools/hearth-separation.ts` runs it.
 
-    **The proposed absolute bar is dead.** Stand capacity at the real centres,
+    **CORRECTION (same day, owner: "Are you checking ACROSS the crops?").**
+    Yes, and for the headline claim that was invalid — see #48. The
+    cross-crop comparison below is not meaningful, because a wild manioc
+    stand in the Amazon really does feed far more people per km2 than wild
+    wheat in the Levant: tropical root crops outyield temperate grasses, and
+    that is biology, not a defect. Read the numbers WITHIN each crop instead.
+    The per-package normalisation is therefore CORRECT — it is the right way
+    to handle quantities that are genuinely incomparable — and the fault is
+    four packages, not the whole score.
+
+    **The proposed absolute bar is dead** for one crop against another, which
+    is all the paragraph below establishes. Stand capacity at the real centres,
     at the SHIPPED grid: Yangtze 0.0001, Sahel 0.0011, Fertile Crescent
     0.0023, Ethiopia 0.0728, eastern woodlands 0.0755, Kuk 0.1271, Balsas
     0.1311, north China 0.2789, northwest Neotropics 0.3226, Amazon margin
@@ -2088,3 +2099,52 @@ Review corrections to the M1 build (all validated before merge):
     independent domestication; it took rice from the Yangtze. That may be
     history rather than habitat. The ruling decides whether the next wave
     hunts a discriminator or builds a hazard.
+
+48. **Checking within each crop, not across: only four packages are inverted
+    (2026-09-04, owner: "Why do they rank badly? Are you checking ACROSS the
+    crops?").** The second question is the correction. #47's headline — "every
+    false positive scores above the Fertile Crescent, the Yangtze and the
+    Sahel" — set a wheat number beside a rice number beside a manioc number,
+    and those are not comparable quantities. Wild manioc in the Amazon feeds
+    far more people per km2 than wild wheat in the Levant because tropical
+    root crops outyield temperate grasses. Nothing follows from the
+    comparison.
+
+    Read WITHIN each crop, at the shipped grid, best stand capacity at the
+    cited centre against the best at any false hearth of the SAME package:
+
+    - wheat: Crescent 0.0023, no false hearth at all — clean.
+    - millet: north China **0.2789** against the Kazakh steppe 0.1363, Korea
+      0.0765, Caucasus 0.0499, N Kazakhstan 0.0451 — north China WINS. Not
+      inverted at the shipped grid.
+    - maize, sorghum, eastern seeds: no false hearth — clean.
+    - rice: Yangtze **0.0001** against Bengal 0.4558 and Andhra 0.4800 —
+      inverted by four orders of magnitude.
+    - enset: Ethiopia **0.0728** against Angola 0.3518 and Kenya 0.2405 —
+      inverted ~5x.
+    - manioc: northwest Neotropics **0.3226** against NE Brazil 0.3920 and
+      Venezuela 0.3592 — inverted narrowly (the Amazon margin, 0.9309, is
+      itself clean).
+    - yam: Kuk **0.1271** against New Ireland 0.1577 — inverted narrowly.
+
+    Five of nine packages are correct within their own crop; four are
+    inverted, and they are exactly the four that fail the gate. So the
+    per-package normalisation is not the hack #47 called it — it is the
+    correct treatment of incomparable units, and #44's and #46's failures are
+    not evidence against it. The defect is four crops wide, not global.
+
+    **Why those four rank badly.** The cited centre sits at the EDGE of its
+    crop's range while the false hearths sit in its heartland. Measured as the
+    crop's own climate fit: Yangtze 0.281 against Bengal 0.466 and Andhra
+    0.470 — the Yangtze is the cold northern limit of wild rice, which is
+    exactly why Fuller identifies the northern-margin form as the progenitor.
+    Kuk 0.748 against New Ireland 0.770; northwest Neotropics 0.750 against
+    Venezuela 0.905. The score rewards wherever the plant grows BEST, and
+    farming did not begin where gathering was easiest.
+
+    Enset is the exception that keeps the question open: Ethiopia has the
+    HIGHEST fit of its package (0.517 against Kenya 0.489 and Angola 0.470)
+    and still loses on stand, so its miss is in the richness term — the
+    envelope fitted across enset's whole observed range, with Ethiopia off its
+    centre — not in a margin effect. Any candidate mechanism must be run
+    through `tools/hearth-separation.ts` WITHIN crop before it is built.

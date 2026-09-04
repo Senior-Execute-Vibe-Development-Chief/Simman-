@@ -34,7 +34,7 @@ const w = new World({ seed: 42042, grid, config: { preset: "earth_sim", horizon:
 const ll = (c: number) => { const y = Math.floor(c / w.width); const x = c - y * w.width; return { lat: 90 - ((y + 0.5) / w.height) * 180, lon: ((x + 0.5) / w.width) * 360 - 180 }; };
 
 // Absolute quantities per cell, no per-package normalisation anywhere.
-interface Row { stand: number; gain: number; forager: number; lean: number; lat: number; lon: number; }
+interface Row { stand: number; gain: number; forager: number; lean: number; fit: number; lat: number; lon: number; }
 
 // A generic month-by-month plant-growth proxy: warmth times water, neither
 // tuned to any outcome. LEAN = 1 - (leanest month / mean month): 0 where the
@@ -65,19 +65,20 @@ function best(p: number, lat0: number, lon0: number, r: number): Row | null {
     const stand = Number(sc[packed] ?? 0);
     const forager = w._foragerCapacity[cell] ?? 0;
     const gain = packageCapacityAt(w, cell, p, 0) - forager;
-    if (!out || stand > out.stand) out = { stand, gain, forager, lean: leanOf(cell), lat: a.lat, lon: a.lon };
+    const fit = Number(w._cropFit?.[p]?.[packed] ?? 0);
+    if (!out || stand > out.stand) out = { stand, gain, forager, lean: leanOf(cell), fit, lat: a.lat, lon: a.lon };
   }
   return out;
 }
 const idx = (id: string) => CROP_PACKAGES.findIndex((k) => k.id === id);
 console.log(`grid=${grid}  ${w.width}x${w.height}`);
 console.log("\n=== REAL CENTRES (these DID domesticate; a correct bar must pass every one) ===");
-console.log("centre                   package            stand    gain   forager  LEAN   where");
+console.log("centre                   package            stand    gain   forager  LEAN   FIT    where");
 for (const c of hearthCentres.centres as any[]) {
   const p = idx(c.packageId); if (p < 0) continue;
   const r = c.radiusDegrees ?? (hearthCentres as any).radiusDegrees;
   const b = best(p, c.latitude, c.longitude, r);
-  console.log(`${c.id.padEnd(24)} ${c.packageId.padEnd(18)} ${b ? `${b.stand.toFixed(4)}  ${b.gain.toFixed(4)}  ${b.forager.toFixed(3)}  ${b.lean.toFixed(3)}  ${b.lat.toFixed(1)}N ${b.lon.toFixed(1)}E` : "NO NATIVE CELL"}`);
+  console.log(`${c.id.padEnd(24)} ${c.packageId.padEnd(18)} ${b ? `${b.stand.toFixed(4)}  ${b.gain.toFixed(4)}  ${b.forager.toFixed(3)}  ${b.lean.toFixed(3)}  ${b.fit.toFixed(3)}  ${b.lat.toFixed(1)}N ${b.lon.toFixed(1)}E` : "NO NATIVE CELL"}`);
 }
 console.log("\n=== FALSE HEARTHS (these did NOT; a correct bar must reject every one) ===");
 const FALSE: Array<[string, string, number, number]> = [
@@ -88,9 +89,9 @@ const FALSE: Array<[string, string, number, number]> = [
   ["highland-roots", "Congo", -6.7, 15.7], ["highland-roots", "Kenya", -0.7, 35.3],
   ["highland-roots", "Angola", -12.7, 17.3], ["new-guinea-roots", "New Ireland", -3.1, 151.7],
 ];
-console.log("package            where              stand    gain   forager  LEAN");
+console.log("package            where              stand    gain   forager  LEAN   FIT");
 for (const [pid, name, lat, lon] of FALSE) {
   const p = idx(pid); if (p < 0) continue;
   const b = best(p, lat, lon, 1.5);
-  console.log(`${pid.padEnd(18)} ${name.padEnd(16)} ${b ? `${b.stand.toFixed(4)}  ${b.gain.toFixed(4)}  ${b.forager.toFixed(3)}  ${b.lean.toFixed(3)}` : "no native cell"}`);
+  console.log(`${pid.padEnd(18)} ${name.padEnd(16)} ${b ? `${b.stand.toFixed(4)}  ${b.gain.toFixed(4)}  ${b.forager.toFixed(3)}  ${b.lean.toFixed(3)}  ${b.fit.toFixed(3)}` : "no native cell"}`);
 }
