@@ -2027,3 +2027,64 @@ Review corrections to the M1 build (all validated before merge):
     is null across the whole horizon at target, against -1972 at dev — so the
     W5 wake trigger review is not a dev curiosity: at the grid that ships, the
     auto wake would never fire at all.
+
+47. **No absolute bar can work: the score is INVERTED against the real centres
+    (2026-09-04, owner: "we are on an accurate earth map? With a real bar,
+    they should get domesticated perfectly").** The owner's constraint is the
+    right one and it is stronger than the proposal it was aimed at. On an
+    accurate Earth, the ten cited centres really did domesticate their crops,
+    so a correct score must pass every one of them AND reject every place the
+    sim lights wrongly. That is a two-sided test, it is static, and it settles
+    a mechanism before anyone builds it. `tools/hearth-separation.ts` runs it.
+
+    **The proposed absolute bar is dead.** Stand capacity at the real centres,
+    at the SHIPPED grid: Yangtze 0.0001, Sahel 0.0011, Fertile Crescent
+    0.0023, Ethiopia 0.0728, eastern woodlands 0.0755, Kuk 0.1271, Balsas
+    0.1311, north China 0.2789, northwest Neotropics 0.3226, Amazon margin
+    0.9309. Four orders of magnitude. At the false hearths: N Kazakhstan
+    0.0451, Caucasus 0.0499, Korea 0.0765, Kazakh steppe 0.1363, New Ireland
+    0.1577, Kenya 0.2405, Angola 0.3518, Venezuela 0.3592, NE Brazil 0.3920,
+    Bengal 0.4558, Andhra 0.4800.
+
+    Every false positive scores ABOVE the Fertile Crescent, the Yangtze and
+    the Sahel — the three most important cereal centres in world history sit
+    at the bottom of the map by the model's own measure. Any bar low enough to
+    admit the Yangtze admits everything; any bar high enough to reject
+    Kazakhstan rejects the Levant. The farming gain is no better: the Fertile
+    Crescent has the LOWEST gain of all ten centres (0.4063 at dev), against
+    Bengal 4.70 and Andhra 6.16. Both hold at both grids.
+
+    **Which reframes the normalisation.** Dividing by each package's own
+    maximum is not merely a flaw that forbids the law from saying "not here";
+    it is the ONLY reason anything lands right, because it compares like with
+    like inside one crop and so never exposes that the underlying quantity is
+    incomparable across crops. Remove it without replacing the quantity and
+    everything collapses. That is why #44's and #46's changes only ever
+    relocated failures.
+
+    **The seasonality hypothesis is refuted too, on the same test.** The
+    forager capacity is built from ANNUAL fertility, disease and relief and
+    carries no monthly term, so the model has no hungry season at all — which
+    made "storage pays only where the year has a lean season" the obvious
+    candidate. Measured with a generic monthly warmth-times-water index, the
+    lean fraction at the real centres runs 0.512-0.949 and at the false ones
+    0.316-0.951: fully overlapping, and inverted where it matters — Bengal
+    0.943 against the Yangtze 0.820, the Congo 0.925 against Ethiopia 0.829,
+    Angola 0.951 the highest reading on the board. Monsoon lands are intensely
+    seasonal. (#44 recorded this hypothesis as untested because the first
+    probe was degenerate; it is now tested, and false.)
+
+    **So three quantities are eliminated, and the crux is a question for the
+    owner.** Either there is a local environmental signature of domestication
+    that has not been found — candidates worth the same cheap test are
+    continuity and absolute density of occupation rather than saturation
+    (`fill` measures how full the land is, not how many people stand on it),
+    and ecotone or marginal-zone position, the Levant at the desert edge, the
+    Yangtze at the wetland-upland edge, the Balsas in dry tropical forest —
+    or domestication was substantially CONTINGENT, in which case Earth's exact
+    ten centres are not derivable from local rules at all and the honest
+    target is about ten centres in plausible places, with the first to fire
+    pre-empting its neighbours. Bengal has wild rice, good ground and no
+    independent domestication; it took rice from the Yangtze. That may be
+    history rather than habitat. The ruling decides whether the next wave
+    hunts a discriminator or builds a hazard.
