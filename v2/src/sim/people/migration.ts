@@ -1,4 +1,7 @@
 import {
+  MIGRATION_HOP_MEAN_SQUARE_WEIGHT,
+  EARTH_CIRCUMFERENCE_KM,
+  DIFFUSION_MSD_PER_DIFFUSIVITY,
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_CAPACITY_FLOOR_PER_KM2,
@@ -25,13 +28,51 @@ function sumBands(values: Float64Array): number {
   return total;
 }
 
+/**
+ * The mean square length of one hop out of a cell on this row, in km2 (W12).
+ *
+ * A hop lands on one of eight neighbours: two at the row's east-west spacing,
+ * two at the north-south spacing, four on the diagonal at the root of their
+ * squares. Averaged, that is `0.75 * (h_ew^2 + h_ns^2)` — one and a half
+ * times the cell area where the cell is square, and increasingly more than
+ * that toward the poles, where cells narrow east-west but keep their height.
+ * The row's north-south spacing is a grid property; its east-west spacing
+ * follows from the cell's area.
+ */
+export function meanSquareHopKm2(areaKm2: number, height: number): number {
+  const northSouth = EARTH_CIRCUMFERENCE_KM / (2 * height);
+  const eastWest = Math.max(1, areaKm2) / northSouth;
+  return MIGRATION_HOP_MEAN_SQUARE_WEIGHT * (eastWest * eastWest + northSouth * northSouth);
+}
+
+/**
+ * The per-firing share of a group that hops, for a diffusivity in km2/yr.
+ *
+ * A LATTICE HOP IS NOT A DIFFUSIVITY (W12, QUESTIONS #55). Moving a fraction
+ * `s` of a cell's people one hop per unit time delivers a diffusion
+ * coefficient of `s * <d^2> / 4`, because two-dimensional diffusion spreads
+ * as `<r^2> = 4Dt`. To deliver the diffusivity the constant NAMES, the share
+ * must therefore be `4 * D * dt / <d^2>`.
+ *
+ * It was `D * dt / area`, which is smaller by `4 * area / <d^2>` — a factor
+ * of 2.67 on a square cell — so the scheme delivered about D/2.67 and the
+ * front, which runs as the square root, came out at about 0.6 of its design.
+ * Measured: 0.553 km/yr at the shipped grid against the ledger's own
+ * `2*sqrt((r + adoption) * D)` = 0.936, with the Balkans 822 years late and
+ * the Rhine 2,499. No value of the diffusivity fixes that, because dev
+ * measured 1.077 — ABOVE design — so the error had opposite signs at the two
+ * grids, which is the signature of a discretisation fault rather than a
+ * wrong constant.
+ */
 export function migrationShareForArea(
   area_: number,
   dtMonths = 1,
-  diffusivity = PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+  diffusivity: number,
+  height: number,
 ): number {
   const area = Math.max(1, area_);
-  const annualShare = diffusivity / area;
+  const meanSquareHop = meanSquareHopKm2(area, height);
+  const annualShare = DIFFUSION_MSD_PER_DIFFUSIVITY * diffusivity / meanSquareHop;
   const rawShare = dtMonths === 1
     ? annualShare / MONTHS_PER_YEAR
     : annualShare * dtMonths / MONTHS_PER_YEAR;
@@ -52,8 +93,8 @@ export function migrationShareForArea(
 export function fillMigrationShareRows(world: PeopleWorld, dtMonths = 1): void {
   for (let y = 0; y < world.height; y++) {
     const area = world.cellAreaKm2[y * world.width] ?? 0;
-    world._migrationShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
-    world._migrationFarmerShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
+    world._migrationShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
+    world._migrationFarmerShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
   }
 }
 
@@ -233,8 +274,8 @@ export function migrate(
     for (let row = band.rowLo; row < band.rowHi; row++) {
       // Every firing prices its own stride, each group its own share.
       const area = world.cellAreaKm2[row * world.width] ?? 0;
-      world._migrationShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
-      world._migrationFarmerShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
+      world._migrationShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
+      world._migrationFarmerShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
     }
     for (let packed = band.rawLo; packed < band.rawHi; packed++) {
       const cell = world._landCells[packed] ?? 0;

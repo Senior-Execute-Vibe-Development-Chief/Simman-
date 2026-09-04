@@ -244,6 +244,20 @@ they are not hidden outcome-fitting levers.
 | withdrawn | — | `PEOPLE_FORAGER_DENSITY_BAR` (proposed 0.12 × 0.35 × 0.35): the peopled-basin law measures a basin's people against the basin's own static forager capacity (M2, unchanged) and needs no bar; a global bar clamped every peopled basin to "full" from the opening tick |
 | deleted | — | `PEOPLE_TECHNIQUE_WAVE_KMPY`, `PEOPLE_HEARTH_SEARCH_FRACTION`, `PEOPLE_HEARTH_SCORE_*`, `PEOPLE_HEARTH_FALLBACK_LAG_YEARS`, `PEOPLE_HEARTH_LAG_RANGE_YEARS`, `PEOPLE_HEARTH_MAX_COUNT` |
 
+## W12 — the diffusion conversion
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `DIFFUSION_MSD_PER_DIFFUSIVITY` | 4 | dimensionless; two-dimensional diffusion spreads as `<r^2> = 4Dt`, so a lattice that moves a fraction `s` one hop per unit time delivers `s * <d^2> / 4` and the share must be `4 * D * dt / <d^2>` to deliver the diffusivity the mobility constants name. Mathematics, not a tuning value |
+| `MIGRATION_HOP_MEAN_SQUARE_WEIGHT` | 0.75 | dimensionless; the eight-neighbour stencil's mean square hop, `(2*h_ew^2 + 2*h_ns^2 + 4*(h_ew^2 + h_ns^2)) / 8 = 0.75*(h_ew^2 + h_ns^2)`. One and a half times the cell area where the cell is square, more toward the poles. Replaces the cell area, which the share had used as if it were the mean square hop |
+
+The pass previously used `share = D * dt / area`, short by `4 * area / <d^2>`
+— 2.67 at the equator — so it delivered about `D / 2.3` after substepping and
+the front, which runs as `2*sqrt((r + adoption)*D)`, came out at 0.553 km/yr
+at the shipped grid against this ledger's own design of 0.936 and the cited
+Pinhasi-Fort-Ammerman band of 0.6-1.3. Corrected: 0.670 km/yr, inside the
+band. The mobility constants are unchanged (QUESTIONS #55, #56).
+
 ## W5 — proposed (review pending)
 
 | Constant | Value | Unit / grounding |

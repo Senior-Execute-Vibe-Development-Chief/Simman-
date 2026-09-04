@@ -279,8 +279,8 @@ async function main(): Promise<void> {
     const area = world.cellAreaKm2[cell] ?? 0;
     const farmers = people._farmerMigrationTotal[packed] ?? 0;
     const foragers = (people._migrationPopulation[packed] ?? 0) - farmers;
-    const farmerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
-    const foragerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
+    const farmerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
+    const foragerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
     assert.ok(farmers > 0 && foragers > 0);
     assert.equal(people._migrationOutFarmers[packed], farmers * area * farmerShare, "farmers did not hop their own share");
     assert.equal(people._migrationOut[packed], foragers * area * foragerShare, "foragers did not hop their own share");

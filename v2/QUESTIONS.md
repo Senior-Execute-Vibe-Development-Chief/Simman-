@@ -2448,3 +2448,47 @@ Review corrections to the M1 build (all validated before merge):
     0.936 predicted against 0.553 measured — which makes this a bug hunt
     rather than a tuning question, and it owns Europe, the null Indus and
     Ganges arrivals, and the grid dependence together.
+
+56. **Found it: a lattice hop is not a diffusivity (2026-09-04, owner: "yes"
+    to going and finding the missing 41 %).** The migration pass moved a
+    fraction `D * dt / area` of a cell's people one hop per firing. Moving a
+    fraction `s` one hop per unit time delivers a diffusion coefficient of
+    `s * <d^2> / 4`, because two-dimensional diffusion spreads as
+    `<r^2> = 4Dt`. To deliver the diffusivity the constant NAMES, the share
+    must be `4 * D * dt / <d^2>`, and `<d^2>` is not the cell area: a hop
+    lands on one of eight neighbours, two at the row's east-west spacing, two
+    at the north-south spacing, four on the diagonal, so
+    `<d^2> = 0.75 * (h_ew^2 + h_ns^2)` — one and a half times the area on a
+    square cell, and more toward the poles where cells narrow but keep their
+    height. The share was therefore short by `4 * area / <d^2>`, a factor of
+    2.67 at the equator.
+
+    Both terms are mathematics, not tuning: `DIFFUSION_MSD_PER_DIFFUSIVITY`
+    is the 4 of `<r^2> = 4Dt`, and `MIGRATION_HOP_MEAN_SQUARE_WEIGHT` is the
+    stencil mean `(2 + 2 + 4*2)/8`. No constant was re-grounded and the
+    Ammerman & Cavalli-Sforza mobility is untouched.
+
+    **Measured, at both grids.** Front speed 0.553 -> **0.670 km/yr** at the
+    shipped grid, inside the cited Pinhasi-Fort-Ammerman band of 0.6-1.3 for
+    the first time; 1.077 -> 1.420 at dev. Findings **27 -> 24**. Cleared:
+    `arrival:balkans:target`, `arrival:cardial-coast:target`,
+    `arrival:inland-europe` at BOTH grids, `staple:indus:target`,
+    `staple:south-china:target`. Three new: `arrival:ganges:dev`,
+    `arrival:sahel:dev` and `europe-front-speed:dev` — dev now runs FAST,
+    which is the coarse lattice being flattered in the other direction and
+    belongs with the other dev-raster rows.
+
+    **What it did not do.** The gain is smaller than the 2.67 implies,
+    because at a 7-year stride the raw share now exceeds
+    `PEOPLE_MIGRATION_MAX_SHARE` and the substep machinery saturates it: the
+    delivered ratio is about 2.3, and the front gained 21 % rather than the
+    63 % the factor alone predicts. The explicit-diffusion bound is now the
+    binding constraint on the front at the shipped grid, which is a real
+    finding for the movement stride and is where the remaining shortfall to
+    the 0.936 design lives.
+
+    **The footgun that was removed with it.** The height argument is
+    REQUIRED, not defaulted. The first draft defaulted it and silently kept
+    the old area path for any caller that omitted it — which the unit test
+    promptly did, asserting the buggy value and passing. A default that
+    preserves a bug is worse than a compile error.

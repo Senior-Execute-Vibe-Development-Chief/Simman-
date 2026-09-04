@@ -225,6 +225,8 @@ export const PEOPLE_GRAVEYARD_DENSITY = 30; // spec/09-constants-ledger.md §M2 
 export const PEOPLE_GRAVEYARD_GAMMA = 0.5; // spec/09-constants-ledger.md §People — urban graveyard exponent
 export const PEOPLE_CAPACITY_FLOOR_PER_KM2 = 0.001; // spec/09-constants-ledger.md §M2 proposed — numerical density floor
 export const PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR = 23; // spec/09-constants-ledger.md §W6 — forager population mobility, Aka mating/exploration range (Cavalli-Sforza & Hewlett 1982) by the parent–offspring displacement convention; replaces the v1 diffusivity of 1200
+export const DIFFUSION_MSD_PER_DIFFUSIVITY = 4; // spec/09-constants-ledger.md §W12 — <r^2> = 4Dt, the mean-square displacement of two-dimensional diffusion
+export const MIGRATION_HOP_MEAN_SQUARE_WEIGHT = 0.75; // spec/09-constants-ledger.md §W12 — the 8-neighbour stencil's mean square hop, (2h_ew^2 + 2h_ns^2 + 4(h_ew^2 + h_ns^2)) / 8
 export const PEOPLE_MIGRATION_MAX_SHARE = 0.5; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion stability bound
 export const PEOPLE_MIGRATION_MAX_SUBSTEPS = 16; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion substep cap
 export const PEOPLE_TECHNIQUE_PRESENT = 0.01; // spec/09-constants-ledger.md §M2 proposed — reached-technique visibility threshold

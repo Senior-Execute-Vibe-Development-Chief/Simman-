@@ -28,6 +28,9 @@ const PEOPLE_WORKING_MORTALITY_FACTOR: f64 = 0.8;
 const PEOPLE_ELDER_MORTALITY_FACTOR: f64 = 2.4;
 const PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR: f64 = 23.0;
 const PEOPLE_MIGRATION_MAX_SHARE: f64 = 0.5;
+const EARTH_CIRCUMFERENCE_KM: f64 = 40075.0;
+const DIFFUSION_MSD_PER_DIFFUSIVITY: f64 = 4.0;
+const MIGRATION_HOP_MEAN_SQUARE_WEIGHT: f64 = 0.75;
 const PEOPLE_MIGRATION_MAX_SUBSTEPS: usize = 16;
 const PEOPLE_BAND_COUNT: usize = 16;
 const PEOPLE_CROP_NEIGHBOR_COUNT: usize = 8;
@@ -191,11 +194,26 @@ fn dpow(base: f64, exponent: f64) -> f64 {
     dexp(exponent * dln(base))
 }
 
+/// The oracle's `meanSquareHopKm2`: a hop lands on one of eight neighbours,
+/// two at the row's east-west spacing, two at the north-south spacing, four
+/// on the diagonal, so the mean square hop is 0.75 * (h_ew^2 + h_ns^2).
+fn mean_square_hop_km2(area_km2: f64, height: usize) -> f64 {
+    let north_south = EARTH_CIRCUMFERENCE_KM / (2.0 * height as f64);
+    let east_west = area_km2.max(1.0) / north_south;
+    MIGRATION_HOP_MEAN_SQUARE_WEIGHT * (east_west * east_west + north_south * north_south)
+}
+
 /// The oracle's `migrationShareForArea`: the per-firing hop share of a
 /// group with the given diffusivity, substepped and capped by the
 /// explicit-diffusion bound.
-fn share_for_area(area: f64, dt_months: f64, diffusivity: f64) -> f64 {
-    let annual_share = diffusivity / area.max(1.0);
+///
+/// A lattice hop is not a diffusivity (W12): moving a fraction `s` one hop
+/// per unit time delivers `s * <d^2> / 4`, because two-dimensional diffusion
+/// spreads as `<r^2> = 4Dt`, so the share must be `4 * D * dt / <d^2>` to
+/// deliver the diffusivity the constant names.
+fn share_for_area(area: f64, dt_months: f64, diffusivity: f64, height: usize) -> f64 {
+    let annual_share =
+        DIFFUSION_MSD_PER_DIFFUSIVITY * diffusivity / mean_square_hop_km2(area, height);
     let raw_share = if dt_months == 1.0 {
         annual_share / MONTHS_PER_YEAR as f64
     } else {
@@ -902,11 +920,13 @@ impl PeopleKernel {
                 area,
                 self.migration_dt_months,
                 PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+                self.height,
             );
             self.migration_farmer_share_row[row] = share_for_area(
                 area,
                 self.migration_dt_months,
                 PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
+                self.height,
             );
         }
         for packed in raw_lo.min(hi)..hi {
