@@ -19,7 +19,8 @@
     "bisect": "node tools/bisect.mjs",
     "trace": "node tools/trace.mjs",
     "why": "node tools/why.mjs",
-    "livegate": "node tools/livegate.mjs"
+    "livegate": "node tools/livegate.mjs",
+    "fooddiag": "node tools/probe_fooddiag.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",

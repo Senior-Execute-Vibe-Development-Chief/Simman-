@@ -21,6 +21,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
+import { landSurplusFrac } from "./landSurplus.js";
 import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -95,6 +96,56 @@ function _rebuildMarketKn(byId) {
   }
 }
 
+// Coarse fingerprint of the inputs that reshape the MARKET_PULL partition.
+// Quantised so granary-EMA dust does not thrash a full continent flood; a real
+// relative-standing shift, birth/death, haul-tech step, or road topology bump
+// still dirties. Used only to choose flood vs tally-only — never to invent a buyer.
+function _marketFloodSig(byId, seedOf, haulTiles, roadVersion) {
+  let h = (Math.round(haulTiles * 4) | 0) ^ ((roadVersion | 0) * 10007);
+  h = (h * 1000003) ^ (byId.size * 131);
+  for (const s of byId.values()) {
+    // Relative seed already carries A_i/Abar; ~0.25-tile bins.
+    const q = Math.round((seedOf.get(s.id) || 0) * 4);
+    h = (h * 1000003) ^ (s.id * 131 + (q | 0));
+  }
+  const kn = _MARKET_KN;
+  h = (h * 1000003) ^ Math.round((kn.construction || 0) * 200);
+  h = (h * 1000003) ^ Math.round((kn.mobility || 0) * 200);
+  h = (h * 1000003) ^ Math.round((kn.navigation || 0) * 200);
+  return h | 0;
+}
+
+function _ensureTerrScratch(world, N) {
+  let cost2 = world._terrCost2;
+  if (!cost2 || cost2.length !== N) cost2 = world._terrCost2 = new Float32Array(N);
+  let tcost2 = world._terrTrueCost2;
+  if (!tcost2 || tcost2.length !== N) tcost2 = world._terrTrueCost2 = new Float32Array(N);
+  let clm2 = world._terrClaimant2;
+  if (!clm2 || clm2.length !== N) clm2 = world._terrClaimant2 = new Int32Array(N);
+  return { cost2, tcost2, clm2 };
+}
+
+// After the bid Dijkstra: keep the incumbent unless the challenger is HYST×
+// better on the SAME pass's effort metric (second-best slot). Marketing habit —
+// standing farm-gate relationships do not flip on float dust.
+function _applyMarketHysteresis(owner, cost, tcost, clm, prevOwner, cost2, tcost2, clm2, byId, N, hyst) {
+  if (!(hyst > 1)) return;
+  for (let ti = 0; ti < N; ti++) {
+    const po = prevOwner[ti];
+    const no = owner[ti];
+    if (po < 0 || no === po || !byId.has(po)) continue;
+    if (clm2[ti] !== po) continue;   // incumbent was not even second — clear loss
+    const pc = cost2[ti], nc = cost[ti];
+    // Claimed MARKET_PULL costs are strictly negative (ring edge is nd >= 0).
+    // Challenger must be HYST× better: nc < pc * hyst (e.g. −12 beats −10 at 1.15).
+    if (nc < pc * hyst) continue;
+    owner[ti] = po;
+    cost[ti] = pc;
+    tcost[ti] = tcost2[ti];
+    clm[ti] = po;
+  }
+}
+
 export function reachBudget(s) {
   // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
   // they keep only their guaranteed core block, so the whole rural catchment
@@ -134,18 +185,6 @@ const SQRT2 = Math.SQRT2;
 // — that size gap is what reads as a hierarchy on the map, and small village
 // cores let settlements pack in densely without fighting over the same land.
 const CORE_BY_TIER = [1, 2, 3, 4];
-// T.FARM_RES — THE THIRD SITE OF THE PHASE-2 RESOLUTION BUG, missed when the other
-// two were repaired. The comment at the reach budget below (:195-201) diagnoses this
-// exact failure in its own words — "a fixed budget is a fixed TILE radius — a smaller
-// REAL catchment on a finer grid … the same settlement farmed ¼ the real land at 2×
-// resolution" — and scales that budget by rNormPop; countryTerritory.js does the same
-// for political reach via resScaleFor. These two GUARANTEED radii were left in raw
-// tiles, and being guaranteed FLOORS they override the corrected budget wherever they
-// bind. MEASURED (tools/probe_farmres.mjs, seed 8817, 3000 steps, same world at two
-// grids): core radius 2.0 and belt radius 4.0 at BOTH tw=240 and tw=480 — identical
-// tile counts — so the belt's real area runs 953,598 km² against 211,880 km², a
-// factor of 4.5 for the same city in the same world. Off ⇒ ×1, byte-identical.
-const _resR = (world) => (T.FARM_RES && world) ? rNormPop(world) : 1;
 // THE CORE BLOCK IS DELIBERATELY *NOT* SCALED, and the header three lines up says
 // why: it is "kept smaller than half the minimum settlement spacing … so two cores
 // can never overlap." That invariant COUPLES this constant to crystallize.js's
@@ -161,6 +200,10 @@ const _resR = (world) => (T.FARM_RES && world) ? rNormPop(world) : 1;
 // rung in shipped code, at every grid. Named, not touched: it belongs to the spacing
 // lap with the rest of the fifth site.)
 export function coreRadiusFor(s, world) {
+  // T.MARKET_PULL retires CORE_BY_TIER for catchment carving — the home block is
+  // emergent from the bid. armies.js still reads this for assault reach; use a
+  // minimal footprint so siege geometry does not inherit a discontinuous tier grant.
+  if (T.MARKET_PULL > 0) return 1;
   const t = s.tier | 0;
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
@@ -173,9 +216,11 @@ export function coreRadiusFor(s, world) {
 // Scaled by T.HINTERLAND_MULT (tuning.js); never smaller than the core.
 const HINTERLAND_BY_TIER = [3, 4, 6, 8];
 export function hinterlandRadiusFor(s, world) {
+  // T.MARKET_PULL retires HINTERLAND_BY_TIER — the farm belt is what the bid wins.
+  if (T.MARKET_PULL > 0) return coreRadiusFor(s, world);
   const t = s.tier | 0;
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
-  return Math.max(coreRadiusFor(s, world), Math.round(base * T.HINTERLAND_MULT * _resR(world)));
+  return Math.max(coreRadiusFor(s, world), Math.round(base * T.HINTERLAND_MULT));
 }
 
 class MinHeap {
@@ -228,10 +273,9 @@ export function computeTerritory(world) {
   // persist field, since it's derived from fert/flood/river which are reconstructed on load).
   const val = world._tileValue && world._tileValue.length === N ? world._tileValue : initTileValue(world);
   const riverMag = world.riverMag;   // the navigable spine — reach rides it cheaply (RIVER_REACH)
-  // Reset COST every pass (roads / budgets shift the food falloff) but keep
-  // OWNER — ownership is persistent, that's what stabilises the borders.
-  cost.fill(Infinity);
-  tcost.fill(Infinity);
+  // COST reset is deferred until we know a flood will run. Under MARKET_PULL_CACHE a
+  // clean bid fingerprint reuses the previous partition's cost fields for tally —
+  // wiping them here would mark every tile unreachable and starve the ledger.
 
   const byId = new Map();
   const budget = new Map();
@@ -273,21 +317,12 @@ export function computeTerritory(world) {
   // tile) — the same edict-derived figure foodHierarchy already hauls grain on.
   const mktPull = T.MARKET_PULL > 0;
   const seedOf = new Map();
+  let haulTiles = 0;
   if (mktPull) {
     _rebuildMarketKn(byId);
     let sum = 0, n = 0;
     for (const s of byId.values()) {
-      // T.MARKET_WEALTH: whether ability-to-pay enters the RING at all.
-      // Off (default), the bid is scarcity alone — a PER-BUSHEL price, bounded
-      // 0.5-3. Wealth is a BANK BALANCE, and multiplying the two conflates a
-      // price with a purse: wealth spans orders of magnitude, so a rich city's
-      // ring swallows a poor neighbour's doorstep where carriage is ~0 and the
-      // local price is perfectly adequate. That is not crowding-out, it is Rome
-      // outbidding a village for the field behind the village. Ability to pay
-      // belongs on VOLUME (how much you can buy), not on REACH.
-      const a = T.MARKET_WEALTH
-        ? Math.max(1e-6, (s._scarcity || 1) * Math.max(1, s.wealth || 0))
-        : Math.max(1e-6, (s._scarcity || 1));
+      const a = Math.max(1e-6, (s._scarcity || 1));
       seedOf.set(s.id, a); sum += a; n++;
     }
     const abar = n > 0 ? sum / n : 1;
@@ -313,7 +348,7 @@ export function computeTerritory(world) {
     const _mk = _MARKET_KN;
     const _cons = _mk.construction || 0, _mob = _mk.mobility || 0;
     const _techRange = 1 + (_cons * 0.6 + _mob * 0.4 + Math.max(0, _cons - 0.85) * 5) * T.FOOD_HAUL_TECH;
-    const haulTiles = (2 * 340 / (40075 / tw)) * _techRange;   // HAUL_LAND_KM, e-folding -> finite range, x the age's carriage
+    haulTiles = (2 * 340 / (40075 / tw)) * _techRange;   // HAUL_LAND_KM, e-folding -> finite range, x the age's carriage
     // THE DECAY LAW (work-plan item 4). Freight rises STEADILY with distance, so
     // the farm-gate net is A_i - freight*d and hits EXACTLY ZERO at a finite
     // range — von Thuenen's rings END. The first build used an exponential haul
@@ -329,6 +364,17 @@ export function computeTerritory(world) {
     // average market reaches exactly HAUL_LAND_KM, the edict's own 340 km.
     for (const [id, a] of seedOf) seedOf.set(id, -haulTiles * (a / abar));
   }
+
+  // Partition vs tally (MARKET_PULL_CACHE): when bids/carriage/roads/roster are
+  // unchanged, skip the Dijkstra and only retally under the stored partition.
+  // Force a flood every 8 cached territory cadences so slow road-quality drift
+  // (which may not bump _roadVersion) cannot leave haul costs stale forever.
+  const mktSig = mktPull
+    ? _marketFloodSig(byId, seedOf, haulTiles, world._roadVersion || 0)
+    : 0;
+  const mktCache = mktPull && T.MARKET_PULL_CACHE > 0;
+  const mktAge = world._mktFloodAge || 0;
+  const mktFlood = !mktPull || !mktCache || world._mktFloodSig !== mktSig || !world._mktFloodReady || mktAge >= 8;
 
   // ── CATCHMENT_CLIP (T.CATCHMENT_CLIP): the economic catchment is REACTIVE to the
   // political map — a settlement may only work tiles its OWN country already holds
@@ -385,7 +431,11 @@ export function computeTerritory(world) {
     const o = owner[ti];
     if (o < 0) continue;
     if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
-    if (clip && clipped(o, ti)) {   // catchment tile no longer within its owner's country (borders shifted)
+    // T.MARKET_PULL: cross-border assignment is TRADE, not annexation — a market
+    // buying a foreign field's harvest does not move _countryOwner (TILE_POLITY
+    // stamps political land from the capital alone). Skip the clip release so a
+    // bid-won foreign tile is not confiscated before the pass re-contests it.
+    if (clip && clipped(o, ti) && !mktPull) {   // catchment tile no longer within its owner's country (borders shifted)
       if (graceT > 0) {
         if (clipAt[ti] === 0) clipAt[ti] = world.step + 1;              // dispute begins — keep working
         else if (world.step + 1 - clipAt[ti] > graceT) { owner[ti] = -1; clipAt[ti] = 0; }   // the new order stood — release
@@ -397,10 +447,22 @@ export function computeTerritory(world) {
   // neighbour if necessary. Where two cores overlap (close settlements) the
   // FIRST to claim a tile this pass keeps it — and since we iterate in the
   // stable settlement order, the same one always wins, so no flicker.
+  // Under MARKET_PULL_CACHE a clean fingerprint skips this whole flood and
+  // keeps the stored partition for the tally below.
+  if (mktFlood) {
+  // Reset COST every flood (roads / budgets / bids shift the falloff) but keep
+  // OWNER — ownership is persistent, that's what stabilises the borders.
+  cost.fill(Infinity);
+  tcost.fill(Infinity);
   const heap = world._terrHeap || (world._terrHeap = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
+  const prevOwner = mktPull && T.MARKET_PULL_HYST > 1 ? owner.slice() : null;
+  const { cost2, tcost2, clm2 } = mktPull && T.MARKET_PULL_HYST > 1
+    ? _ensureTerrScratch(world, N)
+    : { cost2: null, tcost2: null, clm2: null };
+  if (cost2) { cost2.fill(Infinity); tcost2.fill(Infinity); clm2.fill(-1); }
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
     // T.MARKET_PULL: no guaranteed block. Carriage to the tile you stand on is
@@ -567,22 +629,38 @@ export function computeTerritory(world) {
       // whole value. Beyond it the harvest is not worth carrying and no market
       // wants the field. This is the bound the first build lacked.
       if (mktPull && nd >= 0) continue;
-      if ((!mktPull || T.MARKET_CAP > 0) && nd > bud) continue;    // owner can't reach further (in value-weighted effort). T.MARKET_CAP keeps the allowance as a BOUND while the bid decides the ORDER — the diagnostic split (docs section 44)
+      if (!mktPull && nd > bud) continue;    // owner can't reach further (in value-weighted effort)
       if (nd < cost[ni]) {
+        if (cost2 && clm[ni] >= 0 && clm[ni] !== oid) {
+          cost2[ni] = cost[ni]; tcost2[ni] = tcost[ni]; clm2[ni] = clm[ni];
+        }
         cost[ni] = nd;
         tcost[ni] = tcHere + step;
         clm[ni] = oid;   // the claimant rides the frontier, on land AND water
         // Walk THROUGH water (so a navy reaches the far shore) but don't
         // CLAIM water tiles — borders shouldn't bleed into the ocean.
         // Land tiles are claimed normally; water tiles just propagate
-        // the cost frontier. CATCHMENT_CLIP: claim only tiles inside the
-        // claimant's own country (the cost frontier still walks THROUGH
-        // out-of-country land, so a member can reach its country's ground
-        // beyond a wild gap, but it never works foreign/wild soil).
-        if ((mktPull || lk < 0) && elev[ni] > 0 && inCountry(oid, ni)) owner[ni] = oid;
+        // the cost frontier. Off MARKET_PULL, CATCHMENT_CLIP: claim only
+        // tiles inside the claimant's own country (the cost frontier still
+        // walks THROUGH out-of-country land, so a member can reach its
+        // country's ground beyond a wild gap, but it never works foreign
+        // soil). Under MARKET_PULL the bid may cross borders — Rome bought
+        // Egyptian grain before it owned Egypt — and _territoryOwner records
+        // who is farming for whom, not who rules the tile politically.
+        if ((mktPull || lk < 0) && elev[ni] > 0 && (mktPull || inCountry(oid, ni))) owner[ni] = oid;
         heap.push(ni, nd);
+      } else if (cost2 && clm[ni] !== oid && nd < cost2[ni]) {
+        cost2[ni] = nd; tcost2[ni] = tcHere + step; clm2[ni] = oid;
       }
     }
+  }
+
+  if (prevOwner) _applyMarketHysteresis(owner, cost, tcost, clm, prevOwner, cost2, tcost2, clm2, byId, N, T.MARKET_PULL_HYST);
+  if (mktPull) { world._mktFloodSig = mktSig; world._mktFloodReady = true; world._mktFloodAge = 0; }
+  } else if (mktPull) {
+    // Tally-only: partition reused. Debug counter for probes / HUD.
+    world._mktFloodSkipped = (world._mktFloodSkipped || 0) + 1;
+    world._mktFloodAge = mktAge + 1;
   }
 
   tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
@@ -610,6 +688,8 @@ function tallyTerritory(world, owner, cost, byId) {
     s._terrWorkTiles = 0;
     s._terrFarmedWt = 0;   // falloff-weighted count of tiles actually ENTERING the harvest sum
     s._terrWorksWt = 0;    // falloff-weighted LAND_WORKS over those same farmed tiles → _terrWorksMean (the ledger's built-land-capital read)
+    s._terrSurplusAcc = 0; // Σ surplusFrac × plantable weight
+    s._terrPlantWt = 0;    // Σ plantable weight (pre-surplus) → _terrMeanSurplus = acc/plant
     s._terrMinFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
     s._terrResAcc = {};
     if (T.RES_SCARCITY) s._terrResMax = {};   // best grade held per resource (see finalize)
@@ -653,15 +733,20 @@ function tallyTerritory(world, owner, cost, byId) {
     const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);   // climate scales the harvestable fertility
     if (f >= s._terrMinFert) {
       const w = foodFalloff(cost[ti] / _rn);
-      s._terrFertSum += f * w * _invA;
+      const gross = f * w * _invA;
+      const surplus = landSurplusFrac(world, ti, gross, s);
+      s._terrFertSum += gross * surplus;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
       // tiles that contribute nothing (claiming worthless land used to
       // actively DESTROY food via a phantom workforce), and a distant field
       // costs proportionally less labour just as it yields less. Break-even
       // stays exactly f = FARM_FERT_FLOOR, per the food model's contract.
-      s._terrFarmedWt += w * _invA;
-      if (wkF) s._terrWorksWt += wkF[ti] * w * _invA;
+      const pw = w * _invA;
+      s._terrPlantWt += pw;
+      s._terrFarmedWt += pw * surplus;
+      s._terrSurplusAcc += surplus * pw;
+      if (wkF) s._terrWorksWt += wkF[ti] * w * _invA * surplus;
     }
     if (haveDep) {
       const acc = s._terrResAcc;
@@ -727,7 +812,12 @@ function tallyTerritory(world, owner, cost, byId) {
   }
   // Finalize the built-land-capital read: worksField ∈ [0,1] per tile, so the
   // harvest-weighted mean is ∈ [0,1] — the farmed catchment's improvement level.
-  for (const s of byId.values()) s._terrWorksMean = s._terrFarmedWt > 1e-9 ? s._terrWorksWt / s._terrFarmedWt : 0;
+  for (const s of byId.values()) {
+    s._terrWorksMean = s._terrFarmedWt > 1e-9 ? s._terrWorksWt / s._terrFarmedWt : 0;
+    // Mean tradeable fraction over plantable weight. Pastoral multiplies by
+    // this so herds face the same countryside-eats-first gate as grain.
+    s._terrMeanSurplus = s._terrPlantWt > 1e-9 ? s._terrSurplusAcc / s._terrPlantWt : 1;
+  }
   world._borders = borders;
 }
 

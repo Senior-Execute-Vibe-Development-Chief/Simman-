@@ -415,6 +415,7 @@ export function peopleSimStats(world) {
     step: world.step,
     leadingEra,
     saveV: world._loadedSaveV,   // physics regime a LOADED world was born under (undefined = fresh world, current physics) — display-only
+    openKind: world._openKind,   // invent-jump outcome: "mint-ready" | "invent" | "dawn"
     settlements: aliveSettlements,
     villages:    tierCounts[0],
     towns:       tierCounts[1],

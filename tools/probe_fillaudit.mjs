@@ -34,7 +34,7 @@ const ADMIN_LOAD_RECAL = 1.18;
 const FIELD_SPAN = T.FIELD_SPAN || 6;
 const adminOn = T.FIELD_ADMIN > 0;
 const spanEff = FIELD_SPAN * (adminOn ? ADMIN_LOAD_RECAL : 1);
-const spanL = T.SPAN_TECH || 0;
+const spanL = T.LAND_KNOW ? 0.85 : 0;
 const BIND_DENS_ENV = +(process.env.SIM_BIND_DENS || 0);
 const BIND_DENS = (BIND_DENS_ENV > 0 ? BIND_DENS_ENV : (T.RURAL_BIND_DENS ?? 8000)) / r2;   // people per SIM tile (mirrors countryTerritory BIND_DENS_ENV)
 const MARCH_TILES = 150, MARCH_POW = 2;

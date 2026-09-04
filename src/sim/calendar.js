@@ -8,18 +8,7 @@ import { T } from "./peopleSim/tuning.js";
 //   START_YEAR = -3000, YEARS_PER_STEP = 0.5  →  the clock starts at 3000 BC and
 //   adds 1 year every 2 ticks. Change the two constants to retune the epoch or
 //   the rate; the mapping stays linear either way.
-// All three epochs below follow T.CRADLE_EVE (read at call time — the lever can
-// change in the panel): 1 = the map opens at 3000 BC, the eve of states (the
-// legacy injected-cradle world); 0 = cradles seed as natural late-neolithic
-// proto-towns (the 2026-07 removal; genesis package made internally
-// consistent and town-scaled — the urban floor — later that month:
-// settlement.js, crystallize.js), the first kingdoms EMERGE over the
-// following millennia (measured era-1 arrival 7200–7800, 3 seeds), so each
-// clock opens earlier — in the late neolithic — and the eras still land on
-// the dates history expects (Bronze displays at ~3300–3450 BC under the
-// re-fit DISP_START below). Cosmetic both ways — no mechanic reads any of
-// these (CLAUDE.md).
-const START_YEAR     = () => (T.CRADLE_EVE ? -3000 : -5600);   // the year at step 0 (this clock runs 0.5y/tick)
+const START_YEAR     = () => -5600;   // the year at step 0 (this clock runs 0.5y/tick)
 const YEARS_PER_STEP = 0.5;     // years added per tick — constant, forever
 
 export function stepToYear(step){ return START_YEAR() + step * YEARS_PER_STEP; }
@@ -46,7 +35,7 @@ export function yearToStep(year){ return (year - START_YEAR()) / YEARS_PER_STEP;
 // DYN and DISP are one fused clock (same epoch, same rate) and move together;
 // v<49 saves pin EPOCH_YD=0 so their stamped dynasty years (rulers' reignFrom/
 // reignTo are absolute years) stay self-consistent under −5250.
-const DYN_START = () => (T.CRADLE_EVE ? -3000 : (T.EPOCH_YD ? -9700 : -5250)), DYN_RATE = 0.25;
+const DYN_START = () => (T.EPOCH_YD ? -9700 : -5250), DYN_RATE = 0.25;
 export function dynYear(step){ return DYN_START() + step * DYN_RATE; }
 export function dynStep(year){ return (year - DYN_START()) / DYN_RATE; }
 
@@ -67,14 +56,7 @@ export function dynStep(year){ return (year - DYN_START()) / DYN_RATE; }
 // splits the estimates and lands Bronze on screen at ~3300–3450 BC across
 // all three seeds — its historical date. Still read-only: no mechanic may
 // consume it (CLAUDE.md — the calendar is cosmetic, never an input).
-// −3000: the map STARTS at 3000 BC under CRADLE_EVE=1 — the genesis cradles
-// are seeded at the eve of states (proto-urban towns, temple administration,
-// chalcolithic copper — settlement.js makeSettlement), which is what 3000 BC
-// was, so the first kingdoms crystallize within the opening centuries and the
-// display epoch and the dynasty clock (DYN_START below) are ONE clock.
-// (EPOCH_YD: see the DYN_START note — the fused display/dynasty clock
-// re-anchors to the Younger-Dryas epoch −9700 under the CAGE_FILL pace.)
-const DISP_START = () => (T.CRADLE_EVE ? -3000 : (T.EPOCH_YD ? -9700 : -5250)), DISP_RATE = 0.25;
+const DISP_START = () => (T.EPOCH_YD ? -9700 : -5250), DISP_RATE = 0.25;
 export function displayYear(step){ return DISP_START() + Math.max(0, step) * DISP_RATE; }
 export function displayStep(year){ return (year - DISP_START()) / DISP_RATE; }
 
