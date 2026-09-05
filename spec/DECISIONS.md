@@ -635,6 +635,40 @@ lawyered.
     forager density ordering. P10 and contingency stay the owner's. Spec:
     `spec/handoffs/W8-who-farms-what.md`. Implementation on request.
 
+## 2026-09-05 — Front-speed round
+
+31. **W12: the front at the speed its constants name.** (Owner directive
+    2026-09-04/05, after the play-report — "europe seems late?", "so surely
+    if it is half speed, everywhere, we just double the speed?", "can you
+    not just make the cells represent as larger, proportionally?", "think
+    about it a bit" — then **"spec it"**.) The farming front ran at 0.553
+    km/yr at the shipped grid against the ledger's own design of
+    `2·√((r + adoption)·D)` = 0.936, and every reason is in the
+    discretisation. (a) LANDED: a lattice hop is not a diffusivity — the
+    share is `4·D·dt/<d²>` with `<d²>` the stencil's mean square hop, not
+    `D·dt/area`; front 0.670 at target, inside the cited band, the Balkans,
+    Cardial coast and inland Europe cleared, findings 27 → 24 (`a1eac742`).
+    (b) Per-pass strides in the solve regime, as the awake regime already
+    has: only migration needs the 24-month step the corrected share demands
+    at the shipped grid; the other passes keep 84; measured cost ~1.5× not
+    3.5×. (c) The reduced polar grid — the owner's "represent the cells as
+    larger": merge east–west where `cos(lat) < 0.5`, again below 0.25, so
+    every cell's aspect ratio stays inside [0.5, 1]; it makes the migration
+    bound ~48 months at every latitude with nothing given up, where every
+    exclusion-based shortcut measured as giving up most of humanity
+    (QUESTIONS #58). (d) The anisotropic finite-volume flux, face length
+    over distance, which under-serves east–west transport on the isotropic
+    split by the aspect ratio — and is stiff enough at the poles that it
+    must follow (c). Sub-rulings: no constant is re-grounded, the
+    Ammerman & Cavalli-Sforza mobilities are untouched, and "double the
+    speed" is refused on a measurement — dev already runs above design, so
+    no value of the constant satisfies both grids. The visible step at the
+    shipped grid becomes "2-year steps" under (b) until (c) restores 4;
+    that trade is the owner's. The adoption pass at 65 % of a solve firing
+    is owned as a performance task. Spec:
+    `spec/handoffs/W12-front-speed.md`. Implementation on request, in the
+    order (b) → (c) → (d).
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,

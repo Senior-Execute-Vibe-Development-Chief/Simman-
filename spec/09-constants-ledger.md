@@ -258,6 +258,10 @@ at the shipped grid against this ledger's own design of 0.936 and the cited
 Pinhasi-Fort-Ammerman band of 0.6-1.3. Corrected: 0.670 km/yr, inside the
 band. The mobility constants are unchanged (QUESTIONS #55, #56).
 
+| (solve schedule, per pass) | derived: 84 / 84 / 84 / 84 / **24** / 84 months at target, all 84 at dev | technique, conversion, capacity, growth, migration, cohorts, each at the largest whole-year multiple of 12 months inside ITS OWN bound — the cohort bound (`0.5 × PEOPLE_CHILD_AGE_YEARS`) for five of them, the hop bound for migration. Replaces the single solve stride, which ran every pass at the tightest bound and made the corrected migration share cost 3.5× where it need cost ~1.5×. The solve clock advances by the shortest; printed per pass in provenance like the awake schedule, never hand-set (W12 §2) |
+| (migration hop bound) | `PEOPLE_MIGRATION_MAX_SHARE · <d²> / (4·D)` per row | the stride the corrected share permits on every peopled (foragers) or can-grow (farmers) row. `hopBound` is `PEOPLE_MIGRATION_MAX_SHARE` alone, NOT `× PEOPLE_MIGRATION_MAX_SUBSTEPS`: substepping keeps the explicit scheme stable but does not let anyone hop twice, so reach saturates at one hop per firing and the 16× allowance bought only a slower front. Binds at 24 months at the shipped grid, on rows at 83 °N holding 25 people — the pole problem, whose fix is the grid (W12 §3), not a threshold (QUESTIONS #58: any exclusion deep enough to matter gives up 89 % of the world) |
+| (reduced polar grid) | merge east–west where `cos(lat) < 0.5`, in fours below 0.25 | proposed, W12 §3; one geometric criterion — every cell's aspect ratio inside [0.5, 1], the condition under which the isotropic and anisotropic diffusion bounds agree within 2×. The merge latitudes follow from it; nothing is set per grid |
+
 ## W5 — proposed (review pending)
 
 | Constant | Value | Unit / grounding |
