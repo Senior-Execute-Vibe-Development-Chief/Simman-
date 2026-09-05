@@ -3244,3 +3244,54 @@ Review corrections to the M1 build (all validated before merge):
     2007), a unit assumption stated as one — that carries the paddy on the
     Nile and the Indus. A finding about the river model, for the rivers
     round; the paddy reads what it is given and does not compensate.
+
+67. **The shipped-grid arm after W13 and W14, run on request (2026-09-05,
+    owner: "do the run"): the Indus row clears but is not attributed, the
+    Ganges farms rice, Kuk lights in place, south China and the Indus turn
+    to millet.** `GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1` on
+    `be79ff57`, 1,592 s for the target solve arm; the gate came back red
+    with three unacknowledged rows and four stale ones, and the manifest is
+    refreshed from it (W14 handoff §6 has the full table). It is the first
+    target arm since W12 §2 (`5bd76356`), so it measures P17, P18 and the
+    paddy together.
+
+    **1. The Indus arrival cleared, −2027 → −3109, and this arm cannot say
+    why.** The box farms millet at 1 CE (555 cells; wheat on 251 on the W12
+    arm) and millet's steppe ignitions moved from −4702 / −1678 (the Tarim,
+    the Balkhash steppe) to −5990 / −6907; the arrival recorder carries no
+    package. Either the wheat crossed the plateau sooner (W13's routed water
+    at the piedmont, Mehrgarh 0.02 → 0.12, though its moisture sits at the
+    floor under P18 too — #66) or the millet came down from the north. The
+    #64 method decides it: the chunked target arm dumping `_arrivalStep` and
+    `_arrivalPackage`, ~27 min. On request. Until then the row's clearing is
+    not to be quoted as the plateau fixed.
+
+    **2. Every front is sooner and every steppe millet ignition thousands of
+    years sooner, while every rice ignition is later** (the Godavari −6032 →
+    −5948, Bengal −5143 → −4583, a new one in the western Deccan −4177) —
+    and that is why south China (rice on the W12 arm, by switching) and the
+    Indus are millet at 1 CE, and why north-China millet is 13 years past
+    its grace (−7313 at Henan, the right ground). The standing account is
+    W13's water on the steppe rivers and the loess with the paddy on top; a
+    W13-only target arm (`2802a7ec`, ~27 min) would split them. Recorded as
+    needing one.
+
+    **3. The paddy's two signatures.** The Ganges plain, reached by Godavari
+    rice at −4799 (3,852 years before the W12 arm's wheat), farms rice at
+    1 CE, as the substrate said it would (Patna 0.77 against wheat's 0.24);
+    and the tubers' Amazon-margin hearth lights 1,225 years later (−5521 →
+    −4296) with the Andes 1,358 years later behind it, both still inside
+    their windows — the drowning loss on a flooded stand. The real Llanos
+    de Moxos was farmed on raised fields in the flood, so whether −0.35 is
+    the tubers' number is a question for the package's citation (Setter &
+    Waters 2003 is a cereal number), not for a constant to move.
+
+    **4. P18's one attributable row** is Kuk: the New Guinea roots light
+    inside the box at −5570 (the Owen Stanley side) instead of on New
+    Ireland, on a wet range where §4a measured P18 acting. The plateau
+    sites are unchanged on the substrate (#66) and unattributed with
+    history (1).
+
+    Population 305 / 670 / 797M at −3000 / −1000 / 1 CE against 214 / 497 /
+    593: the same missing deaths (M3b), sooner. The front 0.854 → 0.904
+    km/yr against the 0.936 design. Europe within ±60 years of the W12 arm.

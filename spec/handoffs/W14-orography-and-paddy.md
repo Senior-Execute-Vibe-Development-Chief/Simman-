@@ -347,8 +347,9 @@ history run:
 - kernel parity (`npm run parity`) identical across thread counts; `gate:travel`
   pass; oracle counts unchanged from W13 (37/36/10/3/1); Chromium browser
   smoke same hashes as the node run.
-- `gate:people` (dev, W5 solve regime): pass, 63 rows, none unacknowledged,
-  none stale, re-run after the manifest edit. Every moved value is in §4b.
+- `gate:people` (dev, W5 solve regime): pass — 63 rows at landing, 62 after
+  §6's refresh — none unacknowledged, none stale, re-run after each manifest
+  edit. Every moved value is in §4b.
 - `bench --check`: passed. Honestly: the first run of the full chain failed
   the ratchet on `dev routingInitializeMilliseconds` at 92.7 ms against a
   24 ms cap — the travel router's wasm cold-init, a phase W14 does not touch
@@ -357,12 +358,119 @@ history run:
   125.8 ms per year, substrate build 1.49 s dev / 36.9 s target with P18's
   box sums inside it. No baseline was moved.
 
-**Not done, and not to be claimed:** the Indus target row (`arrival:indus:
-solve:target`) does not move — the floor band (finding 3) is the owner's
-ruling, and P18 was built not to lift it. The two dev staple misses that are
-the crop fit's (south-china and lower-yangtze come out millet) are the paddy's
-to move at the shipped grid, not at dev, where the runoff is one cell wide and
-the rivers' flood amplitude is flat (finding 4). M3b (mortality) is next; the
-shipped-grid solve arm (`GATE_PEOPLE_SOLVE_TARGET=1`, `v2-long`) is the only
-measurement of either mechanism with history at the grid that ships and runs
-on request only.
+**Not done, and not to be claimed:** the two dev staple misses that are the
+crop fit's (south-china and lower-yangtze come out millet) did not move at
+dev, where the runoff is one cell wide and the rivers' flood amplitude is
+flat (finding 4), and — measured the same afternoon, §6 — do not move at the
+shipped grid either, where the millet front reaches them first. The Indus
+target row was expected not to move (finding 3) and DID (§6), for a reason
+this wave cannot attribute. M3b (mortality) is next.
+
+## 6. The shipped-grid arm, run on request (2026-09-05, same day)
+
+The owner asked for the run ("do the run"), the one exception the directive
+allows on request: the `v2-long` people gate, `GATE_PEOPLE_TRAJECTORY=1
+GATE_PEOPLE_SOLVE_TARGET=1 npx tsx tools/gate-people.ts`, on `be79ff57`.
+The target solve arm took 1,592 s (the W12 §2 arm, the last at this grid,
+1,504 s); the dev solve arm inside it is byte-identical to the per-commit
+run (14.3 / 71.5 / 628.6 / 1,076.1 / 1,160.1M, caged at 81648); the dev
+awake trajectory and its agreement arm pass (arrival agreement median 12.9
+years, p90 18.9, 67 cells farmed by both, no dominant package differs,
+population within 3.4 × 10⁻⁴ at −8000). The gate came back RED: three rows
+unacknowledged, four stale — which is the gate doing its job, since every
+target row had been annotated "not re-measured" and an expectation written
+(§4c). The manifest is refreshed from the measurement (three rows added,
+four removed, seventeen re-measured), and this section is the comparison.
+
+**This arm measures W13 and W14 together.** No target arm ran between
+`5bd76356` (W12 §2) and `be79ff57`; every difference below is P17 (the
+routed water and the watered month) plus P18 plus the paddy, and nothing
+here isolates one from another. A W13-only target arm (`2802a7ec`, ~27 min)
+would; it is recorded as needing one, not run.
+
+### 6a. What moved, W12 §2 arm → this arm (target grid, seed 42042)
+
+| row | W12 §2 | now | verdict |
+| --- | ---: | ---: | --- |
+| people −8000 / −5000 (M) | 8.8 / 28.9 | 9.7 / 38.5 | in band, both |
+| people −3000 / −1000 / 1 CE (M) | 214 / 497 / 593 | 305 / 670 / 797 | miss, larger (M3b) |
+| river / rain-fed / forager density (persons/km²) | 14.6 / 6.8 / 0.11 | 19.5 / 8.7 / 0.11 | ordering holds |
+| front, Europe (km/yr; design 0.936) | 0.854 | 0.904 | pass |
+| Fertile Crescent / Nile / Yellow River reached | −6377 / −5663 / −6665 | −6836 / −6121 / −7116 | in window |
+| Balkans / central Europe / Rhine / Cardial / inland | −6024 / −4683 / −4161 / −5439 / −5179 | −5963 / −4705 / −4203 / −5419 / −5203 | in window, ±60 yr |
+| **Indus reached** | −2027 (miss) | **−3109** | **in window — cleared** |
+| **Ganges reached** | −947 (late) | **−4799** | **early — miss, other side** |
+| south India / Japan reached | −5287 / −4687 | −5785 / −3853 | early, both |
+| Mesoamerica / Andes / Sahel reached | −3533 / −4540 / −4171 | −3853 / −3182 / −4165 | in window |
+| **Kuk hearth** (New Guinea roots) | none; New Ireland −5577 | **−5570, in the box** | **cleared, both rows** |
+| north-China millet, first | −7292 (Hebei) | −7313 (Henan) | **miss, 13 yr past the grace** |
+| Yangtze rice hearth | none | none | miss |
+| rice ignitions | Godavari −6032, Bengal −5143 | Godavari −5948, Bengal −4583, W Deccan −4177 | all later |
+| steppe millet ignitions | Tarim −4702, Balkhash −1678 | Balkhash −6907, Tarim −5990, Korea −5430, Kura −201 | all earlier |
+| Amazon-margin tubers hearth | −5521 | −4296 | in window; later |
+| **staple: Ganges** | wheat (499 cells) | **rice (586)** | **cleared** |
+| **staple: south China** | rice (803) | **millet (794)** | **miss — was a pass** |
+| **staple: Indus** | wheat (251) | **millet (555)** | **miss — was a pass** |
+| staple: lower Yangtze / Nile | millet / sorghum | millet / sorghum | miss, unchanged |
+| staple: loess / central Europe / Sahel / Mesoamerica / Amazon | pass | pass | pass |
+
+### 6b. Read against §4c's expectations
+
+- **"The Indus row does not move (finding 3)."** Wrong as a prediction of
+  the ROW: it cleared, −2027 → −3109. Not shown wrong as a claim about the
+  PLATEAU: the box farms millet at 1 CE on twice the cells, millet's steppe
+  ignitions moved thousands of years earlier (the Tarim −5990), and the
+  arrival recorder does not carry the package — so whether the wheat crossed
+  the plateau sooner or millet came down from the north is not decided by
+  this arm. Deciding it is the #64 method (the per-cell arrival raster with
+  `_arrivalPackage`, four save/load chunks, ~27 min), on request. If it is
+  the millet, the row passes for the wrong reason and #64's plateau finding
+  stands untouched; the substrate measurement of §4a (the piedmont sites at
+  the floor under P18) is unchanged either way.
+- **"The Ganges plain's rice front is faster and its staple row may clear
+  from the east."** Yes, and more: the plain is reached at −4799 by rice from
+  the Godavari, 3,852 years sooner than the wheat front reached it on the W12
+  arm, and farms rice at 1 CE. The arrival row is now a miss on the EARLY
+  side, for the reason south India is: rice lights on the Godavari inside its
+  wild range and outside the Yangtze box.
+- **"The Nile stays sorghum or takes rice, not wheat."** Sorghum, 757 cells.
+- **"The lower Yangtze stays the race it is."** Yes — and so, now, does south
+  China, which the W12 arm had cleared by switching: millet ignites in the
+  Sichuan basin (−6578) and on the Jiangsu coast (−6963) and reaches the
+  south before rice, whose ignitions are all later. The paddy grades rice
+  above the incumbent only on ground that stands under water; the box's hill
+  cells do not, so §4a's box-summed capacity (rice 4.48M, millet 2.74M) was
+  the plain's and not the hills'.
+
+### 6c. What this arm says about each mechanism
+
+- **P18.** The one row it plausibly owns is Kuk: the New Guinea highlands
+  are a wet range, exactly where §4a measured P18 acting, and the package
+  now lights inside the box (−5570, on the Owen Stanley side) instead of on
+  New Ireland. Nothing at the plateau is attributed to it (above).
+- **The paddy.** The Ganges is its clearest signature (rice on the flooded
+  plain against the incumbent wheat, as the substrate said). Its drowning
+  term shows too: the Amazon-margin tubers hearth lights 1,225 years later
+  (−5521 → −4296, still in window) and the Andes, reached from it, 1,358
+  years later (−4540 → −3182, still in window) — the tubers' stand on the
+  flooded margin falls by −0.35 in the flood months. Whether that is right
+  (the real Llanos de Moxos was farmed on raised fields IN the flood) is a
+  question for the package's `standingWaterResponse` and its citation, not
+  for a constant.
+- **Not isolated.** Every front arrives sooner and every steppe millet
+  ignition thousands of years sooner, while every rice ignition is later:
+  the standing account is W13's water (the steppe rivers, the loess), with
+  the paddy on top, and this arm cannot split them.
+
+### 6d. Manifest bookkeeping
+
+Removed (now pass at this grid): `arrival:indus:solve:target`,
+`hearth:kuk:solve:target`, `hearth-outside:new-guinea-roots:solve:target`,
+`staple:ganges:solve:target` — their history is in this section, the W12/W13
+handoffs and QUESTIONS #64–#67. Added: `hearth:north-china:solve:target`,
+`staple:south-china:solve:target`, `staple:indus:solve:target`. Re-measured
+in place: the three population rows, `climate-barrier`, `arrival:ganges`
+(rewritten — it changed side), `arrival:south-india`, `arrival:japan`, the
+six `hearth:*` and four `hearth-outside:*` rows, `staple:lower-yangtze`,
+`staple:nile`; and six dev rows that had deferred to this arm now say what it
+found. 62 rows. `gate:people` at dev re-run on the edited manifest, pass.

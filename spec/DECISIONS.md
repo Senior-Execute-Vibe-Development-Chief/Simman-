@@ -840,6 +840,22 @@ lawyered.
     amplitude (the Nile's peak month 1.21 of the mean against ~3× real).
     The shipped-grid arm is `v2-long` on request; the target rows carry the
     substrate numbers and an expectation each.
+    **Run on request the same day** (owner: "do the run"; W14 handoff §6,
+    QUESTIONS #67) — the first target arm since W12 §2, so it measures W13
+    and W14 together and isolates neither: the Indus arrival CLEARED (−2027
+    → −3109) but the box farms millet at 1 CE on twice the cells and the
+    steppe millet ignitions moved thousands of years earlier (the Tarim
+    −5990), so which front reached the plain is not decided and the plateau
+    finding stands until the arrival raster with its package is run (the
+    #64 method, on request); the Ganges is reached by Godavari rice at −4799
+    and farms rice (the paddy's signature; its arrival row is now a miss on
+    the early side); Kuk lights inside its box (P18 on a wet range); south
+    China and the Indus turn to millet at 1 CE and north-China millet lights
+    13 years past the grace (three new misses); the Amazon-margin tubers
+    hearth lights 1,225 years later under the paddy's drowning term;
+    population 305 / 670 / 797M at −3000 / −1000 / 1 CE (M3b). Three
+    manifest rows added, four removed, the rest re-measured; recorded, not
+    dialed.
 
 ## Proposed — working design, awaiting explicit ratification
 
