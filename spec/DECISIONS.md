@@ -718,9 +718,63 @@ lawyered.
     at 65 % of a firing. Prerequisite: §1 had moved nine rows of the dev
     solve arm without recording them, so the known-miss manifest was
     re-measured to 48 first (`15d83fe6`, QUESTIONS #59). §3 (the reduced
-    polar grid) and §4 (the anisotropic flux) remain on request.
+    polar grid) and §4 (the anisotropic flux) remain on request — see 33,
+    which measures 31(c) and withdraws it.
+
+33. **W12 §3 measured and NOT built: the ratified polar merge moves the
+    stride from 24 months to 24 months.** (31(c), measured 2026-09-05 before
+    building — #58's method applied to #58's own remedy.) 31(c) ratified
+    merging cells east–west in pairs below `cos(lat) = 0.5` and in fours
+    below 0.25, on the claim that the migration bound then becomes ~48
+    months at every latitude. Measured per-row over every row anyone can be
+    a source from, at the shipped grid, from the real substrate, with the
+    same expression `transportBoundYears` uses — validated by reproducing
+    today's 24-month stride exactly on the no-merge arm — the ratified rule
+    takes the bound from 2.045 to 2.408 years and the **stride from 24 to
+    24**. Three findings (QUESTIONS #61, table in the handoff §3d):
+    (a) *It is not the cap of four.* A cell of aspect `a` has mean square
+    hop `(a² + 1)/2` of a square cell's; the equatorial bound is 4.034 years
+    and the stride is that bound FLOORED to whole years, so holding 48
+    months needs **a ≥ 0.992**, not a ≥ 0.5. Any power-of-two rule has
+    worst-case aspect 0.5 by construction, just below each doubling
+    threshold, whatever the cap: 4 → 64 moves the bound 2.408 → 2.525 years
+    and the stride not at all.
+    (b) *The rule fails its own criterion.* Measured worst aspect under it
+    is 0.438 at 83.7 °N, a peopled row at the shipped grid, because
+    `cos(83.7°) = 0.11` is under the 0.125 where a cap of four still reaches
+    0.5. The [0.5, 1] band needs unbounded factors and was given two.
+    (c) *31(d) is worse off than its spec says, not better.* Under every
+    power-of-two merge the anisotropic bound stays under 1.1 years, so §2
+    would derive a **12-month** stride — half of today's, doubling movement
+    cost, poles still clamping — against the ~32 months §4b assumed. §4 is
+    free only on a grid whose aspect is ~1: there its bound is 2.689 years,
+    exactly today's stride.
+    So **31(c) is withdrawn as ratified and nothing was built** — it would
+    have been weeks of structural change (packing, adjacency, persistence,
+    kernel row areas, renderer) for a measured zero, and 31(d) is blocked
+    behind whatever replaces it. The rule that does work is a different
+    design and is proposed, not substituted: P16. Dev is unaffected either
+    way — its transport bound is 116 years today and 227 under P16, and the
+    84-month reaction cap binds long before both.
 
 ## Proposed — working design, awaiting explicit ratification
+
+- **P16. The true reduced grid** (replaces the withdrawn 31(c); measured
+  2026-09-05, DECISIONS 33, QUESTIONS #61). `n_row = max(1, floor(width ·
+  cos(lat)))` — a row holds as many cells as fit at one cell-height each, so
+  a cell is never narrower than it is tall. A mechanism, not a fitted
+  constant: rounding DOWN is what puts the aspect on the safe side of 1, and
+  it self-calibrates at any grid height, on any map. Measured worst aspect
+  0.998; it doubles the shipped-grid migration stride (24 → 48 months),
+  which is what 31(c) promised and did not deliver, and it makes 31(d)'s
+  anisotropic flux free (bound 2.689 years, exactly today's stride). The
+  cost is that it is a TRUE reduced grid — arbitrary run lengths, so
+  adjacent rows disagree everywhere — and the fixed eight-slot stencil the
+  TS oracle and the Rust kernel share cannot express a merged cell's several
+  northern neighbours. It changes what a cell IS, reaching the land packing,
+  the adjacency structure, persistence, the kernel's per-row cell area, and
+  the renderer; and its payoff cannot be confirmed end-to-end without a long
+  arm, which the dev loop forbids. Ratification is the owner's.
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
   QUESTIONS #27). Bake an LGM land mask (ETOPO altitude > −120 m — the

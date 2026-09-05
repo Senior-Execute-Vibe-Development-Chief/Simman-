@@ -229,17 +229,69 @@ of the people kernel. The renderer, which maps cells to screen: a merged
 cell paints its span. Persistence: the land packing changes, so
 `SAVE_VERSION_W12` covers it. The kernel's band layout, which is by row.
 
-### 3c. What it gives
+### 3c. What it was expected to give — MEASURED FALSE, 2026-09-05
 
-- With `h_ew ~ h_ns` everywhere, `<d²>` is uniform and the migration bound
+The claim below was measured before building and does not hold. It is kept
+verbatim because it is what DECISIONS 31(c) ratified; §3d is what the world
+actually does. **Do not build §3a.**
+
+- ~~With `h_ew ~ h_ns` everywhere, `<d²>` is uniform and the migration bound
   is ~48 months at every latitude — with nothing given up anywhere. It
   removes the problem §2 works around, rather than trading against it: after
   §3, §2's migration stride at the shipped grid rises from 24 to 48 and its
-  cost from ~1.5× to ~1.15×.
-- It is the prerequisite for §4 at the shipped grid (below).
+  cost from ~1.5× to ~1.15×.~~
+- It is the prerequisite for §4 at the shipped grid (below) — still true, and
+  §3d shows the ratified rule does not satisfy it either.
 - It is the prime suspect for the Antarctic `canGrow` oddity (§5), and for
   the documented 1.3–2.2× dilution of 1-D coast and river terms, both of
-  which are the same over-resolution seen from other sides.
+  which are the same over-resolution seen from other sides. Untouched by
+  §3d: that suspicion is about over-resolution, not about the stride.
+
+### 3d. What it actually gives (measured, QUESTIONS #61)
+
+Per-row transport bound over every row anyone can be a source from, at the
+shipped grid, from the real substrate, using the same expression
+`transportBoundYears` uses — validated by reproducing the shipped 24-month
+stride exactly on the no-merge arm:
+
+| merge rule | bound | stride | worst aspect | §4 bound | §4 stride |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| none (today) | 2.045 yr | 24 | 0.110 | 0.064 yr | 12 |
+| pairs only | 2.117 yr | 24 | 0.219 | 0.247 yr | 12 |
+| **pairs then fours (§3a, ratified)** | **2.408 yr** | **24** | **0.438** | 0.868 yr | 12 |
+| powers of two, uncapped | 2.525 yr | 24 | 0.500 | 1.077 yr | 12 |
+| `floor(width·cos)`, aspect ≥ 1 | **4.034 yr** | **48** | 0.998 | 2.689 yr | **24** |
+
+Three things follow.
+
+- **§3a moves the stride from 24 months to 24 months.** Its entire claimed
+  payoff does not happen.
+- **It is not the cap of four.** A cell of aspect `a` has mean square hop
+  `0.75·h_ns²·(a² + 1)` = `(a² + 1)/2` of a square cell's; the equatorial
+  bound is 4.034 years and the stride is that bound FLOORED to whole years,
+  so holding 48 months needs `(a² + 1)/2 ≥ 4/4.034`, i.e. **a ≥ 0.992** —
+  not the a ≥ 0.5 §3a targets. A power-of-two rule has worst-case aspect 0.5
+  BY CONSTRUCTION, just below each doubling threshold, whatever the cap:
+  raising it from 4 to 64 moves the binding row 83.7 °N → 75.5 °N and the
+  bound 2.408 → 2.525 years, and the stride not at all.
+- **§3a fails its own criterion.** Measured worst aspect under it is 0.438,
+  at 83.7 °N — a peopled row at the shipped grid — because `cos(83.7°) =
+  0.11` is under the 0.125 at which a cap of four still reaches 0.5. The
+  [0.5, 1] band needs unbounded factors and was given two.
+
+The rule that does work is `n_row = max(1, floor(width · cos(lat)))` — a cell
+is never narrower than it is tall. It is a mechanism, not a fitted constant:
+rounding DOWN is what puts the aspect on the safe side of 1, and it
+self-calibrates at any grid height. But it is a TRUE reduced grid — arbitrary
+run lengths, so adjacent rows disagree everywhere — and the fixed eight-slot
+stencil the TS oracle and the Rust kernel share cannot express a merged
+cell's several northern neighbours. That is a change to what a cell IS, and
+it reaches the packing, the adjacency structure, persistence, the kernel's
+per-row cell area, and the renderer. It is a different design from the one
+ratified, so it is the owner's to ratify, not a substitution to make quietly.
+
+Dev is unaffected under either rule: its transport bound is 116 years today
+and 227 under `floor`, and the 84-month reaction cap binds long before both.
 
 ## 4. Anisotropic flux (the proper finite-volume form)
 
@@ -264,8 +316,15 @@ Under this form the explicit stability bound is `2·D·dt·(1/h_ew² + 1/h_ns²)
 average was hiding how stiff the slivers are. On the unmerged grid at a
 24-month migration stride everything poleward of ~42 ° would clamp — Europe
 included, 28 % of the world's people — so this form cannot ship at the
-shipped grid until §3 has bounded the aspect ratio. After §3 the bound is
-~32 months everywhere and §2's derivation picks it up.
+shipped grid until the aspect ratio is bounded near 1.
+
+~~After §3 the bound is ~32 months everywhere and §2's derivation picks it
+up.~~ MEASURED FALSE, 2026-09-05 (§3d): under every power-of-two merge the
+anisotropic bound stays under 1.1 years, so §2 would derive a **12-month**
+stride — half of today's, doubling movement cost, with the poles still
+clamping. §4 is free only after a grid whose aspect is ~1: under
+`floor(width·cos)` its bound is 2.689 years, exactly today's 24-month
+stride. So §4 waits on that grid being ratified and built, not on §3a.
 
 ### 4c. What it is expected to do
 
@@ -381,8 +440,12 @@ Measured at both grids on every commit (dev) and in `v2-long` (target,
 
 ## Status (2026-09-05)
 
-§1 landed and verified (`a1eac742`). **§2 landed**; §3–§4 specified,
-implementation on request, in the order §3 → §4. §2's corrections to what
+§1 landed and verified (`a1eac742`). **§2 landed. §3 measured and NOT
+built** — as ratified it moves the shipped-grid stride from 24 months to 24
+months (§3d, QUESTIONS #61, DECISIONS 33), so 31(c) is withdrawn and §4,
+which is worse off under it than §4b assumed, is blocked behind whatever
+replaces it. The rule that does work (`n_row = max(1, floor(width·cos))`) is
+a different design and is proposed as DECISIONS P16, awaiting the owner. §2's corrections to what
 was specified are marked inline above: the clock is the gcd and not the
 shortest stride (§2b — the shortest-stride clock would have run the reaction
 passes at double their bound), the shell reads 1-year steps and not 2 (§2c,
@@ -405,3 +468,8 @@ ratchet `--check`, the worldgen oracle, and the Chromium browser smoke — the
 last returning dev `64e16935452e6c26` unchanged and target
 `217a88344bd3a6b1`. The full three-engine browser matrix and the shipped-grid
 `GATE_PEOPLE_SOLVE_TARGET=1` arm stay in `v2-long`.
+
+§3 was measured, not run: the per-row transport bound computed from the real
+substrate with the same expression the scheduler uses, validated against the
+shipped 24-month stride on the no-merge arm. No simulation was run for it,
+and no code changed — the finding is the deliverable (§3d).

@@ -2659,3 +2659,74 @@ Review corrections to the M1 build (all validated before merge):
     of the clock, not the other way round: 12 months is why the shipped app
     now reads "1-year steps" during the solve, which is DECISIONS 32(d) and
     the owner's to rule on.
+
+61. **The reduced polar grid, as ratified, moves the stride from 24 months
+    to 24 months — and no power-of-two merge can do better (2026-09-05).**
+    Measured before building, which is the only reason it was not built
+    (#58's method, applied to #58's own remedy).
+
+    **What was ratified.** W12 §3 (DECISIONS 31(c)): merge cells east–west
+    in pairs where `cos(lat) < 0.5`, in fours below 0.25, so the aspect
+    ratio stays inside [0.5, 1]; §3c claims this makes the migration bound
+    "~48 months at every latitude", takes §2's cost from ~1.5× to ~1.15×,
+    and leaves §4 shippable at ~32 months.
+
+    **What it measures.** Per-row transport bound over the rows anyone can
+    be a source from, at the shipped grid, from the real substrate — the
+    same expression `transportBoundYears` uses, and it reproduces the
+    shipped 24-month stride exactly on the no-merge arm:
+
+    | merge rule | bound | stride | worst aspect | §4 bound | §4 stride |
+    | --- | ---: | ---: | ---: | ---: | ---: |
+    | none (today) | 2.045 yr | 24 | 0.110 | 0.064 yr | 12 |
+    | pairs only | 2.117 yr | 24 | 0.219 | 0.247 yr | 12 |
+    | **pairs then fours (ratified)** | **2.408 yr** | **24** | **0.438** | 0.868 yr | 12 |
+    | powers of two, uncapped | 2.525 yr | 24 | 0.500 | 1.077 yr | 12 |
+    | `floor(width·cos)`, aspect ≥ 1 | **4.034 yr** | **48** | 0.998 | 2.689 yr | **24** |
+
+    **Why, and it is not the cap.** A cell of aspect `a` has mean square hop
+    `0.75·h_ns²·(a² + 1)`, which is `(a² + 1)/2` of a square cell's. The
+    equatorial bound is 4.034 years, and the stride is the bound FLOORED TO
+    WHOLE YEARS. So keeping 48 months needs `(a² + 1)/2 ≥ 4/4.034`, i.e.
+    **a ≥ 0.992** — not a ≥ 0.5. At a = 0.5 the bound is 0.625 × 4.034 =
+    2.52 years, which floors to 2. And a power-of-two rule has worst-case
+    aspect 0.5 BY CONSTRUCTION — just below each doubling threshold —
+    whatever the cap. Raising the cap from 4 to 64 moves the binding row
+    from 83.7 °N to 75.5 °N and the bound from 2.408 to 2.525 years, and the
+    stride not at all.
+
+    **The criterion also fails on its own terms.** §3a says the ratified
+    rule keeps the aspect inside [0.5, 1]. Measured worst aspect under it is
+    **0.438**, at 83.7 °N — a row that is peopled at the shipped grid — because
+    `cos(83.7°) = 0.11` is below the 0.125 where a cap of four still
+    reaches 0.5. The criterion needs unbounded factors and was given two.
+
+    **§4 is worse off than the spec says.** §4b expects "~32 months
+    everywhere and §2's derivation picks it up". Under every power-of-two
+    arm the anisotropic bound stays under 1.1 years, so §2 would derive a
+    **12-month** stride — half of today's, doubling movement cost, with the
+    poles still clamping. §4 is only free after a grid whose aspect is ~1:
+    under `floor`, its bound is 2.689 years, exactly today's 24-month
+    stride.
+
+    **What would work, and what it costs.** `n_row = max(1, floor(width ·
+    cos(lat)))` — a cell is never narrower than it is tall. It is a real
+    mechanism, not a fitted constant: rounding DOWN is what puts the aspect
+    on the safe side of 1, and it self-calibrates at any grid height. It
+    doubles the stride (24 → 48) and makes §4 free. But it is a true reduced
+    grid — arbitrary run lengths, not powers of two — so adjacent rows
+    disagree everywhere, and the fixed eight-slot stencil that the TS oracle
+    and the Rust kernel share cannot express a merged cell's several
+    northern neighbours. That is a change to what a cell IS, and it reaches
+    the packing, the adjacency structure, persistence, the kernel's per-row
+    cell area, and the renderer.
+
+    **Nothing was built.** Building the ratified rule would have been weeks
+    of structural change for a measured zero. The corrected rule is a
+    different design from the one ratified, so it goes back to the owner
+    rather than being substituted quietly — recorded as DECISIONS 33
+    (withdrawing 31(c)) and proposed as DECISIONS P16.
+
+    Dev is unaffected either way: its transport bound is 116 years today and
+    227 under `floor`, and the 84-month reaction cap binds long before
+    either.
