@@ -3386,10 +3386,65 @@ Review corrections to the M1 build (all validated before merge):
     "u eastward, v northward" and the Rust router multiplies by
     `unit_north`, and P18b samples the same convention it documents.
 
-    **5. What still needs a long arm.** Every number above is substrate
-    only, no history, at the shipped grid — the honest reach of a
-    dev-loop measurement (owner directive 2026-09-03). Whether the later,
-    smaller technique-0 floodplain capacity moves the rice ignition clock,
-    and whether the wind reference moves any arrival, is the `v2-long`
-    shipped-grid solve arm's to say. Recorded as needing one; offered, not
-    run.
+    **5. What needed a long arm — and what the arm said.** Every number in
+    items 1-4 is substrate only, no history, at the shipped grid: the
+    honest reach of a dev-loop measurement (owner directive 2026-09-03).
+    Whether the later, smaller technique-0 floodplain capacity moves the
+    rice ignition clock, and whether the wind reference moves any arrival,
+    was the `v2-long` shipped-grid solve arm's to say. **The owner asked
+    for it — "run it" — and it ran the same day** (`a2b40415`, seed 42042,
+    `GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1`; target solve leg
+    1,378 s, 14:14:29 → 14:42:17 UTC). Full table in
+    `spec/handoffs/W15-wind-and-husbandry.md` §6a; the short of it:
+
+    - **One row cleared, none regressed.** The gate came back with nothing
+      unacknowledged and exactly one stale row —
+      `staple:south-china:solve:target`. **South China farms rice at 1 CE
+      for the first time.** Every other miss stayed the miss it was, and no
+      population band, front speed, density ordering or forager ordering
+      left where the W14 arm put it (307.6 / 682.1 / 812.3M at −3000 /
+      −1000 / 1 CE, front 0.891 km/yr). Manifest: one removal, twenty rows
+      re-measured, 61 rows.
+    - **Arrivals moved, modestly.** No primary arrival by more than 102
+      years except the Andes (189 sooner) and Japan (58 later); the five
+      European detailed rows by 2–18 years, all still in window.
+    - **The ignition clock moved, and in the direction the split alone
+      cannot produce.** A fourth rice ignition lights in Myanmar (−4646),
+      and the Godavari (−5948 → −5983) and Bengal (−4583 → −4534) ones come
+      EARLIER. Also new: two highland-roots hearths on the southern African
+      highveld (Zimbabwe −3596, Transvaal −3498), a millet hearth in
+      Bactria (−4485), the Kura lowland hearth no longer lighting, and the
+      first caged basin 616 years sooner and up the Mekong.
+
+    **The arm does NOT split the two corrections, and the first attempt to
+    say it did was wrong — written down so nobody repeats the method.** A
+    probe diffed the two trees' `substrate.moisture` as if it were an
+    annual field of length N and reported every East and South Asian box
+    unchanged to within one float32 ULP. `substrate.moisture` **is**
+    `climate.moisture` — cell-major, twelve months per cell, length N × 12
+    — so the dump covered only its first N values, the first 135,000 cells,
+    which at 1800 × 900 is everything north of 75°N. The Arctic has no
+    orographic signal outside Greenland; the "unchanged" boxes were
+    unchanged ice. The tell that caught it: *zero* cells north of 20°N
+    moving at all, which no wind-reference change touching the Himalaya,
+    the Alps and the Zagros could produce. Re-measured over the whole
+    monthly field, the reference reaches everywhere with relief — south
+    China 70 % of cells moved by more than 10⁻³, the loess 91 %, Sichuan
+    95 %, the Alps 90 %, the Andes 92 %, 18.2 % of all 1,620,000 cells —
+    and the one box it leaves alone is the flat Nile valley, desert with no
+    slope for air to climb.
+
+    So the field isolates no row. **One thing is isolated by construction
+    rather than by measurement**, and it fixes the sign: the split changes
+    the fit of exactly two of the nine packages (rice +1.0, the New Guinea
+    roots +0.33); for the other seven `Math.max(0, response)` is zero and
+    W15's expression is W14's term for term. Where the gain is positive,
+    W15's technique-0 fit and wild stand are strictly LOWER than W14's and
+    its technique-1 capacity is exactly EQUAL — so acting alone the split
+    can only delay a rice ignition, never advance one. This arm advances
+    two and adds a third. **The wind reference is in them, and south
+    China's clearance rides on a rice front the split alone would have made
+    later.** A clean decomposition needs a **hybrid arm** — W14's
+    `realClimateData.js` on the W15 tree, a clean cross because the two
+    corrections live in different files — at roughly the same 23 minutes.
+    Recorded as needing one; offered, not run.

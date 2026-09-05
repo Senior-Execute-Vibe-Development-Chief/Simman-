@@ -912,10 +912,46 @@ lawyered.
     Two bugs in the ported wind sampler were found and deliberately left
     (they are off the sim's own path; a worldgen wave that can re-baseline
     the v1 hashes owns them). Everything above is substrate only, no
-    history; whether either correction moves an arrival is the `v2-long`
-    shipped-grid arm's to say, offered and not run (owner directive
-    2026-09-03). QUESTIONS #68,
-    `spec/handoffs/W15-wind-and-husbandry.md`.
+    history.
+
+    **The shipped-grid arm ran the same day, on the owner's word ("run
+    it"), and answers what the substrate could not.** `a2b40415`, seed
+    42042, target solve leg 1,378 s. It clears exactly one manifest row —
+    **`staple:south-china:solve:target`: south China farms rice at 1 CE**,
+    the first time it has — and regresses none: the gate came back with
+    nothing unacknowledged and that single stale row, so the only edit it
+    forces is a removal. Nothing else changed in kind. Population 307.6 /
+    682.1 / 812.3M at −3000 / −1000 / 1 CE (the same M3b miss, within 2 %
+    of the W14 arm at every checkpoint), the European front 0.891 km/yr,
+    every density and forager ordering held, and no primary arrival moved
+    by more than 102 years except the Andes (189 sooner) and Japan (58
+    later). Downstream: a fourth rice ignition in Myanmar (−4646), the
+    Godavari and Bengal ones EARLIER, two new highland-roots hearths on the
+    southern African highveld, and the first caged basin 616 years sooner
+    and up the Mekong. Twenty rows re-measured in place; 61 rows.
+
+    **The arm does not decompose the two corrections, and the first attempt
+    to say it did was wrong — recorded so the method is not repeated.** A
+    probe diffed `substrate.moisture` as if it were an annual field of
+    length N; it *is* `climate.moisture`, cell-major with twelve months per
+    cell and length N × 12, so the dump covered only the first 135,000
+    cells — everything north of 75°N, where there is no orographic
+    signal to find. Over the whole monthly field the wind reference reaches
+    every box with relief (south China 70 % of cells moved, the loess 91 %,
+    Sichuan 95 %, the Alps 90 %, the Andes 92 %; 18.2 % of all 1.62M cells,
+    and the flat Nile valley the one box it leaves alone), so the field
+    isolates no row to one correction. One thing IS isolated, by
+    construction: the split touches only the two packages with a positive
+    `standingWaterResponse`, and where it acts, technique-0 fit and wild
+    stand are strictly lower while technique-1 capacity is exactly equal —
+    so acting alone it can only ever make rice LATER. This arm makes the
+    Godavari and Bengal ignitions earlier. The wind reference is therefore
+    in them, and south China's clearance rides on a rice front the split
+    alone would have delayed. A clean split needs a hybrid arm (W14's
+    `realClimateData.js` on the W15 tree — the two corrections live in
+    different files), roughly 23 minutes; recorded as needing one, offered
+    and not run (owner directive 2026-09-03). QUESTIONS #68,
+    `spec/handoffs/W15-wind-and-husbandry.md` §6.
 
 ## Proposed — working design, awaiting explicit ratification
 
