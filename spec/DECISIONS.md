@@ -717,9 +717,14 @@ lawyered.
     and 1.65× with every hearth primed, the spread being the adoption pass
     at 65 % of a firing. Prerequisite: §1 had moved nine rows of the dev
     solve arm without recording them, so the known-miss manifest was
-    re-measured to 48 first (`15d83fe6`, QUESTIONS #59). §3 (the reduced
-    polar grid) and §4 (the anisotropic flux) remain on request — see 33,
-    which measures 31(c) and withdraws it.
+    re-measured to 48 first (`15d83fe6`, QUESTIONS #59). Measured at the
+    shipped grid on request (QUESTIONS #63): the front 0.670 → **0.854
+    km/yr** against the 0.936 design, all five European windows met, the
+    Indus 1,128 years later than before (−2027, a new miss) — the residual
+    9 % is not uniform but split by direction, §4's sign, undecidable from
+    box years alone. Population overshoot grew with the speed (M3b). §3 (the
+    reduced polar grid) and §4 (the anisotropic flux) remain on request —
+    see 33, which measures 31(c) and withdraws it.
 
 33. **W12 §3 measured and NOT built: the ratified polar merge moves the
     stride from 24 months to 24 months.** (31(c), measured 2026-09-05 before

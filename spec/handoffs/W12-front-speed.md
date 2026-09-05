@@ -388,14 +388,18 @@ Measured at both grids on every commit (dev) and in `v2-long` (target,
   that the schedule machinery changed nothing where the schedule did not.
   The shell reads **"1-year steps"** at the shipped grid, not the "2-year"
   first written here — see §2b and §Rulings.
-  Needing the long arm (`GATE_PEOPLE_SOLVE_TARGET=1`, `v2-long`; not run in
-  the dev loop, per the owner directive): the front at target moving from
-  0.670 toward 0.936 with the residual attributed, and the Indus and Ganges
-  target arrival rows (currently null). The clamp is inactive at the chosen
-  stride BY CONSTRUCTION — the stride is the largest whole year inside the
-  bound at which the share reaches `PEOPLE_MIGRATION_MAX_SHARE` — so what
-  the long arm measures is how much of the 0.936 that recovers, not whether
-  it clamps.
+  The long arm (`GATE_PEOPLE_SOLVE_TARGET=1`, run on request 2026-09-05,
+  QUESTIONS #63): the front at target **0.670 → 0.854 km/yr** against the
+  0.936 design, every European window met (Balkans −6024, central Europe
+  −4683, Rhine −4161, Cardial −5439, inland −5179), and the residual has a
+  direction — the eastward leg to the Indus SLOWED (0.66 → 0.54 km/yr,
+  arrival −3155 → −2027, now a miss) while the northwestward legs sped up
+  by a quarter, which is §4's sign but is confounded by the Iranian
+  plateau's capacity and is not decidable without the per-cell arrival
+  raster. The clamp is inactive at the chosen stride BY CONSTRUCTION — the
+  stride is the largest whole year inside the bound at which the share
+  reaches `PEOPLE_MIGRATION_MAX_SHARE` — so what the long arm measured is
+  how much of the 0.936 recovered: 91 %.
 - **§3.** Aspect ratio inside [0.5, 1] on every row; the migration bound
   ~48 months at every latitude; §2's target stride rises to 48 and its cost
   is re-measured. Parity and the oracle hold across the land re-packing.
@@ -440,8 +444,13 @@ Measured at both grids on every commit (dev) and in `v2-long` (target,
 
 ## Status (2026-09-05)
 
-§1 landed and verified (`a1eac742`). **§2 landed. §3 measured and NOT
-built** — as ratified it moves the shipped-grid stride from 24 months to 24
+§1 landed and verified (`a1eac742`). **§2 landed and measured at the grid
+that ships: the front is 0.854 km/yr, Europe is on time, the Indus is not**
+(QUESTIONS #63; the target known-miss manifest re-measured to 22 rows, 60
+in all — three cleared, six refreshed, sixteen first measured). What is
+left is 9 % of the design, split by direction, and the population
+overshoot grew with the speed (214M / 497M / 593M against 100 / 200 /
+400M) — M3b's debt, not this wave's. **§3 measured and NOT built** — as ratified it moves the shipped-grid stride from 24 months to 24
 months (§3d, QUESTIONS #61, DECISIONS 33), so 31(c) is withdrawn and §4,
 which is worse off under it than §4b assumed, is blocked behind whatever
 replaces it. The rule that does work (`n_row = max(1, floor(width·cos))`) is
@@ -466,8 +475,9 @@ three regimes per grid, serial wasm and 1/2/8 workers), the travel gate, the
 people gate (48 known misses, none unacknowledged, none stale), the bench
 ratchet `--check`, the worldgen oracle, and the Chromium browser smoke — the
 last returning dev `64e16935452e6c26` unchanged and target
-`217a88344bd3a6b1`. The full three-engine browser matrix and the shipped-grid
-`GATE_PEOPLE_SOLVE_TARGET=1` arm stay in `v2-long`.
+`217a88344bd3a6b1`. The shipped-grid `GATE_PEOPLE_SOLVE_TARGET=1` arm was
+run once on request (1,504 s, #63); the full three-engine browser matrix
+stays in `v2-long`.
 
 §3 was measured, not run: the per-row transport bound computed from the real
 substrate with the same expression the scheduler uses, validated against the

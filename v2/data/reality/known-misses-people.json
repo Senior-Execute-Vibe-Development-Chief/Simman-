@@ -106,27 +106,15 @@
     },
     {
       "id": "population:-3000:solve:target",
-      "reason": "Measured 125M vs band max 100M on the target solve arm (W7; −5000 is inside its band at 53.0M): the same missing-mortality physics as population:-5000:dev. M3b owns this miss. Re-measured 2026-09-04 after the WCVP native-range screen: 125M, down from 397M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
+      "reason": "Measured 214M vs band max 100M on the target solve arm: the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-05 after W12 §2 (movement on its own 24-month stride at this grid): 214M, up from 125M — the front reaches farmable ground sooner, so the same saturating curve arrives earlier; the ceiling did not move. M3b owns this miss, and W12 made it larger by design: it fixed the speed without the deaths."
     },
     {
       "id": "population:-1000:solve:target",
-      "reason": "Measured 346M vs band max 200M on the target solve arm: the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-04 after the WCVP native-range screen: 346M, down from 937M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
+      "reason": "Measured 497M vs band max 200M on the target solve arm: the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-05 after W12 §2: 497M, up from 346M, for the same reason as population:-3000:solve:target — an earlier front, not a higher ceiling."
     },
     {
       "id": "population:1:solve:target",
-      "reason": "Measured 463M vs band max 400M on the target solve arm: the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-04 after the WCVP native-range screen: 463M, down from 1.17B — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
-    },
-    {
-      "id": "arrival:central-europe:solve:target",
-      "reason": "Measured −3722 vs latest −5000 (−4200 with the grace) on the target solve arm. The Balkans land inside their window (−5654) once the straits link (W7); the inland leg runs at 0.59 km/yr, the farmer group's own 2·√(r·D) with M2's crowded long-run growth rate. P15 (the uncrowded frontier growth rate) is the remedy, an owner ruling because it moves the population curve too. Recorded, not dialed."
-    },
-    {
-      "id": "arrival:rhine:solve:target",
-      "reason": "Measured −2980 vs latest −4800 (−4000 with the grace) on the target solve arm: the same 0.59 km/yr inland leg as arrival:central-europe:solve:target (P15)."
-    },
-    {
-      "id": "europe-front-speed:solve:target",
-      "reason": "Measured 0.59 km/yr Balkans → Rhine on the target solve arm against the band's 0.6: the farmer group's own 2·√(r·D) (0.53 on a flat field at this grid) with M2's crowded long-run growth rate (P15). Recorded, not dialed."
+      "reason": "Measured 593M vs band max 400M on the target solve arm: the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000:dev. Re-measured 2026-09-05 after W12 §2: 593M, up from 463M. The gap between the three checkpoints narrows as the curve saturates, which is the ceiling showing through."
     },
     {
       "id": "climate-barrier:solve:target",
@@ -134,15 +122,75 @@
     },
     {
       "id": "arrival:ganges:solve:target",
-      "reason": "Measured −950 vs latest −2000 (−1200 with the grace) on the target solve arm: reached late by the wheat front, whose Iranian leg slowed once the second wheat hearth condensed in the Taurus rather than Fars (plateau −6263, Turkmenistan −4716, Indus −3155, the Punjab unfarmed). Recorded, not dialed."
+      "reason": "Measured −947 vs latest −2000 (−1200 with the grace) on the target solve arm, unchanged by W12 §2 (−950 before): reached late by the wheat front, whose Iranian leg is the slow one — the Indus itself is now reached only at −2027 (arrival:indus:solve:target). The plain farms wheat at 1 CE (staple:ganges:solve:target) because rice lit on the Godavari and in Bengal instead of the Yangtze (hearth-outside:rice:solve:target). Recorded, not dialed."
     },
     {
       "id": "arrival:south-india:solve:target",
-      "reason": "Not reached by 1 CE on the target solve arm: the rice range is the Yangtze's (W7) and the wheat front reaches the Ganges only at −950 (see arrival:ganges:solve:target). Recorded, not dialed."
+      "reason": "Measured −5287 vs earliest −3500 (−4300 with the grace) on the target solve arm — not reached at all before W12 §2. An independent ignition inside a range box rather than a reached region (review ruling g): rice lights on the Godavari delta at 16.9°N 81.9°E in −6032 (hearth-outside:rice:solve:target), inside its wild native range, and spreads into the peninsular box from there. The same mechanism as arrival:south-india:dev. Recorded, not dialed."
     },
     {
       "id": "arrival:japan:solve:target",
-      "reason": "Measured −3162 vs earliest −1200 (−2000 with the grace) on the target solve arm: millet reaches Korea at −4555 and crosses Tsushima (92 km, inside the W7 boat hop) to Kyushu at −3883; the window is Yayoi rice. Recorded, not dialed."
+      "reason": "Measured −4687 vs earliest −1200 (−2000 with the grace) on the target solve arm (−3162 before W12 §2: a faster millet front reaches Korea and crosses Tsushima, 92 km and inside the W7 boat hop, sooner); the window is Yayoi rice. Recorded, not dialed."
+    },
+    {
+      "id": "arrival:indus:solve:target",
+      "reason": "Measured −2027 vs latest −3500 (−2700 with the grace) on the target solve arm. This row is NEW: before W12 §2 the Indus was reached at −3155, inside the window with the grace (see the pre-§2 reason of arrival:ganges:solve:target). §2 moved every European row EARLIER (Balkans −5654 → −6024, central Europe −3722 → −4683, Rhine −2980 → −4161) and this one 1,128 years LATER, on the same wheat front from the same hearth (36.5°N 37.1°E, −7992). Great-circle from that hearth to each box centre, the legs run at 0.73–0.80 km/yr northwest (Balkans, central Europe, Rhine) and 0.54 east to the Indus, 0.66 before §2. Whether that is the isotropic split under-serving east–west transport (W12 §4's hypothesis) or the Iranian plateau's capacity is not decidable from the box year; it needs the per-cell arrival raster, which the gate does not write. Recorded, not dialed, and not explained (QUESTIONS #63)."
+    },
+    {
+      "id": "hearth:yangtze:solve:target",
+      "reason": "NO rice hearth inside the Yangtze box by 1 CE on the target solve arm, against a window of −7000 to −5000. Rice lights instead on the Godavari delta at 16.9°N 81.9°E (−6032) and in Bengal at 23.9°N 89.1°E (−5143), both inside its wild native range and far outside the box (hearth-outside:rice:solve:target). The same race as hearth:yangtze:solve:dev: millet from the loess reaches the lower Yangtze first and the pre-emption term stops the rice clock where millet farms (staple:lower-yangtze:solve:target). First measured at this grid today; the target solve arm had not run since W10/W11 moved the hearths. Recorded, not dialed."
+    },
+    {
+      "id": "hearth:sahel-sudan:solve:target",
+      "reason": "Sorghum lights in the Sahelian belt at −6158 vs earliest −4000 (−4800 with the grace) on the target solve arm: the belt is caged from the opening under today's climate, where the real belt filled as the green Sahara dried (P10). The same as hearth:sahel-sudan:solve:dev; first measured at this grid today."
+    },
+    {
+      "id": "hearth:ethiopia:solve:target",
+      "reason": "NO highland-roots hearth inside the Ethiopian box by 1 CE on the target solve arm, against a window of −3000 to −1000. The package lights instead at 11.7°S 16.9°E (−6368, the Angolan highlands) and 1.5°S 34.5°E (−6326, the Kenya–Tanzania highlands), inside its wild native range and outside the 6° box (hearth-outside:highland-roots:solve:target). The same as hearth:ethiopia:solve:dev; first measured at this grid today."
+    },
+    {
+      "id": "hearth:kuk:solve:target",
+      "reason": "NO new-guinea-roots hearth inside the Kuk box by 1 CE on the target solve arm, against a window of −7000 to −4000. The package lights instead at 3.1°S 151.7°E (−5577, New Ireland in the Bismarcks), inside its wild native range and outside the box (hearth-outside:new-guinea-roots:solve:target): the highland stand is not the richest in the range at this grid. First measured at this grid today; the dev arm lights Kuk inside its window. Recorded, not dialed."
+    },
+    {
+      "id": "hearth:eastern-woodlands:solve:target",
+      "reason": "The Eastern Agricultural Complex lights at −6193 vs earliest −3000 (−3800 with the grace) on the target solve arm: its stand is rich under today's climate from the opening, where the real river-valley weed habitats formed with the mid-Holocene floodplains (Smith 2006) — a P10-class forcing. The same as hearth:eastern-woodlands:solve:dev; first measured at this grid today."
+    },
+    {
+      "id": "hearth:northwest-neotropics:solve:target",
+      "reason": "NO tubers hearth within 10° of 3°N 76°W by 1 CE on the target solve arm, against a window of −7000 to −5000. Tubers light on the Amazon margin (−5521, inside its own window) and at 14.7°S 44.1°W (−3638, eastern Brazil; hearth-outside:tubers:solve:target); the Colombian–Ecuadorian stand does not out-race them. First measured at this grid today. Recorded, not dialed."
+    },
+    {
+      "id": "hearth-outside:rice:solve:target",
+      "reason": "Rice lights at 16.9°N 81.9°E (−6032, the Godavari delta) and 23.9°N 89.1°E (−5143, Bengal) on the target solve arm — inside rice's wild native range, outside the 6° Yangtze box, which records no rice hearth at all (hearth:yangtze:solve:target). The Indian ignitions are why south India is reached early and the Ganges farms wheat. First measured at this grid today."
+    },
+    {
+      "id": "hearth-outside:millet:solve:target",
+      "reason": "Millet lights at 39.5°N 78.5°E (−4702, the Tarim basin) and 44.9°N 76.1°E (−1678, the Balkhash steppe) on the target solve arm, after the two north-China hearths (−7292, −7145) — all inside millet's wild native range, the later two outside the 8° box. The same spread-not-rank problem as hearth-outside:millet:solve:dev (W11); first measured at this grid today."
+    },
+    {
+      "id": "hearth-outside:tubers:solve:target",
+      "reason": "Tubers light at 14.7°S 44.1°W (−3638, eastern Brazil) on the target solve arm, inside the package's wild native range and outside the Amazon-margin box, which lights on its own at −5521 and passes its window. The same as hearth-outside:tubers:solve:dev; first measured at this grid today."
+    },
+    {
+      "id": "hearth-outside:highland-roots:solve:target",
+      "reason": "The highland roots light at 11.7°S 16.9°E (−6368, the Angolan highlands) and 1.5°S 34.5°E (−6326, the Kenya–Tanzania highlands) on the target solve arm — inside the package's wild native range, outside the 6° Ethiopian box, which records no hearth at all (hearth:ethiopia:solve:target). The same as hearth-outside:highland-roots:solve:dev; first measured at this grid today."
+    },
+    {
+      "id": "hearth-outside:new-guinea-roots:solve:target",
+      "reason": "The New Guinea roots light at 3.1°S 151.7°E (−5577, New Ireland) on the target solve arm, inside the package's wild native range and outside the Kuk box, which records no hearth at all (hearth:kuk:solve:target). First measured at this grid today; absent at dev, where Kuk lights in place."
+    },
+    {
+      "id": "staple:lower-yangtze:solve:target",
+      "reason": "The lower Yangtze farms millet, not rice, at 1 CE on the target solve arm (800 farmed cells in the box): rice never lights on the Yangtze at this grid (hearth:yangtze:solve:target) and the millet front from the loess holds the delta; rice takes south China by switching (staple:south-china:solve:target passes). First measured at this grid today. Recorded, not dialed."
+    },
+    {
+      "id": "staple:ganges:solve:target",
+      "reason": "The Ganges plain farms wheat, not rice, at 1 CE on the target solve arm (499 farmed cells in the box): the wheat front arrives from the Indus (arrival:ganges:solve:target) and Bengal's rice (−5143, hearth-outside:rice:solve:target) does not out-yield it up the plain under the crop bells. First measured at this grid today. Recorded, not dialed."
+    },
+    {
+      "id": "staple:nile:solve:target",
+      "reason": "The Nile farms sorghum, not wheat, at 1 CE on the target solve arm (746 farmed cells in the box): sorghum spreads down the Nile from the Sudan and out-yields wheat there under the crop bells, the same switch as staple:nile:solve:dev. First measured at this grid today. Recorded, not dialed."
     },
     {
       "id": "hearth:yangtze:solve:dev",

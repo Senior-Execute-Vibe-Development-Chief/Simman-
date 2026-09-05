@@ -2794,3 +2794,92 @@ Review corrections to the M1 build (all validated before merge):
     tightest rows but they are not the cost, and the cost is smooth all the
     way to the equator. This closes the exclusion family for a second time.
     P16 (DECISIONS 33) remains the only measured route to 48 months.
+
+63. **The long arm, run on request: the shipped-grid front is 0.854 km/yr
+    after §2, Europe is no longer late, and the residual has a DIRECTION
+    (2026-09-05, owner: "ok, you run it").** The `v2-long` arm
+    (`GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1`, 1,504 s wall,
+    single-threaded serial kernel, 9,701 steps on the 12-month clock) had
+    not run since W10/W11, so this is the first measurement of §1 + §2
+    together at the grid that ships, and the first of several target rows
+    at all.
+
+    **The wave's question, answered.** Balkans → Rhine 0.553 (W11) → 0.670
+    (§1) → **0.854 km/yr** (§2), against the design 0.936 and the
+    Pinhasi–Fort–Ammerman band 0.6–1.3. Every European window is met, five
+    of five: Balkans −6024 (was −5654), Cardial coast −5439, inland Europe
+    −5179, central Europe −4683 (was −3722, a miss), Rhine −4161 (was
+    −2980, a miss). `arrival:central-europe`, `arrival:rhine` and
+    `europe-front-speed` leave the target manifest. The first caged basin
+    now comes at −373 (Amazon margin, 3.1 °S 60.3 °W), inside the horizon,
+    so the shipped world wakes before 1 CE.
+
+    **What is left of the 0.936 is 9 %, and it is not uniform.** The same
+    wheat front from the same hearth (36.5 °N 37.1 °E, −7992) moved EARLIER
+    everywhere northwest and LATER to the east: the Indus 1,128 years later,
+    −3155 → **−2027**, out of its window for the first time, and the Ganges
+    3 years earlier at −947 (the Indus → Ganges leg is fast; the delay is
+    all upstream). Great-circle from the hearth to each box centre:
+
+    | leg (km/yr; hearth year taken as unchanged) | before §2 | after §2 |
+    | --- | ---: | ---: |
+    | → Balkans (1,434 km) | 0.61 | **0.73** |
+    | → central Europe (2,636 km) | 0.62 | **0.80** |
+    | → Rhine (2,875 km) | 0.57 | **0.75** |
+    | → Indus (3,217 km) | 0.66 | **0.54** |
+
+    So §2 sped the northwestward legs by a quarter and slowed the eastward
+    one by a fifth. That sign split is what §4's hypothesis predicts — the
+    isotropic conductance split under-serves east–west transport by the
+    aspect ratio — but the Iranian plateau's capacity is a confound of the
+    same sign (the old `arrival:ganges` reason already recorded the front
+    stalling from the plateau at −6263 to Turkmenistan at −4716), and a box
+    year cannot separate a slow leg from a slow patch inside it. The gate
+    does not write the per-cell arrival raster; deciding this needs one
+    that does, which is a second history run and is asked for, not run.
+    P15 alone (regrounding the growth rate) would lift every leg by the
+    same factor and cannot produce a split; so the residual is at least
+    partly §4/P16's. Neither is built on this evidence.
+
+    **The population overshoot grew.** −3000: 125M → **214M** (band ≤ 100M);
+    −1000: 346M → **497M** (≤ 200M); 1 CE: 463M → **593M** (≤ 400M). −8000
+    (8.8M) and −5000 (28.9M) stay in band. W12 fixed the speed without the
+    deaths: a faster front farms more of the world sooner, and every farmed
+    cell then saturates against capacity with no mortality to hold it down.
+    Nothing in this wave touches that; M3b owns it and it is now the largest
+    debt on the target curve.
+
+    **Sixteen target rows were measured for the first time**, because the
+    hearth and staple tables (W8) and the detailed arrivals were added after
+    the last target run. They match dev's mechanisms, not dev's numbers:
+    rice lights on the Godavari delta (16.9 °N 81.9 °E, −6032) and in
+    Bengal (23.9 °N 89.1 °E, −5143), never on the Yangtze, so
+    `hearth:yangtze`, `hearth-outside:rice` and `staple:lower-yangtze`
+    (millet-dominant, 800 farmed cells) fail together and `south-india` is
+    "reached" at −5287 by an ignition inside its own box (review ruling g);
+    highland roots light in Angola (11.7 °S 16.9 °E) and by Lake Victoria
+    (1.5 °S 34.5 °E), not Ethiopia; there is no Kuk — New Guinea roots light
+    on New Ireland (3.1 °S 151.7 °E); millet strays to the Tarim (39.5 °N
+    78.5 °E) and Balkhash (44.9 °N 76.1 °E); the eastern-seeds hearth sits
+    outside its Woodlands box; tubers light a second time in the Brazilian
+    highlands; `staple:ganges` is wheat (the rice range is Bengal's, not the
+    Ganges plain's) and `staple:nile` is sorghum (the Sahel ignition at
+    −6158 reaches the valley before wheat does, P10). Japan is earlier
+    still, −3162 → −4687, the faster millet front crossing Tsushima sooner;
+    the window is Yayoi rice. All acknowledged as measured; none dialed.
+
+    **The manifest arithmetic.** Target rows 12 → 22 of 60 total: three
+    cleared, six refreshed, sixteen new. Checked by set arithmetic against
+    the run's own failure list — unacknowledged ∅, stale ∅ — and the
+    per-commit dev gate is unchanged (it does not see target rows). One
+    quirk worth knowing: `europe-front-speed` and `climate-barrier` are
+    added to `measured` only when they fail, so a row acknowledging either
+    is never reported stale once it passes; the row must be removed by
+    hand, as `europe-front-speed:solve:target` was here.
+
+    **Cost.** 1,504 s for the target solve arm to 1 CE on this container,
+    single-threaded. No earlier wall time for this arm is on record; the
+    per-solve-year bench row (DECISIONS 32: 34.9 → 104.8 ms) is the measured
+    ratio, §1's 3.5× movement firings. Under P16 the stride doubles and this
+    roughly halves; §4 without P16 halves the stride and doubles it
+    (DECISIONS 33(c)).
