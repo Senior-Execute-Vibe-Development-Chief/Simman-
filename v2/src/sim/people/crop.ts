@@ -8,7 +8,7 @@ import {
   PEOPLE_WATER_ACCESS_GAIN,
   PEOPLE_WILD_STAND_SHARE,
 } from "../constants";
-import { CROP_PACKAGES, pkgClimateBell, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
+import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
 import { occurrenceTaxaOf } from "../../ported/worldgen/cropOccurrenceData.js";
 import { deriveWildRange, fitWildEnvelope } from "./wildRange";
 import { dpow } from "../dmath";
@@ -147,18 +147,26 @@ export function initializeCropFields(world: PeopleWorld): void {
       let season = 0;
       let fitSum = 0;
       const access = world._waterAccess[cell] ?? 0;
+      const surface = world._surfaceAccess[cell] ?? 0;
       for (let month = 0; month < MONTHS_PER_YEAR; month++) {
         const climateIndex = cell * MONTHS_PER_YEAR + month;
         const temperature = world.substrate.climate.temperature[climateIndex] ?? 0;
         const moisture = world.substrate.climate.moisture[climateIndex] ?? 0;
-        const bell = pkgClimateBell(pkg, temperature, moisture);
+        const warmth = pkgTemperatureBell(pkg, temperature);
+        // A month counts when it is warm enough and there is water in it:
+        // the month's rain, or the water the land holds when it does not
+        // rain — the floodplain, the river, the lake, the routed stream
+        // (W13). Until W13 the month was admitted on rain alone, so the
+        // Nile's winter, warm enough and watered, did not count toward
+        // wheat's season. The year's rain is not water in a dry month, so
+        // it does not admit one.
         if (temperature >= (pkg.baseTemperature ?? pkg.tOpt - pkg.tTol)
-          && bell >= PEOPLE_TECHNIQUE_CLIMATE_FLOOR) {
+          && warmth * Math.max(pkgMoistureBell(pkg, moisture), surface) >= PEOPLE_TECHNIQUE_CLIMATE_FLOOR) {
           season++;
           // The fit (W8): the crop's warmth term times its water term, where
           // the water is met by rain or by the water the land gives access to
           // — a floodplain grows wheat in a desert.
-          fitSum += pkgTemperatureBell(pkg, temperature) * Math.max(pkgMoistureBell(pkg, moisture), access);
+          fitSum += warmth * Math.max(pkgMoistureBell(pkg, moisture), access);
         }
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;

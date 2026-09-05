@@ -127,6 +127,10 @@ export interface PeopleWorld extends World {
   _migrationDaysPerKmByMonth: Array<Float64Array | undefined>;
   /** Static water-access and relief multipliers (annual land properties). */
   _waterAccess: Float64Array;
+  /** The water each cell takes from what drains onto it (W13, P17): the routed-runoff term of its water access. */
+  _runoffAccess: Float64Array;
+  /** The land's own water, rain aside (W13): the routed stream, floodplain, river and lake terms of water access — what waters a month it does not rain. */
+  _surfaceAccess: Float64Array;
   _reliefMult: Float64Array;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;

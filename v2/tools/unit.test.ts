@@ -23,6 +23,7 @@ import {
   HORIZON_OPENING_YEAR,
   MONTHS_PER_YEAR,
   PEOPLE_ADOPTION_RATE_PER_YEAR,
+  PEOPLE_CHANNEL_STRIP_KM,
   PEOPLE_CHILD_AGE_YEARS,
   PEOPLE_FARMED_MARKER_SHARE,
   PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
@@ -32,13 +33,15 @@ import {
   PEOPLE_GROWTH_TECHNIQUE_GAIN,
   PEOPLE_MIGRATION_MAX_SHARE,
   PEOPLE_R_GROWTH_PER_YEAR,
+  PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
 } from "../src/sim/constants";
 import { migrationShareForArea } from "../src/sim/people/migration";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
+import { cellAreasKm2 } from "../src/sim/people/habitability";
 import { mixtureCapacity } from "../src/sim/people/capacity";
-import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
+import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../src/ported/worldgen/cropPackages.js";
 import { stepFromYear } from "../src/sim/horizon";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -109,6 +112,7 @@ function peopleFixture(): Substrate {
       magnitude: new Uint8Array(cells),
       direction: new Uint8Array(cells).fill(255),
       flowAccum: new Float32Array(cells),
+      runoff: new Float32Array(cells),
       lake: new Int32Array(cells).fill(-1),
     },
     ancestry: {
@@ -552,12 +556,68 @@ async function main(): Promise<void> {
     assert.ok(Math.abs(mixtureCapacity(clockWorld, standCell, packed, [0, 1]) - expected) < 1e-9, "the mixture weights each package by its share");
   }
 
+  // W13 (P17): the routed water. A chain of dry cells under one wet head:
+  // the head takes nothing (its own runoff is its rain, counted once), each
+  // dry cell below takes its strip's share, a wet cell passes the water on,
+  // and the stream is used up along its course, so what the chain absorbs
+  // is what the head shed. The same water admits a crop's month that rain
+  // alone does not.
+  {
+    const runoffFixture = peopleFixture();
+    const width = runoffFixture.width;
+    const row = 60;
+    const headX = 100;
+    const chain = Array.from({ length: 11 }, (_, k) => row * width + headX + k);
+    for (let k = 0; k < chain.length - 1; k++) runoffFixture.rivers.direction[chain[k] ?? 0] = 0;
+    for (const cell of chain) {
+      for (let month = 0; month < MONTHS_PER_YEAR; month++) runoffFixture.climate.moisture[cell * MONTHS_PER_YEAR + month] = 0;
+    }
+    const wet = chain[2] ?? 0;
+    for (let month = 0; month < MONTHS_PER_YEAR; month++) runoffFixture.climate.moisture[wet * MONTHS_PER_YEAR + month] = 1;
+    const area = cellAreasKm2(width, runoffFixture.height)[chain[0] ?? 0] ?? 0;
+    const strip = Math.min(1, PEOPLE_CHANNEL_STRIP_KM / Math.sqrt(area));
+    runoffFixture.rivers.runoff[chain[0] ?? 0] = 3.5 * strip;
+    // Read back: the substrate holds runoff in single precision.
+    const shed = runoffFixture.rivers.runoff[chain[0] ?? 0] ?? 0;
+    const runoffWorld = new World({ seed: 3, grid: "dev", config: { peopleKernel: "ts" }, substrate: runoffFixture }) as PeopleWorld;
+    const term = (cell: number): number => runoffWorld._runoffAccess[cell] ?? 0;
+    assert.equal(term(chain[0] ?? 0), 0, "a head cell takes none of its own runoff");
+    assert.ok(Math.abs(term(chain[1] ?? 0) - strip) < 1e-12, "a dry cell takes its strip's share");
+    assert.equal(term(wet), 0, "a wet cell takes nothing");
+    assert.ok(Math.abs(term(chain[3] ?? 0) - strip) < 1e-12, "the water passes a wet cell on");
+    assert.ok(Math.abs(term(chain[4] ?? 0) - strip) < 1e-12);
+    assert.ok(Math.abs(term(chain[5] ?? 0) - (shed - 3 * strip)) < 1e-12, "the stream is used up along its course");
+    for (let k = 6; k < chain.length; k++) assert.equal(term(chain[k] ?? 0), 0);
+    let absorbed = 0;
+    for (const cell of chain) absorbed += term(cell);
+    assert.ok(Math.abs(absorbed - shed) < 1e-12, "what the chain absorbs is what the head shed");
+    assert.ok(Math.abs((runoffWorld._waterAccess[chain[1] ?? 0] ?? 0) - strip) < 1e-12, "the routed term enters water access as rainfall does");
+    assert.ok(Math.abs((runoffWorld._surfaceAccess[chain[1] ?? 0] ?? 0) - strip) < 1e-12, "the routed term is the land's own water");
+    assert.equal(runoffWorld._surfaceAccess[wet], 0, "rain is not the land's own water");
+    assert.equal(runoffWorld._waterAccess[wet], 1, "rain is water access");
+    // The constant is in km: at the reference grid a 10 km strip is six
+    // hundredths of a 167 km cell, at the shipped grid half of a 20 km cell,
+    // and the same ground is irrigated at either.
+    assert.ok(strip > 0.05 && strip < 0.07, "the strip is the share of the cell a 10 km strip covers");
+    const temperature = runoffFixture.climate.temperature[(chain[1] ?? 0) * MONTHS_PER_YEAR] ?? 0;
+    const admitted = CROP_PACKAGES.findIndex((pkg) => {
+      const warmth = pkgTemperatureBell(pkg, temperature);
+      return temperature >= (pkg.baseTemperature ?? pkg.tOpt - pkg.tTol)
+        && warmth * pkgMoistureBell(pkg, 0) < PEOPLE_TECHNIQUE_CLIMATE_FLOOR
+        && warmth * strip >= PEOPLE_TECHNIQUE_CLIMATE_FLOOR;
+    });
+    assert.ok(admitted >= 0, "some package is admitted by the routed water and not by the rain");
+    assert.equal(runoffWorld._canGrow[admitted]?.[runoffWorld._packedOf[chain[1] ?? 0] ?? 0], 1, "the watered month counts toward the season");
+    assert.equal(runoffWorld._canGrow[admitted]?.[runoffWorld._packedOf[chain[6] ?? 0] ?? 0], 0, "a dry cell the stream no longer reaches is not admitted");
+  }
+
   console.log(JSON.stringify({
     tests: "ok",
     rng: "v1-byte-compatible",
     dmath: "golden",
     saveLoad: "byte-identical",
     routing: "ok",
+    runoff: "ok",
     scheduler: "ok",
     solve: frontReport,
   }));

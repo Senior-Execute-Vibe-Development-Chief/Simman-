@@ -59,6 +59,10 @@ export interface SubstrateRivers {
   readonly magnitude: Uint8Array;
   readonly direction: Uint8Array;
   readonly flowAccum: Float32Array;
+  /** Per-tile runoff the accumulation summed (moisture less evaporation, plus
+   * mountain melt), in tile-depth units: one unit is a tile's area under one
+   * moisture-unit of water. The people world routes it (P17). */
+  readonly runoff: Float32Array;
   readonly lake: Int32Array;
   /** Baked lake placement, independent of whether the basin holds water. */
   readonly lakeGeometry?: Uint8Array;
@@ -326,6 +330,7 @@ export function buildSubstrate(
       magnitude: territory.rivers.riverMag,
       direction: territory.rivers.flowDir,
       flowAccum: territory.rivers.flowAccum,
+      runoff: territory.rivers.runoff,
       lake: territory.rivers.lake,
       lakeGeometry: territory.rivers.lakeGeometry,
       seasonalFlowScale,

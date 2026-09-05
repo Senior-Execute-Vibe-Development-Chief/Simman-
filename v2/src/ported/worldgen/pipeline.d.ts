@@ -40,6 +40,8 @@ export interface PortedTerritory {
   readonly rivers: {
     readonly flowDir: Uint8Array;
     readonly flowAccum: Float32Array;
+    /** Per-tile runoff the accumulation summed: moisture less evaporation plus mountain melt, tile-depth units. */
+    readonly runoff: Float32Array;
     readonly riverMag: Uint8Array;
     readonly lake: Int32Array;
     readonly lakeGeometry: Uint8Array;

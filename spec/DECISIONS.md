@@ -769,6 +769,36 @@ lawyered.
     way — its transport bound is 116 years today and 227 under P16, and the
     84-month reaction cap binds long before both.
 
+34. **W13 landed: the routed water (P17) and the watered month.** (Owner,
+    2026-09-05: "so we need water runoff", on #64's finding that the Indus
+    is late because the plateau's water is not in the substrate.) The
+    worldgen's per-tile runoff is returned instead of being summed and
+    thresholded away, and the people world routes it down the worldgen's
+    own flow directions in drainage order: each cell takes from what
+    arrives the water its channel strip lacks in rain
+    (`PEOPLE_CHANNEL_STRIP_KM = 10`, the Upper Nile valley floor and the
+    Kopet Dag fans, as a share of the cell so it is the same ground at
+    every grid), passes the rest on with its own runoff, and never takes
+    its own. What it takes is one more term of water access, kept apart as
+    the land's own water (`_surfaceAccess`, with the floodplain, river and
+    lake terms) so that a growing month is admitted on it — W8 admitted a
+    month on its rain alone and the Nile's winter did not count toward
+    wheat's season; now Luxor has eight months, Mohenjo-daro seven where it
+    had four and no wheat at all. The year's rain does not admit a dry
+    month (the broader form was measured and withdrawn). Measured on the
+    substrate at the shipped grid: Luxor's wheat capacity 0.91 → 3.11
+    persons/km², Mohenjo-daro 0 → 11.4, Patna 4.5 → 11.0, Peshawar 12 → 21;
+    the plateau sites 0.11–0.14 → 0.13–0.15, because their catchments are
+    empty in the 1.9° table — P18, and the reason P17 alone does not move
+    the Indus row. At dev the strip is 0.06 and the gate sees the machinery,
+    not the size: the Indus arrives −4758 → −4121 (in window), central
+    Europe clears, the Ganges takes rice, south China and the lower Yangtze
+    take millet (the W8 grade cannot tell packages apart on watered ground
+    — QUESTIONS #65 — first arrival wins), and the population leaves its
+    band at −5000 (71.4M vs 60M; M3b). Seven dev rows newly recorded,
+    three cleared. The shipped-grid arm is `v2-long` on request; the target
+    rows are annotated, not refreshed.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P16. The true reduced grid** (replaces the withdrawn 31(c); measured
@@ -797,8 +827,10 @@ lawyered.
   physics. Bake-side only — no live sea level; replaces dials with data
   (R2/R7). Not needed for M2: the proxies already yield the correct
   peopling extents and ordering that its gates consume.
-- **P17. Routed catchment runoff as water access** (W12 raster finding,
-  QUESTIONS #64, 2026-09-05). The substrate carries water in three forms —
+- **P17. Routed catchment runoff as water access** — ~~proposed~~
+  **BUILT as W13 (2026-09-05, owner: "so we need water runoff"; see 34,
+  `spec/handoffs/W13-runoff.md`)**. (W12 raster finding, QUESTIONS #64,
+  2026-09-05.) The substrate carries water in three forms —
   the cell's own rainfall, the floodplain ribbon of a large river, and a
   channel magnitude on a 0–4 scale of which 89 % of land reads 0 — and
   none of them is "a wet catchment drains onto this dry cell". That is
@@ -818,8 +850,34 @@ lawyered.
   the moisture floor or the plateau's fertility (second cardinal rule).
   The data-side half — the 1.9 ° climatology averaging a range's wet
   slope with the basin at its foot (the NCEP cell over Shahroud reads
-  95 mm/yr) — is recorded in #64 and would be a finer precipitation
-  climatology, a separate ruling.
+  95 mm/yr) — is recorded in #64 and is P18. As built, the routing reads
+  the worldgen's own per-tile runoff and flow directions with one
+  constant, a 10 km channel strip; measured at the shipped grid on the
+  substrate alone, it waters the Nile, the lower Indus, the Ganges, the
+  Oxus and the Tarim and leaves the plateau sites at the floor, because
+  their catchments are empty in the table — so P17 alone does not move
+  the Indus row, and the shipped-grid re-measurement is `v2-long` on
+  request.
+- **P18. Sub-grid orographic redistribution of the coarse precipitation**
+  (W13 finding, QUESTIONS #65, 2026-09-05). The Earth preset's moisture is
+  a quantile map of the 1.9° NCEP/NCAR precipitation, and a range narrower
+  than a cell — the Kopet Dag, the Alborz foot, the Sulaiman, the Makran —
+  is averaged with the basin at its foot and smeared into its desert. With
+  P17 built, that is now the whole of the plateau sites' deficit: routing
+  finds nothing in their catchments to route (Jeitun's water access
+  0.02 → 0.07, Mehrgarh 0.02 → 0.12, Sang-e Chakhmaq 0.02 → 0.02; wheat
+  capacity 0.11–0.14 → 0.13–0.15 persons/km²), while every site under a
+  resolved catchment gets its water. The physical remedy is on the data
+  side: redistribute each coarse cell's precipitation over the fine cells
+  inside it by their elevation anomaly against the coarse mean — an
+  orographic enhancement per metre of relief, one coefficient with a
+  citation — CONSERVING the coarse cell's total, so no rain is invented,
+  only placed on the slope it fell on. No place named; it lifts every
+  range on every map and nothing else. It is the substrate's, it moves the
+  world hash at both grids, and it is not to be substituted by raising the
+  moisture floor, the runoff floor, or the channel strip (second cardinal
+  rule). Awaiting the owner. Until it lands the plateau rows are recorded
+  misses of the input, not of P17.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

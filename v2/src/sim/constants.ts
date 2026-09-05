@@ -286,6 +286,10 @@ export const PEOPLE_WILD_STAND_CAPACITY_PER_KM2_RETIRED = 0.5; // spec/09-consta
 export const SAVE_VERSION_W8 = 7; // spec/09-constants-ledger.md §W8 — hearth records carry their region size
 export const SAVE_VERSION_W12 = 8; // spec/09-constants-ledger.md §W12 — the solve regime carries a schedule, not one stride
 
+// W13 (P17): the routed water. One physical constant; the routing itself is
+// the worldgen's own flow field and per-tile runoff, read rather than re-derived.
+export const PEOPLE_CHANNEL_STRIP_KM = 10; // spec/09-constants-ledger.md §W13 — the ground a channel's own gravity offtake commands, both banks together: the Upper Nile valley floor (5–15 km, Butzer 1976) and the piedmont fans the first Central Asian farmers sat on (Jeitun on the Kopet Dag fans, Harris 2010). A cell's irrigable share is the strip's share of the cell, min(1, 10 / √area), the shore strip's law — the same ground in real km at every grid
+
 export const WILD_RANGE_INTERPOLATION_KM = 200; // spec/09-constants-ledger.md §W9 — the distance a georeferenced record set is interpolated over to become a continuous range: the observations are the range, and this fills the gaps between them without inventing one. Stated in real km, so the same range is derived at either grid
 export const WILD_ENVELOPE_AXES = 4; // spec/09-constants-ledger.md §W9 — the climate signature's axes: the warmth of the warmest and coldest quarters and the moisture of the wettest and driest, the four that separate winter-rain country from monsoon country
 export const WILD_ENVELOPE_QUARTER_MONTHS = 3; // spec/09-constants-ledger.md §W9 — the season a climate signature averages over: a quarter, the bioclim convention (Busby 1991; Hijmans et al. 2005 BIO8-BIO17)

@@ -42,6 +42,8 @@ export const WORLD_SCRATCH = new Set<string>([
   "_migrationDaysPerKm",
   "_migrationDaysPerKmByMonth",
   "_waterAccess",
+  "_runoffAccess",
+  "_surfaceAccess",
   "_reliefMult",
   "_foragerCapacity",
   "_diseaseBurden",

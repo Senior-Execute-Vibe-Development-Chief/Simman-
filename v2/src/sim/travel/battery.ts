@@ -36,6 +36,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
   const direction = new Uint8Array(N);
   direction.fill(UINT8_SENTINEL);
   const flowAccum = new Float32Array(N);
+  const runoff = new Float32Array(N);
   const lake = new Int32Array(N);
   lake.fill(MATH_NEGATIVE_ONE);
   // A uniform eastward breeze: sail modes must come out direction-asymmetric
@@ -77,7 +78,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     wind: { u: windU, v: windV },
     temperature,
     moisture,
-    rivers: { magnitude, direction, flowAccum, lake },
+    rivers: { magnitude, direction, flowAccum, runoff, lake },
     ancestry: {
       lineage: new Int16Array(N),
       arrival: new Float32Array(N),

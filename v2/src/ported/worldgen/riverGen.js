@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; W1 adds a data lake mask and a monthly-flow reader over fixed geometry; hydrology otherwise remains verbatim.
+ * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; W1 adds a data lake mask and a monthly-flow reader over fixed geometry; the per-tile runoff field is returned alongside the accumulation (P17); hydrology otherwise remains verbatim.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import {
@@ -768,6 +768,10 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bak
   return {
     flowDir,
     flowAccum,
+    // The per-tile runoff the accumulation summed (moisture less evaporation,
+    // plus mountain melt; tile-depth units). Exported for the people world's
+    // routed water access (P17), which routes it with its own offtake law.
+    runoff,
     riverMag,
     maxAccum,
     lake,

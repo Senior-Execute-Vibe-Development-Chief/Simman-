@@ -588,7 +588,7 @@ function referenceSubstrate(): Substrate {
     wind: { u: new Float32Array(N * MONTHS_PER_YEAR), v: new Float32Array(N * MONTHS_PER_YEAR) },
     temperature,
     moisture,
-    rivers: { magnitude, direction, flowAccum: new Float32Array(N), lake },
+    rivers: { magnitude, direction, flowAccum: new Float32Array(N), runoff: new Float32Array(N), lake },
     ancestry: {
       lineage: new Int16Array(N),
       arrival: new Float32Array(N),

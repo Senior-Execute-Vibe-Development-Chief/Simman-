@@ -3090,3 +3090,74 @@ Review corrections to the M1 build (all validated before merge):
     leg's 650–1,400 years; the ring table puts it on the Bavarian and
     Rhine rings at 0.60–0.67 km/yr on capacity 6–8, which is where the
     front's remaining 9 % lives in Europe.
+
+65. **W13 built the routed water; the plateau does not move because its
+    catchments are empty in the table, and the W8 grade cannot tell
+    packages apart on watered ground (2026-09-05, owner: "so we need
+    water runoff").** P17 as built: the worldgen's per-tile runoff routed
+    down its own flow directions, each cell taking what its 10 km channel
+    strip lacks in rain, its own runoff never taken, upstream first
+    (`spec/handoffs/W13-runoff.md`). Three findings, none of them a dial.
+
+    **1. The month, not the water, was the Nile's problem.** W8 graded a
+    growing month on rain-or-access and admitted it on rain alone, so a
+    warm, watered, rainless month did not count toward a season. Luxor had
+    five wheat months, Mohenjo-daro four — one under the minimum, so the
+    lower Indus had a wheat capacity of zero and the Indus row was being
+    reached across a desert with no wheat in it. Admitting a month on the
+    land's own water (the floodplain, the river, the lake, the routed
+    stream — never the year's rain, which is not water in a dry month)
+    gains wheat a month on 3.9 % of land at the shipped grid before any
+    routing; the routed term gains it on a further 13.1 %. Luxor now has
+    eight months and wheat capacity 0.91 → 3.11 persons/km²; Mohenjo-daro
+    seven and 0 → 11.4; Peshawar twelve and 12 → 21; Patna 4.5 → 11.0.
+    The first form of the rule admitted on the whole water index, the
+    year's rain included; measured at dev the gate did not move between
+    the forms (71.8M vs 71.4M at −5000, the same rows), so the narrower
+    one is kept.
+
+    **2. The routing is right and finds nothing to route on the plateau.**
+    Substrate probe at the shipped grid, no history: Jeitun's water access
+    0.02 → 0.07, Mehrgarh 0.02 → 0.12, Tepe Yahya 0.02 → 0.07, Sang-e
+    Chakhmaq 0.02 → 0.02; wheat capacity 0.11–0.14 → 0.13–0.15 persons/km²
+    against 3–21 in Europe. The cells above them read the runoff floor
+    (0.05) all the way up, because the Earth preset's moisture is a
+    quantile map of the 1.9° NCEP/NCAR precipitation and the Kopet Dag,
+    the Sulaiman and the Makran are narrower than a cell: the wet slope is
+    averaged with the basin at its foot and the range disappears into its
+    desert. The Nile, the Oxus (Bukhara 0.15 → 0.44), the Tarim (Kashgar
+    6.2 → 10.7) and the Kabul valley are resolved catchments and get their
+    water. So **P17 alone does not move `arrival:indus:solve:target`**;
+    what does is on the data side — redistributing each coarse cell's
+    precipitation over its fine cells by elevation anomaly, conserving the
+    total (DECISIONS P18, proposed). Not to be reached by lifting the
+    floor or widening the strip.
+
+    **3. On watered ground the fit is the warmth term alone.** The W8
+    grade is `warmth × max(rain bell, water access)`, and once the land is
+    watered the second factor is 1 for every package alike: a floodplain
+    grades wheat and rice identically, on temperature. A water index that
+    serves every package alike is not a paddy. Rice's advantage on flooded
+    ground is nowhere in the bells, so the first package to reach a wet
+    cell keeps it (switching needs a higher fit), and at dev after W13 the
+    lower Yangtze and south China hold MILLET at 1 CE — they held rice
+    before only because rice arrived first, and W13's watered months let
+    the north-China millet reach the lower Yangtze earlier (its hearth now
+    lights there, 32.3 °N 119.3 °E, −7327). The mechanism that would
+    distinguish them is a per-package response to standing water — rice is
+    a wetland grass, wheat drowns — grounded in the plant; a floodplain
+    weight for rice by name is the outcome painted on. Recorded, not
+    built; the two staple rows and the hearth row are in the manifest.
+
+    **The dev arm, W12 → W13** (the per-commit gate; the strip is 0.06 at
+    dev, ~0.5 at the shipped grid, so this is the machinery, not the size):
+    people −5000 58.5 → 71.4M (band 5–60M, out for the first time at
+    dev), −3000 482 → 624M, 1 CE 960 → 1,162M; the Indus −4758 → −4121
+    (in window), the Ganges −4079 → −5346 (from the Bengal rice ignition),
+    south India −3484 → −4807 (out, 507 years past the grace), central
+    Europe −4177 → −4240 (cleared), the Nile −3148 → −3106; the front
+    1.420 → 1.438 km/yr; river density 17.8 → 20.5 persons/km²; the first
+    caged basin −2322 → −2875. Seven rows newly acknowledged, three
+    cleared, 63 in all. The shipped-grid solve arm is `v2-long`, on
+    request; the expectation stated before it runs is that the lower
+    Indus and the Ganges move and the plateau crossing does not.
