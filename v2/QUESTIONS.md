@@ -2730,3 +2730,67 @@ Review corrections to the M1 build (all validated before merge):
     Dev is unaffected either way: its transport bound is 116 years today and
     227 under `floor`, and the 84-month reaction cap binds long before
     either.
+
+62. **Cutting the poles off the map does nothing: the first extra month of
+    stride costs a third of the world, and the 48 months costs 93 % of it
+    (2026-09-05, owner: "is it just the extremes at the poles? what if we
+    just cut out everything below and above certain latitudes").** The
+    deletion variant of #58, measured the same way #61 was — per-row
+    transport bound from the real substrate at the shipped grid, with every
+    row poleward of the cut removed from the world rather than merely
+    excluded from the bound.
+
+    | cut at | bound | stride | capacity lost | land lost |
+    | ---: | ---: | ---: | ---: | ---: |
+    | — (today) | 2.045 yr | 24 | — | — |
+    | 85° | 2.045 yr | 24 | 0.8 % | 1.6 % |
+    | 80° | 2.082 yr | 24 | 1.8 % | 2.9 % |
+    | 75° | 2.157 yr | 24 | 4.6 % | 6.4 % |
+    | 66.5° (polar circles) | 2.341 yr | 24 | 11.8 % | 14.5 % |
+    | 60° | 2.527 yr | 24 | 17.7 % | 21.0 % |
+    | 50° | 2.856 yr | 24 | 28.0 % | 31.0 % |
+    | **45°** | 3.031 yr | **36** | **34.1 %** | 36.8 % |
+    | 30° | 3.534 yr | 36 | 54.6 % | 55.7 % |
+    | 7.5° | 4.000 yr | 36 | 89.8 % | 89.5 % |
+    | **5°** | 4.019 yr | **48** | **93.5 %** | 93.1 % |
+
+    (Capacity is Σ forager capacity × cell area over the rows kept, the
+    substrate's own answer to where people can live, available without
+    running history. It lands within a few points of #58's independently
+    measured population share — 34.1 % here at 45° against #58's 28.5 % at
+    45.9 °, the gap being deletion versus under-mixing.)
+
+    **There is no cliff to cut against.** The eight tightest rows are
+    83.7 °N at 2.0447 years, then 2.0462, 2.0478, 2.0495, 2.0512 … — each
+    about 0.0016 years better than the last. #58 said the bound falls
+    smoothly; this is what smooth looks like from the pole end. There is no
+    set of pathological rows to remove, because every row is only
+    infinitesimally better than its neighbour.
+
+    **And the binding row is inhabited.** 83.7 °N is peopled at the shipped
+    grid, so cutting "empty" polar land removes nothing that binds. Even
+    granting that this is the Antarctic `canGrow` oddity (#61, handoff §5)
+    and the true northern limit is 75 °, the bound is 2.157 years — still a
+    24-month stride. Resolving the oddity buys zero.
+
+    **The arithmetic reason no cut is cheap.** The stride is the bound
+    FLOORED to whole years, so nothing at all happens until the bound
+    crosses an integer. From 2.045 the first crossing is 3.000 — a 48 %
+    improvement in the bound for one extra month — and 4.000 is the second.
+    The equatorial bound is 4.034 years, so the 48 months §3 promised only
+    exists in a world 5 ° of latitude wide.
+
+    **The under-mix variant is strictly better and still fails.** Excluding
+    those rows from the bound instead of deleting them (#58's table) buys
+    the same stride while keeping the people, who merely mix less
+    accurately. But the first cut that buys anything is at 45 °, and what
+    lies north of it is Lyon, Bordeaux and Milan northward: all of Britain,
+    Scandinavia, northern Europe, Russia, Canada, Mongolia and northern
+    China. That is the exact region W12 exists for — the wave opened on
+    "europe seems late?". Buying a faster front by under-resolving Europe's
+    movement is self-defeating.
+
+    So the answer to "is it just the extremes" is no: the extremes are the
+    tightest rows but they are not the cost, and the cost is smooth all the
+    way to the equator. This closes the exclusion family for a second time.
+    P16 (DECISIONS 33) remains the only measured route to 48 months.
