@@ -54,39 +54,55 @@
     },
     {
       "id": "population:-3000:solve:dev",
-      "reason": "Measured 357M vs band max 100M on the dev solve arm (765M under W7): the same missing-mortality physics as population:-5000. Re-measured 2026-09-04 after the WCVP native-range screen: 357M, down from 493M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
+      "reason": "Measured 482M vs band max 100M on the dev solve arm: the same missing-mortality physics as population:-5000. Re-measured 2026-09-05 after W12 §1 (the corrected hop share): 482M, up from 357M — the front reaches farmable ground sooner, so the same saturating curve arrives earlier. The missing-mortality physics still owns the miss; the WCVP native-range screen that cut it from 493M to 357M still holds."
     },
     {
       "id": "population:-1000:solve:dev",
-      "reason": "Measured 744M vs band max 200M on the dev solve arm (1.64B under W7): the same missing-mortality physics as population:-5000. Re-measured 2026-09-04 after the WCVP native-range screen: 744M, down from 999M — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
+      "reason": "Measured 871M vs band max 200M on the dev solve arm: the same missing-mortality physics as population:-5000. Re-measured 2026-09-05 after W12 §1: 871M, up from 744M, for the same reason as population:-3000:solve:dev — an earlier front, not a higher ceiling."
     },
     {
       "id": "population:1:solve:dev",
-      "reason": "Measured 868M vs band max 400M on the dev solve arm (1.94B under W7): the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000. Re-measured 2026-09-04 after the WCVP native-range screen: 868M, down from 1.11B — the screen removed introduced-range ground from every crop's reachable belt, so the farmed ceiling itself fell. The miss is smaller than its original reason describes; the missing-mortality physics still owns it."
+      "reason": "Measured 960M vs band max 400M on the dev solve arm: the curve saturates against farmed capacity, the same missing-mortality physics as population:-5000. Re-measured 2026-09-05 after W12 §1: 960M, up from 868M. The gap between the three checkpoints narrows as the curve saturates, which is what an earlier front rather than a higher ceiling looks like."
     },
     {
       "id": "arrival:balkans:solve:dev",
-      "reason": "Measured −4758 vs latest −6000 (−5200 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −4961 vs latest −6000 (−5200 with the grace) on the dev solve arm (−4758 before W12 §1; the corrected hop share advanced it -203 years, nowhere near enough to clear a strait the grid cannot resolve). On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:central-europe:solve:dev",
-      "reason": "Measured −3736 vs latest −5000 (−4200 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −4177 vs latest −5000 (−4200 with the grace) on the dev solve arm (−3736 before W12 §1; the corrected hop share advanced it -441 years, nowhere near enough to clear a strait the grid cannot resolve). On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:rhine:solve:dev",
-      "reason": "Measured −3288 vs latest −4800 (−4000 with the grace) on the dev solve arm. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −3841 vs latest −4800 (−4000 with the grace) on the dev solve arm (−3288 before W12 §1; the corrected hop share advanced it -553 years, nowhere near enough to clear a strait the grid cannot resolve). On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
     },
     {
       "id": "arrival:cardial-coast:solve:dev",
-      "reason": "Measured −3918 vs latest −5500 (−4700 with the grace) on the dev solve arm: reached overland through the Balkans, because at 167 km cells no Mediterranean crossing is within the 100 km boat hop. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+      "reason": "Measured −4310 vs latest −5500 (−4700 with the grace) on the dev solve arm (−3918 before W12 §1, advanced 392 years by the corrected hop share): reached overland through the Balkans, because at 167 km cells no Mediterranean crossing is within the 100 km boat hop. On the dev grid (167 km cells) the Bosporus and the Dardanelles are open sea wider than any Neolithic boat hop (100 km, W7), so the front reaches northwest Anatolia and then walks round the Black Sea. A resolution artefact of the reference grid, not a mechanism (third cardinal rule); the shipped grid resolves the straits and is the reality check for every European row. Recorded, not dialed."
+    },
+    {
+      "id": "europe-front-speed:solve:dev",
+      "reason": "Measured 1.420 km/yr Balkans → Rhine on the dev solve arm against the band's 1.3 (Pinhasi, Fort & Ammerman 2005, 0.6–1.3), 1.077 before W12 §1. The corrected hop share is not a tuning: a hop of mean square ⟨d²⟩ delivers s·⟨d²⟩/4 of diffusivity, so the share that delivers D is 4·D·dt/⟨d²⟩ and not D·dt/area. The SAME constants measure 0.670 km/yr at the shipped grid — inside the band for the first time. Identical physics, two grids: the 167 km reference lattice moves a share of a whole cell's people 167 km in a single hop, so its pulled front outruns the continuum 2·√(r·D) the constants name, where the 42 km shipped lattice does not. The coarse lattice flattered the front before and flatters it the other way now. A dev-raster row measured against the grid that ships (third cardinal rule); recorded, not dialed."
+    },
+    {
+      "id": "arrival:nile:solve:dev",
+      "reason": "Measured −3148 vs latest −5000 (−4200 with the grace) on the dev solve arm — LATE, where W12 §1 advanced every other arrival row. It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. The valley is farmed by sorghum from the Sudan, not by Levantine wheat (see staple:nile:solve:dev), so it is the sorghum route down the valley that sets the date and sorghum's own belt lights at −6116. WHY a larger share should delay this one arrival is not isolated. The standing candidate is dilution: a firing now moves about 2.3× the share out of each cell, and along a corridor one or two cells wide flanked by desert the leading edge thins faster than it accumulates the density adoption needs — which would make the Nile the first place the anisotropic flux of W12 §4 is visible. Recorded as the open question it is, not dialed."
+    },
+    {
+      "id": "arrival:sahel:solve:dev",
+      "reason": "Measured −4485 vs earliest −3500 (−4300 with the grace) on the dev solve arm, 185 years early past the grace. It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. Sorghum ignites across the belt from −6116 under today's climate (hearth:sahel-sudan:solve:dev; P10 — the real belt filled as the green Sahara dried) and the corrected share now carries its farmers out of the ignition belt into the check point faster than the record's window opens. The already-acknowledged awake row arrival:sahel:dev is the same miss on the monthly arm. Recorded, not dialed."
+    },
+    {
+      "id": "arrival:ganges:solve:dev",
+      "reason": "Measured −4079 vs earliest −3000 (−3800 with the grace) on the dev solve arm, 279 years early past the grace. It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. The plain is reached by millet from the loess, not by rice (see staple:ganges:solve:dev), and under the corrected share that front crosses Assam sooner. The already-acknowledged awake row arrival:ganges:dev is the same miss on the monthly arm. Recorded, not dialed."
     },
     {
       "id": "climate-barrier:solve:dev",
-      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at −3500 on the dev solve arm: sorghum ignites across the belt from −5885 (see hearth:sahel-sudan:solve:dev; P10)."
+      "reason": "Cells inside the sub-Saharan barrier box are farmed when the Sahel window opens at −3500 on the dev solve arm: sorghum ignites across the belt from −6116 (see hearth:sahel-sudan:solve:dev; P10)."
     },
     {
       "id": "arrival:japan:solve:dev",
-      "reason": "Not reached by 1 CE on the dev solve arm. On the dev grid (167 km cells) the Korea Strait is open sea wider than the 100 km boat hop and Korea itself is not reached; a resolution artefact of the reference grid, measured at the shipped grid."
+      "reason": "Not reached by 1 CE on the dev solve arm, and still not reached after W12 §1's corrected hop share — a faster front does not cross water. On the dev grid (167 km cells) the Korea Strait is open sea wider than the 100 km boat hop and Korea itself is not reached; a resolution artefact of the reference grid, measured at the shipped grid."
     },
     {
       "id": "population:-3000:solve:target",
@@ -130,23 +146,43 @@
     },
     {
       "id": "hearth:yangtze:solve:dev",
-      "reason": "Rice lights at −3561 vs latest −5000 (−4200 with the grace) on the dev solve arm. Its stand share on the Yangtze (the wild envelope's moisture optimum sits below the lake country's annual index) runs the clock to about −5800, and millet from the loess reaches the lower Yangtze at −5920, a century first, so the pre-emption term stops the rice clock where millet farms; rice then lights south of the belt's core once and takes the south by switching (staple:south-china and staple:lower-yangtze pass). A race decided by a century between two mechanisms that are both right in kind; recorded, not dialed."
+      "reason": "NO rice hearth inside the Yangtze box by 1 CE on the dev solve arm, against a window of −7000 to −5000. Rice lights instead on the lower Ganges at 23.3°N 89.3°E (−6067), inside its wild native range and far outside the box (hearth-outside:rice:solve:dev). The standing account of the box itself is unchanged: its stand share runs the rice clock to about −5800 while millet from the loess reaches the lower Yangtze first, and the pre-emption term stops the rice clock where millet farms. W12 §1's corrected share brings millet in sooner still, which is why the box now lights not at all where before it lit late (−3561). Rice still takes the south by switching (staple:south-china and staple:lower-yangtze pass). A race decided between two mechanisms that are both right in kind; recorded, not dialed."
     },
     {
       "id": "hearth:sahel-sudan:solve:dev",
-      "reason": "Sorghum lights across the Sahelian belt from −5885 vs earliest −4000 (−4800 with the grace) on the dev solve arm: the belt is caged from the opening under today's climate, where the real belt filled as the green Sahara dried (P10). No lag is stretched to hide it."
+      "reason": "Sorghum lights across the Sahelian belt from −6116 vs earliest −4000 (−4800 with the grace) on the dev solve arm (−5885 before W12 §1): the belt is caged from the opening under today's climate, where the real belt filled as the green Sahara dried (P10). No lag is stretched to hide it."
     },
     {
       "id": "hearth:ethiopia:solve:dev",
-      "reason": "The Ethiopian package lights at −6228 vs earliest −3000 (−3800 with the grace) on the dev solve arm, on a lag (2200 y) the record cannot yet ground (D'Andrea 2008 dates teff and enset domestication loosely); recorded as the data gap it is."
+      "reason": "NO highland-roots hearth inside the Ethiopian box by 1 CE on the dev solve arm, against a window of −3000 to −1000. The package lights instead at 0.7°S 35.3°E (−6305, the Kenyan Rift highlands) and 6.7°S 15.7°E (−6011, the lower Congo) — inside its wild native range, outside the 6° box (hearth-outside:highland-roots:solve:dev). Before W12 §1 the box itself lit, 3228 years early, on a lag the record cannot ground (D'Andrea 2008 dates teff and enset loosely); the corrected share now reaches the range's southern corners first. Both the lag and the range's southern reach are the data gap W9 addresses; recorded as the gap it is."
     },
     {
       "id": "hearth:eastern-woodlands:solve:dev",
-      "reason": "The Eastern Agricultural Complex lights at −5654 vs earliest −3000 (−3800 with the grace) on the dev solve arm: its stand is rich under today's climate from the opening, where the real river-valley weed habitats formed with the mid-Holocene floodplains (Smith 2006) — a P10-class forcing, not a lag to stretch."
+      "reason": "The Eastern Agricultural Complex lights at −6228 vs earliest −3000 (−3800 with the grace) on the dev solve arm (−5654 before W12 §1): its stand is rich under today's climate from the opening, where the real river-valley weed habitats formed with the mid-Holocene floodplains (Smith 2006) — a P10-class forcing, not a lag to stretch."
+    },
+    {
+      "id": "hearth-outside:rice:solve:dev",
+      "reason": "Rice lights at 23.3°N 89.3°E (−6067) on the dev solve arm — the lower Ganges, inside rice's wild native range and far outside the 6° Yangtze centre box, which now records no rice hearth at all (hearth:yangtze:solve:dev). It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. A hearth ignites only on a cell of the package's OWN wild native range, where people are standing on it and the package out-yields foraging (W8); §1's corrected share puts foragers on the far corners of every wild range sooner, so a package's earliest ignition is no longer the one nearest its named centre. The centre boxes are narrower than the wild ranges: whether the range or the box is wrong is the W9 data question (ranges re-derived from occurrences), not a rate to dial."
+    },
+    {
+      "id": "hearth-outside:millet:solve:dev",
+      "reason": "Millet lights at 45.8°N 77.3°E (−7243, the Dzungarian steppe), 36.8°N 129.8°E (−5199, Korea) and 50.3°N 68.3°E (−1020, central Kazakhstan) on the dev solve arm — all inside millet's wild native range, all outside the 8° north-China box, and the first of them 168 years BEFORE the box's own hearth at −7075, so the package's earliest ignition is no longer its named centre. It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. A hearth ignites only on a cell of the package's OWN wild native range, where people are standing on it and the package out-yields foraging (W8); §1's corrected share puts foragers on the far corners of every wild range sooner, so a package's earliest ignition is no longer the one nearest its named centre. The centre boxes are narrower than the wild ranges: whether the range or the box is wrong is the W9 data question (ranges re-derived from occurrences), not a rate to dial. The steppe ignition is also what hands the Indus its staple (staple:indus:solve:dev)."
+    },
+    {
+      "id": "hearth-outside:tubers:solve:dev",
+      "reason": "Tubers light at 8.3°N 62.2°W (−5423, the lower Orinoco) on the dev solve arm, inside the package's wild native range and outside the Amazon-margin box, which lights on its own 56 years earlier at −5479 and passes its window. It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. A hearth ignites only on a cell of the package's OWN wild native range, where people are standing on it and the package out-yields foraging (W8); §1's corrected share puts foragers on the far corners of every wild range sooner, so a package's earliest ignition is no longer the one nearest its named centre. The centre boxes are narrower than the wild ranges: whether the range or the box is wrong is the W9 data question (ranges re-derived from occurrences), not a rate to dial."
+    },
+    {
+      "id": "hearth-outside:highland-roots:solve:dev",
+      "reason": "The highland roots light at 0.7°S 35.3°E (−6305, the Kenyan Rift highlands) and 6.7°S 15.7°E (−6011, the lower Congo) on the dev solve arm — inside the package's wild native range, outside the 6° Ethiopian box, which now records no hearth at all (hearth:ethiopia:solve:dev). It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. A hearth ignites only on a cell of the package's OWN wild native range, where people are standing on it and the package out-yields foraging (W8); §1's corrected share puts foragers on the far corners of every wild range sooner, so a package's earliest ignition is no longer the one nearest its named centre. The centre boxes are narrower than the wild ranges: whether the range or the box is wrong is the W9 data question (ranges re-derived from occurrences), not a rate to dial."
     },
     {
       "id": "staple:ganges:solve:dev",
-      "reason": "The Ganges plain farms millet, not rice, at 1 CE on the dev solve arm: millet from the loess crosses Yunnan and Assam and reaches the plain (−3120) while the rice hearth lights late (see hearth:yangtze:solve:dev) and its farmers arrive after; switching then favours the crop already there because the sim's rice fit on the plain is not above millet's. The crop bells are directional data (v1); recorded."
+      "reason": "The Ganges plain farms millet, not rice, at 1 CE on the dev solve arm (15 farmed cells in the 3° box at 25.5°N 84°E). Under W12 §1's corrected share rice is now domesticated on the LOWER Ganges in place, at 23.3°N 89.3°E in −6067 (hearth-outside:rice:solve:dev) — 5° east of the box and outside it — while millet from the loess still reaches the middle plain first and holds it: switching displaces an incumbent only where the challenger's fit is higher, and the crop bells do not put rice above millet here. The bells are directional data (v1) and W9 re-derives the ranges from occurrences; recorded, not dialed."
+    },
+    {
+      "id": "staple:indus:solve:dev",
+      "reason": "The Indus farms millet, not wheat, at 1 CE on the dev solve arm (16 farmed cells in the 3° box at 29°N 70°E). It is absent from this manifest before today and a1eac742 (W12 §1, the corrected hop share) is the only simulation change since the manifest was last measured against this arm (de32bf65, 2026-09-04), so §1 is what moved it. Millet gains an independent ignition on the Dzungarian steppe at −7243 (hearth-outside:millet:solve:dev), far closer to the Indus than the loess is; the plain is first farmed at −4758, inside its own arrival window, by whichever crop reached it, and switching displaces an incumbent only where the challenger's fit is higher. The shipped grid CLEARED staple:indus:target under this same correction (a1eac742): at 42 km cells the Levantine wheat front reaches the Indus in time. A dev-raster row measured against the grid that ships; recorded, not dialed."
     },
     {
       "id": "staple:nile:solve:dev",
