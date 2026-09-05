@@ -10,6 +10,8 @@ export interface CropPackage {
   readonly seasonMinimumMonths: number;
   readonly storability: number;
   readonly yield: number;
+  /** W14: the relative change of the monthly fit on ground standing under water — positive for a wetland crop (rice 1: the paddy doubles the upland crop), negative for one that drowns (−0.35, the cereal waterlogging loss). */
+  readonly standingWaterResponse: number;
   readonly domLagY: number;
   readonly color: readonly number[];
 }

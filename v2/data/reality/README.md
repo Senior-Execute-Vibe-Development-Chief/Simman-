@@ -45,6 +45,18 @@ to the domesticated grain of the eastern Sudan (Winchell et al. 2017).
 `…:solve:target` are the per-commit solve arm (W5), the same instruments
 over the solve regime to 1 CE. The ratchet applies to both scopes.
 
+W14 adds `standingWaterResponse` to `crop-packages.json`: the relative
+change of a package's monthly fit on ground standing under water — the
+floodplain under its flood, the strip a stream keeps wet. Rice 1.0 (the
+paddy about doubles the upland crop: Bray 1986, *The Rice Economies*;
+GRiSP 2013, *Rice Almanac*, irrigated ~5.4 t/ha against rainfed lowland
+~2.3 and upland ~1); the New Guinea roots 0.33 (taro's ~2× wet-over-dry
+gain, Kirch 1994, *The Wet and the Dry*, over one member of three); every
+other package −0.35 (the middle of the 20–50 % waterlogging loss of
+cereals, Setter & Waters 2003, *Plant and Soil* 253:1–34, applied to the
+tubers as the class figure — coarse, and recorded as such). It is the
+plant's response, read by the crop fit; no place and no river is named.
+
 W8 adds the wild-habitat envelopes to `crop-packages.json`, sampled at
 the progenitors' documented dense-stand localities (lat, lon): wheat &
 barley — Galilee 32.9/35.6, Hermon foothills 33.3/35.8, Damascus basin

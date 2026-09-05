@@ -42,6 +42,7 @@ import { hearthAccrualRate } from "../src/sim/people/technique";
 import { cellAreasKm2 } from "../src/sim/people/habitability";
 import { mixtureCapacity } from "../src/sim/people/capacity";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../src/ported/worldgen/cropPackages.js";
+import { orographicFootprintRadius, orographicShare } from "../src/ported/worldgen/realClimateData.js";
 import { stepFromYear } from "../src/sim/horizon";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -611,6 +612,122 @@ async function main(): Promise<void> {
     assert.equal(runoffWorld._canGrow[admitted]?.[runoffWorld._packedOf[chain[6] ?? 0] ?? 0], 0, "a dry cell the stream no longer reaches is not admitted");
   }
 
+  // W14 (P18): the sub-grid orographic share. On flat land every pixel
+  // gets its footprint's rain; a ridge draws the rain of the footprint onto
+  // itself and leaves the foot at its side drier; the land far from it and
+  // the sea are untouched; and the land as a whole keeps what the table
+  // gave it. The footprint is the widest odd box inside one 1.9° table
+  // cell: none at the reference grid, four cells at the 1800-wide target
+  // grid, two at the app's 960-wide Half grid.
+  let orographyReport: Record<string, number>;
+  {
+    const width = 64;
+    const height = 32;
+    const rad = 2;
+    const flat = new Float32Array(width * height).fill(0.1);
+    for (let x = 0; x < width; x++) {
+      flat[x] = 0;
+      flat[(height - 1) * width + x] = -0.1;
+    }
+    const flatShare = orographicShare(width, height, flat, rad);
+    for (let i = 0; i < flat.length; i++) assert.ok(Math.abs((flatShare[i] ?? 0) - 1) < 1e-6, "flat land keeps its footprint's rain");
+    const ridge = Float32Array.from(flat, (e) => (e > 0 ? 0.05 : e));
+    const crestX = 32;
+    for (let y = 1; y < height - 1; y++) ridge[y * width + crestX] = 0.35;
+    const share = orographicShare(width, height, ridge, rad);
+    const at = (x: number): number => share[16 * width + x] ?? 0;
+    assert.ok(at(crestX) > 2, "the crest draws the footprint's rain onto itself");
+    assert.ok(at(crestX) > at(crestX + 1) && at(crestX + 1) < 1 && at(crestX - 2) < 1, "the foot beside the crest is drier");
+    assert.ok(Math.abs(at(crestX + 2) - at(crestX - 2)) < 1e-6, "the footprint is aspect-blind");
+    assert.ok(Math.abs(at(crestX + 8) - 1) < 1e-6 && Math.abs(at(5) - 1) < 1e-6, "land outside the footprint is untouched");
+    assert.equal(share[crestX] ?? 0, 1, "the sea is untouched");
+    assert.equal(share[(height - 1) * width + crestX] ?? 0, 1);
+    let landSum = 0;
+    let landCount = 0;
+    for (let i = 0; i < ridge.length; i++) {
+      if ((ridge[i] ?? 0) <= 0) continue;
+      landSum += share[i] ?? 0;
+      landCount++;
+    }
+    const landMean = landSum / landCount;
+    assert.ok(Math.abs(landMean - 1) < 0.01, "the land as a whole keeps its rain to first order");
+    const zeroShare = orographicShare(width, height, ridge, 0);
+    for (let i = 0; i < ridge.length; i++) assert.equal(zeroShare[i] ?? 0, 1, "no footprint, no redistribution");
+    assert.equal(orographicFootprintRadius(240), 0, "inert at the reference grid");
+    assert.equal(orographicFootprintRadius(480), 0, "inert at the 0.75° proxy: a 3-cell box would be wider than the table cell");
+    assert.equal(orographicFootprintRadius(960), 2, "a 5-cell, 1.875° box at the app's Half grid");
+    assert.equal(orographicFootprintRadius(1800), 4, "a 9-cell, 1.8° box at the target grid");
+    assert.equal(orographicFootprintRadius(1920), 4);
+    orographyReport = { crest: Number(at(crestX).toFixed(3)), foot: Number(at(crestX + 1).toFixed(3)), landMean: Number(landMean.toFixed(4)) };
+  }
+
+  // W14: the paddy. The same flood on the same ground raises rice's fit by
+  // the package's response and lowers wheat's; a flood in months a crop is
+  // not growing is nothing to it; a stream beside a wetland crop is a paddy
+  // and beside an upland crop is nothing; ground with no standing water is
+  // unchanged for every package.
+  {
+    const riceIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "rice");
+    const wheatIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(riceIndex >= 0 && wheatIndex >= 0);
+    const riceResponse = CROP_PACKAGES[riceIndex]?.standingWaterResponse ?? 0;
+    const wheatResponse = CROP_PACKAGES[wheatIndex]?.standingWaterResponse ?? 0;
+    assert.ok(riceResponse > 0 && wheatResponse < 0, "rice is a wetland grass; wheat drowns");
+    const row = 60;
+    const flooded = row * 240 + 100;
+    const winterFlood = row * 240 + 110;
+    const control = row * 240 + 120;
+    const head = row * 240 + 130;
+    const bank = head + 1;
+    const pulseMonths = [6, 7, 8];
+    const build = (pulse: boolean, stream: boolean, withFlow = true): PeopleWorld => {
+      const base = peopleFixture();
+      const flow = new Float32Array(base.N * MONTHS_PER_YEAR).fill(1);
+      for (const cell of [flooded, winterFlood]) {
+        base.floodplain[cell] = 0.5;
+        if (pulse) for (const month of pulseMonths) flow[cell * MONTHS_PER_YEAR + month] = 3;
+      }
+      for (let month = 0; month < MONTHS_PER_YEAR; month++) {
+        base.climate.temperature[flooded * MONTHS_PER_YEAR + month] = 0.86;
+        base.climate.temperature[winterFlood * MONTHS_PER_YEAR + month] = pulseMonths.includes(month) ? 0.3 : 0.73;
+        base.climate.temperature[control * MONTHS_PER_YEAR + month] = 0.8;
+        base.climate.temperature[bank * MONTHS_PER_YEAR + month] = 0.86;
+        base.climate.moisture[bank * MONTHS_PER_YEAR + month] = 1;
+      }
+      base.floodplain[control] = 0.3;
+      base.rivers.direction[head] = 0;
+      if (stream) base.rivers.runoff[head] = 10;
+      const substrate: Substrate = withFlow ? { ...base, rivers: { ...base.rivers, seasonalFlowScale: flow } } : base;
+      return new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    };
+    const still = build(false, false);
+    const flooding = build(true, false);
+    const streaming = build(false, true);
+    const bare = build(false, false, false);
+    const fit = (world: PeopleWorld, packageIndex: number, cell: number): number =>
+      world._cropFit[packageIndex]?.[world._packedOf[cell] ?? 0] ?? 0;
+    const strip = Math.min(1, PEOPLE_CHANNEL_STRIP_KM / Math.sqrt(cellAreasKm2(240, 120)[bank] ?? 0));
+    // Three flood months of twelve at a flow twice the year's mean over a
+    // plain that is half the cell: the plain is under water, so the factor
+    // is 1 + response × 0.5 in those months and 1 in the rest.
+    const flooding3 = (response: number): number => (9 + 3 * (1 + response * 0.5)) / 12;
+    assert.ok(fit(still, riceIndex, flooded) > 0 && fit(still, wheatIndex, flooded) > 0, "both packages grow on the still plain");
+    assert.ok(Math.abs(fit(flooding, riceIndex, flooded) / fit(still, riceIndex, flooded) - flooding3(riceResponse)) < 1e-9, "the flood is rice's paddy");
+    assert.ok(Math.abs(fit(flooding, wheatIndex, flooded) / fit(still, wheatIndex, flooded) - flooding3(wheatResponse)) < 1e-9, "the same flood drowns the wheat");
+    assert.ok(fit(still, wheatIndex, winterFlood) > 0);
+    assert.equal(fit(flooding, wheatIndex, winterFlood), fit(still, wheatIndex, winterFlood), "a flood in months the crop is not growing is nothing to it");
+    assert.equal(fit(flooding, riceIndex, winterFlood), fit(still, riceIndex, winterFlood));
+    for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+      assert.equal(fit(flooding, packageIndex, control), fit(still, packageIndex, control), "ground with no standing water is unchanged");
+      assert.equal(fit(bare, packageIndex, control), fit(still, packageIndex, control), "a substrate without a seasonal flow reads a flat year");
+      assert.equal(fit(bare, packageIndex, flooded), fit(still, packageIndex, flooded));
+    }
+    assert.ok((streaming._runoffInflow[bank] ?? 0) > strip, "the stream arrives at the bank");
+    assert.equal(streaming._waterAccess[bank], still._waterAccess[bank], "a wet bank takes nothing from the stream (W13)");
+    assert.ok(Math.abs(fit(streaming, riceIndex, bank) / fit(still, riceIndex, bank) - (1 + riceResponse * strip)) < 1e-9, "a stream beside rice keeps its strip under water");
+    assert.equal(fit(streaming, wheatIndex, bank), fit(still, wheatIndex, bank), "a stream beside wheat is nothing to it: only the flood it cannot drain hurts");
+  }
+
   console.log(JSON.stringify({
     tests: "ok",
     rng: "v1-byte-compatible",
@@ -618,6 +735,8 @@ async function main(): Promise<void> {
     saveLoad: "byte-identical",
     routing: "ok",
     runoff: "ok",
+    orography: orographyReport,
+    paddy: "ok",
     scheduler: "ok",
     solve: frontReport,
   }));

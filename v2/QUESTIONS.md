@@ -3161,3 +3161,86 @@ Review corrections to the M1 build (all validated before merge):
     cleared, 63 in all. The shipped-grid solve arm is `v2-long`, on
     request; the expectation stated before it runs is that the lower
     Indus and the Ganges move and the plateau crossing does not.
+
+66. **W14 built P18 and the paddy; P18 does not lift the plateau because
+    the quantile map's floor band absorbs it, and the paddy grades rice
+    above everything exactly where ground stands under water (2026-09-05,
+    owner: "2 and 4 are really the only immediate fixes" → "do it").** P18
+    as built: within each 1.9° table cell's footprint the sampled rain is
+    placed on the slope it fell on, `exp(g·Δz)` with g = 0.5 /km (Barry
+    2008) clamped at the 2.5 km vapour scale height (Smith & Barstad 2004),
+    normalised to a land mean of one so nothing is invented, applied before
+    the quantile rank; the footprint is the widest odd box inside one table
+    cell (zero at dev, four at the target grid). The paddy as built: each
+    package's `standingWaterResponse` (rice 1.0, the New Guinea roots 0.33,
+    the rest −0.35) times the ground standing under water in the month —
+    the floodplain under the discharge above the year's own mean, plus for
+    a wetland crop the strip W13's routed stream can keep wet
+    (`spec/handoffs/W14-orography-and-paddy.md`). Two findings, neither a
+    dial.
+
+    **1. P18 moves the wet ranges and not the desert plateau — and the
+    reason is the floor band, not the gain.** Substrate probe at the
+    target grid, no history: the share runs p1 0.76 to p99 1.28 over land
+    (max 2.11, land mean 0.9988); the Pamir crest above Kashgar reads
+    annual moisture 0.16 → 0.37, the Hindu Kush 0.19 → 0.44, the Alborz
+    crest 0.04 → 0.16, and their feet lose (Turin 0.34 → 0.20, Kashgar
+    0.33 → 0.26, Xi'an 0.20 → 0.15). Jeitun, Sang-e Chakhmaq, Mehrgarh and
+    Tepe Yahya read 0.02 → 0.02, water access unchanged, and their highest
+    nearby range cells (share 1.33–1.73, 2,100–3,200 m) read 0.019–0.026 →
+    0.020–0.080. The Earth preset's moisture is a quantile map: each land
+    pixel's rank in the observed rain goes to the solver's own moisture at
+    that rank, floored at 0.02, and the driest 26.3 % of land sits at that
+    floor (raw p25 = 0.020, p30 = 0.022, p40 = 0.119). A ×1.5 share on a
+    desert-range pixel moves it up INSIDE the floor band and not out of it:
+    of 1,260 cells with share ≥ 1.5, 117 sat at the floor before and 57
+    after; in the 33–41°N 50–72°E window, 1,061 before and 1,064 after.
+    So **`arrival:indus:solve:target` will not move under W14**, and the
+    miss is now placed one step further down the data path: not the
+    table's smearing (P18 fixes that where there is rain to place) but the
+    mapping's floor band, which reads the driest quarter of the land as one
+    value. Whether the map should carry the observed rain's own ordering
+    inside that band — a lower floor, or a rank-preserving map below the
+    present one — is the owner's data-side ruling. Not to be reached by
+    lifting the floor to a value that clears the plateau, nor by raising
+    the gain (a ×3 share would not leave the band either), nor by widening
+    the footprint past the table cell.
+
+    **2. The paddy does what the W13 finding asked and flips nothing at
+    dev.** At the target grid rice's fit, paddy off → on: Mohenjo-daro
+    0.54 → 0.80 (wheat 0.35 unchanged), Luxor 0.48 → 0.72 (sorghum 0.63,
+    wheat 0.32), Patna 0.52 → 0.77, Bengal 0.59 → 0.81, Dongting 0.48 →
+    0.74, south China 0.57 → 0.83, Tonle Sap 0.98 → 1.44; wheat is
+    unchanged at every site (its months are not the flood's) and the
+    summer crops lose a hundredth or two on flooded cells. By summed
+    capacity over the 3° staple boxes the best package turns to rice in
+    south China, the Ganges, the Indus and the Sahel; the lower Yangtze's
+    centre cell is off the ribbon and its box stays with the New Guinea
+    roots (rice 5.19M, wheat 5.00M, millet 3.43M); the Nile stays sorghum
+    (0.38M; rice 0.28M) — on the irrigated strip the paddy is rice, not
+    the winter wheat of the receding flood, so the Nile's expectation is
+    sorghum or rice, neither wheat, and the winter-season finding of #65
+    stands. At dev P18 has a zero footprint and the paddy's ribbon is a few
+    cells, so the arm moves a stride here and there (the Sahel −4758 →
+    −4842, people at −5000 71.4 → 71.5M) and no verdict changes: the lower
+    Yangtze and south China still hold millet at 1 CE, because at 167 km
+    cells the flood ribbon is a handful of cells and the amplitude on it
+    is flat (below), and millet from −7327 is not displaced where the
+    challenger's fit is not higher. Whether Bengal's rice reaches and
+    switches them at the shipped grid, where the ribbon and its months are
+    resolved, is the `v2-long` arm's to say — expectations written in the
+    handoff §4c before it runs.
+
+    **3. The seasonal river model's flood is flat.** `seasonalFlowScale`
+    is monthly flow over the STATIC annual accumulation and is not
+    mean-one (the Nile ≈ 1.0, the Ganges 0.57, the lower Indus 0.41,
+    Tonle Sap 0.86), so the paddy reads it against its own twelve-month
+    mean; read that way, the peak month on floodplain cells is p50 1.19
+    of the mean (p10 0.58, p90 2.03, max 3.74) and the Nile's is 1.21,
+    against the ~3× of the pre-dam flood at Aswan (Sutcliffe & Parks
+    1999). The imposed flood is therefore a few hundredths on the great
+    rivers, and it is the stream term — W13's routed water kept per cell,
+    one cell-runoff keeping about one cell-area of paddy wet (Bouman et al.
+    2007), a unit assumption stated as one — that carries the paddy on the
+    Nile and the Indus. A finding about the river model, for the rivers
+    round; the paddy reads what it is given and does not compensate.

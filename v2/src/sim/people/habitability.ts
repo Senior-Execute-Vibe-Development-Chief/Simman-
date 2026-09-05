@@ -80,6 +80,18 @@ function downstreamCell(world: PeopleWorld, cell: number): number {
 }
 
 /**
+ * The irrigable share of a cell (W13): the channel strip's share of it,
+ * `PEOPLE_CHANNEL_STRIP_KM / √area` — the shore strip's law, the same
+ * ground in real km at every grid (0.06 of a 167 km reference cell, ~0.5 of
+ * a 20 km shipped one). Read by the routing (what a cell can take) and by
+ * the crop fit (what a stream can keep under water, W14).
+ */
+export function channelStripShare(world: PeopleWorld, cell: number): number {
+  const area = world.cellAreaKm2[cell] ?? 0;
+  return area > 0 ? Math.min(1, PEOPLE_CHANNEL_STRIP_KM / Math.sqrt(area)) : 0;
+}
+
+/**
  * The routed water (W13, P17). The worldgen's per-tile runoff — rain less
  * evaporation, plus mountain melt — is carried down its own flow directions
  * in drainage order, and each cell takes from what arrives the water its
@@ -95,15 +107,16 @@ function downstreamCell(world: PeopleWorld, cell: number): number {
  * never sums into a river of its own (which is why the thresholded
  * magnitude, which it does sum into, is not the quantity read here). Kahn's
  * order over the flow graph; a cell on a cycle (none in a proper flow field)
- * is left at zero.
+ * is left at zero. What arrives at each cell is kept (`_runoffInflow`, W14):
+ * the stream a wetland crop can draw on, in the runoff's own units.
  */
 export function routeRunoff(world: PeopleWorld): void {
-  const { substrate, _runoffAccess: access } = world;
+  const { substrate, _runoffAccess: access, _runoffInflow: inflow } = world;
   const runoff = substrate.rivers.runoff;
-  const inflow = new Float64Array(world.N);
   const pending = new Int32Array(world.N);
   const order = new Int32Array(world._landCells.length);
   access.fill(0);
+  inflow.fill(0);
   for (const cell of world._landCells) {
     const next = downstreamCell(world, cell);
     if (next >= 0 && substrate.landMask[next]) pending[next] = (pending[next] ?? 0) + 1;
@@ -115,9 +128,7 @@ export function routeRunoff(world: PeopleWorld): void {
   }
   while (head < tail) {
     const cell = order[head++] ?? 0;
-    const area = world.cellAreaKm2[cell] ?? 0;
-    const strip = area > 0 ? Math.min(1, PEOPLE_CHANNEL_STRIP_KM / Math.sqrt(area)) : 0;
-    const demand = strip * Math.max(0, 1 - (world._annualMoisture[cell] ?? 0));
+    const demand = channelStripShare(world, cell) * Math.max(0, 1 - (world._annualMoisture[cell] ?? 0));
     const arriving = inflow[cell] ?? 0;
     const taken = Math.min(arriving, demand);
     access[cell] = taken;

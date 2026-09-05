@@ -39,6 +39,10 @@ export interface SubstrateConfig {
   /** Oracle switch (QUESTIONS.md #21): derive rivers from elevation even on
    * Earth presets, so the v1-verbatim path can be compared exactly. */
   readonly rawRivers?: boolean;
+  /** Probe switch (W14, P18): sample the Earth preset's rain from the 1.9°
+   * table as is, without the sub-grid orographic share, so the placement
+   * can be compared against the table. */
+  readonly rawRain?: boolean;
   readonly oceanLevel?: number;
   readonly tecParams?: Readonly<Record<string, unknown>>;
   readonly realWind?: boolean;
@@ -252,6 +256,17 @@ function makeBiomes(world: PortedWorld, territory: PortedTerritory): Uint8Array 
   return result;
 }
 
+/**
+ * The Earth preset's climate fill with the W14 orographic share on unless
+ * the probe switch turns it off; the worldgen calls it positionally with
+ * the nine field arguments.
+ */
+function observedClimateFill(config: SubstrateConfig): typeof fillRealClimate {
+  const orographicRain = !(config.rawRain ?? false);
+  return (width, height, elevation, moisture, temperature, dryFraction, summerDry, temperatureAmplitude, warmRainFraction) =>
+    fillRealClimate(width, height, elevation, moisture, temperature, dryFraction, summerDry, temperatureAmplitude, warmRainFraction, { orographicRain });
+}
+
 export function buildSubstrate(
   seed: number,
   config: SubstrateConfig = {},
@@ -276,7 +291,7 @@ export function buildSubstrate(
     tecParams: { ...(config.tecParams ?? {}) },
     realWind: observedClimate,
     realWindFns: observedClimate && isRealClimateAvailable() && isRealWindAvailable()
-      ? { fillRealClimate, isRealClimateAvailable, fillRealWind, isRealWindAvailable }
+      ? { fillRealClimate: observedClimateFill(config), isRealClimateAvailable, fillRealWind, isRealWindAvailable }
       : null,
   });
   const world = generated.w;

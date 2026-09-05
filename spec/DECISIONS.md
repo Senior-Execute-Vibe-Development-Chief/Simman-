@@ -799,6 +799,48 @@ lawyered.
     three cleared. The shipped-grid arm is `v2-long` on request; the target
     rows are annotated, not refreshed.
 
+35. **W14 landed: the rain on the slope (P18) and the paddy.** (Owner,
+    2026-09-05, on the W13 handoff's list of what is next: "2 and 4 are
+    really the only immediate fixes" — P18 and the paddy — then "do it".)
+    P18: within each 1.9° table cell's own footprint, the sampled rain is
+    placed on the slope it fell on — each land pixel weighted by
+    `exp(g · Δz)` for its elevation anomaly against the footprint's land
+    mean (g = 0.5 /km, the windward precipitation gradient, Barry 2008;
+    clamped at the 2.5 km vapour scale height, Smith & Barstad 2004),
+    normalised to a land mean of one so the footprint's rain is conserved
+    and none is invented — before the quantile rank, with the quantile map
+    untouched. The footprint is the widest odd box inside one table cell:
+    zero at the reference grid, where the correction is inert by
+    construction, four at the target grid. The paddy: each package carries
+    `standingWaterResponse`, the relative change of its monthly fit on
+    ground standing under water (rice 1.0, the paddy doubling the upland
+    crop, GRiSP 2013; the New Guinea roots 0.33, Kirch 1994; every other
+    package −0.35, the cereals' waterlogging loss, Setter & Waters 2003),
+    and a cell's standing water in a month is the floodplain under the
+    discharge above the year's own mean plus, for a wetland crop only, the
+    strip W13's routed stream can keep wet — the plant's number and the
+    land's state in one product, no package or place named in code.
+    Measured on the substrate at the target grid: P18 moves every wet
+    range (the Pamir crest 0.33 → 0.59, the Alps' Turin foot 0.34 → 0.20)
+    and **does not lift the plateau sites** — Jeitun, Sang-e Chakhmaq,
+    Mehrgarh, Tepe Yahya 0.02 → 0.02 — because the driest 26 % of land sits
+    at the quantile map's 0.02 floor and a ×1.5 share does not move a
+    desert-range pixel's rank out of that band; so `arrival:indus:solve:
+    target` will not move under W14, the miss is placed at the floor band
+    (QUESTIONS #66), and the floor is not lifted to reach it. The paddy
+    grades rice above every other package exactly where ground stands
+    under water (Mohenjo-daro 0.54 → 0.80, Luxor 0.48 → 0.72, Patna 0.52 →
+    0.77, Dongting 0.48 → 0.74; wheat unchanged everywhere) and flips the
+    best package by summed capacity to rice in south China, the Ganges, the
+    Indus and the Sahel; the lower Yangtze's centre is off the ribbon. At
+    dev P18 is inert and the paddy moves the arm a stride here and there
+    (the Sahel −4758 → −4842) with no verdict changed: the two millet
+    staples stand at 167 km cells and say why. Two findings recorded, not
+    dialed: the floor band, and the seasonal river model's flat flood
+    amplitude (the Nile's peak month 1.21 of the mean against ~3× real).
+    The shipped-grid arm is `v2-long` on request; the target rows carry the
+    substrate numbers and an expectation each.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P16. The true reduced grid** (replaces the withdrawn 31(c); measured
@@ -858,8 +900,9 @@ lawyered.
   their catchments are empty in the table — so P17 alone does not move
   the Indus row, and the shipped-grid re-measurement is `v2-long` on
   request.
-- **P18. Sub-grid orographic redistribution of the coarse precipitation**
-  (W13 finding, QUESTIONS #65, 2026-09-05). The Earth preset's moisture is
+- **P18. Sub-grid orographic redistribution of the coarse precipitation** —
+  ~~proposed~~ **built as W14** (DECISIONS 35, 2026-09-05; W13 finding,
+  QUESTIONS #65). The Earth preset's moisture is
   a quantile map of the 1.9° NCEP/NCAR precipitation, and a range narrower
   than a cell — the Kopet Dag, the Alborz foot, the Sulaiman, the Makran —
   is averaged with the basin at its foot and smeared into its desert. With
@@ -876,8 +919,15 @@ lawyered.
   range on every map and nothing else. It is the substrate's, it moves the
   world hash at both grids, and it is not to be substituted by raising the
   moisture floor, the runoff floor, or the channel strip (second cardinal
-  rule). Awaiting the owner. Until it lands the plateau rows are recorded
-  misses of the input, not of P17.
+  rule). Built as proposed, one gain and one clamp with citations, the
+  footprint the widest odd box inside a table cell, the total conserved —
+  and measured at the target grid it moves every wet range and NOT the
+  plateau sites (0.02 → 0.02), because the quantile map's floor band (the
+  driest 26 % of land at one value) absorbs the share before it reaches the
+  solver's moisture. The Indus target row therefore stays a miss under W14,
+  now placed at the floor band — a data-side ruling for the owner
+  (QUESTIONS #66) — and neither the floor nor the gain is lifted to reach
+  it.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

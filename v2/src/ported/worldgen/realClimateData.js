@@ -18,6 +18,8 @@
 // simulation run on a world whose weather is real. Everything downstream — rivers,
 // fertility, settlement, empires — still emerges; only the climate is given.
 
+import { dexp } from "../../sim/dmath.ts";
+
 let precip = null, airtemp = null, derived = null;
 let loadPromise = null, loadFailed = false;
 
@@ -120,6 +122,93 @@ export function provideRealClimateData(precipJson, airtempJson) {
 const ELEV_M = 9400;
 // Environmental lapse rate, K/km. Textbook constant, not a tuning knob.
 const LAPSE_K_PER_KM = 6.5;
+
+// ── Sub-grid orographic redistribution of the coarse rain (W14, P18) ──
+// The observation is ~1.9° per cell; a range narrower than that — the Kopet
+// Dag, the Sulaiman, the Makran, the Alborz foot — is averaged with the basin
+// at its foot, and its wet slope comes back as desert. Within the observation's
+// own footprint the rain is placed on the slope it fell on: each land pixel is
+// weighted by exp(g·Δz) for its elevation anomaly against the footprint's land
+// mean, and the weights are normalised to a land mean of one over the same
+// footprint, so the footprint's rain is conserved to first order and none is
+// invented. The gain g is the relative windward precipitation gradient — Barry
+// (2008, *Mountain Weather and Climate*, ch. 4): 50–100 mm per 100 m on
+// 1,000–2,000 mm regimes, i.e. 0.25–1 per km; PRISM's slope-regression fits the
+// same order (Daly, Neilson & Phillips 1994, J. Appl. Meteorol. 33:140–158).
+// The footprint is aspect-blind (a lee slope is lifted like a windward one), so
+// the low-middle of that range. The anomaly is clamped at the vapour scale
+// height (Smith & Barstad 2004, J. Atmos. Sci. 61:1377–1391, H_w 2–3 km; Roe
+// 2005, Annu. Rev. Earth Planet. Sci. 33:645–671): above it the column has no
+// more water to wring out. The rain shadow BETWEEN table cells stays in the
+// table; only the placement inside one is corrected.
+const OROGRAPHIC_GAIN_PER_KM = 0.5;
+const VAPOUR_SCALE_HEIGHT_KM = 2.5;
+const TABLE_CELL_DEG = 1.9;
+
+/**
+ * The half-width, in map cells, of the footprint the coarse rain is
+ * redistributed within: the widest odd box that fits INSIDE one table cell,
+ * so nothing is moved across the table's own resolution. Zero where the map
+ * cell is no finer than about half the table's (the reference grid, and the
+ * 0.75° cross-grid proxy), where the correction is inert by construction;
+ * four at the v2 target grid (1800 wide, 0.2°: a 9-cell, 1.8° box) and two
+ * at the app's Half grid (960 wide: a 5-cell, 1.875° box).
+ */
+export function orographicFootprintRadius(W) {
+  return Math.max(0, Math.floor((W * TABLE_CELL_DEG / 360 - 1) / 2));
+}
+
+/** Separable box sum over a (2·rad + 1)² window: columns wrap, rows clamp at the poles — the lapse smoothing's own convention. */
+function boxSum(W, H, src, rad, out) {
+  const tmp = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    let acc = 0;
+    for (let d = -rad; d <= rad; d++) acc += src[y * W + ((d % W) + W) % W];
+    for (let x = 0; x < W; x++) {
+      tmp[y * W + x] = acc;
+      acc += src[y * W + ((x + rad + 1) % W)] - src[y * W + ((x - rad) % W + W) % W];
+    }
+  }
+  for (let x = 0; x < W; x++) {
+    let acc = 0;
+    for (let d = -rad; d <= rad; d++) acc += tmp[Math.min(H - 1, Math.max(0, d)) * W + x];
+    for (let y = 0; y < H; y++) {
+      out[y * W + x] = acc;
+      acc += tmp[Math.min(H - 1, y + rad + 1) * W + x] - tmp[Math.min(H - 1, Math.max(0, y - rad)) * W + x];
+    }
+  }
+  return out;
+}
+
+/**
+ * The share of its footprint's rain each land pixel receives (W14, P18): a
+ * land-mean-of-one weight exp(g·Δz) over the footprint of half-width `rad`,
+ * one everywhere at rad 0 and on the sea. Exported so the property can be
+ * checked on a synthetic field; the loader calls it once per fill.
+ */
+export function orographicShare(W, H, elevation, rad, share = new Float32Array(W * H)) {
+  const N = W * H;
+  share.fill(1);
+  if (rad <= 0) return share;
+  const land = new Float32Array(N), landElev = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    if (elevation[i] > 0) { land[i] = 1; landElev[i] = elevation[i]; }
+  }
+  const landCount = boxSum(W, H, land, rad, new Float32Array(N));
+  const elevSum = boxSum(W, H, landElev, rad, new Float32Array(N));
+  const weight = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    if (!land[i] || landCount[i] <= 0) continue;
+    const dzKm = Math.max(-VAPOUR_SCALE_HEIGHT_KM, Math.min(VAPOUR_SCALE_HEIGHT_KM,
+      (elevation[i] - elevSum[i] / landCount[i]) * ELEV_M / 1000));
+    weight[i] = dexp(OROGRAPHIC_GAIN_PER_KM * dzKm);
+  }
+  const weightSum = boxSum(W, H, weight, rad, new Float32Array(N));
+  for (let i = 0; i < N; i++) {
+    if (land[i] && weightSum[i] > 0) share[i] = weight[i] * landCount[i] / weightSum[i];
+  }
+  return share;
+}
 
 // Precompute the derived fields on the observation's own 94x192 Gaussian grid — the
 // per-pixel pass then only has to interpolate three smooth scalars instead of
@@ -243,10 +332,15 @@ export function sampleMonthlyClimate(W, H) {
  * @param {Float32Array} temperature out
  * @param {Float32Array} [dryFrac]  out, fraction of the year that is arid
  * @param {Float32Array} [summerDry] out, phase of the drought (>0 = summer-dry)
+ * @param {{ orographicRain?: boolean }} [options] `orographicRain` (default true) applies the W14 sub-grid orographic share to the sampled rain before the ranking
  * @returns {boolean} false if the data is not loaded
  */
-export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac) {
+export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac, { orographicRain = true } = {}) {
   if (!isRealClimateAvailable()) return false;
+  // W14 (P18): the coarse rain placed on the slope it fell on, inside the
+  // table's own footprint, before the ranking. Off (`rawRain`) for probes
+  // that compare against the table as sampled.
+  const share = orographicRain ? orographicShare(W, H, elevation, orographicFootprintRadius(W)) : null;
   const { P, T, D, S, A, WF, LAT, NLAT, NLON } = deriveGrids();
 
   // Latitude index + fraction per map ROW (the Gaussian grid is not evenly spaced, so
@@ -326,7 +420,7 @@ export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac,
       if (tAmp) tAmp[i] = Math.max(0, samp(A, y, x) / 100);
       if (warmRainFrac) warmRainFrac[i] = Math.max(0, Math.min(1, samp(WF, y, x)));
       if (e > 0) {
-        const mm = Math.max(0, samp(P, y, x));
+        const mm = Math.max(0, samp(P, y, x)) * (share ? share[i] : 1);
         obsP[i] = mm; nLand++;
         if (mm > pMax) pMax = mm;
       }

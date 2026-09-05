@@ -11,6 +11,7 @@ import {
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
 import { occurrenceTaxaOf } from "../../ported/worldgen/cropOccurrenceData.js";
 import { deriveWildRange, fitWildEnvelope } from "./wildRange";
+import { channelStripShare } from "./habitability";
 import { dpow } from "../dmath";
 import type { PeopleWorld } from "./types";
 
@@ -148,11 +149,38 @@ export function initializeCropFields(world: PeopleWorld): void {
       let fitSum = 0;
       const access = world._waterAccess[cell] ?? 0;
       const surface = world._surfaceAccess[cell] ?? 0;
+      // The standing water (W14): the floodplain under the flood, and the
+      // strip a stream can keep wet. The flood's presence in a month is the
+      // river's discharge above its own year's mean, one mean-flow's worth
+      // covering the plain (`seasonalFlowScale` is monthly flow over the
+      // static annual flow, so it is read against its own twelve-month
+      // mean); the stream's is the water that arrives, in the runoff's
+      // units, up to the channel strip — one cell-runoff keeps about one
+      // cell-area of paddy under water (Bouman et al. 2007, the order of a
+      // wet year's rain). A wetland crop counts both; an upland crop is
+      // hurt only by the flood it cannot drain, never by a stream beside
+      // it. Rice's advantage on flooded ground is the plant's (W13 finding,
+      // QUESTIONS #65), not a weight by place.
+      const response = pkg.standingWaterResponse ?? 0;
+      const flood = clamp01(world.substrate.floodplain[cell] ?? 0);
+      const strip = channelStripShare(world, cell);
+      const inflow = world._runoffInflow[cell] ?? 0;
+      const flowScale = world.substrate.rivers.seasonalFlowScale;
+      let flowMean = 0;
+      if (flowScale) {
+        for (let month = 0; month < MONTHS_PER_YEAR; month++) flowMean += flowScale[cell * MONTHS_PER_YEAR + month] ?? 0;
+        flowMean /= MONTHS_PER_YEAR;
+      }
       for (let month = 0; month < MONTHS_PER_YEAR; month++) {
         const climateIndex = cell * MONTHS_PER_YEAR + month;
         const temperature = world.substrate.climate.temperature[climateIndex] ?? 0;
         const moisture = world.substrate.climate.moisture[climateIndex] ?? 0;
         const warmth = pkgTemperatureBell(pkg, temperature);
+        const flowRatio = flowScale && flowMean > 0 ? (flowScale[climateIndex] ?? 0) / flowMean : 1;
+        const imposed = flood * clamp01(flowRatio - 1);
+        const standing = response >= 0
+          ? Math.min(1, imposed + Math.min(strip, inflow * flowRatio))
+          : imposed;
         // A month counts when it is warm enough and there is water in it:
         // the month's rain, or the water the land holds when it does not
         // rain — the floodplain, the river, the lake, the routed stream
@@ -165,8 +193,10 @@ export function initializeCropFields(world: PeopleWorld): void {
           season++;
           // The fit (W8): the crop's warmth term times its water term, where
           // the water is met by rain or by the water the land gives access to
-          // — a floodplain grows wheat in a desert.
-          fitSum += warmth * Math.max(pkgMoistureBell(pkg, moisture), access);
+          // — a floodplain grows wheat in a desert — times the package's
+          // response to the ground standing under water (W14): the paddy
+          // doubles rice, the same flood drowns a third of the wheat.
+          fitSum += warmth * Math.max(pkgMoistureBell(pkg, moisture), access) * (1 + response * standing);
         }
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;

@@ -138,6 +138,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR + 1).fill(undefined);
   world._waterAccess = new Float64Array(length);
   world._runoffAccess = new Float64Array(length);
+  world._runoffInflow = new Float64Array(length);
   world._surfaceAccess = new Float64Array(length);
   world._reliefMult = new Float64Array(length);
   world._foragerCapacity = new Float64Array(length);
