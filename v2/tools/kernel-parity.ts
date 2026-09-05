@@ -7,6 +7,7 @@ import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
 import { float64Bits } from "./lib/dmath-check";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { HORIZON_OPENING_YEAR, MONTHS_PER_YEAR } from "../src/sim/constants";
+import { passFires } from "../src/sim/scheduler";
 
 const PEOPLE_FIELDS = [
   "people",
@@ -175,6 +176,24 @@ async function runParity(
 }
 
 /**
+ * The cadence combinations an arm of this many solve steps actually visits:
+ * which passes fire on each landing of the clock (W12). A schedule whose
+ * passes take different strides is only exercised where one fires WITHOUT
+ * the other, and on a step where nothing fires at all — three cases the
+ * harness could not produce while every pass shared one stride, since then
+ * the clock is that stride and every step fires everything.
+ */
+function solveCadenceCoverage(world: World, steps: number): string[] {
+  const seen = new Set<string>();
+  for (let index = 0; index <= steps; index++) {
+    const step = index * world.solveClock;
+    const fired = world.solveSchedule.filter((row) => passFires({ step }, row));
+    seen.add(fired.length === 0 ? "none" : fired.map((row) => row.name).join("+"));
+  }
+  return [...seen].sort();
+}
+
+/**
  * Three regimes per grid (W5): the SOLVE regime as the world opens by
  * default (at dev the primed hearths cage a basin inside the horizon, so
  * the trigger-driven switch is compared too), the AWAKE regime from the
@@ -186,8 +205,25 @@ async function runGrid(grid: GridPreset, steps: number): Promise<Record<string, 
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const probe = makeWorld(grid, substrate, { peopleKernel: "ts" });
   const switchYear = HORIZON_OPENING_YEAR
-    + Math.floor(steps / 2) * probe.solveStride / MONTHS_PER_YEAR
+    + Math.floor(steps / 2) * probe.solveClock / MONTHS_PER_YEAR
     + 1;
+  // Where the grid gives the passes different strides, an arm this long has
+  // to reach every cadence combination or it is comparing the kernels on the
+  // uniform case again. At the shipped grid movement fires at two years and
+  // the reaction passes at seven, so the four cases appear within fourteen
+  // landings of the twelve-month clock.
+  const cadences = solveCadenceCoverage(probe, steps);
+  if (probe.solveSchedule.some((row) => row.stride !== probe.solveClock)) {
+    assert.ok(cadences.includes("none"), `${grid} solve arm never takes an empty step`);
+    assert.ok(
+      cadences.some((key) => key === "people.migration"),
+      `${grid} solve arm never moves people without a reaction firing`,
+    );
+    assert.ok(
+      cadences.some((key) => key.includes("people.growth") && !key.includes("people.migration")),
+      `${grid} solve arm never fires a reaction pass without moving people`,
+    );
+  }
   // The chosen-epoch switch is the same code path at either grid; running
   // it at dev alone keeps the CI parity job near its pre-W5 time
   // (QUESTIONS #40: 7:41 with three regimes at both grids).
@@ -196,7 +232,16 @@ async function runGrid(grid: GridPreset, steps: number): Promise<Record<string, 
     await runParity(grid, steps, substrate, { wake: HORIZON_OPENING_YEAR }, "awake"),
   ];
   if (grid === "dev") regimes.push(await runParity(grid, steps, substrate, { wake: switchYear }, "switch"));
-  return regimes;
+  return regimes.map((regime) => (
+    regime.label === "solve"
+      ? {
+        ...regime,
+        solveClock: probe.solveClock,
+        solveStrides: Object.fromEntries(probe.solveSchedule.map((row) => [row.name, row.stride])),
+        cadences,
+      }
+      : regime
+  ));
 }
 
 function checkWasmDmath(): number {

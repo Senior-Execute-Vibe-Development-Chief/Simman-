@@ -124,10 +124,16 @@ export function cagedBasin(worldInput: World): CagedBasin | undefined {
  * wakes the world at that year instead; a chosen year later than the
  * trigger is the player knowingly accepting the solve past its validity,
  * and provenance carries both steps.
+ *
+ * `committed` is false on a solve step no pass fired on, which the solve
+ * clock allows once the passes are on their own strides (W12). The search
+ * reads people, technique and the room fields, none of which such a step
+ * touched, so it is skipped; the chosen epoch is a clock reading and is
+ * still checked every step.
  */
-export function evaluateWake(world: World): void {
+export function evaluateWake(world: World, committed = true): void {
   if (world.phase !== "solve") return;
-  if (world.cagedStep < 0) {
+  if (committed && world.cagedStep < 0) {
     const caged = cagedBasin(world);
     if (caged) {
       world.cagedStep = world.step;

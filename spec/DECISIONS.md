@@ -669,6 +669,57 @@ lawyered.
     `spec/handoffs/W12-front-speed.md`. Implementation on request, in the
     order (b) → (c) → (d).
 
+32. **W12 §2 landed: each solve pass on its own stride, on a gcd clock.**
+    (31(b), implemented 2026-09-05.) Every solve pass now fires at the
+    largest whole-year stride inside its OWN bound, as the awake regime's
+    passes already did, so the movement cadence the corrected hop share
+    demands is charged to movement alone. Two bounds. The REACTION bound —
+    farmer growth, adoption, cohort ageing, none of which knows the cell
+    size, so it is the same at every grid: min(108.2, 50, 7.5) years, 84
+    months. And the TRANSPORT bound — each group's hop share inside
+    `PEOPLE_MIGRATION_MAX_SHARE` on every row it can be a source from: 24
+    months at the shipped grid, over a century at dev. So dev keeps 84
+    everywhere and is byte-identical, and the shipped grid moves at 24
+    against the other five passes' 84. Four corrections the implementation
+    forced, recorded because the spec said otherwise:
+    (a) *The clock is the greatest common divisor of the strides, not the
+    shortest.* A clock of 24 lands on 0, 24, 48, 72, 96 … and meets
+    `step % 84 === 0` only every 168 months, so growth, capacity, adoption
+    and cohorts would have run at DOUBLE their own bound while every gate
+    still reported 84. Only a divisor of every stride lands on every
+    cadence, and the gcd is the largest such divisor: 84 at dev, 12 at the
+    shipped grid (QUESTIONS #60).
+    (b) *Movement is capped at the reaction stride.* It transports what
+    reaction wrote, so a transport firing longer than the span that field is
+    held fixed over integrates a field which no longer exists — and buys no
+    reach doing it, since a firing moves people at most one cell whatever
+    the share. That cap is what binds at dev, and what keeps dev
+    byte-identical.
+    (c) *The substep allowance leaves the transport bound.* Substepping is
+    what keeps the explicit scheme stable across a long firing, not licence
+    to make one longer; the 16× factor bought a slower front and nothing
+    else (QUESTIONS #57), and it never showed at dev, whose share sits at a
+    sixtieth of its bound.
+    (d) *The visible step at the shipped grid is 1 year, not the 2 that 31
+    promised.* That is what the correct clock gives, and §3 does not restore
+    it on its own — gcd(84, 48) is 12 as well. Two other mechanisms reach a
+    coarser one, both legal because rounding a stride DOWN is always inside
+    its bound: a movement stride that is also a divisor of the coarsest
+    (84/21, 1.75 years, +14 % movement firings, and 3.5 years once §3
+    lands), or the coarsest rounded to a multiple of the shortest (72/24, 2
+    years, ≈ +13 % total, which is where 31's "2-year" came from). The
+    handoff carries the table; the choice is the owner's.
+    Cost, measured on landing: dev unchanged at 0.55 → 0.57 ms per
+    solve-year, the shipped grid 34.9 → 104.8. That 3.0× is §1's, not §2's —
+    the corrected share needs 3.5× the movement firings to carry the same
+    span. What §2 buys is keeping the multiplier OFF the other five passes:
+    against a single stride at migration's own bound, 1.19× on a cold world
+    and 1.65× with every hearth primed, the spread being the adoption pass
+    at 65 % of a firing. Prerequisite: §1 had moved nine rows of the dev
+    solve arm without recording them, so the known-miss manifest was
+    re-measured to 48 first (`15d83fe6`, QUESTIONS #59). §3 (the reduced
+    polar grid) and §4 (the anisotropic flux) remain on request.
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,

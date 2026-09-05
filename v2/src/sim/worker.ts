@@ -20,6 +20,7 @@ import { ensurePeopleWasm } from "./peopleKernel";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
 import { populationTotal } from "./people";
 import { yearFromStep } from "./horizon";
+import { solveSpanMonths } from "./scheduler";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import type { Substrate } from "./substrate";
 import type { PeopleWorld } from "./people/types";
@@ -87,7 +88,8 @@ let snapshotVersion = 0;
 function regimeOf(target: World): Record<string, unknown> {
   return {
     phase: target.phase,
-    solveStride: target.solveStride,
+    solveClock: target.solveClock,
+    solveSpan: solveSpanMonths(target.solveSchedule),
     wakeStep: target.wakeStep,
     cagedStep: target.cagedStep,
     cagedCell: target.cagedCell,
@@ -232,6 +234,8 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
     })._wasmPeopleKernel;
     const growth = world.awakeSchedule.find((row) => row.name === "people.growth")?.stride ?? 1;
     const migration = world.awakeSchedule.find((row) => row.name === "people.migration")?.stride ?? 1;
+    const solve = world.solveSchedule.find((row) => row.name === "people.growth")?.stride ?? 1;
+    const solveMigration = world.solveSchedule.find((row) => row.name === "people.migration")?.stride ?? 1;
     const isolated = typeof crossOriginIsolated === "undefined" || crossOriginIsolated;
     return {
       type: "created",
@@ -242,7 +246,7 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
       workerCount: peopleKernel?.workerCount ?? 1,
       usesThreads: peopleKernel?.usesThreads === true,
       isolated,
-      scheduleLabel: `growth ${growth} · migration ${migration} · solve ${world.solveStride}`,
+      scheduleLabel: `growth ${growth} · migration ${migration} · solve ${solve}/${solveMigration}`,
       sharedBands: peopleKernel?.control.shared === true,
       ...regimeOf(world),
     };

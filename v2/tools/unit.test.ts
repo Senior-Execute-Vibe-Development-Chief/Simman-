@@ -11,7 +11,14 @@ import type { Substrate } from "../src/sim/substrate";
 import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
-import { passDtMonths, passFires, resolveSchedule } from "../src/sim/scheduler";
+import {
+  passDtMonths,
+  passFires,
+  resolveSchedule,
+  resolveSolveStrides,
+  solveClockMonths,
+  solveSpanMonths,
+} from "../src/sim/scheduler";
 import {
   HORIZON_OPENING_YEAR,
   MONTHS_PER_YEAR,
@@ -24,7 +31,6 @@ import {
   PEOPLE_GROWTH_STRIDE_MONTHS,
   PEOPLE_GROWTH_TECHNIQUE_GAIN,
   PEOPLE_MIGRATION_MAX_SHARE,
-  PEOPLE_MIGRATION_MAX_SUBSTEPS,
   PEOPLE_R_GROWTH_PER_YEAR,
 } from "../src/sim/constants";
 import { migrationShareForArea } from "../src/sim/people/migration";
@@ -228,26 +234,56 @@ async function main(): Promise<void> {
   assert.ok(peopleBalance, "people conservation sheet missing");
   assert.equal(peopleBalance?.sources.migration, peopleBalance?.sinks.migration);
 
-  // ── W5: the solve regime and the wake. ──────────────────────────────────
-  // The solve stride is the minimum over the four bounds the passes carry:
-  // farmer hops on the rows a package can grow on (every row of the flat
-  // fixture), farmer growth, adoption, cohort ageing.
+  // ── W5/W12: the solve regime and the wake. ──────────────────────────────
+  // Each solve pass takes the largest whole-year firing inside its OWN
+  // bound. The REACTION bound — farmer growth, adoption, cohort ageing —
+  // knows nothing of cell size, so it is the same at every grid and is
+  // exactly these three constants. The TRANSPORT bound is migration's
+  // alone, and migration is additionally capped at the reaction stride:
+  // it carries the field the reaction passes wrote, and a longer firing
+  // would integrate a field that no longer exists while buying no reach.
   {
     const world = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts" }, substrate });
-    const rowAreas: number[] = [];
-    for (let y = 0; y < world.height; y++) rowAreas.push(world.cellAreaKm2[y * world.width] ?? 0);
-    const smallestRow = Math.min(...rowAreas.filter((area) => area > 0));
-    const boundYears = Math.min(
+    const reactionYears = Math.min(
       PEOPLE_MIGRATION_MAX_SHARE / (PEOPLE_R_GROWTH_PER_YEAR * (PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN)),
       PEOPLE_MIGRATION_MAX_SHARE / PEOPLE_ADOPTION_RATE_PER_YEAR,
       PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_CHILD_AGE_YEARS,
-      PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS * smallestRow / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
-      PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS * smallestRow / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
     );
-    assert.equal(world.solveStride, Math.max(1, Math.floor(boundYears)) * MONTHS_PER_YEAR, "solve stride is not the bound minimum");
+    const strides = resolveSolveStrides(world);
+    assert.equal(
+      strides.reaction,
+      Math.max(1, Math.floor(reactionYears)) * MONTHS_PER_YEAR,
+      "the reaction stride is not the reaction bound in whole years",
+    );
+    assert.ok(strides.migration <= strides.reaction, "transport outran the field it carries");
+    for (const row of world.solveSchedule) {
+      assert.equal(row.stride % MONTHS_PER_YEAR, 0, `${row.name} does not fire on a whole year`);
+      assert.equal(
+        row.stride,
+        row.name === "people.migration" ? strides.migration : strides.reaction,
+        `${row.name} is not on its own bound`,
+      );
+    }
+    // The clock is the largest advance that lands on every cadence: it
+    // divides them all, and nothing coarser does.
+    const clock = solveClockMonths(world.solveSchedule);
+    assert.equal(world.solveClock, clock);
+    assert.ok(world.solveSchedule.every((row) => row.stride % clock === 0), "the clock misses a cadence");
+    for (let months = clock + 1; months <= solveSpanMonths(world.solveSchedule); months++) {
+      assert.ok(
+        world.solveSchedule.some((row) => row.stride % months !== 0),
+        `a ${months}-month clock also lands on every cadence`,
+      );
+    }
+    // At the reference grid a cell is a degree and a half across and the
+    // transport bound is over a century, so the reaction cap is what binds
+    // and the whole schedule is uniform. That is a fact about the grid, not
+    // about the mechanism: at the shipped grid the two differ in kind.
+    assert.equal(strides.migration, strides.reaction, "the reference grid's solve schedule is not uniform");
     assert.equal(world.phase, "solve", "a peopled world must open in the solve regime");
     const forced = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", peopleSolveStride: 24 }, substrate });
-    assert.equal(forced.solveStride, 24);
+    assert.deepEqual(resolveSolveStrides(forced), { reaction: 24, migration: 24 });
+    assert.equal(forced.solveClock, 24);
     const awake = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", wake: HORIZON_OPENING_YEAR }, substrate });
     assert.equal(awake.phase, "awake", "a world whose epoch is the opening must open awake");
     assert.equal(awake.wakeStep, 0);
@@ -279,8 +315,9 @@ async function main(): Promise<void> {
     const area = world.cellAreaKm2[cell] ?? 0;
     const farmers = people._farmerMigrationTotal[packed] ?? 0;
     const foragers = (people._migrationPopulation[packed] ?? 0) - farmers;
-    const farmerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
-    const foragerShare = migrationShareForArea(area, world.solveStride, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
+    const solveMigration = resolveSolveStrides(world).migration;
+    const farmerShare = migrationShareForArea(area, solveMigration, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
+    const foragerShare = migrationShareForArea(area, solveMigration, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
     assert.ok(farmers > 0 && foragers > 0);
     assert.equal(people._migrationOutFarmers[packed], farmers * area * farmerShare, "farmers did not hop their own share");
     assert.equal(people._migrationOut[packed], foragers * area * foragerShare, "foragers did not hop their own share");
@@ -316,7 +353,7 @@ async function main(): Promise<void> {
     assert.equal(chosen.step, stepFromYear(epoch), "the world did not wake at exactly its epoch");
     assert.equal(chosen.phase, "awake");
     assert.equal(chosen.wakeStep, stepFromYear(epoch));
-    assert.equal(chosen.schedule.find((row) => row.name === "people.migration")?.stride, chosen.solveStride, "movement is not on its derived stride after the wake");
+    assert.equal(chosen.schedule.find((row) => row.name === "people.migration")?.stride, resolveSolveStrides(chosen).migration, "movement is not on its derived stride after the wake");
     assert.ok(chosen.events.some((event) => event.kind === "wake"));
     const before = chosen.step;
     runSteps(chosen, 1);
@@ -437,9 +474,23 @@ async function main(): Promise<void> {
   // stride and may exceed a year; on a world without a substrate every row
   // counts as peopled and no row can grow, so only the forager bound and
   // the pass bounds apply.
-  assert.equal(named(targetWorld, "people.migration")?.stride, targetWorld.solveStride);
-  assert.equal(named(devWorld, "people.migration")?.stride, devWorld.solveStride);
-  assert.equal(targetWorld.solveStride % PEOPLE_GROWTH_STRIDE_MONTHS, 0);
+  const targetSolve = resolveSolveStrides(targetWorld);
+  const devSolve = resolveSolveStrides(devWorld);
+  assert.equal(named(targetWorld, "people.migration")?.stride, targetSolve.migration);
+  assert.equal(named(devWorld, "people.migration")?.stride, devSolve.migration);
+  assert.equal(targetSolve.migration % PEOPLE_GROWTH_STRIDE_MONTHS, 0);
+  // W12: the two grids differ in KIND, not degree. The reaction bound is
+  // the same at both — it knows no cell size — but at the shipped grid a
+  // cell is small enough that the transport bound binds first, so movement
+  // fires several times inside one growth firing and the solve clock runs
+  // at their common divisor rather than at the single stride.
+  assert.equal(targetSolve.reaction, devSolve.reaction, "the reaction bound is not grid-independent");
+  assert.ok(targetSolve.migration < targetSolve.reaction, "the shipped grid's transport bound does not bind");
+  assert.equal(devSolve.migration, devSolve.reaction, "the reference grid's transport bound binds");
+  assert.equal(devWorld.solveClock, devSolve.reaction, "a uniform schedule does not clock at its stride");
+  assert.ok(targetWorld.solveClock <= targetSolve.migration);
+  assert.equal(targetSolve.reaction % targetWorld.solveClock, 0);
+  assert.equal(targetSolve.migration % targetWorld.solveClock, 0);
   const forced = new World({
     seed: 1,
     grid: "target",

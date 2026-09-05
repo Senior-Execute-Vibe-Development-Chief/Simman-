@@ -1,6 +1,4 @@
 import {
-  MIGRATION_HOP_MEAN_SQUARE_WEIGHT,
-  EARTH_CIRCUMFERENCE_KM,
   DIFFUSION_MSD_PER_DIFFUSIVITY,
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
@@ -12,7 +10,7 @@ import {
   PEOPLE_MIGRATION_MAX_SUBSTEPS,
   PEOPLE_NEIGHBOR_OPPOSITE,
 } from "../constants";
-import { monthIndex } from "../scheduler";
+import { meanSquareHopKm2, monthIndex } from "../scheduler";
 import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm } from "../travel/cost";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { activePackageIndices, packageCapacity } from "./crop";
@@ -26,23 +24,6 @@ function sumBands(values: Float64Array): number {
   let total = 0;
   for (let index = 0; index < values.length; index++) total += values[index] ?? 0;
   return total;
-}
-
-/**
- * The mean square length of one hop out of a cell on this row, in km2 (W12).
- *
- * A hop lands on one of eight neighbours: two at the row's east-west spacing,
- * two at the north-south spacing, four on the diagonal at the root of their
- * squares. Averaged, that is `0.75 * (h_ew^2 + h_ns^2)` — one and a half
- * times the cell area where the cell is square, and increasingly more than
- * that toward the poles, where cells narrow east-west but keep their height.
- * The row's north-south spacing is a grid property; its east-west spacing
- * follows from the cell's area.
- */
-export function meanSquareHopKm2(areaKm2: number, height: number): number {
-  const northSouth = EARTH_CIRCUMFERENCE_KM / (2 * height);
-  const eastWest = Math.max(1, areaKm2) / northSouth;
-  return MIGRATION_HOP_MEAN_SQUARE_WEIGHT * (eastWest * eastWest + northSouth * northSouth);
 }
 
 /**

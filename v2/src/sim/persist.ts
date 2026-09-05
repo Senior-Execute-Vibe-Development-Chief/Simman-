@@ -1,6 +1,6 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W8 } from "./constants";
+import { SAVE_VERSION_W12 } from "./constants";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World, type WorldEvent } from "./world";
 import type { HearthState } from "./people/types";
@@ -9,7 +9,7 @@ import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
 import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W8;
+export const SAVE_VERSION = SAVE_VERSION_W12;
 
 export interface SerializedField {
   readonly length: number;
@@ -23,9 +23,9 @@ export interface SaveEnvelope {
   readonly grid: GridPreset;
   readonly step: number;
   readonly calendarMonth: number;
-  /** The AWAKE schedule; the solve regime's is every pass at `solveStride`. */
+  /** Both regimes' schedules; each pass on the stride its own bound permits (W12). */
   readonly schedule: readonly PassSchedule[];
-  readonly solveStride: number;
+  readonly solveSchedule: readonly PassSchedule[];
   /** The regime the world was saved in, and the steps it woke and was first caged at (−1 while not yet). */
   readonly phase: WorldPhase;
   readonly wakeStep: number;
@@ -136,7 +136,7 @@ export function saveWorld(world: World): SaveEnvelope {
     step: world.step,
     calendarMonth: world.calendarMonth,
     schedule: world.awakeSchedule,
-    solveStride: world.solveStride,
+    solveSchedule: world.solveSchedule,
     phase: world.phase,
     wakeStep: world.wakeStep,
     cagedStep: world.cagedStep,
@@ -173,8 +173,8 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   if (!Array.isArray(data.schedule) || !sameSchedule(world.awakeSchedule, data.schedule)) {
     throw new Error("Save schedule does not match the world schedule.");
   }
-  if (data.solveStride !== world.solveStride) {
-    throw new Error("Save solve stride does not match the world's derived stride.");
+  if (!Array.isArray(data.solveSchedule) || !sameSchedule(world.solveSchedule, data.solveSchedule)) {
+    throw new Error("Save solve schedule does not match the world's derived schedule.");
   }
   world.step = data.step;
   world.calendarMonth = data.calendarMonth;

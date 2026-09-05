@@ -109,9 +109,19 @@ never showed at dev, whose share sits at a sixtieth of the bound.
 
 ### 2b. The clock and the passes
 
-- The solve clock advances by the **shortest solve stride** (24 at target,
-  84 at dev). Each pass fires when due, by the same `isDue(step, stride,
-  phase)` check the awake regime uses — the cadence check stays centralised.
+- The solve clock advances by the **greatest common divisor** of the solve
+  strides: 84 at dev (one stride), **12** at target (the gcd of 84 and 24) —
+  not the "shortest stride" this line first said. Each pass fires when due,
+  by the same `passFires(world, schedule)` check the awake regime uses — the
+  cadence check stays centralised — and that check is
+  `(step − phase) % stride === 0`. A clock of 24 does not land on the 84
+  cadence: steps would fall on 0, 24, 48, 72, 96 … and `step % 84 === 0`
+  would be true only every 168 months, silently running growth, capacity,
+  adoption and cohorts at **double** their own bound. Only a clock that
+  divides every stride lands on every cadence, and the gcd is the largest
+  such value — the biggest advance per step, so the fewest steps.
+  `unit.test.ts` asserts both halves: the clock divides every stride, and no
+  coarser value lands on every cadence.
 - Each pass receives **its own stride as `dtMonths`**, as the awake regime
   does through `passDtMonths`. `stepPeople`'s `solve ? solveDtMonths :
   passDtMonths(schedule)` collapses to the second branch in both regimes;
@@ -129,23 +139,39 @@ never showed at dev, whose share sits at a sixtieth of the bound.
 
 - `WorldSave.solveStride: number` → `solveSchedule: PassSchedule[]`,
   checked on load with `sameSchedule` like the awake schedule.
-  `SAVE_VERSION_W12 = 8`; a v7 save's single stride expands to the schedule
-  it implied (every pass at that stride) so old saves load and re-derive.
+  `SAVE_VERSION_W12 = 8`. There is no v7 → v8 expansion and none was
+  written: `loadWorld` has always rejected `data.version !== SAVE_VERSION`
+  outright, so the bump IS the migration — a v7 save fails cleanly rather
+  than loading a stride the schedule no longer carries.
 - Provenance prints the solve schedule per pass, as it prints the awake one.
   The status line's `solve 84` becomes the per-pass list; the shell's
   "solving · 7-year steps" reads the clock advance, so at the shipped grid it
-  reads **"2-year steps"**. That is visible to the player and is the cost of
-  the front being right; the owner has seen the number (§Rulings).
+  reads **"1-year steps"** — not the "2-year" this line first said, which was
+  the shortest-stride clock talking. It is visible to the player; what to do
+  about it is the owner's (§Rulings).
 - The scrubber's reconstruction of the solved span is unchanged in kind:
   frames at recorded arrival steps, granularity the clock advance.
 - `kernel-parity.ts` converts steps to years through `solveStride`; it
-  converts through the clock advance instead, and its solve arm must show
-  migration firing 3.5× as often as growth at target — a schedule with more
-  than one stride is the case the harness has never seen and the one that
-  matters.
-- The bench's solve rows change by construction; the baseline is re-set
-  and the row's note records "per-pass solve strides, W12" and the measured
-  ratio.
+  converts through the clock advance instead, and where the grid gives
+  different strides its solve arm asserts that the arm actually VISITS every
+  cadence combination — no pass at all, migration alone, a reaction firing
+  without migration, both together. A schedule with more than one stride is
+  the case the harness has never seen and the one that matters. Covering the
+  old 2016-month span instead would take 168 steps against 24 and add ~6.3
+  minutes to an 8m17s harness; the coverage assertion costs nothing and
+  proves the same thing. The consequence, recorded rather than hidden: the
+  target solve arm now spans 24 years and 4 reaction firings where it spanned
+  168 years and 24.
+- The bench's solve rows change by construction. `solveStepMilliseconds` is
+  replaced as the ratchet phase by **`solveYearMilliseconds`** — milliseconds
+  per YEAR of solve, which survives a change of schedule where a per-firing
+  row cannot (a step is 7 years at dev and 1 at target). The sample count
+  moves from 10 steps to 10 of the coarsest SPANS, so the row measures 70
+  years of history at either grid. The baselines are the old per-firing
+  baselines carried across **by the ratio measured on this runner, not reset
+  to it** — this runner is about 2.5× faster than the one that set 11/440,
+  and resetting to it would ratchet the cap down by that factor for everyone
+  else. The per-step row is retained, unratcheted, as what one frame costs.
 
 ### 2d. Cost, measured and to be measured
 
@@ -158,6 +184,19 @@ the finer coast has more hop pairs — so the acceptance figure is the
 shipped-grid measurement, expected 1.5–1.8×. Against the 3.5× of moving
 every pass, and the 89 % of humanity that any exclusion deep enough to
 matter would give up.
+
+**Measured on landing** (this runner, wasm, one worker, warm-up world first —
+the first timed arm of a cold process reads ~60 % high on JIT alone, which
+cost one probe its answer). Dev is unchanged, as the schedule is: 0.55 ms per
+solve-year before, 0.57 after. At the shipped grid a solve-year goes
+**34.9 → 104.8 ms, 3.0×** — and that multiplier is §1's, not §2's: the
+corrected share needs 3.5× the movement firings to carry the same span inside
+`PEOPLE_MIGRATION_MAX_SHARE`. What §2 buys is keeping that multiplier OFF the
+other five passes. Against a single stride at migration's own bound, the same
+70 years cost 124.3 ms/yr against 104.5 on a cold world (**1.19×**) and 401.8
+against 243.6 with every hearth primed (**1.65×**) — the spread is the
+adoption pass, which is 65 % of a firing once packages are live (§2e) and
+nothing at all before they are.
 
 ### 2e. The adoption pass is 65 % of a firing
 
@@ -281,14 +320,23 @@ speed owns.
 Measured at both grids on every commit (dev) and in `v2-long` (target,
 `GATE_PEOPLE_SOLVE_TARGET=1`):
 
-- **§2.** The solve schedule prints per pass; at target migration fires at
-  24 months and every other pass at 84; at dev all at 84. Parity byte-exact
-  in the solve regime with a multi-stride schedule. The front at target
-  moves from 0.670 toward 0.936 and the residual is attributed (clamp
-  fraction by population, per firing, reported). The Indus and Ganges
-  arrival rows at target are reported (currently null). Cost measured at
-  the shipped grid and recorded in the bench note. The shell reads "2-year
-  steps" at the shipped grid.
+- **§2.** Met on landing: the solve schedule prints per pass, at target
+  migration at 24 months and every other pass at 84, at dev all at 84;
+  parity byte-exact in the solve regime with a multi-stride schedule, both
+  grids, three regimes, 1/2/8 workers; cost measured at both grids and
+  recorded in the bench note; dev byte-identical to §1 (same grid hash, same
+  solve-arm hash, same wake step, same routing hashes), which is the check
+  that the schedule machinery changed nothing where the schedule did not.
+  The shell reads **"1-year steps"** at the shipped grid, not the "2-year"
+  first written here — see §2b and §Rulings.
+  Needing the long arm (`GATE_PEOPLE_SOLVE_TARGET=1`, `v2-long`; not run in
+  the dev loop, per the owner directive): the front at target moving from
+  0.670 toward 0.936 with the residual attributed, and the Indus and Ganges
+  target arrival rows (currently null). The clamp is inactive at the chosen
+  stride BY CONSTRUCTION — the stride is the largest whole year inside the
+  bound at which the share reaches `PEOPLE_MIGRATION_MAX_SHARE` — so what
+  the long arm measures is how much of the 0.936 that recovers, not whether
+  it clamps.
 - **§3.** Aspect ratio inside [0.5, 1] on every row; the migration bound
   ~48 months at every latitude; §2's target stride rises to 48 and its cost
   is re-measured. Parity and the oracle hold across the land re-packing.
@@ -297,21 +345,63 @@ Measured at both grids on every commit (dev) and in `v2-long` (target,
   east–west speed measured directly (Levant → Balkans, Levant → Indus).
 - **Throughout.** Lint, tsc, unit, smoke, parity, the bench ratchet with any
   re-baseline reasoned, the oracle, the Chromium browser smoke, the travel
-  gate. `npm run coverage` for the schedule state (§2c) and the re-packing
-  (§3b).
+  and people gates. Correction: `npm run coverage` is the **v1** tool — it
+  imports `src/sim/peopleSim` and asks whether v1's `collect()` reaches every
+  property — and cannot see v2 state at all. For §2c's schedule state the v2
+  equivalents are the persistence round-trip in `smoke.ts` (the schedule is
+  saved and `sameSchedule`-checked on load) and the unit assertions that the
+  clock is the gcd of the schedule it is derived from. §3b's re-packing needs
+  the same treatment, not `coverage`.
 
 ## Rulings that stay the owner's
 
-- **The visible step.** §2 makes the shipped app read "2-year steps" during
-  the prehistory solve (7 at dev), and the solve takes ~1.5× longer, until
-  §3 lands and brings it to "4-year steps" at ~1.15×. The owner has the
-  numbers; the order in which §2 and §3 land is theirs.
+- **The visible step — reopened by the clock correction.** As landed, §2
+  makes the shipped app read **"1-year steps"** during the prehistory solve
+  (7 at dev), not the "2-year" first specified: the clock is the gcd of the
+  strides (§2b), and gcd(84, 24) = 12. This is not cosmetic drift, it is what
+  the correct clock gives, and §3 does not improve it on its own —
+  gcd(84, 48) is 12 as well. Three ways to a coarser visible step, all
+  mechanisms rather than labels, and the choice is the owner's:
+
+  | | rule | target strides | visible step | cost |
+  |---|---|---|---|---|
+  | **a** (landed) | each pass at the largest whole year inside its bound | 84 / 24 | 1 year | — |
+  | **b** | …and a DIVISOR of the coarsest stride | 84 / 21 | 1.75 years | +14 % movement firings |
+  | **c** | coarsest stride rounded to a MULTIPLE of the shortest | 72 / 24 | 2 years | +17 % reaction firings ≈ +13 % total |
+
+  Rounding down is always safe — a shorter stride is inside its own bound —
+  so all three are legal; (a) is what §2a's rule says literally, and the
+  "2-year" and "4-year" numbers first written here were (c)'s. After §3 the
+  spread widens: (a) stays at 1 year, (b) gives 42 months (3.5 years) for the
+  same +14 %, and (c) drags the reaction passes down to 48 months, which is
+  expensive. If the player-facing number matters, (b) is the one that scales.
 - **The cultivation wait** (hearths), P10, P15 — unchanged. P15, the
   frontier growth rate, may close on its own once §2–§4 deliver the
   designed speed; it is not touched here.
 
 ## Status (2026-09-05)
 
-§1 landed and verified (`a1eac742`). §2–§4 specified; implementation on
-request, in the order §2 → §3 → §4. Dev findings 9, shipped-grid findings
-15, at HEAD `e46d58e0`.
+§1 landed and verified (`a1eac742`). **§2 landed**; §3–§4 specified,
+implementation on request, in the order §3 → §4. §2's corrections to what
+was specified are marked inline above: the clock is the gcd and not the
+shortest stride (§2b — the shortest-stride clock would have run the reaction
+passes at double their bound), the shell reads 1-year steps and not 2 (§2c,
+§Rulings), there is no v7 → v8 save expansion (§2c), the bench row is per
+solve-YEAR (§2c), the target parity arm trades span for cadence coverage
+(§2c), and `npm run coverage` is a v1 tool that cannot see v2 state
+(§Acceptance). The awake migration stride at target also moves 84 → 24 as a
+side effect — the corrected share saturates at 84 there — so the target
+world hash moves `b05519874764bff8` → `217a88344bd3a6b1` while dev is
+byte-identical.
+
+Before §2, `a1eac742` had left nine dev solve rows unacknowledged and the
+per-commit people gate red; they are measured and recorded in `15d83fe6`,
+and fourteen stale reasons refreshed with them.
+
+Verified: tsc, lint, unit, smoke, the byte-exact kernel parity harness (8m17s,
+three regimes per grid, serial wasm and 1/2/8 workers), the travel gate, the
+people gate (48 known misses, none unacknowledged, none stale), the bench
+ratchet `--check`, the worldgen oracle, and the Chromium browser smoke — the
+last returning dev `64e16935452e6c26` unchanged and target
+`217a88344bd3a6b1`. The full three-engine browser matrix and the shipped-grid
+`GATE_PEOPLE_SOLVE_TARGET=1` arm stay in `v2-long`.

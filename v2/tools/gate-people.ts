@@ -548,7 +548,8 @@ function runSolveArm(grid: GridPreset): TrajectorySample {
   const solve = (findings.solve ?? {}) as Record<string, unknown>;
   solve[grid] = {
     ...judgeTrajectory(sample, scope, true),
-    stride: world.solveStride,
+    clock: world.solveClock,
+    strides: Object.fromEntries(world.solveSchedule.map((row) => [row.name, row.stride])),
     steps: world.debug.ticks,
     cagedStep: world.cagedStep,
     cagedYear: world.cagedStep >= 0 ? yearFromStep(world.cagedStep) : null,

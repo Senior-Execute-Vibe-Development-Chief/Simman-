@@ -83,8 +83,8 @@ function solveRegimeRun(): Record<string, unknown> {
   const result = {
     wakeStep: first.wakeStep,
     cagedStep: first.cagedStep,
-    solveStride: first.solveStride,
-    solveSteps: first.wakeStep / first.solveStride,
+    solveClock: first.solveClock,
+    solveSteps: first.wakeStep / first.solveClock,
     hash: hashWorld(first),
   };
   for (const target of [first, second, solvingLoaded, awakeLoaded]) (target as PeopleWorld)._wasmPeopleKernel?.dispose();

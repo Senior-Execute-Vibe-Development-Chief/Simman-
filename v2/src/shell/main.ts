@@ -129,12 +129,23 @@ let speed = 1;
 // a batch is several multi-year steps and the map plays the peopling; after
 // the wake the timeline scrubs the solved span through reconstructed frames.
 let phase = "solve";
-let solveStride = 1;
+let solveClock = 1;
+let solveSpan = 1;
 let wakeStep = -1;
 let cagedStep = -1;
 let liveStep = 0;
 let scrubbing = false;
-const BATCH_SOLVE_STEPS = 8;
+// A solve frame advances a fixed number of the world's COARSEST firings,
+// not a fixed number of clock steps: once the passes are on their own
+// strides (W12) the clock ticks as often as the shortest of them, and a
+// frame counted in clock steps would cover a seventh of the history at the
+// shipped grid for a fifth of the work. Counted this way the play advances
+// the same span at either grid.
+const BATCH_SOLVE_SPANS = 8;
+const solveBatchSteps = (): number => Math.max(
+  1,
+  Math.round(BATCH_SOLVE_SPANS * solveSpan / Math.max(1, solveClock)),
+);
 let overlayPopulation: Float32Array | undefined;
 let overlayTechnique: Float32Array | undefined;
 let overlayPackage: Float32Array | undefined;
@@ -145,7 +156,7 @@ function displayDate(step: number): string {
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
 }
 function regimeLabel(): string {
-  if (phase === "solve") return `solving · ${solveStride / MONTHS_PER_YEAR}-year steps`;
+  if (phase === "solve") return `solving · ${solveClock / MONTHS_PER_YEAR}-year steps`;
   if (wakeStep >= 0) return `awake since ${displayDate(wakeStep)}${cagedStep >= 0 && cagedStep !== wakeStep ? ` · caged ${displayDate(cagedStep)}` : ""}`;
   return "awake";
 }
@@ -172,7 +183,8 @@ worker.addEventListener("message", (event) => {
   if (event.data?.type === "created") {
     worldReady = true;
     phase = String(event.data.phase ?? "solve");
-    solveStride = Number(event.data.solveStride ?? 1);
+    solveClock = Number(event.data.solveClock ?? 1);
+    solveSpan = Number(event.data.solveSpan ?? 1);
     wakeStep = Number(event.data.wakeStep ?? -1);
     cagedStep = Number(event.data.cagedStep ?? -1);
     liveStep = Number(event.data.step ?? 0);
@@ -234,7 +246,7 @@ let worldReady = false;
 function requestTicks(): void {
   if (!playing || tickPending || !worldReady || scrubbing) return;
   tickPending = true;
-  worker.postMessage({ type: "tick", steps: phase === "solve" ? speed * BATCH_SOLVE_STEPS : speed });
+  worker.postMessage({ type: "tick", steps: phase === "solve" ? speed * solveBatchSteps() : speed });
 }
 window.setInterval(requestTicks, 250);
 createWorld();

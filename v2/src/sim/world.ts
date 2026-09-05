@@ -25,7 +25,7 @@ import {
   nextMonth,
   resolveSchedule,
   resolveSolveSchedule,
-  resolveSolveStride,
+  solveClockMonths,
   type PassSchedule,
   type WorldPhase,
 } from "./scheduler";
@@ -77,10 +77,11 @@ export class World {
   readonly height: number;
   readonly N: number;
   readonly config: WorldConfig;
-  /** The monthly regime's schedule; the solve regime's is every pass at the solve stride. */
+  /** The monthly regime's schedule, and the multi-year regime's (W12: each pass on its own stride). */
   readonly awakeSchedule: readonly PassSchedule[];
-  readonly solveStride: number;
   readonly solveSchedule: readonly PassSchedule[];
+  /** Months one solve step advances: the largest that lands on every solve cadence. */
+  readonly solveClock: number;
   readonly ledger: ConservationLedger;
   readonly debug: WorldDebug;
   readonly substrate?: Substrate;
@@ -140,8 +141,8 @@ export class World {
     if (this.substrate) initializePeople(this);
     else allocateFields(this as unknown as Record<string, unknown>, this.N);
     this.awakeSchedule = resolveSchedule(this);
-    this.solveStride = resolveSolveStride(this);
-    this.solveSchedule = resolveSolveSchedule(this, this.solveStride);
+    this.solveSchedule = resolveSolveSchedule(this);
+    this.solveClock = solveClockMonths(this.solveSchedule);
     // A world without a substrate has nothing to solve; a peopled world
     // opens in the solve regime unless its chosen epoch is the opening.
     if (this.substrate) {
@@ -167,26 +168,31 @@ export function dimensionsFor(grid: GridPreset): GridDimensions {
 }
 
 /**
- * The months one solve step advances: the solve stride, or the remainder
- * to a chosen epoch so the world wakes at exactly that year.
+ * The months one solve step advances: the solve clock, or the remainder to
+ * a chosen epoch so the world wakes at exactly that year.
  */
 export function solveStepMonths(world: World): number {
   const target = wakeTargetStep(world.config);
   if (target !== undefined && Number.isFinite(target)) {
-    return Math.max(1, Math.min(world.solveStride, target - world.step));
+    return Math.max(1, Math.min(world.solveClock, target - world.step));
   }
-  return world.solveStride;
+  return world.solveClock;
 }
 
 export function stepWorld(world: World): void {
   if (world.substrate && world.phase === "solve") {
     const dtMonths = solveStepMonths(world);
-    stepPeople(world, dtMonths);
+    // On the clock's own lattice each pass fires on its own stride, as in
+    // the awake regime. A step SHORTENED to land exactly on a chosen epoch
+    // is off that lattice, so it flushes every pass over the remainder
+    // instead: the epoch is an initial condition and must be exact.
+    const committed = stepPeople(world, dtMonths < world.solveClock ? dtMonths : undefined);
     world.step += dtMonths;
     world.calendarMonth = monthIndex(world.calendarMonth + dtMonths);
     world.debug.ticks++;
-    recordArrivals(world);
-    evaluateWake(world);
+    // A step on which nothing fired changed nothing either reads.
+    if (committed) recordArrivals(world);
+    evaluateWake(world, committed);
     return;
   }
   // The recorder reads committed state; a month in which nothing fired

@@ -11,9 +11,10 @@ export interface Provenance {
   readonly step: number;
   readonly configDigest: string;
   readonly schedule: World["schedule"];
-  /** W5: the regime, its derived stride, and the wake/caged steps (−1 while not yet). */
+  /** W5/W12: the regime, the solve regime's per-pass schedule and clock, and the wake/caged steps (−1 while not yet). */
   readonly phase: World["phase"];
-  readonly solveStride: number;
+  readonly solveSchedule: World["solveSchedule"];
+  readonly solveClock: number;
   readonly wakeStep: number;
   readonly cagedStep: number;
 }
@@ -40,7 +41,8 @@ export function provenance(world: World): Provenance {
     configDigest,
     schedule: world.awakeSchedule,
     phase: world.phase,
-    solveStride: world.solveStride,
+    solveSchedule: world.solveSchedule,
+    solveClock: world.solveClock,
     wakeStep: world.wakeStep,
     cagedStep: world.cagedStep,
   };

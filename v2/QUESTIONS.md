@@ -2577,3 +2577,85 @@ Review corrections to the M1 build (all validated before merge):
     anywhere — it removes the problem rather than trading against it, and it
     is the same over-resolution that is the prime suspect for the Antarctic
     can-grow oddity. A substrate change, and the right next wave for the front.
+
+59. **§1 moved nine rows of the dev solve arm and did not record them, so
+    the per-commit people gate had been red since it landed (2026-09-05).**
+    Attribution without a run, which is the only reason it was affordable.
+
+    **The gate was red and the cause was already provable from the log.**
+    The manifest was last measured against this arm at `de32bf65`; the only
+    commit touching simulation code between that and HEAD is `a1eac742`
+    (§1, the corrected hop share) — everything else is spec, docs and
+    QUESTIONS. So every row that moved on the dev solve arm is §1's, by
+    construction, and no second build was needed to prove it. That matters
+    because the `.wasm` binaries are untracked: measuring a pre-§1 build
+    would have meant a wasm rebuild, and the owner directive forbids running
+    history in the development loop. §1's own commit message records
+    "findings 27 → 24" and names three new dev rows, and its verification
+    list omits the people gate — it measured the change and then did not
+    write it down.
+
+    **Eleven failures, nine ids.** `arrival:sahel` and `arrival:ganges` each
+    fail twice, once from `arrivals` and once from `detailedArrivals` — the
+    known duplicate-id side finding, and one manifest row covers both.
+    Fourteen more rows were still acknowledged but stale, their recorded
+    numbers no longer the measured ones: three population checkpoints
+    (357M/744M/868M → 482M/871M/960M — a faster front reaches more of the
+    world's capacity sooner), four European arrivals, all EARLIER
+    (−4758 → −4961 Balkans, −3736 → −4177 central Europe, −3288 → −3841
+    Rhine, −3918 → −4310 Cardial coast), and the climate barrier at
+    −5885 → −6116. 39 rows became 48.
+
+    **The four `hearth-outside` rows are one mechanism, not four.**
+    `updateHearths` iterates only `_nativeCells[package]` — the package's
+    own wild range — and requires people standing there, `canGrow`, and a
+    package capacity above the forager's. An "outside" ignition is therefore
+    inside the wild range by construction and outside the gate's named
+    CENTRE box. A faster front reaches the range's far corners sooner, so
+    the earliest ignition of rice, millet, tubers and highland roots is no
+    longer the centre; `hearth:yangtze` and `hearth:ethiopia` had to be
+    rewritten to say the box now records no hearth at all. `staple:indus`
+    follows the same way: millet lights on the Dzungarian steppe at −7243,
+    168 years before north China, and travels south-west first.
+
+    **The one row that does not fit: the Nile.** §1 advanced every other
+    arrival row and made this one LATE: −3148 against a record window whose
+    latest bound with the grace is −4200, a miss of 1052 years, and the row
+    is new — it passed before §1. Recorded as an open question, not
+    explained. The
+    standing candidate is dilution along a narrow corridor — the corrected
+    share is `4·D·dt/<d²>` per neighbour, so a front squeezed into a
+    one-cell-wide valley now spends more of itself on the desert either side
+    than the old area-based share did. If that is right, the Nile is the
+    first place §4's anisotropic flux (face length over distance) should
+    show, and it is the row to read when §4 lands.
+
+60. **The clock of a multi-stride schedule is the gcd of the strides, and
+    "the shortest" would have halved four bounds in silence (2026-09-05).**
+    The W12 §2 spec said the solve clock advances by the shortest stride.
+    That is wrong in a way no gate would have caught.
+
+    At the shipped grid the strides are 84 (the five reaction passes) and 24
+    (movement). A clock of 24 lands the world on steps 0, 24, 48, 72, 96,
+    120, 144, 168 … and `passFires` asks `(step − phase) % 84 === 0`, which
+    of those is true only at 0 and 168. Growth, capacity, adoption and
+    cohort ageing would have fired every 168 months against an 84-month
+    bound — double — while `provenance` and the gate both went on printing
+    `stride: 84`. The reported schedule would have been right and the
+    executed one wrong, which is the failure mode a centralised cadence
+    check exists to make impossible.
+
+    The rule that removes it: the clock must be a DIVISOR of every stride,
+    or some pass's cadence is unreachable. The largest such value is their
+    greatest common divisor — 84 at dev (one stride, unchanged, still
+    byte-identical) and gcd(84, 24) = 12 at the shipped grid. The cost is
+    steps on which nothing is due, and a step on which nothing is due costs
+    one cadence check per pass and nothing else.
+
+    **The alternative was worse.** Rounding each stride up to the clock
+    instead would set the growth cadence from migration's transport bound,
+    which has nothing to do with growth — the whole point of §2 was to stop
+    migration's bound from being everyone's. And the visible step falls out
+    of the clock, not the other way round: 12 months is why the shipped app
+    now reads "1-year steps" during the solve, which is DECISIONS 32(d) and
+    the owner's to rule on.

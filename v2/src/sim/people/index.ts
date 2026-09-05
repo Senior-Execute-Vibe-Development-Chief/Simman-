@@ -31,7 +31,7 @@ import { World } from "../world";
 import type { WorldOptions } from "../world";
 import { createPeopleKernel, defaultPeopleWorkers } from "../peopleKernel";
 import { allocateFields } from "../fields";
-import { passDtMonths, passFires } from "../scheduler";
+import { passDtMonths, passFires, type PassSchedule } from "../scheduler";
 import { fixedPeopleBands } from "./bands";
 import { buildPeopleNeighborTable } from "./neighbors";
 
@@ -263,16 +263,25 @@ function normalizeCohorts(world: PeopleWorld): void {
 }
 
 /**
- * One firing of the people passes. In the AWAKE regime each pass fires on
- * its own stride; in the SOLVE regime (`solveDtMonths` given) every pass
- * fires with that dt, foragers do not hop, and conductance is the annual
- * mean — the kernel's own passes on the clock the farmer bound permits (W5).
+ * One firing of the people passes. In BOTH regimes each pass fires on its
+ * own stride and integrates that stride (W12: the solve regime used to run
+ * every pass at one stride, which dragged growth, capacity, adoption and
+ * cohorts down to migration's bound). The solve regime still differs in
+ * what it runs — foragers do not hop, conductance is the annual mean — but
+ * no longer in how it is scheduled.
+ *
+ * `flushDtMonths` is the one exception, and it is a clock operation: a
+ * solve step shortened to land exactly on a chosen epoch is off the solve
+ * clock's lattice, so every pass fires once over the remainder.
  */
-export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
+export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   const world = initializePeople(worldInput);
-  const solve = solveDtMonths !== undefined;
-  const due = new Map(
-    world.schedule.map((schedule) => [schedule.name, solve || passFires(world, schedule)]),
+  const flush = flushDtMonths !== undefined;
+  const fires = (schedule: PassSchedule | undefined): boolean => (
+    schedule !== undefined && (flush || passFires(world, schedule))
+  );
+  const dtOf = (schedule: PassSchedule): number => (
+    flush ? flushDtMonths : passDtMonths(schedule)
   );
   const techniqueSchedule = world.schedule.find(({ name }) => name === "people.technique");
   const conversionSchedule = world.schedule.find(({ name }) => name === "people.conversion");
@@ -280,12 +289,12 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   const growthSchedule = world.schedule.find(({ name }) => name === "people.growth");
   const migrationSchedule = world.schedule.find(({ name }) => name === "people.migration");
   const cohortsSchedule = world.schedule.find(({ name }) => name === "people.cohorts");
-  const techniqueDue = due.get("people.technique") === true;
-  const conversionDue = due.get("people.conversion") === true;
-  const capacityDue = due.get("people.capacity") === true;
-  const growthDue = due.get("people.growth") === true;
-  const migrationDue = due.get("people.migration") === true;
-  const cohortsDue = due.get("people.cohorts") === true;
+  const techniqueDue = fires(techniqueSchedule);
+  const conversionDue = fires(conversionSchedule);
+  const capacityDue = fires(capacitySchedule);
+  const growthDue = fires(growthSchedule);
+  const migrationDue = fires(migrationSchedule);
+  const cohortsDue = fires(cohortsSchedule);
   if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return false;
 
   world.ledger.beginPass(
@@ -298,12 +307,12 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   );
   if (techniqueDue) {
     const started = performance.now();
-    stepTechnique(world, solve ? solveDtMonths : passDtMonths(techniqueSchedule!));
+    stepTechnique(world, dtOf(techniqueSchedule!));
     addPhaseTime("technique", started);
   }
   if (conversionDue) {
     const started = performance.now();
-    convertFarmers(world, solve ? solveDtMonths : passDtMonths(conversionSchedule!));
+    convertFarmers(world, dtOf(conversionSchedule!));
     addPhaseTime("conversion", started);
   }
   if (capacityDue) {
@@ -314,7 +323,7 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   const growth = growthDue
     ? (() => {
       const started = performance.now();
-      const result = grow(world, solve ? solveDtMonths : passDtMonths(growthSchedule!));
+      const result = grow(world, dtOf(growthSchedule!));
       addPhaseTime("growth", started);
       return result;
     })()
@@ -323,7 +332,7 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
     ? (() => {
       const started = performance.now();
       // A firing of a year or more sees every season: the annual-mean table.
-      const dt = solve ? solveDtMonths : passDtMonths(migrationSchedule!);
+      const dt = dtOf(migrationSchedule!);
       const result = migrate(
         world,
         dt >= MONTHS_PER_YEAR ? MONTHS_PER_YEAR : world.calendarMonth,
@@ -364,7 +373,7 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   addPhaseTime("ledger", ledgerStarted);
   world.debug.conservationChecks++;
   for (const schedule of world.schedule) {
-    if (!solve && !passFires(world, schedule)) continue;
+    if (!fires(schedule)) continue;
     world.debug.peoplePasses[schedule.name] = (world.debug.peoplePasses[schedule.name] ?? 0) + 1;
   }
   world.debug.peopleBirths = growth.births;

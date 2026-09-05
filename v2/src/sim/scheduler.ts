@@ -1,8 +1,10 @@
 import {
   DEG_TO_RAD,
+  DIFFUSION_MSD_PER_DIFFUSIVITY,
   EARTH_CIRCUMFERENCE_KM,
   EARTH_HALF_DEGREES,
   EARTH_MERIDIONAL_KM,
+  MIGRATION_HOP_MEAN_SQUARE_WEIGHT,
   MONTHS_PER_YEAR,
   PEOPLE_ADOPTION_RATE_PER_YEAR,
   PEOPLE_CHILD_AGE_YEARS,
@@ -12,7 +14,6 @@ import {
   PEOPLE_GROWTH_TECHNIQUE_GAIN,
   PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
   PEOPLE_MIGRATION_MAX_SHARE,
-  PEOPLE_MIGRATION_MAX_SUBSTEPS,
   PEOPLE_R_GROWTH_PER_YEAR,
   TRAVEL_HALF,
 } from "./constants";
@@ -28,20 +29,21 @@ export interface PassSchedule {
 /**
  * The world runs in one of two regimes. SOLVE: before anything pushes back
  * on the people field the only thing that moves is the farming front, and
- * its diffusion bound permits a multi-year stride; every pass fires at that
- * stride and foragers grow in place. AWAKE: the monthly regime, from the
- * first caged basin on (W5). The phase is world state — saved, hashed —
- * and nothing reads it except the scheduler and the wake trigger.
+ * the bounds the passes carry permit multi-year firings; each pass fires on
+ * its own stride and foragers grow in place. AWAKE: the monthly regime,
+ * from the first caged basin on (W5). The phase is world state — saved,
+ * hashed — and nothing reads it except the scheduler and the wake trigger.
  */
 export type WorldPhase = "solve" | "awake";
 
 const DEFAULT_PHASE = 0;
+const MIGRATION_PASS = "people.migration";
 const SCHEDULE_NAMES = [
   "people.technique",
   "people.conversion",
   "people.capacity",
   "people.growth",
-  "people.migration",
+  MIGRATION_PASS,
   "people.cohorts",
 ] as const;
 
@@ -87,18 +89,25 @@ function cellAreaAtRow(width: number, height: number, row: number): number {
 }
 
 /**
- * Return the uncapped one-firing diffusion share. The analytic migration
- * kernel substeps when this exceeds the stability bound; cadence derivation
- * must inspect the uncapped value or it would incorrectly bless an unstable
- * annual firing merely because the fallback substep hid it.
+ * The mean square length of one hop out of a cell on this row, in km2 (W12).
+ *
+ * A hop lands on one of eight neighbours: two at the row's east-west
+ * spacing, two at the north-south spacing, four on the diagonal at the root
+ * of their squares. Averaged, that is `0.75 * (h_ew^2 + h_ns^2)` — one and
+ * a half times the cell area where the cell is square, and increasingly
+ * more than that toward the poles, where cells narrow east-west but keep
+ * their height. The row's north-south spacing is a grid property; its
+ * east-west spacing follows from the cell's area.
+ *
+ * Row geometry, so it lives with the other row geometry: both the share the
+ * migration pass takes and the stride the scheduler derives are expressed
+ * through it, and they must be the same expression or the cadence would
+ * bless a firing the pass then has to cap.
  */
-export function migrationRawShareForArea(
-  area: number,
-  dtMonths: number,
-  diffusivity = PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
-): number {
-  const safeArea = Math.max(1, area);
-  return diffusivity * dtMonths / MONTHS_PER_YEAR / safeArea;
+export function meanSquareHopKm2(areaKm2: number, height: number): number {
+  const northSouth = EARTH_CIRCUMFERENCE_KM / (2 * height);
+  const eastWest = Math.max(1, areaKm2) / northSouth;
+  return MIGRATION_HOP_MEAN_SQUARE_WEIGHT * (eastWest * eastWest + northSouth * northSouth);
 }
 
 function rowArea(world: World, row: number): number {
@@ -129,19 +138,17 @@ function peopledRows(world: World): boolean[] {
 }
 
 /**
- * The movement stride of the AWAKE regime (W6): each group's hop share on
- * the rows it can be a source from, inside the bound the hop kernel
- * honours without capping, together with the growth, adoption and
- * cohort-ageing bounds the solve stride already carries — the same
- * derivation, so the two regimes now differ only in the growth cadence.
- * A multiple of the growth stride, so a movement firing always follows a
- * growth firing in the same month; may exceed a year. Never hand-set.
+ * The movement stride of the AWAKE regime (W6): the solve regime's own
+ * migration stride — the same transport bound, capped by the same reaction
+ * bound — rounded down to a multiple of the growth stride, so a movement
+ * firing always follows a growth firing in the same month. May exceed a
+ * year. Never hand-set.
  */
 function derivedMigrationStride(world: World, growthStride: number): number {
   const override = world.config.peopleMigrationStride;
   if (override !== undefined) return positiveInteger(override, 1);
-  const solve = resolveSolveStride(world);
-  return Math.max(growthStride, Math.floor(solve / growthStride) * growthStride);
+  const { migration } = resolveSolveStrides(world);
+  return Math.max(growthStride, Math.floor(migration / growthStride) * growthStride);
 }
 
 function scheduleEntry(world: World, name: string, stride: number): PassSchedule {
@@ -194,50 +201,138 @@ function canGrowRows(world: World): boolean[] {
 }
 
 /**
- * The SOLVE stride: the largest whole-year multiple of 12 months keeping
- * every explicit per-firing fraction the passes take inside the bound the
- * kernel honours — farmer growth, adoption and cohort ageing inside the
- * diffusion bound itself, and each group's hop share on every row it can
- * be a source from (farmers on can-grow rows, foragers on peopled rows)
- * inside the bound times the substeps the hop kernel takes before it caps
- * (a firing it can honour exactly by substepping). The bare
- * bound would let one near-polar can-grow cell, admitted by a permissive
- * crop bell, force a yearly stride at the shipped grid (QUESTIONS #40).
- * Derived from the bounds the passes already carry, printed in provenance,
- * never hand-set per grid.
+ * The REACTION bound in years: the coarsest firing over which the passes
+ * that write the people field in place keep their per-firing fraction
+ * inside the bound the kernel honours — farmer growth, adoption, and
+ * cohort ageing. None of the three knows the cell size, so this bound is
+ * the same at every grid.
  */
-export function resolveSolveStride(world: World): number {
-  const override = world.config.peopleSolveStride;
-  if (override !== undefined) return positiveInteger(override, MONTHS_PER_YEAR);
+function reactionBoundYears(): number {
   const farmerGrowth = PEOPLE_R_GROWTH_PER_YEAR
     * (PEOPLE_GROWTH_FORAGER_FACTOR + PEOPLE_GROWTH_TECHNIQUE_GAIN);
-  let years = Math.min(
+  return Math.min(
     PEOPLE_MIGRATION_MAX_SHARE / farmerGrowth,
     PEOPLE_MIGRATION_MAX_SHARE / PEOPLE_ADOPTION_RATE_PER_YEAR,
     PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_CHILD_AGE_YEARS,
   );
-  const hopBound = PEOPLE_MIGRATION_MAX_SHARE * PEOPLE_MIGRATION_MAX_SUBSTEPS;
+}
+
+/**
+ * The TRANSPORT bound in years: the coarsest firing keeping each group's
+ * hop share inside `PEOPLE_MIGRATION_MAX_SHARE` on every row it can be a
+ * source from — farmers on can-grow rows, foragers on peopled rows.
+ *
+ * A firing takes the share `4 * D * dt / <d^2>` (W12), so the bound is
+ * `share * <d^2> / (4 * D)`. It is NOT the bound times the substep cap, as
+ * it was: substepping is what keeps the explicit scheme stable when a
+ * firing is long, not licence to make one longer. A firing moves people at
+ * most one cell whatever the share, so the reach a stride can carry
+ * saturates at one hop and the 16x allowance bought a slower front and
+ * nothing else (QUESTIONS #57). It never showed at the reference grid,
+ * whose share sits at a sixtieth of the bound.
+ */
+function transportBoundYears(world: World): number {
   const farmerRows = canGrowRows(world);
   const foragerRows = peopledRows(world);
+  let years = Number.POSITIVE_INFINITY;
   for (let row = 0; row < world.height; row++) {
+    if (!farmerRows[row] && !foragerRows[row]) continue;
+    const reach = PEOPLE_MIGRATION_MAX_SHARE
+      * meanSquareHopKm2(rowArea(world, row), world.height)
+      / DIFFUSION_MSD_PER_DIFFUSIVITY;
     if (farmerRows[row]) {
-      years = Math.min(
-        years,
-        hopBound * rowArea(world, row) / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
-      );
+      years = Math.min(years, reach / PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
     }
     if (foragerRows[row]) {
-      years = Math.min(
-        years,
-        hopBound * rowArea(world, row) / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
-      );
+      years = Math.min(years, reach / PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
     }
   }
+  return years;
+}
+
+function wholeYearStride(years: number): number {
   return Math.max(1, Math.floor(years)) * MONTHS_PER_YEAR;
 }
 
-export function resolveSolveSchedule(world: World, stride: number): readonly PassSchedule[] {
-  return Object.freeze(SCHEDULE_NAMES.map((name) => Object.freeze({ name, stride, phase: DEFAULT_PHASE })));
+export interface SolveStrides {
+  /** Every pass that writes the people field where it stands. */
+  readonly reaction: number;
+  /** The one pass that carries it somewhere else. */
+  readonly migration: number;
+}
+
+/**
+ * The SOLVE strides. Each pass takes the largest whole-year firing inside
+ * its OWN bound, as the awake regime's passes already do (W12). One stride
+ * for every pass dragged growth, capacity, adoption and cohorts down to
+ * migration's bound, which at the shipped grid is three and a half times
+ * shorter than theirs; that, not the physics, was the cost of the corrected
+ * hop share.
+ *
+ * Migration is additionally capped at the reaction stride. It transports
+ * what reaction wrote, so a transport firing longer than the span over
+ * which that field is held fixed integrates a field that no longer exists —
+ * and it buys no reach doing so, since a firing moves people at most one
+ * cell. At the reference grid the transport bound is over a century and
+ * this cap is what binds, so nothing there moves.
+ */
+export function resolveSolveStrides(world: World): SolveStrides {
+  const override = world.config.peopleSolveStride;
+  if (override !== undefined) {
+    const stride = positiveInteger(override, MONTHS_PER_YEAR);
+    return { reaction: stride, migration: stride };
+  }
+  const reaction = wholeYearStride(reactionBoundYears());
+  return {
+    reaction,
+    migration: Math.min(reaction, wholeYearStride(transportBoundYears(world))),
+  };
+}
+
+export function resolveSolveSchedule(world: World): readonly PassSchedule[] {
+  const { reaction, migration } = resolveSolveStrides(world);
+  return Object.freeze(SCHEDULE_NAMES.map((name) => Object.freeze({
+    name,
+    stride: name === MIGRATION_PASS ? migration : reaction,
+    phase: DEFAULT_PHASE,
+  })));
+}
+
+function greatestCommonDivisor(left: number, right: number): number {
+  let larger = Math.max(0, Math.floor(left));
+  let smaller = Math.max(0, Math.floor(right));
+  while (smaller > 0) {
+    const remainder = larger % smaller;
+    larger = smaller;
+    smaller = remainder;
+  }
+  return larger;
+}
+
+/**
+ * How far the SOLVE clock advances per world step: the largest advance that
+ * lands exactly on every pass's cadence, which is the greatest common
+ * divisor of the strides on it. The awake regime advances by a month
+ * because its content is seasonal; the solve regime has no season — its
+ * conductance is the annual mean — so it advances by whole years, and since
+ * every solve stride is a whole number of years the clock never runs finer
+ * than one. A step on which nothing is due costs the cadence check and
+ * nothing else; rounding a pass's stride to the clock instead would set the
+ * growth cadence from migration's bound, which has nothing to do with it.
+ */
+export function solveClockMonths(schedule: readonly PassSchedule[]): number {
+  let clock = 0;
+  for (const entry of schedule) {
+    clock = greatestCommonDivisor(clock, positiveInteger(entry.stride, 1));
+  }
+  return Math.max(1, clock);
+}
+
+/** The coarsest solve firing: the span a frame of the solve should cover. */
+export function solveSpanMonths(schedule: readonly PassSchedule[]): number {
+  let span = 1;
+  for (const entry of schedule) span = Math.max(span, positiveInteger(entry.stride, 1));
+  return span;
 }
 
 export function scheduleDigest(schedule: readonly PassSchedule[]): string {
