@@ -336,6 +336,19 @@ assumed: the acceptance arm reports the front at both grids before and
 after, and the Indus and Ganges arrivals, which are the null rows this
 speed owns.
 
+**Measured before building (QUESTIONS #64, the arrival raster).** The
+mid-latitude east–west deficit this section was to recover is not there:
+local front speed by front normal, latitude band and capacity tercile
+gives east–west / north–south ratios of 0.69–1.18 across 30–60 °N with no
+consistent sign, and on the best ground the east–west movement is FASTER
+at 30–50 °N; only above 60 °, where nobody farms by 1 CE, does a uniform
+~0.6 appear, and it sits far above the cos(lat) = 0.26 the hypothesis
+predicts there. The eastward leg's slowness is the Iranian plateau's
+capacity (§Status). So §4 stays what §4a says it is — the correct
+finite-volume form, with no free parameter — but its case is now the
+stability bound and P16's cost, not the front, and the front is not a
+reason to build it.
+
 ## 5. Findings surfaced, owned elsewhere
 
 - **Antarctic can-grow.** Some package reports `canGrow` on rows at 83 °S.
@@ -373,6 +386,12 @@ speed owns.
   pass at dt/N costs what a shorter stride costs, and rows are coupled
   north–south.
 - **Do not land §4 before §3 at the shipped grid.** §4b.
+- **Do not lift the plateau by hand.** The Indus is late because the
+  substrate holds the Iranian piedmont at the moisture floor with no
+  channel (#64). Raising the floor, the fertility east of the Zagros, or a
+  river's drawn magnitude to reach the Indus is fitting the outcome; the
+  mechanism is routed runoff (P17), and until it exists the row stays a
+  recorded miss.
 
 ## Acceptance
 
@@ -396,7 +415,11 @@ Measured at both grids on every commit (dev) and in `v2-long` (target,
   arrival −3155 → −2027, now a miss) while the northwestward legs sped up
   by a quarter, which is §4's sign but is confounded by the Iranian
   plateau's capacity and is not decidable without the per-cell arrival
-  raster. The clamp is inactive at the chosen stride BY CONSTRUCTION — the
+  raster. Decided by that raster, run on request (QUESTIONS #64): it is
+  the plateau's capacity — a 750 km patch at 0.18 persons/km² crossed at
+  0.16–0.30 km/yr, ~2,400 years of the miss — and the anisotropy test on
+  the same raster shows no east–west penalty at 30–60 °N. The clamp is
+  inactive at the chosen stride BY CONSTRUCTION — the
   stride is the largest whole year inside the bound at which the share
   reaches `PEOPLE_MIGRATION_MAX_SHARE` — so what the long arm measured is
   how much of the 0.936 recovered: 91 %.
@@ -440,7 +463,18 @@ Measured at both grids on every commit (dev) and in `v2-long` (target,
   expensive. If the player-facing number matters, (b) is the one that scales.
 - **The cultivation wait** (hearths), P10, P15 — unchanged. P15, the
   frontier growth rate, may close on its own once §2–§4 deliver the
-  designed speed; it is not touched here.
+  designed speed; it is not touched here. The arrival raster (#64)
+  measured Europe's residual as ring-by-ring terrain — 0.60–1.07 km/yr on
+  the ground each ring holds, the slow rings Bavaria and the Rhine at
+  capacity 6–8 — not a uniform rate deficit, so the front does not ask for
+  P15 (which would also add to M3b's 593M).
+- **P17, routed catchment runoff as water access** (DECISIONS P17, from
+  #64). The Indus row now waits on it: the plateau sites that were farmed
+  on mountain runoff (Jeitun, Sang-e Chakhmaq, Mehrgarh, Tepe Yahya) read
+  the moisture floor and water access 0.02 in the substrate, with no
+  channel of any magnitude within ±125 km, so wheat capacity there is
+  0.13–0.21 persons/km² against 3–19 in Europe. A substrate mechanism, the
+  owner's to rule on; not built here.
 
 ## Status (2026-09-05)
 
@@ -466,6 +500,24 @@ side effect — the corrected share saturates at 84 there — so the target
 world hash moves `b05519874764bff8` → `217a88344bd3a6b1` while dev is
 byte-identical.
 
+**The direction split is decided (QUESTIONS #64, the arrival raster, run
+on request).** The eastward leg is not slow: it runs at 0.99–1.06 km/yr
+for its first 500 km and at 0.85–1.17 on the Indus side, and the whole
+of its lateness is a 750 km patch of the Iranian plateau that the
+substrate holds at 0.18 persons/km² of wheat capacity (fit 0.06), crossed
+at 0.16–0.30 km/yr — ~2,400 years, more than the Indus miss. The patch is
+dry because the water that farmed the real piedmont sites is not in the
+substrate: annual moisture at the quantile map's 0.02 floor, water access
+0.02, river magnitude 0 within ±125 km, no floodplain — Jeitun and
+Mehrgarh are never farmed by 1 CE, Sang-e Chakhmaq and Tepe Yahya 4,100
+years late, while Çatalhöyük, Karanovo and Vinča are on the year. The
+anisotropy test on the same raster finds no east–west penalty at
+30–60 °N, so the sign split #63 read as §4's is the confound, and neither
+§4/P16 nor P15 is indicated by the front. What is indicated is a
+substrate mechanism, routed catchment runoff as water access (DECISIONS
+P17) — proposed, not built. Why §2 moved the Indus 1,128 years later is
+still not explained; that needs a raster of the pre-§2 arm.
+
 Before §2, `a1eac742` had left nine dev solve rows unacknowledged and the
 per-commit people gate red; they are measured and recorded in `15d83fe6`,
 and fourteen stale reasons refreshed with them.
@@ -476,8 +528,9 @@ people gate (48 known misses, none unacknowledged, none stale), the bench
 ratchet `--check`, the worldgen oracle, and the Chromium browser smoke — the
 last returning dev `64e16935452e6c26` unchanged and target
 `217a88344bd3a6b1`. The shipped-grid `GATE_PEOPLE_SOLVE_TARGET=1` arm was
-run once on request (1,504 s, #63); the full three-engine browser matrix
-stays in `v2-long`.
+run once on request (1,504 s, #63), and once more as the chunked
+arrival-raster run (~1,500 s in four save/load chunks, #64); the full
+three-engine browser matrix stays in `v2-long`.
 
 §3 was measured, not run: the per-row transport bound computed from the real
 substrate with the same expression the scheduler uses, validated against the

@@ -722,7 +722,14 @@ lawyered.
     km/yr** against the 0.936 design, all five European windows met, the
     Indus 1,128 years later than before (−2027, a new miss) — the residual
     9 % is not uniform but split by direction, §4's sign, undecidable from
-    box years alone. Population overshoot grew with the speed (M3b). §3 (the
+    box years alone — and decided by the arrival raster, run on request
+    (QUESTIONS #64): the Iranian plateau's capacity, not the split. The
+    eastward leg runs at 1.0 km/yr where the ground holds it and at
+    0.16–0.30 across 750 km the substrate keeps at the moisture floor with
+    no channel, ~2,400 years of the miss; the anisotropy test finds no
+    east–west penalty at 30–60 °N, so neither §4/P16 nor P15 is indicated
+    by the front, and the mechanism the Indus waits on is P17. Population
+    overshoot grew with the speed (M3b). §3 (the
     reduced polar grid) and §4 (the anisotropic flux) remain on request —
     see 33, which measures 31(c) and withdraws it.
 
@@ -790,6 +797,29 @@ lawyered.
   physics. Bake-side only — no live sea level; replaces dials with data
   (R2/R7). Not needed for M2: the proxies already yield the correct
   peopling extents and ordering that its gates consume.
+- **P17. Routed catchment runoff as water access** (W12 raster finding,
+  QUESTIONS #64, 2026-09-05). The substrate carries water in three forms —
+  the cell's own rainfall, the floodplain ribbon of a large river, and a
+  channel magnitude on a 0–4 scale of which 89 % of land reads 0 — and
+  none of them is "a wet catchment drains onto this dry cell". That is
+  what an oasis is, and it is what farmed Jeitun, Sang-e Chakhmaq,
+  Mehrgarh and Tepe Yahya by −7000 to −5500: mountain runoff over an
+  alluvial fan. In the sim those cells read the moisture floor (0.02) and
+  water access 0.02, so wheat capacity is 0.13–0.21 persons/km² against
+  3–19 in Europe, the front crosses the plateau at 0.16–0.30 km/yr, the
+  Indus is reached ~2,400 years late and Jeitun and Mehrgarh are never
+  farmed (arrival:indus:solve:target). The worldgen already computes flow
+  accumulation (it sizes the floodplain ribbon by it); the mechanism is to
+  route each cell's catchment precipitation down it, less an evaporation
+  loss, and count what arrives as water access — a runoff coefficient and
+  a loss rate, both physical quantities, no place named. It lifts every
+  piedmont on every map and nothing else. It is the substrate's, it moves
+  the world hash at both grids, and it is NOT to be substituted by raising
+  the moisture floor or the plateau's fertility (second cardinal rule).
+  The data-side half — the 1.9 ° climatology averaging a range's wet
+  slope with the basin at its foot (the NCEP cell over Shahroud reads
+  95 mm/yr) — is recorded in #64 and would be a finer precipitation
+  climatology, a separate ruling.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

@@ -2883,3 +2883,210 @@ Review corrections to the M1 build (all validated before merge):
     ratio, §1's 3.5× movement firings. Under P16 the stride doubles and this
     roughly halves; §4 without P16 halves the stride and doubles it
     (DECISIONS 33(c)).
+
+64. **The per-cell arrival raster, run on request: the eastward residual
+    is the Iranian plateau's CAPACITY, not the isotropic split — and the
+    plateau is dry in the substrate because the water that farmed it is not
+    there (2026-09-05, owner: "ok").** #63 left the direction split
+    undecidable from box years and asked for the raster; this is it, and
+    it decides the other way from the lean #63 took. #63 said "the
+    residual is at least partly §4/P16's"; measured, it is not.
+
+    **Method.** The same target solve arm as #63 (seed 42042, `wake:
+    "never"`, 9,701 steps on the 12-month clock), run as four save/load
+    chunks of ≤ 420 s each (~1,500 s in all) because the container cannot
+    hold a detached process — the chunked arm was first proven
+    hash-identical to the one-shot arm at dev. Each chunk dumps
+    `_arrivalStep` / `_arrivalPackage` (set by `recordArrivals` when a
+    cell's technique first clears `PEOPLE_FARMED_MARKER_SHARE`; never
+    saved, so merged as the minimum over chunks); the last dumps the
+    dominant package, people, technique, elevation, the static wheat and
+    forager capacities and every package's can-grow and fit. Three
+    analyses on the raster, plus a substrate probe at the real sites,
+    none of which steps the world.
+
+    **1. The front by bearing sector: the slow part of the eastward leg is
+    a 750 km patch, and the fast parts run at 1.0 km/yr.** Earliest wheat
+    arrival per 250 km ring from the hearth (36.5 °N 37.1 °E, −7992), with
+    the ring's median static wheat capacity at first technique
+    (persons/km²) and median wheat fit:
+
+    | ring (km) | E 80–120° yr | km/yr | cap | fit | NW 290–330° yr | km/yr | cap | fit |
+    | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+    | 250 | −7147 | 1.06 | 2.7 | 0.27 | −7172 | 0.73 | 5.1 | 0.32 |
+    | 500 | −6895 | 0.99 | 2.9 | 0.25 | −6859 | 0.80 | 5.7 | 0.38 |
+    | 750 | −6491 | 0.62 | 1.6 | 0.21 | −6721 | 1.81 | 13.9 | 0.55 |
+    | 1000 | −6079 | 0.61 | 1.8 | 0.22 | −6402 | 0.78 | 14.5 | 0.52 |
+    | 1250 | −5767 | 0.80 | 0.53 | 0.12 | −6027 | 0.67 | 8.7 | 0.37 |
+    | 1500 | −4857 | **0.27** | **0.20** | **0.06** | −5716 | 0.80 | 9.8 | 0.31 |
+    | 1750 | −4022 | **0.30** | **0.18** | **0.06** | −5439 | 0.90 | 13.8 | 0.37 |
+    | 2000 | −2457 | **0.16** | **0.19** | **0.06** | −5189 | 1.00 | 8.6 | 0.37 |
+    | 2250 | −2729 | (earlier than 2000) | 1.2 | 0.19 | −4809 | 0.66 | 8.4 | 0.39 |
+    | 2750 | −2439 | 0.85 | 1.6 | 0.22 | −4035 | 0.62 | 13.5 | 0.51 |
+    | 3000 | −2195 | 1.02 | 7.7 | 0.33 | −3801 | 1.07 | 15.8 | 0.57 |
+    | 3250 | −1981 | 1.17 | 8.0 | 0.34 | −3381 | 0.60 | 11.3 | 0.55 |
+
+    East of the hearth the first 500 km run at 0.99–1.06 km/yr — as fast
+    as the north sector (1.02) and faster than Anatolia (0.73–0.80) — on
+    capacity 2.7–2.9; the Zagros rings (750–1000 km, mean elevation 0.14)
+    run at 0.61; then rings 1500–2000 km, where the median wheat capacity
+    is 0.18–0.20 and the fit 0.06, run at 0.16–0.30, and the 2250 km ring
+    is reached BEFORE the 2000 km ring, so the plateau's core is bypassed
+    rather than crossed. Beyond it the Indus side runs at 0.85–1.17 on
+    capacity 1.6–8.0. The rings 1250 → 2000 km (750 km) took 3,310 years;
+    at the front's own 0.85 km/yr they would take ~880, so the plateau
+    alone costs ~2,400 years — more than the whole Indus miss (−2027
+    against −3500, 1,473 years; 673 with the grace). The northwest sector
+    has no such patch: 0.60–1.07 per ring on capacity 5–28, 0.86 km/yr
+    over its first 2,000 km against the east's 0.41.
+
+    **2. The anisotropy test: no east–west penalty at the mid-latitudes.**
+    §4 predicts the isotropic split under-serves east–west transport by
+    the aspect ratio, so the local front speed should be slower where the
+    front moves east–west than north–south, by ~cos(lat). Local speed from
+    the arrival gradient at every farmed cell with a defined gradient
+    (n = 175,525), split by the front normal's dominant axis, latitude
+    band and static wheat-capacity tercile (cuts 1.02 / 4.38 persons/km²),
+    medians:
+
+    | band | tercile 0 EW/NS | tercile 1 | tercile 2 | cos(lat) |
+    | --- | ---: | ---: | ---: | ---: |
+    | 20–30 °N | 0.98 | 0.90 | 0.90 | 0.91 |
+    | 30–40 °N | 0.95 | 1.04 | 1.18 | 0.82 |
+    | 40–50 °N | 0.77 | 0.90 | 1.13 | 0.71 |
+    | 50–60 °N | 0.69 | 1.13 | 0.71 | 0.57 |
+    | 60–90 °N | 0.61 | 0.62 | 0.60 | 0.26 |
+
+    Across 30–60 °N the ratio ranges 0.69–1.18 with no consistent sign,
+    and on the best ground (tercile 2, where the Eurasian front actually
+    runs) the east–west movement is FASTER at 30–50 °N. Only above 60 °,
+    where nobody farms by 1 CE, does a uniform ~0.6 appear — and it is
+    far above cos(lat) = 0.26 even there. Caveat: the local medians are
+    0.1–0.4 km/yr, infill-dominated (the gradient sees every cell's
+    arrival, not the front's), so this is a relative test only; but a
+    cos(lat) signature would show in a relative test and does not.
+
+    **3. The real sites: east of the Zagros the sim is 4,000 years late or
+    never, and the substrate says why.** Sim arrival at the nearest
+    farmed cell within 60 km of each real early-farming site, with its
+    static wheat capacity at first technique and its wheat fit:
+
+    | site | real | sim | Δ yr | cap | fit |
+    | --- | ---: | ---: | ---: | ---: | ---: |
+    | Çatalhöyük (Konya) | −7100 | −7121 | 0 | 9.2 | 0.39 |
+    | Karanovo (Bulgaria) | −6100 | −6217 | 0 | 19.5 | 0.59 |
+    | Vinča (Serbia) | −5500 | −5513 | 0 | 12.3 | 0.31 |
+    | Bylany (Bohemia, LBK) | −5300 | −4652 | +650 | 5.8 | 0.38 |
+    | Elsloo (Limburg, LBK) | −5200 | −3789 | +1,400 | 14.5 | 0.57 |
+    | Ganj Dareh (Zagros) | −8000 | −6105 | +1,900 | 1.8 | 0.21 |
+    | Ali Kosh (Deh Luran) | −7500 | −6001 | +1,500 | 2.9 | 0.30 |
+    | Sang-e Chakhmaq (Shahroud) | −7000 | −2867 | +4,100 | 0.18 | 0.06 |
+    | Tepe Yahya (Kerman) | −5500 | −1385 | +4,100 | 0.18 | 0.05 |
+    | Jeitun (Kopet Dag) | −6000 | never | — | — | — |
+    | Mehrgarh (Baluchistan) | −7000 | never | — | — | — |
+    | Harappa (Punjab) | −3300 | −221 | +3,100 | 0.95 | 0.12 |
+
+    Europe's first three are on the year; the two LBK sites carry the
+    last leg's lateness (below). The Zagros piedmont pair is ~1,700 years
+    late, of which the hearth date owns most — the hearth lights at −7992
+    where the Levant's PPNA is ~−9500 (#50–#52, the cultivation wait,
+    owner's) — and the Zagros rings' 0.61 km/yr the rest. Everything east
+    of the Zagros is 4,000 years late or never farmed by 1 CE. Harappa's
+    own cell cannot grow wheat at all (`canGrow` 0, fit 0.00: annual
+    temperature 0.85 on the sim scale, past the bell); the plain is
+    farmed from cells nearer the river.
+
+    The inputs at those cells, from the substrate probe (best wheat-fit
+    land cell within ±2 cells; annual moisture and water access on the
+    people scale, capacity at technique 1):
+
+    | site | annual moisture | water access | fertility | wheat fit | capacity | NCEP mm/yr |
+    | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+    | Aleppo (hearth) | 0.17 | 0.17 | 0.44 | 0.35 | 4.33 | 408 |
+    | Ali Kosh | 0.14 | 0.14 | 0.36 | 0.34 | 3.05 | 330 |
+    | Sang-e Chakhmaq | **0.02** | **0.02** | 0.15 | 0.06 | 0.21 | 95 |
+    | Jeitun | **0.02** | **0.02** | 0.15 | 0.04 | 0.15 | 121 |
+    | Tepe Yahya | **0.02** | **0.02** | 0.14 | 0.06 | 0.16 | 130 |
+    | Mehrgarh | **0.02** | **0.02** | 0.13 | 0.05 | 0.13 | 109 |
+    | Mohenjo-daro | 0.02 | **1.00** | 0.88 | 0.34 | 18.17 | 32 |
+    | Karanovo | 0.35 | 0.35 | 0.91 | 0.58 | 18.58 | 841 |
+    | Elsloo | 0.30 | 0.30 | 0.77 | 0.60 | 14.82 | 697 |
+
+    Capacity is `fertility × 12 × fit × (0.45 + 1.65·technique) × (1 +
+    1.4·access) × relief` (`packageCapacityAt`), and ONE input enters it
+    twice: the fertility is the worldgen's moisture bell (peak 0.45) and
+    the fit's water term is `max(moistureBell, waterAccess)`, so a cell
+    whose water reads the floor is starved at both. The plateau reads the
+    floor. Its annual moisture is 0.02, which is exactly the quantile
+    map's floor (`fillRealClimate`: observed annual rainfall ranked over
+    land and mapped onto the solver's moisture distribution, clamped at
+    0.02) — the NCEP 1.9 ° cells under the four sites carry 95–130 mm/yr,
+    the driest rank of land, and the map hands that rank the floor. Its
+    water access is also 0.02, because `waterAccess` is rainfall +
+    1.5·floodplain + 0.35·min(1, riverMagnitude/4) + 0.25·lake, and within
+    ±3 cells (±125 km) of every one of the four the river magnitude is 0,
+    the floodplain 0 and there is no lake. Jeitun against Karanovo is 1 :
+    120 in capacity. Mohenjo-daro, on the same 0.02 rainfall, shows what
+    the substrate CAN do: floodplain 0.49, river magnitude 3, water access
+    1.00, capacity 18.17 — the Indus ribbon is well represented; the
+    piedmont is not.
+
+    **What is missing is a mechanism, not a number.** Jeitun sits on the
+    alluvial fan of the Kopet Dag streams, Sang-e Chakhmaq on the Alborz
+    piedmont, Mehrgarh at the mouth of the Bolan on the Kachi plain, Tepe
+    Yahya in the Soghun valley: every one was farmed on MOUNTAIN RUNOFF
+    reaching dry ground, not on the rain that fell on it. The substrate
+    carries water in three forms — the cell's own rainfall, the floodplain
+    ribbon of a large river, and channel magnitude on a 0–4 scale of which
+    89 % of land reads 0 — and none of them is "a wet catchment drains
+    onto this dry cell". The worldgen already computes flow accumulation
+    (it sizes the floodplain ribbon by it); routing catchment
+    precipitation down it to the piedmont, as water access, is the
+    physical quantity an oasis is, with a runoff coefficient and an
+    evaporation loss that mean something on their own. Proposed to the
+    owner as DECISIONS P17; NOT built here, and not to be reached by
+    raising the moisture floor or the plateau's fertility (second rule).
+    A second, data-side finding: the 1.9 ° climatology averages a range's
+    wet slope with the basin at its foot (the Alborz's north face exceeds
+    1,000 mm/yr; the NCEP cell over Shahroud reads 95), so orographic
+    rain is under-read everywhere piedmont farming happened — recorded,
+    owned by the substrate, not by this wave.
+
+    **4. Europe: the residual to 0.936 is terrain, not a rate.** The
+    time-monotone route of first arrival from Thrace (41.1 °N 28.5 °E,
+    −6527) to Bavaria (48.1 °N 10.1 °E, −4189), 1,854 km in nine
+    ~200 km segments: 0.74, 0.79, 0.78, 0.64, 1.12, 0.95, 0.80, 0.67,
+    0.81 km/yr on capacity 6–20 — the slow segments are the Balkan
+    interior and the Bavarian plateau, the fast one the Pannonian plain.
+    The Rhine's 0.75 km/yr leg is an average of rings at 0.60–1.07, each
+    set by its ground; P15, which lifts every ring by the same factor,
+    is not what the front asks for, and it would raise the 593M that
+    M3b already owes.
+
+    **5. What each place farms** (dominant package by 10 ° box at 1 CE,
+    majority of farmed cells; the crop and arrival maps are in the
+    session's scratch, not the repo): wheat over Europe, the steppe to
+    the Yenisei, the Levant, Iran's margins, Arabia's edge and the Indus
+    and Ganges; millet over north China, Mongolia, the Tarim and Korea;
+    rice in Bengal, south China and Indochina; sorghum across the Sahel
+    and the Nile; highland roots down east and southern Africa; maize in
+    Mesoamerica; tubers over tropical South America; eastern seeds over
+    North America; New Guinea roots in Melanesia. That is the staple
+    table of #63 seen whole: the misses (Yangtze millet, Ganges wheat,
+    Nile sorghum) are all range-and-timing questions of other packages,
+    not the wheat front's.
+
+    **What this decides.** (a) `arrival:indus:solve:target` is explained:
+    a ~2,400-year crossing of ground the substrate holds at 0.18
+    persons/km² because the water that farmed it is not represented. (b)
+    §4 is a correct discretisation with no measured front deficit to
+    recover; the sign split of #63 was the confound, not §4's signature.
+    P16's case is its cost (the stride doubles) and §4's stability bound,
+    not the front. (c) P15 is not indicated by the front. (d) Why §2 made
+    the Indus 1,128 years LATER is still not explained — there is no
+    pre-§2 raster, and this one cannot separate a slower crossing from a
+    different bypass; that needs a raster of the pre-§2 arm, a history
+    run, asked for and not run. (e) The two LBK sites carry the last
+    leg's 650–1,400 years; the ring table puts it on the Bavarian and
+    Rhine rings at 0.60–0.67 km/yr on capacity 6–8, which is where the
+    front's remaining 9 % lives in Europe.
