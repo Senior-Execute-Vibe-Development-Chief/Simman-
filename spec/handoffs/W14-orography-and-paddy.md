@@ -449,14 +449,20 @@ would; it is recorded as needing one, not run.
   now lights inside the box (−5570, on the Owen Stanley side) instead of on
   New Ireland. Nothing at the plateau is attributed to it (above).
 - **The paddy.** The Ganges is its clearest signature (rice on the flooded
-  plain against the incumbent wheat, as the substrate said). Its drowning
-  term shows too: the Amazon-margin tubers hearth lights 1,225 years later
-  (−5521 → −4296, still in window) and the Andes, reached from it, 1,358
-  years later (−4540 → −3182, still in window) — the tubers' stand on the
-  flooded margin falls by −0.35 in the flood months. Whether that is right
-  (the real Llanos de Moxos was farmed on raised fields IN the flood) is a
-  question for the package's `standingWaterResponse` and its citation, not
-  for a constant.
+  plain against the incumbent wheat, as the substrate said).
+- **The Amazon margin is NOT the paddy** (corrected 2026-09-05; this
+  section first blamed the drowning term). The tubers' hearth does light
+  1,225 years later (−5521 → −4296) with the Andes 1,358 years behind it
+  (−4540 → −3182), both still in window — but the substrate says the
+  drowning term costs that site only 3 % of capacity, because the flood
+  amplitude there is flat, and P18 *raised* the new hearth cell's quality
+  (0.525 → 0.717) while the old cell fell only 0.657 → 0.636. The site got
+  better and lit later, so the delay is in the peopling of the Beni basin,
+  not in the crop fit, and nothing on the substrate accounts for it. A
+  W13-only target arm would split it. Separately, and still open: the real
+  Llanos de Moxos was farmed on raised fields IN the flood, so whether
+  −0.35 is the tubers' number is a question for the package's
+  `standingWaterResponse` and its citation, not for a constant.
 - **Not isolated.** Every front arrives sooner and every steppe millet
   ignition thousands of years sooner, while every rice ignition is later:
   the standing account is W13's water (the steppe rivers, the loess), with

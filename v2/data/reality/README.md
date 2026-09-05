@@ -57,6 +57,19 @@ cereals, Setter & Waters 2003, *Plant and Soil* 253:1–34, applied to the
 tubers as the class figure — coarse, and recorded as such). It is the
 plant's response, read by the crop fit; no place and no river is named.
 
+W15 splits how the two signs are read, without moving a number. The
+NEGATIVE response is physiology — a plant drowns whether or not anyone is
+farming it — so it applies at every technique, to a wild stand as much as
+to a field. The POSITIVE response is husbandry: every figure behind it is
+a MANAGED-FLOODING yield (the GRiSP irrigated ~5.4 t/ha is a bunded,
+levelled, transplanted paddy; Kirch's wet taro is a built pondfield), and
+none of it is available to someone who has not built the works. So the
+positive half is scaled by the cultivator's technique — nothing of it at
+the first cultivator's regime, all of it at the last — and a wild stand,
+which is read at technique zero, gets none of it. Cite the positive
+numbers as what they are: yields under management, not a botanical
+preference for standing water.
+
 W8 adds the wild-habitat envelopes to `crop-packages.json`, sampled at
 the progenitors' documented dense-stand localities (lat, lon): wheat &
 barley — Galilee 32.9/35.6, Hermon foothills 33.3/35.8, Damascus basin

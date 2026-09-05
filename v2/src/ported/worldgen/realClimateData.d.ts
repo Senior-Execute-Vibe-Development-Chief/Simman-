@@ -3,6 +3,8 @@ export function isRealClimateAvailable(): boolean;
 export function sampleMonthlyClimate(
   width: number,
   height: number,
+  elevation?: Float32Array,
+  options?: { orographicRain?: boolean },
 ): { tempC: Float32Array; precipRatio: Float32Array } | null;
 export function fillRealClimate(
   width: number,
@@ -18,11 +20,13 @@ export function fillRealClimate(
 ): boolean;
 /** W14 (P18): the half-width in map cells of the footprint the coarse rain is redistributed within — the widest odd box inside one table cell; 0 at the reference grid, 4 at the 1800-wide target grid, 2 at the app's 960-wide Half grid. */
 export function orographicFootprintRadius(width: number): number;
-/** W14 (P18): each land pixel's share of its footprint's rain, a land-mean-of-one weight exp(g·Δz); one everywhere at radius 0 and on the sea. */
+/** W14 (P18): each land pixel's share of its footprint's rain, a land-mean-of-one weight exp(g·Δz) on the height the air climbed from one footprint half-width upwind; one everywhere at radius 0, on the sea, and in a dead calm. */
 export function orographicShare(
   width: number,
   height: number,
   elevation: Float32Array,
   radius: number,
+  windU: Float32Array,
+  windV: Float32Array,
   share?: Float32Array,
 ): Float32Array;

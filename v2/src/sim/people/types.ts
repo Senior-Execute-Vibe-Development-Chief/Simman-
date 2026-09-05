@@ -56,8 +56,10 @@ export interface PeopleWorld extends World {
   _techniqueSuitability: Float64Array;
   /** Per-package annual climate/season admissibility, packed to land. */
   _canGrow: readonly Uint8Array[];
-  /** Per-package climate fit (the crop bell over its growing months, 0..1), packed to land (W8). */
+  /** Per-package climate fit (the crop bell over its growing months, 0..1), packed to land (W8). Carries the drowning a crop that cannot drain suffers, never the paddy a wetland crop gains (W15). */
   _cropFit: readonly Float64Array[];
+  /** Per-package paddy gain relative to that fit, packed to land (W15): the standing water a wetland crop gains by is impounded, so capacity pays it out with the technique regime. Zero for every crop that only drowns. */
+  _standingGain: readonly Float64Array[];
   /** Per-package fitted wild envelope (W9 provenance: the occurrence count and the seasonal centre and tolerance). */
   _wildEnvelopes: ReadonlyArray<{ readonly cells: number; readonly centre: readonly number[]; readonly tolerance: readonly number[] }>;
   /** Per-package domestication site quality (0..1 of the crop's best ground), packed to land (W10, static). */

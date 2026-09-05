@@ -149,6 +149,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._nativeRanges = [];
   world._nativeCells = [];
   world._cropFit = [];
+  world._standingGain = [];
   world._standRichness = [];
   world._standCapacity = [];
   world._hearthSiteQuality = [];

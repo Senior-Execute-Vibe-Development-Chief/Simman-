@@ -3276,15 +3276,23 @@ Review corrections to the M1 build (all validated before merge):
     W13-only target arm (`2802a7ec`, ~27 min) would split them. Recorded as
     needing one.
 
-    **3. The paddy's two signatures.** The Ganges plain, reached by Godavari
-    rice at −4799 (3,852 years before the W12 arm's wheat), farms rice at
-    1 CE, as the substrate said it would (Patna 0.77 against wheat's 0.24);
-    and the tubers' Amazon-margin hearth lights 1,225 years later (−5521 →
-    −4296) with the Andes 1,358 years later behind it, both still inside
-    their windows — the drowning loss on a flooded stand. The real Llanos
-    de Moxos was farmed on raised fields in the flood, so whether −0.35 is
-    the tubers' number is a question for the package's citation (Setter &
-    Waters 2003 is a cereal number), not for a constant to move.
+    **3. The paddy's one signature — and one row that is not its.** The
+    Ganges plain, reached by Godavari rice at −4799 (3,852 years before the
+    W12 arm's wheat), farms rice at 1 CE, as the substrate said it would
+    (Patna 0.77 against wheat's 0.24). The tubers' Amazon-margin hearth
+    lights 1,225 years later (−5521 → −4296) with the Andes 1,358 years
+    later behind it, both still inside their windows — **and that is NOT
+    the drowning term** (corrected 2026-09-05; first written here as "the
+    drowning loss on a flooded stand"). Measured on the substrate, the
+    drowning term costs that site 3 % of capacity, the flood amplitude
+    there being flat: the old cell's quality falls 0.657 → 0.636 while P18
+    *raises* the new hearth cell's 0.525 → 0.717. The site got better and
+    lit later, so what moved is the peopling of the Beni basin, which the
+    substrate does not hold; a W13-only target arm would split it.
+    Separately and still open: the real Llanos de Moxos was farmed on
+    raised fields in the flood, so whether −0.35 is the tubers' number is a
+    question for the package's citation (Setter & Waters 2003 is a cereal
+    number, and a managed-flooding one), not for a constant to move.
 
     **4. P18's one attributable row** is Kuk: the New Guinea roots light
     inside the box at −5570 (the Owen Stanley side) instead of on New
@@ -3295,3 +3303,93 @@ Review corrections to the M1 build (all validated before merge):
     Population 305 / 670 / 797M at −3000 / −1000 / 1 CE against 214 / 497 /
     593: the same missing deaths (M3b), sooner. The front 0.854 → 0.904
     km/yr against the 0.936 design. Europe within ±60 years of the W12 arm.
+
+68. **W15 corrected two things W14 got wrong, both mechanism and neither a
+    dial: the paddy is husbandry, not botany, and P18's footprint was
+    aspect-blind (2026-09-05, owner: "what is the fix" → "implement
+    all").** No constant moved and none was added; `constants.ts` is
+    untouched and every cited value stands
+    (`spec/handoffs/W15-wind-and-husbandry.md`).
+
+    **1. The paddy was being paid to ground nobody farms.** W14 applied the
+    whole `standingWaterResponse` as a property of the plant, at every
+    technique and to the wild stand. But the number it is grounded in — the
+    irrigated-over-rainfed yield ratio in Bray 1986 and GRiSP 2013 — is
+    measured on bunded, levelled, water-controlled fields. That is
+    husbandry. So the POSITIVE part is now scaled by the cell's technique
+    (nothing at technique 0, full paddy at technique 1) and the NEGATIVE
+    part, a crop drowning in a flood it cannot drain, stays physiology at
+    every technique. Built as one factor `1 + technique · gain` with
+    `gain = Σ gainful / Σ fitted − 1` over the same admitted months, so
+    technique-1 capacity is bit-for-bit W14's and technique-0 is
+    bit-for-bit the un-paddied one, using only 0 and 1 as literals.
+
+    Measured on the substrate at the shipped grid, no history — `fit /
+    gain / capacity at technique 0 / at technique 1`, rice unless named:
+    the Yangtze 0.216 / 0.000 / 0.80 / 3.74, the Ganges 0.523 / 0.473 /
+    5.92 / 40.67, the Godavari 0.583 / 0.255 / 6.44 / 37.71, Bengal 0.610 /
+    0.469 / 5.35 / 36.70, Sichuan 0.317 / 0.486 / 1.50 / 10.41, the Mekong
+    0.979 / 0.480 / 2.95 / 20.35; Levant wheat 0.186 / 0.000 / 0.26 / 1.23,
+    Nile wheat 0.041 / 0.000 / 0.03 / 0.15, Indus wheat 0.376 / 0.000 /
+    1.83 / 8.55. Every wheat gain is zero — the flood months fall outside
+    its warm months — so the split costs the rain-fed cereals nothing.
+    81,337 land cells carry a rice paddy gain, mean 0.367, max 0.819. By
+    the construction's own identity (W14's capacity at technique 0 =
+    (1 + gain) × W15's), W14 credited un-farmed floodplain with up to 82 %
+    more capacity than un-farmed ground can deliver: the Ganges 8.72
+    against 5.92, Bengal 7.86 against 5.35, the Mekong 4.37 against 2.95.
+    That capacity was read by the wild-stand richness and by the hearth
+    site quality, which is to say it was moving the ignition clock.
+
+    **2. P18 lifted the lee slope exactly as much as the windward one.**
+    W14's Δz was against the footprint's LAND-MEAN elevation, which has no
+    aspect: a 1,000 m rise reads the same whether the air climbed it or is
+    falling down it. The physical reference is the height the air CLIMBED,
+    so the elevation is now sampled one footprint half-width UPWIND along
+    that month's own wind — the standard upslope model (Smith 1979; Roe
+    2005 §2). Same gain, same vapour scale height, same footprint, same
+    conservation; the wind is the substrate's own monthly NCEP/NCAR field,
+    and a dead calm reads weight one. No new constant and no new length.
+
+    Windward-minus-lee share contrast, W14 → W15: the Alps −0.006 →
+    **+0.080**, the Himalaya +0.426 → **+0.474**, the Western Ghats −0.019
+    → **+0.013**, the Andes +0.039 → **+0.178**, the Southern Alps of New
+    Zealand −0.148 → **−0.033**, the Alborz −0.674 → **−0.535**, the
+    Cascades −0.083 → −0.164, the Zagros +0.107 → −0.078. Six of eight
+    improve. Conservation holds over 558,091 land cells: p1 0.711, p50
+    1.000, p99 1.327, max 2.881, mean 0.9981.
+
+    **3. The two ranges that move the wrong way have one nameable cause,
+    and it is the wind data, not the coefficient.** The Cascades and the
+    Zagros reverse, and the Alborz is still negative. A 1.9° MONTHLY
+    CLIMATOLOGICAL MEAN averages away the barrier-normal component of any
+    flow that reverses within the month, so at a 60–90 km lookback the
+    model reads the along-range residual and picks the wrong upwind cell.
+    The remedy is finer or higher-moment wind data; a coefficient tuned
+    until the Cascades turn around would be a fitted outcome (second
+    cardinal rule). The Alborz miss pre-exists this wave (share 0.329 there
+    under W14) and W15 halves its contrast error rather than creating it.
+    Recorded, not dialed.
+
+    **4. Two bugs in the ported wind sampler, found while building this and
+    deliberately left.** Both are in `src/ported/worldgen`, which is
+    exempt-by-charter ported code, and neither is on the sim's own path —
+    fixing them belongs to a worldgen wave that can re-baseline the v1
+    hashes, not to this one. (a) `sampleMonthlyWind`'s latitude bracket
+    leaves `j0 = 0` for anything below −88.542°, so the far southern rows
+    read a NORTHERN row's wind; its longitude fallback clamps instead of
+    wrapping in the 358.125–360° band. (b) `fillRealWind` writes
+    `windY[i] = v · scale` with no flip, against `windSolver.js`'s own
+    convention that raster y is positive SOUTHWARD — provable from
+    `latSigned = (wy/wH − 0.5)·2` and `hadleyMerid = −sign(latSigned)·…`.
+    The sim's path is consistent and unaffected: `substrate.ts` documents
+    "u eastward, v northward" and the Rust router multiplies by
+    `unit_north`, and P18b samples the same convention it documents.
+
+    **5. What still needs a long arm.** Every number above is substrate
+    only, no history, at the shipped grid — the honest reach of a
+    dev-loop measurement (owner directive 2026-09-03). Whether the later,
+    smaller technique-0 floodplain capacity moves the rice ignition clock,
+    and whether the wind reference moves any arrival, is the `v2-long`
+    shipped-grid solve arm's to say. Recorded as needing one; offered, not
+    run.

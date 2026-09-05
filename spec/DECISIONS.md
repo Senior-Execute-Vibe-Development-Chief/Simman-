@@ -852,10 +852,70 @@ lawyered.
     the early side); Kuk lights inside its box (P18 on a wet range); south
     China and the Indus turn to millet at 1 CE and north-China millet lights
     13 years past the grace (three new misses); the Amazon-margin tubers
-    hearth lights 1,225 years later under the paddy's drowning term;
+    hearth lights 1,225 years later, which is NOT the paddy's drowning term
+    (corrected 2026-09-05: that term costs the site 3 % of capacity, the
+    flood amplitude being flat, and P18 raises the new hearth cell's quality
+    0.525 → 0.717 — the site got better and lit later, so the delay is in
+    the peopling of the basin and the substrate does not hold it);
     population 305 / 670 / 797M at −3000 / −1000 / 1 CE (M3b). Three
     manifest rows added, four removed, the rest re-measured; recorded, not
     dialed.
+
+36. **W15 landed: the wind the rain climbed, and the paddy as
+    husbandry.** (Owner, 2026-09-05, after the W14 shipped-grid arm's
+    findings: "why did whats wrong go wrong" → "what is the fix" →
+    **"implement all"**.) Two corrections to W14, both mechanism, neither a
+    dial: `constants.ts` is untouched, no cited value moved, and nothing was
+    added to the ledger's constant columns.
+
+    **(a) The paddy is husbandry, not botany.** W14 applied a package's
+    whole `standingWaterResponse` at every technique and to the wild stand.
+    Its grounding does not support that: Bray 1986's and GRiSP 2013's
+    irrigated-over-rainfed ratio is measured on bunded, levelled,
+    water-controlled fields — a thing farmers build, not a thing the plant
+    does. So the POSITIVE part is scaled by the cell's technique (none at
+    technique 0, full paddy at technique 1) and the NEGATIVE part — a crop
+    drowning in a flood it cannot drain — stays physiology at every
+    technique. One factor `1 + technique · gain`, with `gain` measured over
+    the same admitted months, so technique-1 capacity is bit-for-bit W14's
+    and technique-0 is bit-for-bit the un-paddied one; only 0 and 1 appear
+    as literals. Both kernels, parity holds. It matters because the leaked
+    capacity was read by the wild-stand richness and the hearth site
+    quality: measured at the shipped grid, W14 credited un-farmed
+    floodplain with up to 82 % more capacity than un-farmed ground can
+    deliver (the Ganges 8.72 → 5.92 persons/km² at technique 0, Bengal 7.86
+    → 5.35, the Mekong 4.37 → 2.95) — that is, it was moving the ignition
+    clock with a yield nobody had built the works for.
+
+    **(b) P18's footprint had no aspect.** W14's Δz was against the
+    footprint's land-mean elevation, so a lee slope of a given height lifted
+    exactly as much as the windward one — the single thing an orographic
+    term must not do. The reference is now the elevation one footprint
+    half-width UPWIND along that month's own wind, the height the air
+    climbed: the standard upslope model (Smith 1979, *Adv. Geophys.*
+    21:87–230; Roe 2005, *Annu. Rev. Earth Planet. Sci.* 33:645–671 §2).
+    Same gain, same clamp, same footprint, same conservation, no new
+    constant and no new length; the wind is the substrate's own monthly
+    NCEP/NCAR field and a dead calm reads weight one. Measured at the
+    shipped grid on the substrate alone, the windward-minus-lee contrast
+    improves on six ranges of eight (the Alps −0.006 → +0.080, the Andes
+    +0.039 → +0.178, the Western Ghats −0.019 → +0.013, the Himalaya +0.426
+    → +0.474, the Southern Alps −0.148 → −0.033, the Alborz −0.674 →
+    −0.535) and conservation holds (land mean 0.9981 over 558,091 cells).
+    The gain was deliberately NOT re-tuned to the new reference; moving it
+    to suit the term would be fitting the outcome.
+
+    The Cascades and the Zagros move the wrong way and the Alborz is still
+    negative, from one nameable cause — a 1.9° monthly climatological mean
+    averages away the barrier-normal component of a flow that reverses
+    within the month — whose remedy is finer wind data, not a coefficient.
+    Two bugs in the ported wind sampler were found and deliberately left
+    (they are off the sim's own path; a worldgen wave that can re-baseline
+    the v1 hashes owns them). Everything above is substrate only, no
+    history; whether either correction moves an arrival is the `v2-long`
+    shipped-grid arm's to say, offered and not run (owner directive
+    2026-09-03). QUESTIONS #68,
+    `spec/handoffs/W15-wind-and-husbandry.md`.
 
 ## Proposed — working design, awaiting explicit ratification
 
@@ -931,7 +991,12 @@ lawyered.
   inside it by their elevation anomaly against the coarse mean — an
   orographic enhancement per metre of relief, one coefficient with a
   citation — CONSERVING the coarse cell's total, so no rain is invented,
-  only placed on the slope it fell on. No place named; it lifts every
+  only placed on the slope it fell on. (**The reference in that sentence is
+  superseded by W15**, DECISIONS 36: an anomaly against the coarse mean has
+  no aspect, so it lifted a lee slope exactly as much as a windward one.
+  The built term now references the elevation one footprint half-width
+  UPWIND along the month's own wind — the height the air climbed — with the
+  same gain, clamp, footprint and conservation.) No place named; it lifts every
   range on every map and nothing else. It is the substrate's, it moves the
   world hash at both grids, and it is not to be substituted by raising the
   moisture floor, the runoff floor, or the channel strip (second cardinal

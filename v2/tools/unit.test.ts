@@ -37,7 +37,7 @@ import {
 } from "../src/sim/constants";
 import { migrationShareForArea } from "../src/sim/people/migration";
 import { deriveCapacity } from "../src/sim/people/capacity";
-import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, standCapacity } from "../src/sim/people/crop";
+import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
 import { cellAreasKm2 } from "../src/sim/people/habitability";
 import { mixtureCapacity } from "../src/sim/people/capacity";
@@ -612,11 +612,13 @@ async function main(): Promise<void> {
     assert.equal(runoffWorld._canGrow[admitted]?.[runoffWorld._packedOf[chain[6] ?? 0] ?? 0], 0, "a dry cell the stream no longer reaches is not admitted");
   }
 
-  // W14 (P18): the sub-grid orographic share. On flat land every pixel
-  // gets its footprint's rain; a ridge draws the rain of the footprint onto
-  // itself and leaves the foot at its side drier; the land far from it and
-  // the sea are untouched; and the land as a whole keeps what the table
-  // gave it. The footprint is the widest odd box inside one 1.9° table
+  // W14 (P18), corrected W15: the sub-grid orographic share, referenced to
+  // the ground the wind climbed FROM. On flat land every pixel gets its
+  // footprint's rain, whatever the wind; a ridge in a westerly draws the
+  // footprint's rain onto its windward face and leaves the lee behind it
+  // drier — and turning the wind around turns the wet and dry sides around
+  // with it; the sea is untouched; and the land as a whole keeps what the
+  // table gave it. The footprint is the widest odd box inside one 1.9° table
   // cell: none at the reference grid, four cells at the 1800-wide target
   // grid, two at the app's 960-wide Half grid.
   let orographyReport: Record<string, number>;
@@ -624,24 +626,50 @@ async function main(): Promise<void> {
     const width = 64;
     const height = 32;
     const rad = 2;
+    const westerly = (w: number, h: number, speed: number): { u: Float32Array; v: Float32Array } => ({
+      u: new Float32Array(w * h).fill(speed),
+      v: new Float32Array(w * h),
+    });
+    const west = westerly(width, height, 1);
+    const east = westerly(width, height, -1);
     const flat = new Float32Array(width * height).fill(0.1);
     for (let x = 0; x < width; x++) {
       flat[x] = 0;
       flat[(height - 1) * width + x] = -0.1;
     }
-    const flatShare = orographicShare(width, height, flat, rad);
+    const flatShare = orographicShare(width, height, flat, rad, west.u, west.v);
     for (let i = 0; i < flat.length; i++) assert.ok(Math.abs((flatShare[i] ?? 0) - 1) < 1e-6, "flat land keeps its footprint's rain");
+    // A range six cells wide either side of its crest, symmetric in the
+    // ground it stands on: any asymmetry in the rain it keeps is the wind's.
     const ridge = Float32Array.from(flat, (e) => (e > 0 ? 0.05 : e));
     const crestX = 32;
-    for (let y = 1; y < height - 1; y++) ridge[y * width + crestX] = 0.35;
-    const share = orographicShare(width, height, ridge, rad);
+    const halfWidth = 6;
+    for (let y = 1; y < height - 1; y++) {
+      for (let d = -halfWidth; d <= halfWidth; d++) {
+        ridge[y * width + crestX + d] = 0.05 + 0.3 * (1 - Math.abs(d) / halfWidth);
+      }
+    }
+    const share = orographicShare(width, height, ridge, rad, west.u, west.v);
     const at = (x: number): number => share[16 * width + x] ?? 0;
-    assert.ok(at(crestX) > 2, "the crest draws the footprint's rain onto itself");
-    assert.ok(at(crestX) > at(crestX + 1) && at(crestX + 1) < 1 && at(crestX - 2) < 1, "the foot beside the crest is drier");
-    assert.ok(Math.abs(at(crestX + 2) - at(crestX - 2)) < 1e-6, "the footprint is aspect-blind");
-    assert.ok(Math.abs(at(crestX + 8) - 1) < 1e-6 && Math.abs(at(5) - 1) < 1e-6, "land outside the footprint is untouched");
+    assert.ok(at(crestX) > 1 && at(crestX) > at(crestX + 1), "the climb draws the footprint's rain onto the crest");
+    // The wind blows toward +x, so the crest's WINDWARD side is the smaller x
+    // and its LEE the larger. The two were identical while the footprint was
+    // aspect-blind; referencing the climb to the ground upwind is what
+    // separates them, on ground that is symmetric about the crest.
+    assert.ok(at(crestX - 1) > 1 && at(crestX + 1) < 1, "the windward foot is wet and the lee foot is dry");
+    for (let d = 1; d <= halfWidth; d++) {
+      assert.ok(at(crestX - d) > at(crestX + d), "every windward step keeps more rain than the lee step facing it");
+    }
+    const flipped = orographicShare(width, height, ridge, rad, east.u, east.v);
+    const atFlipped = (x: number): number => flipped[16 * width + x] ?? 0;
+    for (let d = 1; d <= halfWidth; d++) {
+      assert.ok(Math.abs(atFlipped(crestX + d) - at(crestX - d)) < 1e-6, "reversing the wind reverses which face is wet");
+    }
+    assert.ok(Math.abs(at(crestX + 12) - 1) < 1e-6 && Math.abs(at(crestX - 12) - 1) < 1e-6, "land beyond the footprint's reach is untouched");
     assert.equal(share[crestX] ?? 0, 1, "the sea is untouched");
     assert.equal(share[(height - 1) * width + crestX] ?? 0, 1);
+    const calm = orographicShare(width, height, ridge, rad, new Float32Array(width * height), new Float32Array(width * height));
+    for (let i = 0; i < ridge.length; i++) assert.equal(calm[i] ?? 0, 1, "a dead calm has no windward side");
     let landSum = 0;
     let landCount = 0;
     for (let i = 0; i < ridge.length; i++) {
@@ -651,21 +679,29 @@ async function main(): Promise<void> {
     }
     const landMean = landSum / landCount;
     assert.ok(Math.abs(landMean - 1) < 0.01, "the land as a whole keeps its rain to first order");
-    const zeroShare = orographicShare(width, height, ridge, 0);
+    const zeroShare = orographicShare(width, height, ridge, 0, west.u, west.v);
     for (let i = 0; i < ridge.length; i++) assert.equal(zeroShare[i] ?? 0, 1, "no footprint, no redistribution");
     assert.equal(orographicFootprintRadius(240), 0, "inert at the reference grid");
     assert.equal(orographicFootprintRadius(480), 0, "inert at the 0.75° proxy: a 3-cell box would be wider than the table cell");
     assert.equal(orographicFootprintRadius(960), 2, "a 5-cell, 1.875° box at the app's Half grid");
     assert.equal(orographicFootprintRadius(1800), 4, "a 9-cell, 1.8° box at the target grid");
     assert.equal(orographicFootprintRadius(1920), 4);
-    orographyReport = { crest: Number(at(crestX).toFixed(3)), foot: Number(at(crestX + 1).toFixed(3)), landMean: Number(landMean.toFixed(4)) };
+    orographyReport = {
+      crest: Number(at(crestX).toFixed(3)),
+      windward: Number(at(crestX - 1).toFixed(3)),
+      lee: Number(at(crestX + 1).toFixed(3)),
+      landMean: Number(landMean.toFixed(4)),
+    };
   }
 
-  // W14: the paddy. The same flood on the same ground raises rice's fit by
-  // the package's response and lowers wheat's; a flood in months a crop is
-  // not growing is nothing to it; a stream beside a wetland crop is a paddy
-  // and beside an upland crop is nothing; ground with no standing water is
-  // unchanged for every package.
+  // W14, corrected W15: the paddy. The same flood on the same ground raises
+  // a FARMED wetland crop by the package's response and lowers an upland
+  // one's fit; a flood in months a crop is not growing is nothing to it; a
+  // stream beside a wetland crop is a paddy and beside an upland crop is
+  // nothing; ground with no standing water is unchanged for every package.
+  // The paddy is husbandry (W15), so it is worth nothing to a first
+  // cultivator and nothing to the wild stand, while the drowning is
+  // physiology and is in the fit at every regime.
   {
     const riceIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "rice");
     const wheatIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
@@ -704,16 +740,39 @@ async function main(): Promise<void> {
     const flooding = build(true, false);
     const streaming = build(false, true);
     const bare = build(false, false, false);
+    // The fit itself: what the ground yields before anyone impounds it.
     const fit = (world: PeopleWorld, packageIndex: number, cell: number): number =>
       world._cropFit[packageIndex]?.[world._packedOf[cell] ?? 0] ?? 0;
+    // The fit a farmer at the full technique regime works, paddy included.
+    const paddied = (world: PeopleWorld, packageIndex: number, cell: number): number => {
+      const packed = world._packedOf[cell] ?? 0;
+      return (world._cropFit[packageIndex]?.[packed] ?? 0)
+        * (1 + (world._standingGain[packageIndex]?.[packed] ?? 0));
+    };
     const strip = Math.min(1, PEOPLE_CHANNEL_STRIP_KM / Math.sqrt(cellAreasKm2(240, 120)[bank] ?? 0));
     // Three flood months of twelve at a flow twice the year's mean over a
     // plain that is half the cell: the plain is under water, so the factor
     // is 1 + response × 0.5 in those months and 1 in the rest.
     const flooding3 = (response: number): number => (9 + 3 * (1 + response * 0.5)) / 12;
     assert.ok(fit(still, riceIndex, flooded) > 0 && fit(still, wheatIndex, flooded) > 0, "both packages grow on the still plain");
-    assert.ok(Math.abs(fit(flooding, riceIndex, flooded) / fit(still, riceIndex, flooded) - flooding3(riceResponse)) < 1e-9, "the flood is rice's paddy");
+    assert.ok(Math.abs(paddied(flooding, riceIndex, flooded) / fit(still, riceIndex, flooded) - flooding3(riceResponse)) < 1e-9, "the flood is the rice farmer's paddy");
     assert.ok(Math.abs(fit(flooding, wheatIndex, flooded) / fit(still, wheatIndex, flooded) - flooding3(wheatResponse)) < 1e-9, "the same flood drowns the wheat");
+    // W15: the paddy is a built thing. It is worth nothing to the crop
+    // itself, so the fit is untouched, and nothing to a first cultivator or
+    // a wild stand, so the technique-0 capacity every stand and hearth
+    // payoff is read from is untouched too. The drowning is not built, so it
+    // is in wheat's fit and in wheat's technique-0 capacity alike.
+    assert.equal(fit(flooding, riceIndex, flooded), fit(still, riceIndex, flooded), "the flood alone is not a paddy");
+    assert.equal(paddied(flooding, wheatIndex, flooded), fit(flooding, wheatIndex, flooded), "an upland crop has no paddy to gain");
+    assert.equal(
+      packageCapacityAt(flooding, flooded, riceIndex, 0),
+      packageCapacityAt(still, flooded, riceIndex, 0),
+      "a first cultivator on the flood arrives before the bund",
+    );
+    assert.ok(packageCapacityAt(flooding, flooded, riceIndex, 1) > packageCapacityAt(still, flooded, riceIndex, 1) * 1.1,
+      "and the same ground worked at the full regime is the paddy");
+    assert.ok(packageCapacityAt(flooding, flooded, wheatIndex, 0) < packageCapacityAt(still, flooded, wheatIndex, 0),
+      "drowning is physiology: it costs the first cultivator too");
     assert.ok(fit(still, wheatIndex, winterFlood) > 0);
     assert.equal(fit(flooding, wheatIndex, winterFlood), fit(still, wheatIndex, winterFlood), "a flood in months the crop is not growing is nothing to it");
     assert.equal(fit(flooding, riceIndex, winterFlood), fit(still, riceIndex, winterFlood));
@@ -724,7 +783,8 @@ async function main(): Promise<void> {
     }
     assert.ok((streaming._runoffInflow[bank] ?? 0) > strip, "the stream arrives at the bank");
     assert.equal(streaming._waterAccess[bank], still._waterAccess[bank], "a wet bank takes nothing from the stream (W13)");
-    assert.ok(Math.abs(fit(streaming, riceIndex, bank) / fit(still, riceIndex, bank) - (1 + riceResponse * strip)) < 1e-9, "a stream beside rice keeps its strip under water");
+    assert.ok(Math.abs(paddied(streaming, riceIndex, bank) / fit(still, riceIndex, bank) - (1 + riceResponse * strip)) < 1e-9, "a stream beside rice keeps its strip under water");
+    assert.equal(fit(streaming, riceIndex, bank), fit(still, riceIndex, bank), "the stream is a paddy only once someone leads it onto the field");
     assert.equal(fit(streaming, wheatIndex, bank), fit(still, wheatIndex, bank), "a stream beside wheat is nothing to it: only the flood it cannot drain hurts");
   }
 

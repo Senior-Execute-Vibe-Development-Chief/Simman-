@@ -297,7 +297,11 @@ pub struct PeopleKernel {
     package_yields: Vec<f64>,
     can_grow: Vec<u8>,
     /// Per-package climate fit (the crop bell over its growing months), packed to land (W8).
+    /// Carries the drowning a crop that cannot drain suffers, never the paddy (W15).
     crop_fit: Vec<f64>,
+    /// Per-package paddy gain relative to that fit, packed to land (W15): the standing
+    /// water a wetland crop gains by is impounded, so it is paid out with technique.
+    standing_gain: Vec<f64>,
     neighbor_targets: Vec<i32>,
     neighbor_distance: Vec<f64>,
     neighbor_mode: Vec<u8>,
@@ -392,6 +396,7 @@ impl PeopleKernel {
         package_yields: &[f64],
         can_grow: &[u8],
         crop_fit: &[f64],
+        standing_gain: &[f64],
         neighbor_targets: &[i32],
         neighbor_distance: &[f64],
         neighbor_mode: &[u8],
@@ -426,6 +431,7 @@ impl PeopleKernel {
             package_yields: copy_f64(package_yields, package_count),
             can_grow: copy_u8(can_grow, package_count.saturating_mul(land_count), 0),
             crop_fit: copy_f64(crop_fit, package_count.saturating_mul(land_count)),
+            standing_gain: copy_f64(standing_gain, package_count.saturating_mul(land_count)),
             neighbor_targets: neighbor_targets.to_vec(),
             neighbor_distance: copy_f64(
                 neighbor_distance,
@@ -676,6 +682,9 @@ impl PeopleKernel {
             * PEOPLE_FARM_CAPACITY_PER_KM2
             * self.package_yields[package_index]
             * self.crop_fit[package_index * self.land_cells.len() + packed]
+            // The paddy arrives with the husbandry that impounds it (W15): none
+            // of it at the first cultivator's regime, all of it at the last.
+            * (1.0 + technique * self.standing_gain[package_index * self.land_cells.len() + packed])
             * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
             * (1.0 + access * PEOPLE_WATER_ACCESS_GAIN)
             * self.relief_multiplier[cell]

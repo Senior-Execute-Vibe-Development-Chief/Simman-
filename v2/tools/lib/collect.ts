@@ -53,6 +53,7 @@ export const WORLD_SCRATCH = new Set<string>([
   "_migrationEdgeV",
   "_canGrow",
   "_cropFit",
+  "_standingGain",
   "_standRichness",
   "_standCapacity",
   "_standBest",

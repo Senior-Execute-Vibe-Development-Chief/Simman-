@@ -44,11 +44,17 @@ export function packageCapacityAt(world: PeopleWorld, cell: number, packageIndex
   const fertility = clamp01(world.substrate.fertility[cell] ?? 0);
   const access = world._waterAccess[cell] ?? 0;
   // The climate bell gates can-grow and (W8) grades the harvest: a
-  // package's capacity in a cell scales with how well the cell suits it.
+  // package's capacity in a cell scales with how well the cell suits it. The
+  // paddy on top of it is the standing water a wetland crop GAINS by (W15) —
+  // impounded, levelled and held, so it arrives with the husbandry that builds
+  // it: none of it at the first cultivator's regime, all of it at the last.
+  // The drowning an upland crop suffers is physiology and is already in the
+  // fit, at every regime.
   return fertility
     * PEOPLE_FARM_CAPACITY_PER_KM2
     * (pkg.yield ?? 1)
     * (world._cropFit[packageIndex]?.[packed] ?? 0)
+    * (1 + technique * (world._standingGain[packageIndex]?.[packed] ?? 0))
     * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
     * (1 + access * PEOPLE_WATER_ACCESS_GAIN)
     * (world._reliefMult[cell] ?? 0);
@@ -90,6 +96,7 @@ export function initializeCropFields(world: PeopleWorld): void {
   const nativeCells: Int32Array[] = [];
   const canGrow: Uint8Array[] = [];
   const fits: Float64Array[] = [];
+  const gains: Float64Array[] = [];
   const richness: Float64Array[] = [];
   world._standBest.fill(0);
   world._standCapacityBest.fill(0);
@@ -139,6 +146,7 @@ export function initializeCropFields(world: PeopleWorld): void {
     const native = new Uint8Array(landCount);
     const grow = new Uint8Array(landCount);
     const fit = new Float64Array(landCount);
+    const gain = new Float64Array(landCount);
     const stand = new Float64Array(landCount);
     const listed: number[] = [];
     for (let packed = 0; packed < landCount; packed++) {
@@ -147,6 +155,7 @@ export function initializeCropFields(world: PeopleWorld): void {
       if (native[packed] === 1) listed.push(packed);
       let season = 0;
       let fitSum = 0;
+      let gainSum = 0;
       const access = world._waterAccess[cell] ?? 0;
       const surface = world._surfaceAccess[cell] ?? 0;
       // The standing water (W14): the floodplain under the flood, and the
@@ -193,10 +202,18 @@ export function initializeCropFields(world: PeopleWorld): void {
           season++;
           // The fit (W8): the crop's warmth term times its water term, where
           // the water is met by rain or by the water the land gives access to
-          // — a floodplain grows wheat in a desert — times the package's
-          // response to the ground standing under water (W14): the paddy
-          // doubles rice, the same flood drowns a third of the wheat.
-          fitSum += warmth * Math.max(pkgMoistureBell(pkg, moisture), access) * (1 + response * standing);
+          // — a floodplain grows wheat in a desert.
+          const base = warmth * Math.max(pkgMoistureBell(pkg, moisture), access);
+          // The ground standing under water splits in two (W14, corrected W15).
+          // What it TAKES from a crop that cannot drain it is physiology — the
+          // roots suffocate whoever is farming — so it is in the fit itself, at
+          // every technique regime, and it is in the wild stand too. What it
+          // GIVES a wetland crop is husbandry: a paddy is water impounded,
+          // levelled and held behind a bund, not a swamp. So the gain is
+          // carried apart and paid out with the technique regime, and a wild
+          // stand of rice in a marsh is a wild stand rather than a paddy.
+          fitSum += base * (1 + Math.min(0, response) * standing);
+          gainSum += base * Math.max(0, response) * standing;
         }
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;
@@ -206,6 +223,10 @@ export function initializeCropFields(world: PeopleWorld): void {
       // Siberian summer as highly as a long Chinese one, which is what kept
       // millet's best ground on the west Siberian plain.
       fit[packed] = grow[packed] === 1 ? fitSum / MONTHS_PER_YEAR : 0;
+      // The paddy relative to the fit it multiplies, so that capacity at the
+      // full technique regime is exactly the fit the flooded months earn and
+      // at the first cultivator's regime is exactly the unwatered one.
+      gain[packed] = grow[packed] === 1 && fitSum > 0 ? gainSum / fitSum : 0;
       // Stand richness (W9): inside the derived range, where the crop can
       // grow, the fitted envelope graded by the habitat that varies at belt
       // scale — the soil and the terrain. A belt then has a core and edges
@@ -229,12 +250,14 @@ export function initializeCropFields(world: PeopleWorld): void {
     nativeCells.push(Int32Array.from(listed));
     canGrow.push(grow);
     fits.push(fit);
+    gains.push(gain);
     richness.push(stand);
   }
   world._nativeRanges = nativeRanges;
   world._nativeCells = nativeCells;
   world._canGrow = canGrow;
   world._cropFit = fits;
+  world._standingGain = gains;
   world._standRichness = richness;
   world._hearthYears = nativeCells.map((cells) => new Float64Array(cells.length));
   world._hearthDone = nativeCells.map((cells) => new Uint8Array(cells.length));

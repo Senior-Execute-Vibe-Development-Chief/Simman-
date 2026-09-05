@@ -121,8 +121,11 @@ export interface Substrate {
 // month's share of the cell's annual rain (mean-preserving ratio). This is
 // what carries the real monsoon and the real pass-closure winters; a
 // hemisphere sine cannot. Data in, mechanism out (R7).
-function observedMonthlyClimate(world: PortedWorld, N: number): MonthlyClimate | null {
-  const observed = sampleMonthlyClimate(world.width, world.height);
+function observedMonthlyClimate(world: PortedWorld, N: number, orographicRain: boolean): MonthlyClimate | null {
+  // The monthly ratios carry the W14 orographic share the annual fill used —
+  // each month lifted by its own wind — so the seasonal cycle and the annual
+  // total agree about which slope the rain fell on.
+  const observed = sampleMonthlyClimate(world.width, world.height, world.elevation, { orographicRain });
   if (!observed) return null;
   const temperature = new Float32Array(N * MONTHS_PER_YEAR);
   const moisture = new Float32Array(N * MONTHS_PER_YEAR);
@@ -297,7 +300,7 @@ export function buildSubstrate(
   const world = generated.w;
   const territory = generated.ter;
   const cells = territory.tElev.length;
-  const climate = (observedClimate ? observedMonthlyClimate(world, cells) : null)
+  const climate = (observedClimate ? observedMonthlyClimate(world, cells, !(config.rawRain ?? false)) : null)
     ?? monthlyClimate(world, cells);
   const wind = monthlyWind(world, cells, observedClimate);
   const annualTemperature = new Float32Array(cells);
