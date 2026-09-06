@@ -308,8 +308,16 @@ export function convertFarmers(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): 
  * A, A's farmers take up B at the adoption rate × their contact with B (B's
  * share of the cell) × the saturated relative advantage; several better
  * packages each take their share in proportion. Labels move, people are
- * conserved, and the farmer total is unchanged. Rice takes the south a few
- * centuries after it arrives; millet keeps the loess.
+ * conserved, and the farmer total is unchanged.
+ *
+ * Rice takes the south a few centuries after it ARRIVES — measured at the
+ * shipped grid (the W15 arm), where south China farms rice at 1 CE. The dev
+ * grid still shows millet there, and that is the arrival race, not this
+ * switch: at 167 km cells millet's own hearth on the lower Yangtze beats
+ * rice's nearest ignition to the ground, and no rice farmer ever reaches the
+ * cell for the switch to act on. Where rice does arrive the ranking is not
+ * close (rice 0.665 against millet 0.580 in the south-China box), so a
+ * failure here is a question about who got there first.
  */
 function switchPackages(
   world: PeopleWorld,

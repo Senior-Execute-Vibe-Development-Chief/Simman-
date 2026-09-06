@@ -1143,6 +1143,52 @@ lawyered.
   now placed at the floor band — a data-side ruling for the owner
   (QUESTIONS #66) — and neither the floor nor the gain is lifted to reach
   it.
+- **P19. The crop fit splits: annual share for the wild stand, harvest-cycle
+  grade for the farmed capacity** (W16 finding, 2026-09-06; QUESTIONS #70).
+  `crop.ts` grades a cell as `fitSum / MONTHS_PER_YEAR` — the share of the
+  year that is favourable — and hands the SAME number to two consumers that
+  want opposite normalisations. For the wild stand that is correct and is
+  W10's own finding: gatherers graze continuously, so eight good months feed
+  more than five, and averaging over qualifying months alone scored a short
+  Siberian summer as highly as a long Chinese one. For a HARVEST it is
+  wrong: a crop occupies one cycle, and the months outside it are not part
+  of the yield, so the model rewards a long season over a good one. Measured
+  cost (dev substrate, technique 1): Cairo wheat 0.171 and third of six
+  under the year share, 0.411 and first over the growing season; Luxor
+  0.168/fifth → 0.289/second, above sorghum — and at Luxor both crops' water
+  terms are identically `access` 0.401, so the entire sorghum-beats-wheat
+  result on the Nile is season LENGTH. The proposal is the W15 pattern
+  again: carry two fits, `/12` for `stand` and hearth site quality, a cycle
+  grade for `packageCapacityAt`. It needs no Rust change — `crop_fit` enters
+  Rust only at `package_capacity`, and the stand is TS-side.
+
+  **It is Proposed and not built because three things are missing, and one
+  of them is a trap.** (i) `/season` alone re-breaks W10 — millet's best
+  stand moves from the 7-month Balkhash cell to a 6-month one and the loess
+  falls 3rd → 5th — which is what forces the split rather than a
+  replacement. (ii) **The cycle length is a datum this repo does not have.**
+  `seasonMinimumMonths` is a growing-season MINIMUM by its ledger entry
+  (§09:242) and is not the cycle; the result is acutely sensitive to what
+  replaces it (a 6-month emmer scores 0.0000 at Cairo, a 5-month one tops
+  the table), so **picking the length that makes Egypt come out wheat is a
+  fitted outcome and is forbidden** (second cardinal rule). The length must
+  be sourced as agronomy — days to maturity, per package, with citations —
+  and the map is then whatever it implies. (iii) Perennials have no
+  within-year cycle: under a cycle window highland-roots zeroes at Luxor,
+  Cairo, Central Europe and the Sahel, and tubers on the lower Yangtze and
+  the loess. A crop standing in the ground is graded by the year like the
+  stand; an annual by its cycle. That is a second KIND of package — the
+  same shape of gap QUESTIONS #69 records on the founder-set side — and it
+  is unspecified.
+
+  **Blast radius, so this is not mistaken for tuning.** The naive `/season`
+  lifts global best-package capacity only ×1.082, but changes which package
+  is best in 25.1 % of farmable cells (1641 of 6529). Forecast under a
+  candidate cycle table: south China and the lower Yangtze both go clearly
+  to rice, the loess millet 4th → 2nd (its real fast maturity is absent from
+  the model today, since millet carries wheat's 5-month minimum); Central
+  Europe goes to eastern-seeds and Mexico is still not maize. Not measured
+  at the shipped grid.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

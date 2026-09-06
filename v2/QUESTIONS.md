@@ -3557,3 +3557,105 @@ Review corrections to the M1 build (all validated before merge):
     substrate and the dev W5 SOLVE arm. The tubers range lost eleven
     twelfths of its cells; the third cardinal rule says that needs a
     `v2-long` arm before it is validated. Offered, not run.
+
+70. **Two suspects for the remaining staple misses, dug into: crop switching
+    is not broken, and the fit's division by twelve is — but its fix needs a
+    datum the repo does not have.** (Owner, 2026-09-06: "millet shouldnt be
+    able to outcompete rice in south china, same with sorghum to wheat. is it
+    because we have no seasonality?" → "do we allow crops to OUTCOMPETE on
+    tiles, not just first claims it? is that realistic?" → "dig into both".)
+
+    **Suspect (b), switching — NEGATIVE, and the docstring was right about
+    the wrong grid.** Yes, crops outcompete on occupied ground: `switchPackages`
+    in `src/sim/people/technique.ts` moves farmers of A to a better-yielding B
+    at the adoption rate × contact (B's share of the cell) × the saturated
+    relative advantage. It fires only where `presents[to] > 0` — a crop has to
+    have ARRIVED to be adopted, which is the realistic half — and its rate is
+    ∝ `min(1, other/population)`, so a lone pioneer converts slowly and a
+    co-resident majority fast. Nothing in that is broken. The claim in its
+    docstring, *"rice takes the south a few centuries after it arrives"*, is
+    measurably TRUE at the grid that ships: the W15 arm (`71fa3e03`) has south
+    China farming rice at 1 CE for the first time, and the manifest row
+    `staple:lower-yangtze:solve:target` records the mechanism by name — "rice
+    takes south China by switching". The dev grid's millet is the ARRIVAL
+    RACE: millet's own hearth lights on the lower Yangtze at −7327, the
+    nearest rice ignition is Bengal at −6060, and at 167 km cells rice never
+    crosses; at the shipped grid a Myanmar ignition at −4646 appears and the
+    row clears. Where rice does arrive the contest is not close — rice
+    `yield × fit × (1+gain)` 0.665 against millet 0.580 at the south-China box
+    centre, under today's normalisation. The docstring now says where it was
+    measured. **The dev failure is not evidence about the switch; it is
+    evidence about who got there first, and the third cardinal rule's warning
+    runs in this direction too — a FAILURE at the reference grid can be a
+    granularity artifact exactly as an effect can.**
+
+    **Suspect (a), the `/12` — CONFIRMED a real mechanism defect.**
+    `crop.ts` grades a cell as `fit = fitSum / MONTHS_PER_YEAR`: the share of
+    the YEAR that is favourable. That is the right grade for a wild stand,
+    which gatherers graze continuously — eight good months feed more than
+    five, which is W10's finding and why the `/12` is there. It is the wrong
+    grade for a HARVEST, which is one crop cycle: a farmer does not care how
+    much of the year is spare, only how good the months the crop occupies
+    are. So the model rewards long seasons over good ones, and that is
+    exactly the Nile complaint. Measured, at technique 1: at Cairo wheat is
+    0.171 and THIRD of six under the `/12`, and 0.411 and FIRST when the same
+    months are averaged over the growing season; at Luxor 0.168/fifth becomes
+    0.289/second, above sorghum. At Luxor the two crops' water terms are
+    identical — both moisture bells sit under `access` 0.401, so
+    `max(bell, access)` returns the same number for each — which means the
+    whole sorghum-beats-wheat result on the Nile is warmth × season length,
+    and the season length is the part that should not be counted. It does not
+    explain everything: Mesoamerica is 12-month for every package, so the two
+    normalisations rank it identically (wheat 0.726 > eastern-seeds 0.658 >
+    maize 0.547), and the Indus is not won either.
+
+    **Three measured blockers, which is why this is a proposal and not a
+    commit.** (i) `/season` alone RE-BREAKS W10: millet is the only package
+    the change moves, and it moves the wrong way — best stand 0.1219 at 45.8N
+    77.3E (7-month, Balkhash) becomes 0.2225 at 44.3N 75.8E, with the loess
+    falling 3rd to 5th. So the fit must SPLIT — annual share for the stand,
+    cycle grade for the farmed capacity — which is the W15 pattern again
+    (what physiology takes is in the fit; what husbandry gives is carried
+    apart) and needs no Rust change, since `crop_fit` enters Rust only at
+    `package_capacity` and the stand is TS-side. (ii) **The cycle datum does
+    not exist.** `seasonMinimumMonths` is what its ledger entry
+    (`spec/09-constants-ledger.md:242`) says it is — a growing-season
+    MINIMUM — and repurposing it as the cycle length would repeat W16's own
+    lesson that a name is not the thing it resolves to. The answer is acutely
+    sensitive to the value: a 6-month emmer cycle scores wheat 0.0000 at Cairo
+    (a 5-month season cannot host a 6-month crop) and hands the ranking to
+    eastern-seeds 0.438 > sorghum 0.417; a 5-month cycle tops the table.
+    **Choosing the length that makes Egypt come out wheat is a fitted
+    outcome, banned by the second cardinal rule.** The cycle length has to be
+    sourced as agronomy — days to maturity — with a ledger citation, and then
+    the map is whatever it is. (iii) **Perennials have no within-year cycle
+    at all:** under a cycle window highland-roots (12) zeroes at Luxor, Cairo,
+    Central Europe and the Sahel, and tubers (10) zeroes on the lower Yangtze
+    and the loess. A root crop standing in the ground is graded by the year,
+    like the stand; an annual is graded by its cycle. That is a second kind of
+    package, and #69 has just recorded a first one — the two-kinds problem is
+    now showing up twice.
+
+    **Blast radius, so nobody mistakes this for a tuning nudge.** The naive
+    `/season` lifts global best-package capacity at technique 1 by only
+    ×1.082 (1451.7M → 1571.4M over 133.48M km²), but **changes which package
+    is best in 25.1% of farmable cells** (1641 of 6529): highland-roots→wheat
+    422, highland-roots→new-guinea-roots 232, new-guinea-roots→rice 201,
+    wheat→maize 123. Forecast under a candidate cycle table: south China rice
+    0.665 → 0.986 (clear first), lower Yangtze rice 0.376 → 0.785 (clear
+    first), the loess millet 4th → 2nd — millet's real ~90-day maturity is
+    absent from the model today, since it carries the same 5-month minimum as
+    wheat. Risks in the same forecast: Central Europe goes to eastern-seeds
+    (0.702 vs wheat 0.619), Mexico is still not maize, the Levant control
+    holds (wheat 0.448, first).
+
+    **One secondary finding, unsized.** `farmerRoom` in `migration.ts` prices
+    a migration target by `packageCapacity(target, _dominantPackage[source])`
+    — the SOURCE cell's majority crop. A minority package's farmers therefore
+    advance, or fail to, on the incumbent's room test, which is a real
+    throttle on a challenger crossing territory it has not yet won. Whether
+    it matters at the sizes involved is not measured.
+
+    **Not measured at the shipped grid.** Every number above is dev-grid
+    substrate arithmetic (no history run). The proposal is in
+    `spec/DECISIONS.md` as Proposed, not built.
