@@ -3659,3 +3659,109 @@ Review corrections to the M1 build (all validated before merge):
     **Not measured at the shipped grid.** Every number above is dev-grid
     substrate arithmetic (no history run). The proposal is in
     `spec/DECISIONS.md` as Proposed, not built.
+
+71. **W17 built the fit split, and it measured three things: the window is
+    not `/season`, the cycle length had to be looked up before it could be
+    used, and the fix left a second error of the opposite sign behind it.**
+    (Owner, 2026-09-06, after #70 was explained without jargon: **"ok, look
+    it up and implement then"**.) DECISIONS 38, P19 built, P20 proposed,
+    `spec/handoffs/W17-the-harvest-window.md`.
+
+    **(a) The mechanism is a best-planting-date window, not a division by
+    the season.** `harvestFit = (Σ monthFit over the best consecutive
+    W-month run, wrapping the year) / W`, where `W = min(cycleDays /
+    MEAN_DAYS_PER_MONTH, 12)` and a month the crop cannot use contributes 0
+    to any run containing it. The stand keeps `Σ/12`. The run TAKEN is the
+    one that maximises `Σ (monthFit + monthGain)` rather than `Σ monthFit`,
+    because W15 holds a wetland crop's paddy gain outside the fit on purpose:
+    on fit alone rice's flooded months tie with its dry ones, the search takes
+    the first run it sees, and the paddy falls outside it — the mechanism
+    switched off by its own normalisation. An upland crop's gain is zero in
+    every month, so only a wetland crop's planting date moves. That shape was not
+    chosen for elegance — each of its three properties dissolves one of the
+    blockers #70 recorded as unsolved. A perennial has `W = 12`, so its
+    window IS the year and its grade reduces exactly to `Σ/12`: blocker
+    (iii), the second kind of package, evaporates instead of needing a
+    specification. A five-month season under a six-month cycle now scores
+    five sixths of its quality instead of 0.0000: blocker (ii)'s acute
+    sensitivity — the thing that made picking a length feel like picking an
+    answer — is gone, because the cliff was an artifact of `/season`, not of
+    the idea. And the stand is untouched, so W10 stands: blocker (i) is what
+    forced the split and the split is what was built. A fourth property came
+    free, and it is a change to W14 rather than to W8: a crop is sown AROUND
+    a flood it cannot drain wherever the season leaves room, so the drowning
+    loss is charged only where it cannot be avoided — which is most of why
+    the Nile's wheat doubles in (c).
+
+    **(b) The cycle lengths were looked up, and the rule was stated before
+    the map was seen.** `cycleDays` is FAO-56 (Allen et al. 1998) Table 11's
+    SHORTEST listed total growing period for the crops each package IS:
+    wheat 120 d, rice 150, maize 125, sorghum 130, millet 105, tubers 210,
+    eastern-seeds 90; enset 1460 d (Brandt et al. 1997) and the New Guinea
+    roots 210 (Bourke & Harwood 2009), which Table 11 omits. The rule is
+    structural: the fit's month-admission test (W13) already drops the
+    months a crop cannot use, so a longer regional period — long precisely
+    because the crop overwinters or lies dormant — would put those same
+    months back into the window as zeros and charge the crop twice. **The
+    alternative was measured and it cuts against the outcome a fitted choice
+    would want.** Reading wheat at FAO-56's Winter Wheat 240 d instead:
+    every rice figure on the dev substrate is bit-for-bit identical, and
+    only wheat moves, downward everywhere — Nile 0.384 → 0.284, Central
+    Europe 0.616 → 0.513, Indus 0.414 → 0.344, Ganges 0.362 → 0.217, south
+    China 0.777 → 0.607. The Nile box drops wheat 2nd → 3rd and Central
+    Europe's ties. So the shorter reading is the wheat-friendly one; it was
+    taken on the rule above, and both maps are in the ledger.
+
+    **(c) What it did to the map** (dev substrate, no history; centre cell
+    `yield × fit × (1+gain)` at technique 1, before → after). South China
+    `new-guinea-roots 0.728` → **`rice 0.990`**; the lower Yangtze
+    `new-guinea-roots 0.480` → **`rice 0.787`**; the Ganges `tubers 0.453` →
+    **`rice 0.576`**; Central Europe `highland-roots 0.376` → **`wheat
+    0.616`**; the Sahel sorghum first both times, 0.384 → 0.678; the loess
+    `highland-roots 0.414` → `maize 0.691 > new-guinea-roots 0.597 > millet
+    0.583` (maize is not there in −6000, so the box's history still reads
+    millet). The Nile's wheat doubles, 0.187 → 0.384, and is still second at
+    the centre and third by box sum. Blast radius: **2,828 of 6,529 farmable
+    cells change best package (43.3 %)**, 1,619 of 6,121 counting annuals
+    alone (26.4 %); world best-package capacity at technique 1 ×1.260. The
+    package that loses the top slot most often is highland-roots (1,749
+    cells) — the perennial is the only package whose grade does not move, so
+    everything else rising demotes it, which is the mechanism working, not a
+    bug.
+
+    **(d) What it did to history** (dev W5 SOLVE arm). Four acknowledged
+    misses cleared and their manifest rows were deleted: `arrival:nile`
+    (−3099 and the only LATE row on the arm → −6620, in window),
+    `staple:mesoamerica` (eastern-seeds → **maize**), `staple:south-china`
+    and `staple:lower-yangtze` (both millet → **rice**, by switching — the
+    outcome #70 predicted and could not deliver). The staple table goes 5/10
+    to 8/10 at dev. **One miss was added rather than tuned away:**
+    `hearth-outside:millet:solve:dev`, millet lighting at 45.8°N 77.3°E in
+    −4625, inside its wild range and outside the north-China box; the stand
+    field is bit-for-bit unchanged, so this is farmed capacity behind the
+    front, and it is the same spread-not-rank problem the shipped grid has
+    carried since 2026-09-05. The Indus swaps incumbent (rice → millet) and
+    stays a miss; the Nile stays sorghum on a near-tie (box sorghum 0.47M,
+    wheat 0.45M, millet 0.41M). Every M3b population row worsens against its
+    band (−5000 69.1 → 98.7M; 1 CE 1,160 → 1,503M) because the ceiling that
+    curve saturates against is farmed capacity, and the front speeds up
+    (1.420 → 1.447 km/yr) because the country behind it is denser.
+
+    **(e) The finding this build produced, which is NOT built.** The gain is
+    strongly latitude-dependent — by |lat| band ×1.086 (0–15°), ×1.250,
+    ×1.556, ×1.682, ×1.997 (60–90°), with the mean season of the best
+    package falling 11.8 → 5.4 months across those bands. The window credits
+    a short season with one whole harvest, which is right, and a year-round
+    season with one harvest, which is not. Read honestly, `Σ/12` was an
+    UNCAPPED multi-cropping model with every cycle implicitly twelve months
+    and W17 is exactly one harvest everywhere; the truth is
+    `min(season / cycle, C)` and **C is a datum this repo does not have**.
+    It is also precisely the term that would decide the two staple rows
+    still missing — the Nile's and the Indus's real years take a winter crop
+    AND a summer one — which is exactly why choosing it now would be a
+    fitted outcome. Recorded as **P20, Proposed**, on the same discipline
+    that kept `cycleDays` unbuilt until it was sourced.
+
+    **Not measured at the shipped grid.** A 43 % re-grading of the farmed
+    map is the blast radius the third cardinal rule most wants measured at
+    the grid that ships, and the `v2-long` arm is on request, not run.

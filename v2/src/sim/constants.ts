@@ -92,6 +92,7 @@ export const BYTE_SHIFT_3 = 24; // spec/09-constants-ledger.md §Units — M0 RN
 // M1 calendar and real-unit travel constants. Proposed rows are appended to
 // spec/09-constants-ledger.md by the M1 change.
 export const MONTHS_PER_YEAR = 12; // spec/09-constants-ledger.md §M1 proposed — monthly climate cadence
+export const MEAN_DAYS_PER_MONTH = 30.436875; // spec/09-constants-ledger.md §W17 — the Gregorian mean year (365.2425 d) over twelve, to read a crop cycle in days as a count of the climate's months
 export const EARTH_CIRCUMFERENCE_KM = 40075; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
 export const EARTH_MERIDIONAL_KM = 20004; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
 export const EARTH_DEGREES = 360; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy

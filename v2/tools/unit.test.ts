@@ -21,6 +21,7 @@ import {
 } from "../src/sim/scheduler";
 import {
   HORIZON_OPENING_YEAR,
+  MEAN_DAYS_PER_MONTH,
   MONTHS_PER_YEAR,
   PEOPLE_ADOPTION_RATE_PER_YEAR,
   PEOPLE_CHANNEL_STRIP_KM,
@@ -694,14 +695,19 @@ async function main(): Promise<void> {
     };
   }
 
-  // W14, corrected W15: the paddy. The same flood on the same ground raises
-  // a FARMED wetland crop by the package's response and lowers an upland
-  // one's fit; a flood in months a crop is not growing is nothing to it; a
-  // stream beside a wetland crop is a paddy and beside an upland crop is
-  // nothing; ground with no standing water is unchanged for every package.
-  // The paddy is husbandry (W15), so it is worth nothing to a first
-  // cultivator and nothing to the wild stand, while the drowning is
-  // physiology and is in the fit at every regime.
+  // W14, corrected W15, graded over the cycle by W17: the paddy. The same
+  // flood on the same ground raises a FARMED wetland crop by the package's
+  // response and lowers an upland one's fit; a flood in months a crop is not
+  // growing is nothing to it; a stream beside a wetland crop is a paddy and
+  // beside an upland crop is nothing; ground with no standing water is
+  // unchanged for every package. The paddy is husbandry (W15), so it is worth
+  // nothing to a first cultivator and nothing to the wild stand, while the
+  // drowning is physiology and is in the fit at every regime.
+  // W17 grades all of it over the run the crop occupies rather than the year,
+  // which is what decides WHEN it is sown: a wetland crop moves its date onto
+  // the flood, and an upland crop moves its date off it wherever the season
+  // leaves room. The last two cases are the year's other two shapes — a
+  // season shorter than the cycle, and a perennial that outlasts the year.
   {
     const riceIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "rice");
     const wheatIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
@@ -715,11 +721,18 @@ async function main(): Promise<void> {
     const control = row * 240 + 120;
     const head = row * 240 + 130;
     const bank = head + 1;
+    // Warm enough for wheat in five months only, three of them under the
+    // flood: ground where the water cannot be planted around.
+    const wetSeason = row * 240 + 140;
+    // Dry ground, one crop's season five months long and the other's whole,
+    // for the two normalisations that do not involve water at all.
+    const shortYear = row * 240 + 150;
+    const longYear = row * 240 + 160;
     const pulseMonths = [6, 7, 8];
     const build = (pulse: boolean, stream: boolean, withFlow = true): PeopleWorld => {
       const base = peopleFixture();
       const flow = new Float32Array(base.N * MONTHS_PER_YEAR).fill(1);
-      for (const cell of [flooded, winterFlood]) {
+      for (const cell of [flooded, winterFlood, wetSeason]) {
         base.floodplain[cell] = 0.5;
         if (pulse) for (const month of pulseMonths) flow[cell * MONTHS_PER_YEAR + month] = 3;
       }
@@ -729,6 +742,12 @@ async function main(): Promise<void> {
         base.climate.temperature[control * MONTHS_PER_YEAR + month] = 0.8;
         base.climate.temperature[bank * MONTHS_PER_YEAR + month] = 0.86;
         base.climate.moisture[bank * MONTHS_PER_YEAR + month] = 1;
+        base.climate.temperature[wetSeason * MONTHS_PER_YEAR + month] = month >= 5 && month <= 9 ? 0.73 : 0.2;
+        const rooting = month >= 2 && month <= 6;
+        base.climate.temperature[shortYear * MONTHS_PER_YEAR + month] = rooting ? 0.78 : 0.2;
+        base.climate.moisture[shortYear * MONTHS_PER_YEAR + month] = 0.7;
+        base.climate.temperature[longYear * MONTHS_PER_YEAR + month] = 0.78;
+        base.climate.moisture[longYear * MONTHS_PER_YEAR + month] = 0.7;
       }
       base.floodplain[control] = 0.3;
       base.rivers.direction[head] = 0;
@@ -750,13 +769,38 @@ async function main(): Promise<void> {
         * (1 + (world._standingGain[packageIndex]?.[packed] ?? 0));
     };
     const strip = Math.min(1, PEOPLE_CHANNEL_STRIP_KM / Math.sqrt(cellAreasKm2(240, 120)[bank] ?? 0));
-    // Three flood months of twelve at a flow twice the year's mean over a
-    // plain that is half the cell: the plain is under water, so the factor
-    // is 1 + response × 0.5 in those months and 1 in the rest.
-    const flooding3 = (response: number): number => (9 + 3 * (1 + response * 0.5)) / 12;
+    // The cycle each package occupies the ground for, in months of the
+    // climate — the run a harvest is graded over (W17).
+    const cycleMonths = (packageIndex: number): number =>
+      Math.min((CROP_PACKAGES[packageIndex]?.cycleDays ?? 0) / MEAN_DAYS_PER_MONTH, MONTHS_PER_YEAR);
+    // Three flood months at a flow twice the year's mean over a plain that is
+    // half the cell: the plain is under water in those three, so a wetland
+    // crop gains response × 0.5 in each of them. The gain is charged to the
+    // run the crop is in the ground for, not to the year — rice sows into the
+    // flood, so all three months fall inside its 4.93-month cycle.
+    const paddyOver = (response: number, packageIndex: number): number =>
+      1 + (pulseMonths.length * 0.5 * response) / cycleMonths(packageIndex);
     assert.ok(fit(still, riceIndex, flooded) > 0 && fit(still, wheatIndex, flooded) > 0, "both packages grow on the still plain");
-    assert.ok(Math.abs(paddied(flooding, riceIndex, flooded) / fit(still, riceIndex, flooded) - flooding3(riceResponse)) < 1e-9, "the flood is the rice farmer's paddy");
-    assert.ok(Math.abs(fit(flooding, wheatIndex, flooded) / fit(still, wheatIndex, flooded) - flooding3(wheatResponse)) < 1e-9, "the same flood drowns the wheat");
+    assert.ok(Math.abs(paddied(flooding, riceIndex, flooded) / fit(still, riceIndex, flooded) - paddyOver(riceResponse, riceIndex)) < 1e-9, "the flood is the rice farmer's paddy");
+    // And the same flood does not drown the wheat HERE, because here it does
+    // not have to stand in it: nine of the twelve months are dry and its
+    // cycle is 3.94 of them, so it is sown when the water is off the field.
+    // Grading the year whole charged it for a flood it was not standing in.
+    assert.equal(fit(flooding, wheatIndex, flooded), fit(still, wheatIndex, flooded), "wheat is sown when the water is off the field");
+    assert.equal(
+      packageCapacityAt(flooding, flooded, wheatIndex, 0),
+      packageCapacityAt(still, flooded, wheatIndex, 0),
+      "so a flood it can plant around costs it nothing at any regime",
+    );
+    // Where it cannot be planted around, the drowning is charged in full.
+    // Five months are warm enough for wheat on this ground and the flood
+    // takes three of them, so the best run it can sow is one dry month, two
+    // under water, and the tail of a third.
+    const drowned = 1 + wheatResponse * 0.5;
+    const wheatTail = cycleMonths(wheatIndex) - Math.floor(cycleMonths(wheatIndex));
+    const boxedIn = (1 + 2 * drowned + wheatTail * drowned) / cycleMonths(wheatIndex);
+    assert.ok(fit(still, wheatIndex, wetSeason) > 0, "five months is wheat's season minimum, so it grows there");
+    assert.ok(Math.abs(fit(flooding, wheatIndex, wetSeason) / fit(still, wheatIndex, wetSeason) - boxedIn) < 1e-9, "a flood inside the only season there is drowns the wheat");
     // W15: the paddy is a built thing. It is worth nothing to the crop
     // itself, so the fit is untouched, and nothing to a first cultivator or
     // a wild stand, so the technique-0 capacity every stand and hearth
@@ -771,7 +815,7 @@ async function main(): Promise<void> {
     );
     assert.ok(packageCapacityAt(flooding, flooded, riceIndex, 1) > packageCapacityAt(still, flooded, riceIndex, 1) * 1.1,
       "and the same ground worked at the full regime is the paddy");
-    assert.ok(packageCapacityAt(flooding, flooded, wheatIndex, 0) < packageCapacityAt(still, flooded, wheatIndex, 0),
+    assert.ok(packageCapacityAt(flooding, wetSeason, wheatIndex, 0) < packageCapacityAt(still, wetSeason, wheatIndex, 0),
       "drowning is physiology: it costs the first cultivator too");
     assert.ok(fit(still, wheatIndex, winterFlood) > 0);
     assert.equal(fit(flooding, wheatIndex, winterFlood), fit(still, wheatIndex, winterFlood), "a flood in months the crop is not growing is nothing to it");
@@ -786,6 +830,26 @@ async function main(): Promise<void> {
     assert.ok(Math.abs(paddied(streaming, riceIndex, bank) / fit(still, riceIndex, bank) - (1 + riceResponse * strip)) < 1e-9, "a stream beside rice keeps its strip under water");
     assert.equal(fit(streaming, riceIndex, bank), fit(still, riceIndex, bank), "the stream is a paddy only once someone leads it onto the field");
     assert.equal(fit(streaming, wheatIndex, bank), fit(still, wheatIndex, bank), "a stream beside wheat is nothing to it: only the flood it cannot drain hurts");
+    // W17's other two shapes of year, on dry ground. A season shorter than
+    // the cycle is a crop short of TIME: its harvest falls in proportion
+    // rather than to nothing, so five months of a 6.9-month cycle is 5/6.9 of
+    // the same ground worked all year. A perennial outlasts the year it has,
+    // so its run IS the year and it is graded by the whole of it — which is
+    // exactly the annual share the wild stand reads, and is why W17 leaves
+    // the stand untouched.
+    const tuberIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "tubers");
+    const perennialIndex = CROP_PACKAGES.findIndex((pkg) => pkg.id === "highland-roots");
+    assert.ok(tuberIndex >= 0 && perennialIndex >= 0);
+    assert.ok(cycleMonths(tuberIndex) > 1 && cycleMonths(tuberIndex) < MONTHS_PER_YEAR, "a root crop's cycle is months");
+    assert.equal(cycleMonths(perennialIndex), MONTHS_PER_YEAR, "enset stands for years, and is graded by the year it gets");
+    const rootSeason = 5;
+    for (const packageIndex of [tuberIndex, perennialIndex]) {
+      const whole = fit(still, packageIndex, longYear);
+      const partial = fit(still, packageIndex, shortYear);
+      assert.ok(whole > 0 && partial > 0, "both years grow the crop");
+      assert.ok(Math.abs(partial / whole - rootSeason / cycleMonths(packageIndex)) < 1e-9,
+        "a short season is a short harvest, not no harvest");
+    }
   }
 
   console.log(JSON.stringify({

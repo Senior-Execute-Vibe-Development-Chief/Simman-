@@ -8,6 +8,15 @@ export interface CropPackage {
   readonly mTol: number;
   readonly baseTemperature: number;
   readonly seasonMinimumMonths: number;
+  /**
+   * W17: the crop's cycle, sowing to harvest, in days — how long it occupies the ground, which is
+   * the run of months whose weather sets the harvest. NOT `seasonMinimumMonths`, which is the
+   * minimum favourable season the crop needs to be grown here at all. FAO-56 Table 11's shortest
+   * listed total growing period for the package's own crops; enset and the New Guinea roots, which
+   * that table omits, from the named literature. Longer than a year means a perennial, and is
+   * clamped to the year it actually experiences.
+   */
+  readonly cycleDays: number;
   readonly storability: number;
   readonly yield: number;
   /**

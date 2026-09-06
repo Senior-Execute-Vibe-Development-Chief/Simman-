@@ -1,5 +1,6 @@
 import {
   MONTHS_PER_YEAR,
+  MEAN_DAYS_PER_MONTH,
   MATH_NEGATIVE_ONE,
   PEOPLE_FARM_CAPACITY_PER_KM2,
   PEOPLE_FARM_TECHNIQUE_BASE,
@@ -9,6 +10,7 @@ import {
   PEOPLE_WILD_STAND_SHARE,
 } from "../constants";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
+import type { CropPackage } from "../../ported/worldgen/cropPackages.js";
 import { occurrenceTaxaOf } from "../../ported/worldgen/cropOccurrenceData.js";
 import { deriveWildRange, fitWildEnvelope } from "./wildRange";
 import { channelStripShare } from "./habitability";
@@ -16,6 +18,81 @@ import { dpow } from "../dmath";
 import type { PeopleWorld } from "./types";
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+/**
+ * The cycle a package's crop occupies the ground for, as a count of the
+ * climate's months and never more than the year (W17). A crop that stands in
+ * the ground for longer than a year — enset, at four to eight of them — is
+ * graded by the whole year, which is what a perennial actually experiences,
+ * so the clamp is the mechanism rather than an exception for root crops.
+ */
+function cycleMonthsOf(pkg: CropPackage): number {
+  return Math.min((pkg.cycleDays ?? MEAN_DAYS_PER_MONTH) / MEAN_DAYS_PER_MONTH, MONTHS_PER_YEAR);
+}
+
+/**
+ * A month of the year's ring, for a run that starts late in one year and ends
+ * in the next. Neither a start month nor a cycle exceeds the year, so the ring
+ * closes with a single subtraction and no modulus is needed.
+ */
+function wrapMonth(month: number): number {
+  return month >= MONTHS_PER_YEAR ? month - MONTHS_PER_YEAR : month;
+}
+
+/**
+ * The best planting date (W17): the crop occupies the ground for its own
+ * cycle, so of the twelve months it could start in, it takes the run that
+ * grades highest. Months inside the run that the crop cannot use contribute
+ * nothing — a season shorter than the cycle is a crop short of time, and its
+ * harvest is short in proportion rather than absent — and a run wraps the
+ * turn of the year, because a winter cereal is sown in one year and reaped in
+ * the next.
+ *
+ * Returns the run's fit and paddy-gain sums, both weighted by the share of
+ * each month the cycle covers, so that a cycle of 3.94 months counts the
+ * fourth month at 0.94 and there is no cliff at a whole number of them.
+ *
+ * The run is chosen by the whole harvest the worked field yields — its fit
+ * and its standing-water gain together — because that is what a planting
+ * date is chosen for. A crop that drowns carries no gain at all (W15 keeps
+ * only the positive response there), so an upland crop's date is set by fit
+ * alone and is untouched by this; a wetland crop is the only kind that moves
+ * its date onto the flood, which is what a paddy is. Grading the run by fit
+ * alone hid the paddy from the one choice it exists to drive: rice's monthly
+ * fit is the same wet or dry, so the flooded months tied with every other and
+ * the gain was left outside the run.
+ */
+function bestCycleWindow(
+  monthFit: Float64Array,
+  monthGain: Float64Array,
+  cycleMonths: number,
+): { fit: number; gain: number } {
+  const whole = Math.floor(cycleMonths);
+  const part = cycleMonths - whole;
+  let bestHarvest = 0;
+  let bestFit = 0;
+  let bestGain = 0;
+  for (let start = 0; start < MONTHS_PER_YEAR; start++) {
+    let fit = 0;
+    let gain = 0;
+    for (let offset = 0; offset < whole; offset++) {
+      const month = wrapMonth(start + offset);
+      fit += monthFit[month] ?? 0;
+      gain += monthGain[month] ?? 0;
+    }
+    if (part > 0) {
+      const month = wrapMonth(start + whole);
+      fit += (monthFit[month] ?? 0) * part;
+      gain += (monthGain[month] ?? 0) * part;
+    }
+    if (fit + gain > bestHarvest) {
+      bestHarvest = fit + gain;
+      bestFit = fit;
+      bestGain = gain;
+    }
+  }
+  return { fit: bestFit, gain: bestGain };
+}
 
 /**
  * The farmed capacity of package p in a cell: persons per km² the land
@@ -148,6 +225,10 @@ export function initializeCropFields(world: PeopleWorld): void {
     const fit = new Float64Array(landCount);
     const gain = new Float64Array(landCount);
     const stand = new Float64Array(landCount);
+    // The twelve monthly grades, kept so the stand and the harvest can read
+    // the same year two ways; reused across cells rather than reallocated.
+    const monthFit = new Float64Array(MONTHS_PER_YEAR);
+    const monthGain = new Float64Array(MONTHS_PER_YEAR);
     const listed: number[] = [];
     for (let packed = 0; packed < landCount; packed++) {
       const cell = world._landCells[packed] ?? 0;
@@ -155,7 +236,8 @@ export function initializeCropFields(world: PeopleWorld): void {
       if (native[packed] === 1) listed.push(packed);
       let season = 0;
       let fitSum = 0;
-      let gainSum = 0;
+      monthFit.fill(0);
+      monthGain.fill(0);
       const access = world._waterAccess[cell] ?? 0;
       const surface = world._surfaceAccess[cell] ?? 0;
       // The standing water (W14): the floodplain under the flood, and the
@@ -212,21 +294,35 @@ export function initializeCropFields(world: PeopleWorld): void {
           // levelled and held behind a bund, not a swamp. So the gain is
           // carried apart and paid out with the technique regime, and a wild
           // stand of rice in a marsh is a wild stand rather than a paddy.
-          fitSum += base * (1 + Math.min(0, response) * standing);
-          gainSum += base * Math.max(0, response) * standing;
+          monthFit[month] = base * (1 + Math.min(0, response) * standing);
+          monthGain[month] = base * Math.max(0, response) * standing;
+          fitSum += monthFit[month] ?? 0;
         }
       }
       grow[packed] = season >= (pkg.seasonMinimumMonths ?? 1) ? 1 : 0;
-      // Over the YEAR, not over the qualifying months (W10): a crop's yield
-      // is the total favourable growing time, so eight good months feed more
-      // than five. Averaging over qualifying months alone scored a short
-      // Siberian summer as highly as a long Chinese one, which is what kept
-      // millet's best ground on the west Siberian plain.
-      fit[packed] = grow[packed] === 1 ? fitSum / MONTHS_PER_YEAR : 0;
+      // THE FIT SPLITS IN TWO, because its two readers ask opposite questions
+      // (W17). Both are the same twelve monthly grades, normalised differently.
+      //
+      // The WILD STAND is grazed, not reaped: gatherers take from it whenever
+      // it is giving, so what feeds them is the total favourable growing time
+      // over the YEAR, and eight good months feed more than five. That is
+      // W10's finding and it stands — averaging over qualifying months alone
+      // scored a short Siberian summer as highly as a long Chinese one, which
+      // is what kept millet's best ground on the west Siberian plain.
+      const standFit = grow[packed] === 1 ? fitSum / MONTHS_PER_YEAR : 0;
+      // A HARVEST is one crop cycle. A farmer sows once and reaps once, so
+      // what sets the harvest is how good the months the crop is IN THE GROUND
+      // are — the months outside its cycle are not part of it, and counting
+      // them rewards a long season over a good one. That is why a five-month
+      // Egyptian winter, excellent while it lasts, graded below a Sudanese
+      // year that is merely adequate for twelve.
+      const window = bestCycleWindow(monthFit, monthGain, cycleMonthsOf(pkg));
+      fit[packed] = grow[packed] === 1 ? window.fit / cycleMonthsOf(pkg) : 0;
       // The paddy relative to the fit it multiplies, so that capacity at the
       // full technique regime is exactly the fit the flooded months earn and
-      // at the first cultivator's regime is exactly the unwatered one.
-      gain[packed] = grow[packed] === 1 && fitSum > 0 ? gainSum / fitSum : 0;
+      // at the first cultivator's regime is exactly the unwatered one. Over
+      // the same run of months as the fit, or the two would not divide out.
+      gain[packed] = grow[packed] === 1 && window.fit > 0 ? window.gain / window.fit : 0;
       // Stand richness (W9): inside the derived range, where the crop can
       // grow, the fitted envelope graded by the habitat that varies at belt
       // scale — the soil and the terrain. A belt then has a core and edges
@@ -241,7 +337,7 @@ export function initializeCropFields(world: PeopleWorld): void {
         // saying so (W9: green foxtail's Siberian records otherwise lit
         // fifteen hearths across the taiga).
         stand[packed] = (bells[packed] ?? 0)
-          * (fit[packed] ?? 0)
+          * standFit
           * clamp01(world.substrate.fertility[cell] ?? 0)
           * (world._reliefMult[cell] ?? 0);
       }
