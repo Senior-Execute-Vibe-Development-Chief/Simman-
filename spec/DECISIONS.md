@@ -1314,6 +1314,92 @@ lawyered.
     that gap is not measurable without a hydrography layer and is not claimed.
     QUESTIONS #73, `spec/handoffs/W19-the-land-a-cell-has.md`.
 
+41. **W20a landed: the map is drawn on a plane finer than the sim's grid.**
+    (Owner, 2026-09-06, on seeing that W19a's sub-cell islands were invisible:
+    *"i am not seeing these islands on the map?"* → *"hold on our sim actually
+    only has that many pixels? we are going to need icons and stuff that is
+    finer than the grid at some point"* → *"ok, IN THE SIM, can we make the
+    pixel density higher, but keep the cell count the same? would that effect
+    performance"* → **"go"** on 3600×1800, everything else left alone. This
+    **replaces W19b**, which stays unbuilt.)
+
+    The bug was in one declaration: the frame buffer was
+    `new ImageData(substrate.width, substrate.height)`, so **the map had
+    exactly as many pixels as the sim had cells** and the finest thing the
+    world could ever show was a whole cell — ~22 km at the shipped grid,
+    ~166 km at the reference grid. Not because the geometry was unknown
+    (W19a had just baked a plane that knows it) but because nothing had asked
+    the frame to be bigger.
+
+    There are now **three planes answering three different questions**: the
+    land/sea mask says WHETHER a cell holds ground, `landFraction` (W19) says
+    HOW MUCH, and `landShape` (W20) says WHERE inside it. The third is
+    deliberately **not** sampled down to the sim grid — sampling it down
+    destroys the only thing it carries — so it keeps its own resolution and
+    the sim reads it through a block.
+
+    **3600×1800 is not an aesthetic choice, it is the seam.** It is a whole
+    multiple of BOTH sim grids on BOTH axes (block 15 at dev, block 2 at
+    target), so every sim cell covers a *whole* block of plane cells and no
+    plane cell is ever split between two sim cells — which is what makes a sum
+    over a block exact rather than approximate. `buildSubstrate` asserts it and
+    **throws** on a grid preset that does not divide the plane, rather than
+    silently producing a slightly-wrong aggregate; `landShapeBlock` rides on
+    the substrate so every future reader sums over the same block. That
+    invariant is the deliverable — the owner named the risk himself ("a bad
+    aggregation fails silently") and this is the answer to it.
+
+    The bake takes the same 1-arc-minute ETOPO1 grid W19a and the river bake
+    already read (**no new download**) and applies one rule with no place name
+    in it: a cell is land when MORE THAN HALF its ~36 samples stand above sea
+    level — the same land test, by the same majority rule, as the elevation
+    bake's own mask. Run-length encoded it is **40,975 bytes**, against 791 KB
+    bit-packed — 20×, because the bit sequence is dominated by long runs of
+    ocean basin and continental interior. The bake asserts its decoder
+    reproduces the plane byte for byte before writing the module.
+
+    **The render rule, chosen from three:** *the map draws the world the SIM
+    has, at the plane's resolution; it never invents ground the sim does not
+    stand on; and a sim land cell whose whole block the plane finds under water
+    keeps its colour throughout, so nothing the sim holds is erased.* The
+    plane-wins rule was rejected because it invents ground with no colour to
+    draw it in; the plane-loses rule is the staircase again at a finer pitch.
+    The chosen rule needs **no branch at draw time** — two precomputed words
+    per sim cell and a `planeBlank` bit, because `pixelColor` already returns
+    the water tone for a sim sea cell. It is not hypothetical: at the shipped
+    grid **4,172 sim land cells (0.75%) hold no plane land at all** and would
+    have vanished from the map; at dev, where a block is 225 cells rather than
+    4, the same count is **9**.
+
+    **The renderer had to get ~7× faster to afford it, and did.** Drawn the old
+    byte-wise way the 6.48M-pixel frame measured 234 ms resample + 103 ms fill
+    — a 2.5× regression at the shipped grid. The loops are overhead-bound, not
+    bandwidth-bound: rewritten as one 32-bit word per pixel (with the machine's
+    byte order detected, not assumed) the same work measures **32 ms + 34 ms**,
+    roughly what sim-resolution byte-wise drawing cost before. The projection
+    table build stays ~898 ms — it is `unproject` per pixel, paid once at
+    startup and once per projection switch, never per frame. That is the honest
+    cost of the wave and it is recorded, not hidden.
+
+    **Nothing else moved, and that is the verification.** No constant, no
+    metric, no law, no kernel array, no persisted field reads the plane; every
+    hash in the repo is byte-identical across the change. Three independent
+    checks say the bake is true: cos(latitude)-weighted land area **147.8 Mkm²
+    / 29.0% of the sphere** against Earth's 148.9 / 29.2%; the decoded land
+    count through the substrate is **2,195,469** at both grids, exactly the
+    bake's own figure; and measured blind, Iceland comes out 100,800 km²
+    (real 103,000) and Malta 400 km² (real 316), while Iki at 138 km² is
+    exactly one cell — the honest statement of the new resolution limit.
+
+    It does **not** subsume `landFraction`: at block 2 the plane expresses 5
+    levels of cover against the cover plane's 256, so the cover plane stays and
+    remains what the capacity laws multiply by. The two agree where they can —
+    at the shipped grid the plane's summed share is 548,867 cells against the
+    cover plane's 549,184, 0.06% apart. It does not change the land mask's
+    topology; no cell became land or sea. And it is not a UI feature yet — it
+    makes glyphs, borders and markers *inside* a cell possible, and builds
+    none of them. `spec/handoffs/W20-the-shape-of-the-land.md`.
+
 
 ## Proposed — working design, awaiting explicit ratification
 

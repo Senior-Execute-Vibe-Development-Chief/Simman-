@@ -25,6 +25,7 @@ import { MATH_PI as PI } from "../../sim/constants.ts";
 import { initNoise, mkRng, fbm, noise2D, warp, ridged, worley } from "./worldgenUtils.js";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";
+import { LAND_SHAPE, LAND_SHAPE_W, LAND_SHAPE_H, decodeLandShape } from "./landShapeData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture, terrainShelter } from "./moistureSolver.js";
@@ -163,10 +164,15 @@ let realClimateUsed=false;
 let tecPlates=null,tecWindX=null,tecWindY=null;
 let straitWidthKm=null;   // W18: set by the strait carve on the presets that carve; null elsewhere
 let landFraction=null;    // W19: the share of each cell standing above sea level, from the 1-arc-minute grid; null on presets with no real bathymetry
+// W20: WHERE that ground is, on a fixed grid finer than any the sim steps —
+// read-only geometry the world is drawn from and measured against, never a
+// field that is stepped, so it keeps its own resolution instead of being
+// sampled down to this one. Null on presets with no real bathymetry.
+let landShape=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
-const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);
+const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);landShape=decodeLandShape(LAND_SHAPE);
 // Pass 1: elevation + temperature
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
@@ -221,7 +227,7 @@ tecWindX=earthWind.windX;tecWindY=earthWind.windY;
 // ── Earth (Sim) mode: real heightmap + full wind-based climate simulation ──
 // Uses same elevation as Earth mode but applies wind-advected moisture/temperature
 const eData=decodeEarth(EARTH_ELEV);
-const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);
+const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);landShape=decodeLandShape(LAND_SHAPE);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
 landFraction[i]=sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255;// W19: cover, not height — a coast cuts through a cell and the bit above rounds that away
@@ -938,4 +944,4 @@ const em=elevation[i]>0?moisture[i]/demand(temperature[i]):1;
 const aridBoost=3.9*Math.max(0,Math.min(1,1-em))*Math.min(1,lat/0.22);   // °C
 tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
-return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,straitWidthKm,landFraction,_seed:seed};}
+return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,straitWidthKm,landFraction,landShape,landShapeWidth:LAND_SHAPE_W,landShapeHeight:LAND_SHAPE_H,_seed:seed};}

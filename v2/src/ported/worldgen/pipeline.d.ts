@@ -20,6 +20,16 @@ export interface PortedWorld {
    * 1-arc-minute grid (W19). The land/sea bit says WHETHER there is ground
    * here; this says HOW MUCH. Null on presets that carry no cover plane. */
   readonly landFraction: Float32Array | null;
+  /** WHERE that ground is: one byte per cell, 1 = land, on a fixed grid finer
+   * than any the sim steps (W20). Read-only geometry — the coastline the world
+   * is drawn from and measured against, never a field that is stepped — so it
+   * keeps its own resolution rather than being sampled down to the world's.
+   * Null on presets that carry no measured fine geometry. */
+  readonly landShape: Uint8Array | null;
+  /** The shape plane's own dimensions, a whole multiple of every sim grid on
+   * each axis, so a cell of any grid covers a whole block of these. */
+  readonly landShapeWidth: number;
+  readonly landShapeHeight: number;
   readonly _seed: number;
   readonly rivers?: unknown;
   readonly deposits?: Record<string, Float32Array>;

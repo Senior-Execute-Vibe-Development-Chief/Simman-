@@ -584,6 +584,11 @@ function referenceSubstrate(): Substrate {
     preset: "reference-terrain",
     straitWidthKm: new Float32Array(N),
     landFraction: new Float32Array(N).fill(1),
+    // No geometry finer than the fixture itself: its own mask, block of one.
+    landShape: new Uint8Array(landMask),
+    landShapeWidth: REF_WIDTH,
+    landShapeHeight: REF_HEIGHT,
+    landShapeBlock: 1,
     elevation,
     landMask,
     climate: { temperature, moisture },

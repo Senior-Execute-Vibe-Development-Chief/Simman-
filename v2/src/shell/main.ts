@@ -58,10 +58,47 @@ if (!context) throw new Error("Canvas is unavailable.");
 
 const substrate = buildSubstrate(M0_DEFAULT_SEED, { preset: "earth_sim" }, GRID);
 const travel = await createTravelEngine(substrate);
-// Colours are computed per SIM cell into `frame` (grid-sized), then sampled
-// through the projection table into `projected` (map-sized); CSS scales the
-// display. The projection is display only — the sim grid is lat-lon.
-const frame = new ImageData(substrate.width, substrate.height);
+// The map is drawn on the LAND SHAPE PLANE, not on the sim grid: colours are
+// computed per sim cell (a cell is one colour — it is one place), and the plane
+// decides, at ~11 km, where that colour stops and the sea begins. So a coast,
+// a strait or an island inside a cell has a shape on the map even though the
+// sim holds the cell whole. The frame is plane-sized, sampled through the
+// projection table into `projected` (map-sized); CSS scales the display.
+const PLANE_W = substrate.landShapeWidth;
+const PLANE_H = substrate.landShapeHeight;
+const PLANE_BLOCK = substrate.landShapeBlock;
+const frame = new ImageData(PLANE_W, PLANE_H);
+// One 32-bit word per pixel instead of four byte writes: the frame and the
+// reprojection are the two loops that run every redraw, and at plane size that
+// is 6.5M pixels each. Byte order is the machine's, so pack to match it.
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+function pack(colour: readonly [number, number, number]): number {
+  const [red, green, blue] = colour;
+  return LITTLE_ENDIAN
+    ? ((255 << 24) | (blue << 16) | (green << 8) | red) >>> 0
+    : ((red << 24) | (green << 16) | (blue << 8) | 255) >>> 0;
+}
+const frameWords = new Uint32Array(frame.data.buffer);
+// Per sim cell, the word a pixel of its block takes where the plane finds land
+// and where it finds water. A cell the sim calls sea is its water tone either
+// way — the map draws the world the SIM has, at the plane's resolution; it
+// never invents ground the sim does not stand on. A cell the sim calls land
+// whose whole block the plane finds under water keeps its colour on both, so
+// nothing the sim holds is erased by a plane too coarse to see it.
+const shapeLand = new Uint32Array(substrate.N);
+const shapeWater = new Uint32Array(substrate.N);
+/** True where the plane finds no land at all inside a cell's block. */
+const planeBlank = (() => {
+  const blank = new Uint8Array(substrate.N).fill(1);
+  for (let y = 0; y < PLANE_H; y++) {
+    const row = ((y / PLANE_BLOCK) | 0) * substrate.width;
+    const rowStart = y * PLANE_W;
+    for (let x = 0; x < PLANE_W; x++) {
+      if (substrate.landShape[rowStart + x]) blank[row + ((x / PLANE_BLOCK) | 0)] = 0;
+    }
+  }
+  return blank;
+})();
 const base = document.createElement("canvas");
 const baseContext = base.getContext("2d")!;
 let baseKey = "";
@@ -80,7 +117,7 @@ let centreDegrees = 0;
 /** The central meridian in radians, snapped to the whole-cell shift the table uses. */
 function centralMeridian(): number {
   const shift = table.shiftFor(degreesToRadians(centreDegrees));
-  return (shift / substrate.width) * 2 * Math.PI;
+  return (shift / PLANE_W) * 2 * Math.PI;
 }
 
 function formatCentre(): string {
@@ -97,7 +134,7 @@ function applyCentre(): void {
 }
 
 function applyProjection(name: ProjectionName): void {
-  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height);
+  table = buildProjectionTable(PROJECTIONS[name], PLANE_W, PLANE_H);
   if (!projected || projected.width !== table.width || projected.height !== table.height) {
     projected = new ImageData(table.width, table.height);
     canvas.width = table.width;
@@ -308,6 +345,13 @@ function setZoom(next: number, fx = 0.5, fy = 0.5): void {
   draw();
 }
 
+/** The lens's water tone: what a pixel shows where there is no ground. The
+ * shape plane draws this inside a land cell too, wherever the cell's ground
+ * does not reach, so it has to be one definition rather than three. */
+function waterColor(): [number, number, number] {
+  return lens.value === "wind" || lens.value === "rivers" ? [16, 34, 54] : [25, 55, 86];
+}
+
 function terrainColor(cell: number, moisture: number, _y: number): [number, number, number] {
   const elevation = substrate.elevation[cell];
   if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [55, 135, 165];
@@ -327,7 +371,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   const moisture = substrate.moisture[climateIndex];
   if (lens.value === "wind") {
     // Muted geography so the arrow glyphs carry the signal over land and sea alike.
-    if (!substrate.landMask[cell]) return [16, 34, 54];
+    if (!substrate.landMask[cell]) return waterColor();
     const [red, green, blue] = terrainColor(cell, moisture, y);
     return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
   }
@@ -336,7 +380,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     // reach) that the router compares against its two bars. Green = sailable
     // both ways, orange = downstream only, red = cataract/falls (blocked),
     // grey = channel too small to navigate; everything else muted terrain.
-    if (!substrate.landMask[cell]) return [16, 34, 54];
+    if (!substrate.landMask[cell]) return waterColor();
     const magnitude = substrate.rivers.magnitude[cell] ?? 0;
     // Ice: below freshwater freezing this month the leg is CLOSED (the router
     // refuses it) — show it as ice, not as an open channel (owner play-report:
@@ -363,7 +407,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const [red, green, blue] = terrainColor(cell, moisture, y);
     return [Math.round(red * 0.35), Math.round(green * 0.35), Math.round(blue * 0.35)];
   }
-  if (!substrate.landMask[cell]) return [25, 55, 86];
+  if (!substrate.landMask[cell]) return waterColor();
   if (lens.value === "population") {
     // Log ramp over the historically meaningful density span, 0.01..100
     // persons/km2 (sparse foragers .. dense farmed valleys). EMPTY land is
@@ -421,40 +465,50 @@ function renderBase(selectedMonth: number): void {
   const frameKey = `${lens.value}|${selectedMonth}`;
   const key = `${table.projection.name}|${shift}|${frameKey}`;
   if (key === baseKey) return;
-  const pixels = frame.data;
   // Per-cell colours depend on lens and month only; projection and centre
   // are applied by sampling, so a spin never recomputes a colour.
-  if (frameKey !== lastFrameKey) for (let cell = 0; cell < substrate.N; cell++) {
-    const [red, green, blue] = pixelColor(cell, selectedMonth);
-    const offset = cell * 4;
-    pixels[offset] = red;
-    pixels[offset + 1] = green;
-    pixels[offset + 2] = blue;
-    pixels[offset + 3] = 255;
+  if (frameKey !== lastFrameKey) {
+    const water = pack(waterColor());
+    for (let cell = 0; cell < substrate.N; cell++) {
+      const colour = pack(pixelColor(cell, selectedMonth));
+      shapeLand[cell] = colour;
+      shapeWater[cell] = planeBlank[cell] ? colour : water;
+    }
+    // Each cell's colour over the whole block of the plane it covers, with the
+    // plane cutting the coastline through it.
+    const shape = substrate.landShape;
+    for (let y = 0; y < PLANE_H; y++) {
+      const row = ((y / PLANE_BLOCK) | 0) * substrate.width;
+      const rowStart = y * PLANE_W;
+      for (let x = 0; x < PLANE_W; x++) {
+        const index = rowStart + x;
+        const cell = row + ((x / PLANE_BLOCK) | 0);
+        frameWords[index] = shape[index] ? shapeLand[cell]! : shapeWater[cell]!;
+      }
+    }
   }
   lastFrameKey = frameKey;
   if (!projected) return;
-  const out = projected.data;
+  const out = new Uint32Array(projected.data.buffer);
+  const offGlobe = pack(OFF_GLOBE);
   const { rowOf, columnOf, width, gridWidth } = table;
   for (let py = 0, pixel = 0; py < table.height; py++) {
     const row = rowOf[py] ?? -1;
-    for (let px = 0; px < width; px++, pixel++) {
-    const column = row < 0 ? -1 : (columnOf[pixel] ?? -1);
-    let x = column + shift;
-    if (x >= gridWidth) x -= gridWidth;
-    const cell = column < 0 ? -1 : row * gridWidth + x;
-    const offset = pixel * 4;
-    if (cell < 0) {
-      out[offset] = OFF_GLOBE[0];
-      out[offset + 1] = OFF_GLOBE[1];
-      out[offset + 2] = OFF_GLOBE[2];
-    } else {
-      const source = cell * 4;
-      out[offset] = pixels[source] ?? 0;
-      out[offset + 1] = pixels[source + 1] ?? 0;
-      out[offset + 2] = pixels[source + 2] ?? 0;
+    if (row < 0) {
+      out.fill(offGlobe, pixel, pixel + width);
+      pixel += width;
+      continue;
     }
-    out[offset + 3] = 255;
+    const rowBase = row * gridWidth;
+    for (let px = 0; px < width; px++, pixel++) {
+      const column = columnOf[pixel] ?? -1;
+      if (column < 0) {
+        out[pixel] = offGlobe;
+        continue;
+      }
+      let x = column + shift;
+      if (x >= gridWidth) x -= gridWidth;
+      out[pixel] = frameWords[rowBase + x]!;
     }
   }
   baseContext.putImageData(projected, 0, 0);
@@ -463,7 +517,8 @@ function renderBase(selectedMonth: number): void {
 
 /** Sim-grid cell coordinates → canvas pixels, through the projection and viewport. */
 function toScreenXY(x: number, y: number): [number, number] {
-  const [px, py] = table.gridToPixel(x + 0.5, y + 0.5, centralMeridian());
+  // The table is built on the shape plane, so a sim cell's centre is its block's.
+  const [px, py] = table.gridToPixel((x + 0.5) * PLANE_BLOCK, (y + 0.5) * PLANE_BLOCK, centralMeridian());
   return [(px - viewX) * zoom, (py - viewY) * zoom];
 }
 
@@ -617,8 +672,13 @@ function cellFromPointer(event: MouseEvent): number | undefined {
   const fy = (event.clientY - bounds.top) / bounds.height;
   const px = clamp(Math.floor(viewX + fx * table.width / zoom), 0, table.width - 1);
   const py = clamp(Math.floor(viewY + fy * table.height / zoom), 0, table.height - 1);
-  const cell = table.cellAt(px, py, table.shiftFor(degreesToRadians(centreDegrees)));
-  return cell < 0 ? undefined : cell;
+  // The table addresses the shape plane; the pointer picks the SIM cell whose
+  // block that pixel falls in.
+  const planeCell = table.cellAt(px, py, table.shiftFor(degreesToRadians(centreDegrees)));
+  if (planeCell < 0) return undefined;
+  const planeY = Math.floor(planeCell / PLANE_W);
+  const planeX = planeCell - planeY * PLANE_W;
+  return Math.floor(planeY / PLANE_BLOCK) * substrate.width + Math.floor(planeX / PLANE_BLOCK);
 }
 
 function describeModes(result: TravelRoute): string {

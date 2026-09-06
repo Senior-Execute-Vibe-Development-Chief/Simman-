@@ -3867,3 +3867,91 @@ Review corrections to the M1 build (all validated before merge):
     with its own probe, not a follow-on line. And the shipped-grid arm for
     W17, W18 and W19a is `v2-long` on request; W19a's target-grid effect on
     the population curve and `arrival:japan:solve:target` is unmeasured.
+    **Amended 2026-09-06:** W19b was not the wave that followed — the owner
+    chose the map's resolution instead (#74, W20a). W19b stands unbuilt and
+    unchanged.
+
+74. **W20a gave the map a plane finer than the sim's grid, and the seam
+    between the two is now a build-time invariant rather than a convention.**
+    (2026-09-06, owner, on W19a's sub-cell islands being invisible: *"i am not
+    seeing these islands on the map?"* → *"hold on our sim actually only has
+    that many pixels? we are going to need icons and stuff that is finer than
+    the grid at some point"* → *"what parts of the sim could we make finer
+    without deeply effecting performance? … it would need to be fine enough to
+    have legible UI"* → **"go"** on 3600×1800.)
+    `spec/handoffs/W20-the-shape-of-the-land.md`.
+
+    **(a) What the term is.** The frame buffer was declared
+    `new ImageData(substrate.width, substrate.height)`, so the map had exactly
+    as many pixels as the sim had cells and the finest thing the world could
+    show was a whole cell — ~22 km at the shipped grid, ~166 km at the
+    reference grid. `tools/build-landshape.mts` bakes a fixed 3600×1800
+    land/sea plane (~11.1 km at the equator, ~79 km² mean) from the same
+    1-arc-minute ETOPO grid W19a reads: a cell is land when more than half its
+    ~36 samples stand above sea level — the same land test, by the same
+    majority rule, as the elevation bake's own mask. RLE: **40,975 bytes**
+    against 791 KB bit-packed, with a byte-for-byte round-trip assertion.
+    There are now three planes answering three questions — the mask says
+    WHETHER a cell holds ground, `landFraction` HOW MUCH, `landShape` WHERE
+    inside it — and the third keeps its own resolution because sampling it
+    down to the sim grid destroys the only thing it carries.
+
+    **(b) The seam, which is the actual work.** 3600×1800 is a whole multiple
+    of both sim grids on both axes (block 15 at dev, block 2 at target), so
+    every sim cell covers a WHOLE block and no plane cell is ever split
+    between two sim cells — a sum over a block is exact, not approximate.
+    `buildSubstrate` asserts it and **throws** on a grid preset that does not
+    divide the plane, and `landShapeBlock` rides on the substrate so every
+    future reader sums over the same block. The owner named the risk himself
+    — *"a bad aggregation fails silently"* — and this is the answer: it fails
+    loudly at build instead.
+
+    **(c) What it moved: nothing, and that is the verification.** No constant,
+    no metric, no law, no kernel array, no persisted field reads the plane; it
+    is read-only geometry, drawn from and measured against, never stepped.
+    Every hash in the repo is byte-identical across the change. Three checks
+    say the bake is true: cos(latitude)-weighted area **147.8 Mkm² / 29.0% of
+    the sphere** against Earth's 148.9 / 29.2%; **2,195,469** land cells
+    reached identically through the substrate at both grids, exactly the
+    bake's figure; and measured blind, Iceland 100,800 km² (real 103,000) and
+    Malta 400 (real 316). Against W19's cover plane at target the summed shape
+    share is 548,867 cells vs 549,184 — 0.06% apart, two independently baked
+    planes agreeing.
+
+    **(d) The render rule and why it needed a third option.** *The map draws
+    the world the SIM has, at the plane's resolution; it never invents ground
+    the sim does not stand on; and a sim land cell whose whole block the plane
+    finds under water keeps its colour throughout.* At the shipped grid
+    **4,172 sim land cells (0.75%) hold no plane land at all** — a block there
+    is only 4 cells — and without the third clause they would have vanished
+    from the map while the sim went on feeding and settling them. At dev,
+    where a block is 225 cells, the same count is **9**. The rule costs no
+    branch at draw time, because `pixelColor` already returns the water tone
+    for a sim sea cell.
+
+    **(e) The cost, recorded rather than hidden.** The frame is now 6.48M
+    pixels. Byte-wise, the old way: 234 ms resample + 103 ms fill — a 2.5×
+    regression at the shipped grid. The loops are overhead-bound, not
+    bandwidth-bound, so one 32-bit word per pixel (machine byte order detected
+    at startup, not assumed) brings the same work to **32 ms + 34 ms**, ~7×,
+    roughly what sim-resolution byte-wise drawing cost before. **The
+    projection table build is unchanged at ~898 ms** and is the one real cost:
+    it is `projection.unproject` per pixel, so it scales with the frame and
+    the u32 rewrite cannot touch it. It is paid once at startup and once per
+    projection switch, never per frame — acceptable now, and the obvious
+    target if projection switching ever needs to feel instant.
+
+    **(f) What is deferred, and what this replaces.** This wave **replaces
+    W19b** as the follow-on the owner chose; W19b — letting a cell the raster
+    calls ocean hold people at its true area, so sub-cell islands exist as
+    ground and not only as pixels — remains named and unbuilt, and still wants
+    its own wave because it changes the land mask's topology. The plane does
+    **not** subsume `landFraction`: at block 2 it expresses 5 levels of cover
+    against the cover plane's 256. A landform smaller than half a plane cell
+    still has no bit of its own — Iki, at 138 km², is exactly one cell, which
+    is the honest new resolution limit rather than a claim to have beaten it;
+    the bake is parameterised on its two dimensions, so a finer plane is one
+    constant and a re-run, at 4× the bytes and 4× the frame. And nothing has
+    yet been DRAWN at sub-cell resolution beyond the coastline: icons,
+    borders and markers inside a cell are what this makes possible and are not
+    in this wave. The below-sea-level gap of #73(c) is inherited unchanged.

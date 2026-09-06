@@ -74,6 +74,12 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     preset: "routing-fixture",
     straitWidthKm: new Float32Array(N),
     landFraction: new Float32Array(N).fill(1),
+    // The fixture has no geometry finer than itself, so the shape plane is its
+    // own mask at a block of one — the smallest whole multiple there is.
+    landShape: new Uint8Array(landMask),
+    landShapeWidth: width,
+    landShapeHeight: height,
+    landShapeBlock: 1,
     elevation,
     landMask,
     climate,

@@ -110,6 +110,11 @@ function peopleFixture(): Substrate {
     preset: "people-fixture",
     straitWidthKm: new Float32Array(cells),
     landFraction: new Float32Array(cells).fill(1),
+    // No geometry finer than the fixture itself: its own mask, block of one.
+    landShape: new Uint8Array(landMask),
+    landShapeWidth: width,
+    landShapeHeight: height,
+    landShapeBlock: 1,
     elevation: new Float32Array(cells),
     landMask,
     climate: { temperature, moisture },

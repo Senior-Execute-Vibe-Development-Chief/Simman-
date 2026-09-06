@@ -124,6 +124,23 @@ export interface Substrate {
    * MUCH. One everywhere on a preset with no real bathymetry, which is the
    * behaviour every consumer had before the plane existed. */
   readonly landFraction: Float32Array;
+  /** WHERE that ground is: one byte per cell, 1 = land, on a grid finer than
+   * any the sim steps (W20). The mask says WHETHER a cell holds ground, the
+   * cover says HOW MUCH, and this says WHERE inside it — at ~11 km, where a
+   * coast, a strait or an island has a shape rather than a bit. It is
+   * read-only geometry: the world is DRAWN from it and MEASURED against it,
+   * never stepped on it, so it keeps its own resolution instead of being
+   * sampled down to this grid. On a preset with no measured fine geometry it
+   * carries this grid's own coastline, which is exactly what a consumer saw
+   * before the plane existed. */
+  readonly landShape: Uint8Array;
+  readonly landShapeWidth: number;
+  readonly landShapeHeight: number;
+  /** The whole block of the shape plane each cell of this grid covers, on both
+   * axes: `width * landShapeBlock === landShapeWidth`. Every quantity that
+   * crosses the two grids therefore sums over a whole block, and no cell of
+   * the plane is ever split between two cells of the sim. */
+  readonly landShapeBlock: number;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -257,6 +274,25 @@ function makeLandMask(elevation: Float32Array): Uint8Array {
   return mask;
 }
 
+/** The coastline a grid draws for itself, on the shape plane. A preset with no
+ * measured fine geometry has no finer truth to show than its own mask, so each
+ * cell fills the whole block of the plane it covers and the plane says exactly
+ * what the mask said. */
+function coastlineOf(mask: Uint8Array, width: number, height: number, block: number): Uint8Array {
+  const planeWidth = width * block;
+  const plane = new Uint8Array(planeWidth * height * block);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue;
+      for (let inner = 0; inner < block; inner++) {
+        const start = (y * block + inner) * planeWidth + x * block;
+        plane.fill(1, start, start + block);
+      }
+    }
+  }
+  return plane;
+}
+
 function makeBiomes(world: PortedWorld, territory: PortedTerritory): Uint8Array {
   const result = new Uint8Array(territory.tElev.length);
   for (let cell = 0; cell < result.length; cell++) {
@@ -343,6 +379,13 @@ export function buildSubstrate(
   });
   const elevation = territory.tElev;
   const landMask = makeLandMask(elevation);
+  const shapeBlock = world.landShapeWidth / width;
+  if (!Number.isInteger(shapeBlock) || world.landShapeHeight / height !== shapeBlock) {
+    throw new Error(
+      `the land shape plane (${world.landShapeWidth}x${world.landShapeHeight}) is not a whole `
+      + `multiple of the ${width}x${height} grid, so a cell of it would straddle two cells of this one`,
+    );
+  }
   const substrate: Substrate = {
     seed,
     grid,
@@ -391,6 +434,13 @@ export function buildSubstrate(
     // Sampled on the world grid beside the elevation it corrects; a preset
     // without it is wholly land wherever it is land at all.
     landFraction: world.landFraction ?? new Float32Array(cells).fill(1),
+    // Its own resolution, not this grid's: the plane is measured geography,
+    // and sampling it down to the grid would throw away the very thing it
+    // carries. The block check is the seam — it holds for every grid preset.
+    landShape: world.landShape ?? coastlineOf(landMask, width, height, shapeBlock),
+    landShapeWidth: world.landShapeWidth,
+    landShapeHeight: world.landShapeHeight,
+    landShapeBlock: shapeBlock,
   };
   return Object.freeze(substrate);
 }

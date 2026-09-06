@@ -86,6 +86,13 @@ fudge factors.
   measured fractional floodplain and monthly river-flow scales, biome,
   soil/crop suitability, resources, relief, coast distance,
   and deep ancestry as typed arrays; it is rebuilt, never saved.
+- Three planes answer three different questions about ground: the land/sea
+  mask says WHETHER a cell holds it, `landFraction` says HOW MUCH, and
+  `landShape` says WHERE inside the cell. The last is read-only geometry at
+  its own resolution, a whole multiple of every sim grid on both axes, so a
+  cell always covers a whole block of it and `buildSubstrate` throws rather
+  than let a grid straddle one. The map is drawn at that resolution: it never
+  invents ground the sim does not stand on, and never erases ground it does.
 - Travel is in days using real Earth geometry, month-specific climate,
   capability-gated modes, directed river costs, intermodal transfers, and a
   three-phase WASM routing API.
