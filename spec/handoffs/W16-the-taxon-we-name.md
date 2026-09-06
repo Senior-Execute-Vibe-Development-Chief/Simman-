@@ -84,6 +84,15 @@ The exclusions that stand, and why they are not the same case:
   one complex, so requiring both is a claim the archaeology does not make.
 - **Wild teff** — same ruling as sugarcane: enset and teff are independent
   Ethiopian crops, not a set that must be gathered together.
+- **Wild sunflower** — this one was ADDED and reverted, because its
+  exclusion reason *was* the breadth argument and had to be tested. It reads
+  clean and empties the package: its native range and the Ozark gourd's share
+  zero cells. §7 has the measurement; the ruling it lands on is sugarcane's,
+  not barley's.
+- **The pulses and flax** — five of the Crescent's eight founders are not
+  cereals, and this package is "Wheat & Barley". A package's founder set is
+  the progenitors of the crops the package IS, which is also why finger
+  millet does not belong in highland-roots.
 
 ## 4. What the re-bake moved
 
@@ -213,6 +222,12 @@ What the dev arm says, with the manifest's own bands:
   sorghum, amazon-margin tubers all pass; south-china and lower-yangtze
   millet, indus rice, nile sorghum, mesoamerica eastern-seeds still fail.
 
+The bake was run a third time after §7's revert, so the tool's taxon list
+and the file's would not disagree. Diffed against the committed file, the
+ONLY change is one `note` string — the exclusion reason, rewritten to the
+one §7 measured. Every cell, count, weight and envelope is byte-identical,
+so the chain above is measured on this file too.
+
 The gate's verdict is `pass` and the miss set is unchanged in membership.
 Three rows changed in their DETAIL, and those are booked below.
 
@@ -238,26 +253,74 @@ re-banded, and no window was widened.
 - **`hearth:northwest-neotropics:solve:dev`** — still empty, for a different
   reason, which is §4's manioc verdict written into the manifest.
 
-## 7. What is still open
+## 7. Wild sunflower: added, measured, reverted
 
-- **Wild sunflower** (*Helianthus annuus*, usage 9206251, ACCEPTED, SPECIES,
-  33,805 georeferenced NORTH_AMERICA records) is the one candidate that
-  survives the audit and is **not** in this commit. It belongs by the same
-  argument barley does: Smith 2006 names four founders of the Eastern
-  Agricultural Complex, this package carries three, and the exclusion's
-  stated reason — "spanning the continent" — is the breadth argument W10 and
-  W11 retired. Its 44,705 European records, the real objection, are already
-  answered by `continents`.
+It was the one candidate that survived the audit, and it belonged by the
+same argument barley did: Smith 2006 names FOUR founders of the Eastern
+Agricultural Complex, this package carried three, and the exclusion's stated
+reason — "spanning the continent" — is the breadth argument W10 and W11
+retired. So it was added and baked, on the rule barley was held to: measure
+the eastern-woodlands hearth, and revert with the measurement recorded if it
+regresses.
 
-  It is held back because the read is not finished: GBIF's deep-offset
-  pagination costs ~50 s a page past offset 15,000, so 113 pages is another
-  hour or two of fetching, and the measured work above should not wait on it.
-  The risk is real and is the sugarcane failure mode: eastern-seeds has only
-  17 rich cells out of 491 native at dev, and wild *H. annuus* is
-  Plains-centred where the complex is Eastern Woodlands, so a fourth member
-  could empty the intersection. The rule is the one barley was held to —
-  **add it, measure the eastern-woodlands hearth, and revert with the
-  measurement recorded if it regresses.**
+**It reads clean and it kills the package.**
+
+| | *Iva annua* | *C. berlandieri* | ***H. annuus*** | *C. p.* subsp. *ozarkana* |
+|---|---|---|---|---|
+| records / read | 5,496 / 5,473 | 5,122 / 4,882 | **33,805 / 8,086** | 152 / 152 |
+| cells | 1,096 | 1,736 | 1,006 | 62 |
+| lon extent | −106.75..−75.75 | −149.0..−60.0 | **−124.0..−96.5** | **−96.5..−83.75** |
+| weight centre | −93.3, 35.3 | −101.2, 38.7 | −108.2, 29.5 | −91.9, 35.5 |
+
+The data is not the problem: GBIF resolves *Helianthus annuus* to an
+ACCEPTED species usage (9206251), the `continents` filter drops its 44,705
+European records unread, and the WCVP screen keeps the 8,086 inside its
+seven native regions out of 33,805 — every guard the pipeline has, working.
+
+The problem is that **the screened wild sunflower and the Ozark gourd share
+exactly ZERO occurrence cells.** Sunflower's native range runs −124.0 to
+−96.5 — the Plains and the Southwest — and the gourd's runs −96.5 to −83.75,
+the Ozarks and the mid-South. The two extents touch at one meridian and
+nowhere else. Stand richness is the members' PRODUCT, so the four-way
+intersection being empty is the whole package being empty:
+
+| eastern-seeds, dev | three taxa | four taxa |
+|---|---|---|
+| nativeCells (union) | 491 | 514 |
+| **rich > 0** | **17** | **0** |
+| **maxStand** | **0.4429** | **0.0000** |
+| eastern-woodlands nativeInR | 64 | 64 |
+| **richInR** | **15** | **0** |
+| **maxRichInR** | **0.23942** | **0.00000** |
+| **maxSiteQ** | **1.0000** | **0.0000** |
+
+Reverted. **And the exclusion now rests on the measurement instead of on
+breadth: this is the sugarcane ruling, not the barley one.** The Complex's
+founders were domesticated independently, in ranges that touch at a
+meridian; requiring all four to be gathered in one place is a claim the
+archaeology does not make. The tool's note and comment say that now, so the
+next reader does not re-litigate a retired argument and re-run the hour.
+
+### The pattern this is the third instance of
+
+Wild sugarcane emptied new-guinea-roots at Kuk. Wild teff would empty
+highland-roots in Ethiopia. Wild sunflower empties eastern-seeds in the
+Eastern Woodlands. Three packages, one mechanism: **the co-occurrence
+product is the right rule for a founder set that had to be gathered together
+(emmer with einkorn in the Crescent, where barley has just demonstrated it
+works) and the wrong rule for a complex of crops domesticated
+independently.** The code has one rule and applies it to both kinds, and it
+is exclusions — three of them now, each argued in prose in a comment — that
+keep it from firing.
+
+That is a mechanism the model is missing, not a data problem, and it is the
+same shape as W16's other finding: a package is a claim about how a crop
+suite came to be, and this repo currently has only one such claim. What a
+second one looks like — a package whose members are alternatives rather than
+a set, rich where ANY member is rich rather than where all are — is
+unspecified, unbuilt, and the honest next question. QUESTIONS #69.
+
+## 8. What is still open
 
 - **The infraspecific WCVP gap** (§4). Two taxa come through the native-range
   screen `unscreened` because WCVP does not carry their names. A screen that

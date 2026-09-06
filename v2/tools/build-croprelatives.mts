@@ -153,7 +153,24 @@ const RELATIVES: readonly PackageRelatives[] = [
   { packageId: "new-guinea-roots", note: "greater yam, native to New Guinea (Denham et al. 2003; WCVP native ranges); wild taro is excluded, introduced to New Guinea and native to mainland Asia", taxa: [
     { name: "Dioscorea alata", continents: ["OCEANIA"] },
   ] },
-  { packageId: "eastern-seeds", note: "marsh elder, chenopod and Ozark gourd, the Eastern Agricultural Complex's own founders (Smith 2006); wild sunflower is excluded, spanning the continent", taxa: [
+  // Wild sunflower was TRIED here and reverted, and the exclusion now rests
+  // on what that measured rather than on breadth (W16). Smith 2006 names
+  // four founders of the Eastern Agricultural Complex and this package
+  // carries three; the fourth was kept out for "spanning the continent",
+  // which is the argument W10 and W11 retired, so it was added and baked.
+  // `Helianthus annuus` reads clean — 33,805 NORTH_AMERICA records, of
+  // which the WCVP screen keeps the 8,086 inside its seven native regions
+  // — and it KILLS the package: stand richness is the members' product, and
+  // the screened wild sunflower spans lon −124..−96.5, the Plains and the
+  // Southwest, where the Ozark gourd spans −96.5..−83.75. Their occurrence
+  // cells overlap in EXACTLY ZERO cells; the four-way intersection is empty
+  // and the package's best wild stand goes 0.4429 to 0.0000, taking the
+  // eastern-woodlands hearth site with it (quality 1.0000 to 0.0000).
+  // So this is the sugarcane ruling, not the barley one: the Complex's
+  // founders were domesticated independently in ranges that touch at a
+  // meridian, and requiring all four together is a claim the archaeology
+  // does not make.
+  { packageId: "eastern-seeds", note: "marsh elder, chenopod and Ozark gourd, three of the Eastern Agricultural Complex's four founders (Smith 2006); wild sunflower is excluded, its native range disjoint from the gourd's", taxa: [
     { name: "Iva annua", continents: ["NORTH_AMERICA"] },
     { name: "Chenopodium berlandieri", continents: ["NORTH_AMERICA"] },
     { name: "Cucurbita pepo subsp. ozarkana", continents: ["NORTH_AMERICA"] },

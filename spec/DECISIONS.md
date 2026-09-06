@@ -1010,10 +1010,30 @@ lawyered.
     sugarcane ruling. The five non-cereal Crescent founders — the pulses and
     flax — are excluded because a package's founder set is the progenitors of
     the crops the package IS, and "Wheat & Barley" is a cereal package.
-    Wild sunflower passes that test (eastern-seeds IS the seed complex) and
-    is the one open candidate; its read had not finished when this landed,
-    and it is held to barley's rule — add it, measure, revert with the
-    measurement recorded if the eastern-woodlands hearth regresses. Task #44.
+    **(c) Wild sunflower was added on barley's argument, measured, and
+    reverted.** It was the one candidate that survived the audit: Smith 2006
+    names four founders of the Eastern Agricultural Complex, the package
+    carried three, and the fourth's stated exclusion — "spanning the
+    continent" — is exactly the breadth argument (b) retires. So it was
+    added and baked. It reads clean — an ACCEPTED species usage, the 44,705
+    European records dropped unread by `continents`, 8,086 of 33,805 kept by
+    the WCVP screen — and it KILLS the package: the screened wild sunflower
+    spans lon −124.0..−96.5 and the Ozark gourd spans −96.5..−83.75, sharing
+    EXACTLY ZERO occurrence cells, so the members' product is empty
+    everywhere. eastern-seeds' best wild stand 0.4429 → 0.0000, its rich
+    cells 17 → 0, and the eastern-woodlands hearth site 1.0000 → 0.0000.
+    Reverted, and the exclusion now rests on that measurement rather than on
+    breadth — **the sugarcane ruling, not the barley one.**
+
+    That makes three packages where the co-occurrence product is the binding
+    constraint (sugarcane at Kuk, teff in Ethiopia, sunflower in the Eastern
+    Woodlands), each held off by an exclusion argued in a comment. **The
+    product is the right rule for a founder set that had to be gathered
+    together and the wrong rule for a complex of crops domesticated
+    independently, and the code has only the first kind of package.** A
+    second kind — members as alternatives, rich where ANY is rich — is
+    unspecified and unbuilt; recorded as the honest next question, not
+    designed here. QUESTIONS #69.
 
     **Verification.** lint, `npm test` (smoke, parity, byte-identical
     save/load), `gate:people` → `pass` at dev with the W5 SOLVE arm, all on

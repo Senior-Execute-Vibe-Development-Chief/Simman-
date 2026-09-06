@@ -3502,16 +3502,50 @@ Review corrections to the M1 build (all validated before merge):
     and both are named founders of the package they were kept out of. Barley
     is back and measured to help (nearest range cell 206 → 74 km of the
     Crescent centre, richness +43 %, stand +45 %, site quality 1.0000
-    unchanged). Sunflower is the one open item: its read had not finished
-    when this landed, and the risk is real — eastern-seeds has 17 rich cells
-    of 491 native at dev, and wild *H. annuus* is Plains-centred where the
-    complex is Eastern Woodlands, so a fourth member could empty the
-    intersection as wild sugarcane did at Kuk. Every other exclusion was
+    unchanged). Sunflower was added on the same ground and REVERTED, and the
+    revert is this wave's second real finding. Every other exclusion was
     re-argued and stands on a reason that is not breadth: an unknown
     ancestor (broomcorn millet), a WCVP-introduced range (taro, sweet
     potato), or independent crops of one complex wrongly demanded together
-    (sugarcane, teff, banana). The pulses and flax stay out because a
-    package's founder set is the progenitors of the crops the package IS.
+    (sugarcane, teff, banana — and now sunflower). The pulses and flax stay
+    out because a package's founder set is the progenitors of the crops the
+    package IS, which is also why finger millet is not in highland-roots.
+
+    **The sunflower measurement, and what it says about the model rather
+    than the data.** Wild *H. annuus* reads clean: GBIF resolves it to an
+    ACCEPTED species usage (9206251), `continents` drops its 44,705 European
+    records unread, and the WCVP screen keeps the 8,086 records inside its
+    seven native regions out of 33,805 — every guard in the pipeline working
+    as designed. And it empties the package. Stand richness is the members'
+    PRODUCT, and the screened wild sunflower spans lon −124.0..−96.5 (the
+    Plains and the Southwest) where the Ozark gourd spans −96.5..−83.75 (the
+    Ozarks and the mid-South): their occurrence cells overlap in **exactly
+    zero** cells, the extents touching at one meridian and nowhere else. So
+    eastern-seeds' rich cells go 17 → 0, its best wild stand 0.4429 →
+    0.0000, and the eastern-woodlands hearth site 1.0000 → 0.0000. Reverted,
+    with the exclusion now resting on that measurement rather than on
+    breadth — the sugarcane ruling, not the barley one.
+
+    **That is the third package the co-occurrence product would empty, and
+    the pattern is a missing mechanism.** Wild sugarcane empties
+    new-guinea-roots at Kuk; wild teff would empty highland-roots in
+    Ethiopia; wild sunflower empties eastern-seeds in the Eastern Woodlands.
+    One rule, three casualties, each held off by an exclusion argued in
+    prose in a comment. The product is RIGHT for a founder set that had to
+    be gathered together — the Crescent is where emmer, einkorn and barley
+    occur together, and barley has just demonstrated the rule working — and
+    WRONG for a complex of crops domesticated independently in overlapping
+    but distinct ranges, which is what New Guinea, Ethiopia and the Eastern
+    Woodlands all are. **The code has one kind of package and applies it to
+    both kinds.** A second kind — members as alternatives, a package rich
+    where ANY member is rich rather than where all are — would let those
+    three complexes carry their real founder sets, and would be a mechanism
+    where there are now three exclusions. It is unspecified and unbuilt, and
+    designing it by reaching for the outcome (which members, which rule,
+    picked so the hearths come out right) is exactly what the second
+    cardinal rule forbids. The honest statement is that **a package is a
+    claim about how a crop suite came to be, and this repo currently has
+    only one such claim.** Raised, not designed.
 
     **What is still not screened.** *Flabellifolia* and the Ozark gourd have
     no WCVP entry, so they pass the native-range screen `unscreened`.
