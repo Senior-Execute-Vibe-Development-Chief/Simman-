@@ -112,6 +112,11 @@ export interface Substrate {
   readonly relief: Float32Array;
   readonly coast: Uint8Array;
   readonly coastDistanceKm: Float32Array;
+  /** Real width, km, of a sub-pixel channel the strait carve had to OPEN for
+   * the raster to hold it — zero wherever the grid resolves the water on its
+   * own, which is everywhere outside those channels and everywhere at all on
+   * a preset that does not carve (W18). */
+  readonly straitWidthKm: Float32Array;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -373,6 +378,9 @@ export function buildSubstrate(
     relief: territory.tRelief,
     coast: territory.tCoast,
     coastDistanceKm: coastDistances(elevation, width, height),
+    // The carve runs on the world grid and buildTerritory samples it at RES 1,
+    // so the field indexes exactly as every other substrate array does.
+    straitWidthKm: world.straitWidthKm ?? new Float32Array(cells),
   };
   return Object.freeze(substrate);
 }

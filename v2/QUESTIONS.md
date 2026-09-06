@@ -3765,3 +3765,54 @@ Review corrections to the M1 build (all validated before merge):
     **Not measured at the shipped grid.** A 43 % re-grading of the farmed
     map is the blast radius the third cardinal rule most wants measured at
     the grid that ships, and the `v2-long` arm is on request, not run.
+
+72. **W18 gave the carved straits their real width, and the width term is
+    right at its ends and wrong in its middle: the Sea of Marmara falls
+    below the enclosed-sea bar, so the carve opens it too and the crossing
+    charge is applied to ~70 km of genuine open water.** (Owner, 2026-09-06,
+    on the offer to build the width-carrying term: **"yes"**.) DECISIONS 39,
+    `spec/handoffs/W18-the-width-of-the-water.md`.
+
+    **(a) What the term is.** `carveStraits` opens sub-pixel land plugs so
+    that *seas* connect — the Mediterranean to the Atlantic, the Black Sea
+    to the Aegean (without it the Danube reclassifies as terminal drainage
+    and is erased), the Singapore pinch. For a Neolithic front that carve
+    points the wrong way: it turns what would have been a land bridge into
+    open water, and `addHop` then prices the crossing on the cell lattice —
+    167 km per edge at dev, so one intervening water cell costs 333 km
+    against a 100 km hop bar. W18 records each carved cell's measured
+    channel width and charges `min(edge, channel)` for any step touching
+    one. Width is written **only where the carve OPENED a land cell**, which
+    is exactly the carve's own deviation from the DEM, so the field is empty
+    wherever the raster resolves the channel itself and extinguishes as the
+    grid gets finer. A run of k carved cells is charged k+1 crossings — a
+    deliberate over-charge, so the term can refuse a hop and never invent
+    one.
+
+    **(b) What it moved.** Substrate only, both grids, no history: dev gains
+    2 crossings from 11 carved cells (Thrace↔Anatolia 333 → 2.4 km; Magellan
+    385 → 6.0), target 18 from 78, all at the Dardanelles/Marmara, Malacca
+    or Magellan, with no leakage into open ocean at either — the Malacca row
+    at 133 → 94.5 km is genuine open water still charged in full. On the dev
+    W5 SOLVE arm four acknowledged misses cleared and their rows were
+    deleted: `arrival:balkans` −5080 → −6634, `arrival:rhine` −3981 →
+    −5164, `arrival:cardial-coast` −4436 → −5871, and
+    `europe-front-speed` 1.447 → **1.082 km/yr**, inside the 0.6–1.3 band
+    (Pinhasi, Fort & Ammerman 2005) at dev for the first time. The reading
+    that matters: **the front got slower while its arrivals got 1,200–1,550
+    years earlier.** The dev grid had been measuring a mature front's detour
+    round the Black Sea and calling it a speed.
+
+    **(c) The imprecision, stated rather than tuned away.** The Turkish
+    Straits row traces a CHAIN — Dardanelles, Marmara, Bosporus — and the
+    Sea of Marmara falls below the enclosed-sea bar, reading as land at
+    every grid we run. The carve therefore opens the Marmara as well, and
+    W18 prices those cells at the chain's 1.2 km too. The OUTCOME is right
+    (the Thrace↔Anatolia crossing is a real 1.2 km crossing at either end)
+    but the reason is not: a route traversing ~70 km of open Marmara is
+    charged the narrows. **The fix is for the enclosed-sea bar to admit the
+    Marmara, so the carve never opens it and no width is written there** —
+    not a constant, not a second width row, and not a special case naming
+    the sea. Until then this is a known over-credit of one basin, recorded
+    in the ledger and not measured at the shipped grid; the `v2-long` arm
+    is on request, not run.

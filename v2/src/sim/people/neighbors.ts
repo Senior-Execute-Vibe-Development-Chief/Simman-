@@ -37,6 +37,32 @@ function edgeLengthKm(
   return Math.sqrt(eastWest * eastWest + northSouth * northSouth);
 }
 
+/**
+ * The water one step actually crosses. A cell the strait carve had to OPEN
+ * reads as water only because a real channel runs through it that the raster
+ * is too coarse to hold, so a step into or out of that cell crosses the
+ * channel — a kilometre or two — and not a whole cell edge of open sea (W18).
+ * A run of k carved cells is charged k+1 crossings of the channel, which
+ * over-charges the one real crossing: the term can refuse a hop, never invent
+ * one. Every step touching no carved cell keeps the lattice edge exactly, so
+ * the world outside those channels is unchanged, and the field empties itself
+ * as the grid gets fine enough to resolve the water without a carve.
+ */
+function stepKm(
+  world: PeopleWorld,
+  from: number,
+  to: number,
+  horizontal: Float64Array,
+  vertical: number,
+): number {
+  const edge = edgeLengthKm(world, from, to, horizontal, vertical);
+  const channel = Math.max(
+    world.substrate.straitWidthKm[from] ?? 0,
+    world.substrate.straitWidthKm[to] ?? 0,
+  );
+  return channel > 0 ? Math.min(edge, channel) : edge;
+}
+
 function stepCell(
   world: PeopleWorld,
   cell: number,
@@ -63,7 +89,7 @@ function addHop(
   for (let step = 0; step < maxSteps; step++) {
     const next = stepCell(world, previous, direction);
     if (next < 0) return { target: MATH_NEGATIVE_ONE, distanceKm: 0 };
-    distance += edgeLengthKm(world, previous, next, horizontal, vertical);
+    distance += stepKm(world, previous, next, horizontal, vertical);
     if (world.substrate.landMask[next]) {
       if (next === cell || distance > PEOPLE_COASTAL_HOP_KM) {
         return { target: MATH_NEGATIVE_ONE, distanceKm: 0 };

@@ -1166,6 +1166,84 @@ lawyered.
     `spec/handoffs/W17-the-harvest-window.md`.
 
 
+39. **W18 landed: the strait carve records the water it opens, and a hop is
+    charged the channel rather than the cell.** (Owner, 2026-09-06, on the
+    sub-grid strait misses: *"we have a few places where you just cut the
+    strait in manually, for real world accuracy instead of pure geographic
+    accuracy?"* → **"yes"** to building the width-carrying term.) Five
+    channels narrower than a cell are opened by hand in `EARTH_STRAITS` so
+    the raster holds them at all — without Gibraltar the Mediterranean is a
+    lake, without the Turkish Straits the Black Sea is terminal and the
+    Danube is erased. **That carve was the CAUSE of the Bosporus miss, not a
+    missing cure**: it converts a would-be land bridge into open water, and
+    `people/neighbors.ts` then prices that water on the cell lattice, so 700 m
+    of Bosporus is charged 333 km at the reference grid — one intervening
+    water cell is two edges — against a 100 km boat hop, and the Neolithic
+    front walks round the Black Sea instead.
+
+    The carve is the only place in the codebase that KNOWS the raster is
+    lying about a piece of water, so it now writes down what it knows:
+    `straitWidthKm`, the real width of every land cell it OPENS, zero
+    everywhere else. A step into or out of such a cell is charged
+    `min(edge, channel)`. Three properties keep this a mechanism rather than
+    a patch. It is **exactly the carve's own deviation from the DEM**, so it
+    cannot reach into a real sea — including the seas at the ends of these
+    channels. It **extinguishes itself as the grid gets finer**, because a
+    finer raster carves less; this is the third cardinal rule taken
+    seriously rather than worked around. And it **over-charges** — a run of
+    k carved cells pays k+1 crossings — so it can refuse a hop and never
+    invent one. No place name appears in the mechanism; it asks whether the
+    carve opened this cell, never whether this is the Bosporus. Five widths
+    were looked up (Gibraltar 13 km, Dardanelles 1.2, Malacca/Singapore 2.8,
+    Messina 3.1, Magellan 3), each the channel's narrows, with the chain rule
+    stated for audit: a row tracing several channels carries the LARGEST of
+    their minima.
+
+    **What it did.** Substrate, both grids, no history: dev gains 2 crossings
+    (Thrace↔Anatolia, 333 km → 2.4; Magellan) from 11 carved cells; target
+    gains 18 from 78, all at the Dardanelles, Malacca or Magellan, with no
+    leakage into open ocean at either. On the dev W5 SOLVE arm **three
+    acknowledged misses cleared** — `arrival:balkans:solve:dev` (−5080 →
+    −6634), `arrival:rhine:solve:dev` (−3981 → −5164),
+    `arrival:cardial-coast:solve:dev` (−4436 → −5871), all now in window —
+    **and a fourth, `europe-front-speed:solve:dev`, 1.447 → 1.082 km/yr,
+    inside the 0.6–1.3 radiocarbon band at the reference grid for the first
+    time.** The speed FALLS while the arrivals come 1,200–1,550 years
+    earlier, and that is the mechanism: the dev grid had been measuring a
+    mature front's detour round the Black Sea and calling it a speed. The
+    population curve's late checkpoints do not move (1 CE 1,503M before and
+    after) because an earlier Europe changes when the curve fills, not the
+    M3b ceiling it fills to; the staple table, every hearth row and the
+    density ordering are unchanged; Japan is still not reached at dev and
+    should not be, the Korea Strait being two genuine ~50 km legs around an
+    island smaller than a cell rather than a carved channel.
+
+    **The imprecision is recorded, not papered over.** The Turkish Straits
+    row traces a chain through the Sea of Marmara, which falls below the
+    enclosed-sea bar and reads as land at every grid; the carve opens it, so
+    W18 prices those cells at 1.2 km too. The crossing it produces is a real
+    1.2 km crossing at either end of the chain, but a route that in reality
+    traverses ~70 km of open Marmara is charged the narrows. The fix is not a
+    constant — it is for the enclosed-sea bar to admit the Marmara as the sea
+    it is, whereupon the carve stops opening it and the term stops applying.
+
+    **Verification.** `tsc`, lint (eslint + the ledger and numeric-literal
+    lints), `npm test` (smoke, unit incl. a new bit-identity test for the
+    neighbour table outside the carved cell, kernel parity, byte-identical
+    save/load), `gate` → `pass` at dev with the corrected manifest,
+    `bench --check`, the oracle → `ok` with `elevation` **exact** at every
+    arm (whose strait splice was loosened to accept the optional recorder
+    argument and now asserts the widths are still there). No Rust change: the neighbour table is built in TS and handed to
+    the kernel, so parity is structural. `coverage` and `monotone` are v1 root
+    tools against v1's `collect()` and are not triggered: W18 adds a static
+    substrate INPUT derived from the DEM at worldgen, not evolving world
+    state, and no metric. **No shipped-grid
+    arm was run**; the target grid gains 18 crossings and what they do to
+    history there is recorded as needed (`v2-long`, on request), as is a
+    trajectory arm for the non-solve European rows whose stated cause is now
+    gone. QUESTIONS #72, `spec/handoffs/W18-the-width-of-the-water.md`.
+
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P16. The true reduced grid** (replaces the withdrawn 31(c); measured

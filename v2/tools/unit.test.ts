@@ -26,6 +26,8 @@ import {
   PEOPLE_ADOPTION_RATE_PER_YEAR,
   PEOPLE_CHANNEL_STRIP_KM,
   PEOPLE_CHILD_AGE_YEARS,
+  PEOPLE_COASTAL_HOP_KM,
+  PEOPLE_CROP_NEIGHBOR_COUNT,
   PEOPLE_FARMED_MARKER_SHARE,
   PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR,
   PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
@@ -33,6 +35,8 @@ import {
   PEOPLE_GROWTH_STRIDE_MONTHS,
   PEOPLE_GROWTH_TECHNIQUE_GAIN,
   PEOPLE_MIGRATION_MAX_SHARE,
+  PEOPLE_NEIGHBOR_DX,
+  PEOPLE_NEIGHBOR_DY,
   PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
 } from "../src/sim/constants";
@@ -104,6 +108,7 @@ function peopleFixture(): Substrate {
     height,
     N: cells,
     preset: "people-fixture",
+    straitWidthKm: new Float32Array(cells),
     elevation: new Float32Array(cells),
     landMask,
     climate: { temperature, moisture },
@@ -850,6 +855,69 @@ async function main(): Promise<void> {
       assert.ok(Math.abs(partial / whole - rootSeason / cycleMonths(packageIndex)) < 1e-9,
         "a short season is a short harvest, not no harvest");
     }
+  }
+
+  {
+    // W18: a hop across a channel the raster had to have CARVED is charged the
+    // channel, not the cell. One water cell between two land cells is two
+    // lattice edges — 333 km at the reference grid, four times the longest
+    // crossing the Neolithic is known to have made — so the hop is refused
+    // even where the real water is a kilometre wide. Where the carve opened
+    // the cell we know how wide the water really is, and the step is charged
+    // that instead. Nothing else in the table may move.
+    const width = 240;
+    const row = 60;
+    const channelCell = row * width + 120;
+    const build = (channelKm: number): PeopleWorld => {
+      const base = peopleFixture();
+      base.landMask[channelCell] = 0;
+      base.elevation[channelCell] = -0.02;
+      if (channelKm > 0) base.straitWidthKm[channelCell] = channelKm;
+      return new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts" }, substrate: base }) as PeopleWorld;
+    };
+    const CHANNEL_KM = 1.2;
+    const uncarved = build(0);
+    const carved = build(CHANNEL_KM);
+    const slotsOf = (world: PeopleWorld, cell: number): readonly number[] => {
+      const packed = world._packedOf[cell] ?? 0;
+      const base = packed * PEOPLE_CROP_NEIGHBOR_COUNT;
+      return Array.from({ length: PEOPLE_CROP_NEIGHBOR_COUNT }, (_unused, k) => base + k);
+    };
+    // The eight land cells around the channel: each has one direction whose
+    // step lands in the water and continues to the far bank.
+    const banks: number[] = [];
+    for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
+      const dx = PEOPLE_NEIGHBOR_DX[direction] ?? 0;
+      const dy = PEOPLE_NEIGHBOR_DY[direction] ?? 0;
+      banks.push((row + dy) * width + (120 + dx));
+    }
+    assert.equal(new Set(banks).size, PEOPLE_CROP_NEIGHBOR_COUNT);
+    const crossings = new Set<number>();
+    for (const bankCell of banks) {
+      for (const slot of slotsOf(carved, bankCell)) {
+        if ((carved._neighborTargets[slot] ?? -1) < 0) continue;
+        if (carved._neighborMode[slot] !== 1) continue;
+        crossings.add(slot);
+      }
+    }
+    assert.equal(crossings.size, PEOPLE_CROP_NEIGHBOR_COUNT, "every bank reaches the far side once the channel is priced");
+    for (const slot of crossings) {
+      assert.equal(uncarved._neighborTargets[slot], -1, "a cell edge of open sea is four crossings too far");
+      assert.ok(Math.abs((carved._neighborDistanceKm[slot] ?? 0) - 2 * Math.fround(CHANNEL_KM)) < 1e-9,
+        "the step is charged the channel at each end: a run of one carved cell is two crossings");
+      assert.ok((carved._neighborDistanceKm[slot] ?? 0) < PEOPLE_COASTAL_HOP_KM);
+    }
+    // And the term is confined to the cell the carve opened: every other slot
+    // in the table, land edge and sea hop alike, is bit-identical.
+    let moved = 0;
+    for (let slot = 0; slot < carved._neighborTargets.length; slot++) {
+      if (crossings.has(slot)) continue;
+      if (carved._neighborTargets[slot] === uncarved._neighborTargets[slot]
+        && carved._neighborDistanceKm[slot] === uncarved._neighborDistanceKm[slot]
+        && carved._neighborMode[slot] === uncarved._neighborMode[slot]) continue;
+      moved++;
+    }
+    assert.equal(moved, 0, "pricing a carved channel moves nothing outside it");
   }
 
   console.log(JSON.stringify({

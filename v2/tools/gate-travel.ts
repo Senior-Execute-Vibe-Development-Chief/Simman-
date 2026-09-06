@@ -582,6 +582,7 @@ function referenceSubstrate(): Substrate {
     height: REF_HEIGHT,
     N,
     preset: "reference-terrain",
+    straitWidthKm: new Float32Array(N),
     elevation,
     landMask,
     climate: { temperature, moisture },

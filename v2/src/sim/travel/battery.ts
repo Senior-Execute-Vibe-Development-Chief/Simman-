@@ -72,6 +72,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     height,
     N,
     preset: "routing-fixture",
+    straitWidthKm: new Float32Array(N),
     elevation,
     landMask,
     climate,

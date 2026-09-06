@@ -37,9 +37,14 @@ function patchedV1SimDir(): string {
     fileURLToPath(new URL("../src/ported/worldgen/worldgen.js", import.meta.url)),
     "utf8",
   );
-  const straitBlock = /const EARTH_STRAITS = \[[\s\S]*?\nfunction carveStraits\(elevation, W, H\) \{[\s\S]*?\n\}/;
+  // The signature is matched loosely because v2's carve takes an OPTIONAL
+  // fourth argument (W18: the per-cell channel width it records). v1's call
+  // site passes three, so the spliced block runs with the recorder absent and
+  // writes exactly v1's elevation — which is what this arm asserts byte-exact.
+  const straitBlock = /const EARTH_STRAITS = \[[\s\S]*?\nfunction carveStraits\(elevation, W, H[^)]*\) \{[\s\S]*?\n\}/;
   const v2Block = v2WorldgenSource.match(straitBlock)?.[0];
   assert.ok(v2Block?.includes("path:"), "v2 strait block changed shape — update the oracle patch");
+  assert.ok(v2Block?.includes("widthKm:"), "v2 strait rows lost their measured width — update the oracle patch");
   const v1Block = worldgenSource.match(straitBlock)?.[0];
   assert.ok(v1Block, "v1 strait block changed shape — update the oracle patch");
   writeFileSync(worldgenPath, worldgenSource.replace(v1Block, v2Block ?? ""));

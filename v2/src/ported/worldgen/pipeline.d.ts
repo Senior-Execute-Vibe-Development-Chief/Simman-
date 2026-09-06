@@ -11,6 +11,11 @@ export interface PortedWorld {
   readonly tAmp: Float32Array;
   readonly warmRainFrac: Float32Array;
   readonly preset: string;
+  /** Real width, km, of every land cell the strait carve OPENED — the carve's
+   * own deviation from the DEM, so a consumer can charge the water that is
+   * actually there instead of a cell edge (W18). Null on presets that do not
+   * carve; zero on every cell the raster resolved by itself. */
+  readonly straitWidthKm: Float32Array | null;
   readonly _seed: number;
   readonly rivers?: unknown;
   readonly deposits?: Record<string, Float32Array>;
