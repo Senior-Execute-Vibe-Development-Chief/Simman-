@@ -3448,3 +3448,78 @@ Review corrections to the M1 build (all validated before merge):
     `realClimateData.js` on the W15 tree, a clean cross because the two
     corrections live in different files — at roughly the same 23 minutes.
     Recorded as needing one; offered, not run.
+
+69. **W16 asked whether the derived wild ranges cover the Yangtze, and found
+    that four of thirteen taxa were not the plants they were named — one of
+    them the crop itself.** (Owner, 2026-09-06: "surely we SHOULD ALREADY be
+    deriving wild ranges from real data? or is that not fully emergent? do we
+    define real ranges for where a crop can START, but its own climate
+    preference decides where it GOES?" → "why run? surely you can just look
+    if the derived range covers the yangtze?" → "do that, but also consider
+    any other important wild ancestors we are missing".)
+
+    **The design question first, because it is the right reading of the
+    code.** Yes, and yes: the GBIF-derived wild range gates where a package
+    can be DOMESTICATED — a hearth ignites only on a cell of the package's
+    own wild range, where people stand on it and it out-yields foraging —
+    and the package's own climate envelope gates where the farmed crop
+    SPREADS. Real data bounds the start; emergent fit decides the rest.
+
+    **The Yangtze answer, read out of the file rather than run.** Rice's
+    derived range does not reach the 30.5°N 115°E hearth centre: the read's
+    northern margin is ~28-30°N and the nearest range cell is 289 km away,
+    against the 200 km interpolation bound W9 fills to. That is a modern
+    extirpation limit of occurrence data — wild *O. rufipogon* has been
+    farmed and drained out of the middle Yangtze — and the manifest already
+    records the box as a race lost to loess millet. Not a new finding.
+
+    **A retraction.** Earlier in this session I reported that *Oryza
+    rufipogon* was ABSENT from the rice package and that this was the
+    Yangtze's cause. That was wrong, and it is now disproven in the data
+    rather than merely withdrawn: `species/match` makes `Oryza nivara` a
+    SYNONYM (4135998) of the accepted `Oryza rufipogon` (2703463), GBIF
+    answered the name query with the accepted taxon all along, and the
+    re-bake under the pinned usage key is byte-identical in every field —
+    7,094 records, 6,413 read, 818 cells, extent −7.75..30.25 N and
+    71..142.75 E, weight centre 92.2 E 18.6 N. Only the label changed. The
+    package has been the rufipogon complex since W9, which is the right
+    datum for a crop domesticated twice from it.
+
+    **Looking for the absent plant found a present one that should not have
+    been.** `Manihot esculenta` subsp. `flabellifolia` is a GBIF synonym of
+    `Manihot esculenta` — CASSAVA — so the tubers package's wild range was
+    derived from 23,587 records of the modern planting map, reaching 35.8°S
+    into the Argentine pampas where no wild manioc grows and cassava is
+    planted. The wild subspecies carries 1,448 records stopping at 25.5°S.
+    Pinned: 16× fewer records over 11× fewer cells, weight 6.8× more
+    concentrated, and tubers is no longer Earth's largest wild stand. **The
+    anomaly that first drew attention to this package was the crop's own
+    spread, read as the wild range — the exact circularity W12 exists to
+    prevent, arriving by a door W12 does not watch.**
+
+    **The audit of the other eight packages.** Wild barley and wild
+    sunflower were both excluded on a breadth argument W10 and W11 retired,
+    and both are named founders of the package they were kept out of. Barley
+    is back and measured to help (nearest range cell 206 → 74 km of the
+    Crescent centre, richness +43 %, stand +45 %, site quality 1.0000
+    unchanged). Sunflower is the one open item: its read had not finished
+    when this landed, and the risk is real — eastern-seeds has 17 rich cells
+    of 491 native at dev, and wild *H. annuus* is Plains-centred where the
+    complex is Eastern Woodlands, so a fourth member could empty the
+    intersection as wild sugarcane did at Kuk. Every other exclusion was
+    re-argued and stands on a reason that is not breadth: an unknown
+    ancestor (broomcorn millet), a WCVP-introduced range (taro, sweet
+    potato), or independent crops of one complex wrongly demanded together
+    (sugarcane, teff, banana). The pulses and flax stay out because a
+    package's founder set is the progenitors of the crops the package IS.
+
+    **What is still not screened.** *Flabellifolia* and the Ozark gourd have
+    no WCVP entry, so they pass the native-range screen `unscreened`.
+    Falling back to the parent species would close it — except that
+    *flabellifolia*'s parent is cassava, whose WCVP native range is the one
+    thing that must not be trusted here. Recorded, not assumed away.
+
+    **Not measured at the shipped grid.** Everything above is dev (240×120)
+    substrate and the dev W5 SOLVE arm. The tubers range lost eleven
+    twelfths of its cells; the third cardinal rule says that needs a
+    `v2-long` arm before it is validated. Offered, not run.

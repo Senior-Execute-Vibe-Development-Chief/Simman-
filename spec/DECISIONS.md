@@ -953,6 +953,84 @@ lawyered.
     and not run (owner directive 2026-09-03). QUESTIONS #68,
     `spec/handoffs/W15-wind-and-husbandry.md` §6.
 
+37. **W16 landed: the taxon we name, not the crop it resolves to.**
+    (Owner, 2026-09-06: "surely we SHOULD ALREADY be deriving wild ranges
+    from real data?" → "why run? surely you can just look if the derived
+    range covers the yangtze?" → **"do that, but also consider any other
+    important wild ancestors we are missing"**.) No simulation code changed:
+    this wave changes WHICH PLANTS the nine crop packages are built from, in
+    `tools/build-croprelatives.mts` and the file it bakes.
+
+    **(a) A name is not a taxon.** GBIF's occurrence search resolves a
+    `scientificName` query to the ACCEPTED usage of that name and answers
+    with the accepted taxon's records. Four of thirteen taxa this repo names
+    are synonyms in GBIF's backbone, so four reads were not reading the
+    plant they named — and one of the four is a fault that had been in
+    every bake since W9: **`Manihot esculenta` subsp. `flabellifolia` is a
+    synonym of `Manihot esculenta`, cassava.** The tubers package's wild
+    range was fitted to 23,587 records of the modern cassava planting map,
+    where the wild subspecies itself carries 1,448 — exactly the
+    circularity the W12 native-range screen was built to remove, arriving
+    through a door that screen does not watch. It is why tubers held the
+    largest wild stand on Earth (2.2875; now 1.5393, and rice at 1.8653 is
+    the maximum). The read is now pinned to a GBIF **usage key**, and a
+    synonym is followed only where following does not move UP the rank
+    ladder — the rule the WCVP screen already applied to distributions, for
+    a reason that stands on its own: an infraspecific name exists to
+    separate the wild form from the crop, and resolving it to the species
+    throws that distinction away. By that rule wild einkorn and the Ozark
+    gourd follow their synonyms and stay whole, wild rice follows to the
+    *O. rufipogon* complex, and wild manioc does not follow into cassava.
+    Each taxon's resolution is written into the baked file (`usageKey`,
+    `read`, `matchedStatus`), so a silent substitution is visible in the
+    data and not only in the counts. Eleven of thirteen reads come back
+    byte-identical, which is what makes the two that moved trustworthy.
+
+    **(b) Wild barley rejoins the founder set.** The package is called
+    "Wheat & Barley" and had no barley in it. `Hordeum spontaneum` was
+    excluded with a measurement — its range, Morocco to Tibet, "put wheat's
+    envelope in north China" — taken when ONE envelope was fitted to the
+    merged cloud of every member. W10 gave each member its own envelope and
+    made a package rich only where its members CO-OCCUR; W11 divided the
+    collection effort out cell by cell. Under those two a widespread member
+    cannot drag the fit anywhere, it can only restrict the intersection —
+    which IS the founder-set claim the code already cites. Measured: the
+    Crescent keeps all four rich cells, the package's range reaches 74 km of
+    the hearth centre instead of 206, best richness there rises 43 % and
+    best stand anywhere 45 %, site quality 1.0000 unchanged. The revert
+    condition was not met.
+
+    **The exclusions that stand are not the same case**, and were re-argued
+    rather than inherited: broomcorn millet is a feral escape whose ancestor
+    botany does not know; wild taro and wild sweet potato are WCVP-introduced
+    where the package needs them native; wild sugarcane and wild teff are
+    independent crops of one complex, so requiring them alongside yam and
+    enset is a claim the archaeology does not make (and sugarcane was
+    measured to empty the Kuk intersection). Wild banana falls under the same
+    sugarcane ruling. The five non-cereal Crescent founders — the pulses and
+    flax — are excluded because a package's founder set is the progenitors of
+    the crops the package IS, and "Wheat & Barley" is a cereal package.
+    Wild sunflower passes that test (eastern-seeds IS the seed complex) and
+    is the one open candidate; its read had not finished when this landed,
+    and it is held to barley's rule — add it, measure, revert with the
+    measurement recorded if the eastern-woodlands hearth regresses. Task #44.
+
+    **Verification.** lint, `npm test` (smoke, parity, byte-identical
+    save/load), `gate:people` → `pass` at dev with the W5 SOLVE arm, all on
+    this bake; the range, stand and hearth-site figures are substrate probes
+    with no history simulated. The manifest keeps all 61 rows: none added,
+    removed or re-banded, three refreshed where the bake moved the
+    measurement their reason describes — the outside tubers ignition left
+    the lower Orinoco (a cell that was cassava's, not wild manioc's) for
+    eastern Brazil at −4114, the Indus box holds rice, and
+    northwest-neotropics still fails but now against the wild plant's real
+    distribution, which is a finding about a MISSING PACKAGE (the region's
+    domesticates are arrowroot, leren and yam bean) rather than a defect to
+    tune. No shipped-grid arm was run; the tubers range lost eleven twelfths
+    of its cells, so one is recorded as needed. QUESTIONS #69,
+    `spec/handoffs/W16-the-taxon-we-name.md`.
+
+
 ## Proposed — working design, awaiting explicit ratification
 
 - **P16. The true reduced grid** (replaces the withdrawn 31(c); measured

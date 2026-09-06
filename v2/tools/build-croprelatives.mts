@@ -10,8 +10,13 @@
  * package's climate envelope to those occurrences and DERIVES the range;
  * no shape is ever drawn.
  *
+ * Each taxon is read under a GBIF USAGE KEY, not a name: a name query is
+ * answered with the ACCEPTED usage, which for a wild subspecies can be the
+ * crop itself (`readUsageOf`, W16).
+ *
  * Output: data/reality/crop-occurrences.json — occurrence cells deduplicated
- * to a coarse grid, per package, with taxa, counts and the fetch date.
+ * to a coarse grid, per package, with taxa, counts, the usage each was read
+ * under, and the fetch date.
  * Run manually when the catalogue changes; CI never fetches.
  */
 import { createHash } from "node:crypto";
@@ -46,14 +51,19 @@ interface Taxon { readonly name: string; readonly continents: readonly string[];
 interface PackageRelatives { readonly packageId: string; readonly note: string; readonly taxa: readonly Taxon[]; }
 
 const RELATIVES: readonly PackageRelatives[] = [
-  // One or two taxa per package: the wild progenitor of the crop that DEFINES
-  // the package, not every wild relative in it. GBIF record density tracks
-  // botanical survey effort rather than plant abundance, so a widespread
-  // relative with tens of thousands of records drags the fitted envelope to
-  // wherever botanists work — measured: Setaria viridis (14,589 Asian records,
-  // heavily Russian) put millet's envelope in Siberia and lit hearths there,
-  // and Hordeum spontaneum (9,503, Morocco to Tibet) put wheat's in north
-  // China. The founder crop's own progenitor is the tightest honest choice.
+  // A package's founder set: the wild progenitors of the crops that DEFINE
+  // it, not every wild relative in it. GBIF record density tracks botanical
+  // survey effort rather than plant abundance, and a widespread relative with
+  // tens of thousands of records once dragged the fitted envelope to wherever
+  // botanists work — measured: Setaria viridis (14,589 Asian records, heavily
+  // Russian) put millet's envelope in Siberia and lit hearths there, and
+  // Hordeum spontaneum (9,503, Morocco to Tibet) put wheat's in north China.
+  // Both of those were measured against ONE envelope fitted to the merged
+  // cloud of a package's members; W10 gave each member its own envelope and
+  // W11 divided out the collection effort cell by cell, so breadth alone no
+  // longer moves anything (W16 returns barley on that ground). What a
+  // package must still not carry is a taxon that is not the progenitor:
+  // broomcorn millet's feral escape, whose ancestor botany does not know.
   //
   // The second contamination is the crop's OWN SPREAD (W12). A modern
   // occurrence map of a cultivated plant, or of a weed of cultivation, is a
@@ -64,12 +74,30 @@ const RELATIVES: readonly PackageRelatives[] = [
   // green foxtail really is native across temperate Eurasia and wild enset
   // really is native from Ethiopia to South Africa — those two ranges are
   // honest and their hearths are the model's problem, not the data's.
-  { packageId: "wheat", note: "wild emmer and wild einkorn, the founders (Zohary, Hopf & Weiss 2012); wild barley is excluded, its range spanning Morocco to Tibet", taxa: [
+  // Wild barley is back (W16). It was excluded because its range, spanning
+  // Morocco to Tibet, put wheat's fitted envelope in north China — measured,
+  // and measured when ONE envelope was fitted to the merged cloud of every
+  // member. W10 gave each member its own envelope and made the package rich
+  // only where they CO-OCCUR, so a widespread member can no longer drag the
+  // fit anywhere; it can only restrict the intersection, which is the
+  // founder-set claim itself (Zohary & Hopf: the Crescent is where the whole
+  // set occurs together, and it is barley that most of the Crescent's early
+  // sites are threshing). Read on ASIA, as its two co-members are.
+  { packageId: "wheat", note: "wild emmer, wild einkorn and wild barley, three of the eight founders (Zohary, Hopf & Weiss 2012)", taxa: [
     { name: "Triticum dicoccoides", continents: ["ASIA"] },
     { name: "Triticum boeoticum", continents: ["ASIA"] },
+    { name: "Hordeum spontaneum", continents: ["ASIA"] },
   ] },
-  { packageId: "rice", note: "annual wild rice, the northern-margin form Fuller 2011 identifies as the progenitor", taxa: [
-    { name: "Oryza nivara", continents: ["ASIA"] },
+  // This package's taxon was written `Oryza nivara`, the annual form, and
+  // that is not what was read (W16). GBIF treats nivara as a synonym of
+  // `Oryza rufipogon` and answers a NAME query with the accepted usage, so
+  // every bake since W9 read the rufipogon complex — 7,094 records where the
+  // synonym's own usage carries 3,839. The datum is the right one (japonica
+  // was domesticated from the perennial rufipogon of the Yangtze, indica
+  // from the annual form of the Ganges plain; Fuller 2011), and the label
+  // now says so instead of claiming the narrower taxon.
+  { packageId: "rice", note: "the wild rice complex Oryza rufipogon sensu lato, the annual nivara form included as GBIF treats it; progenitor of both japonica and indica (Fuller 2011)", taxa: [
+    { name: "Oryza rufipogon", continents: ["ASIA"] },
   ] },
   { packageId: "maize", note: "Balsas teosinte (Matsuoka et al. 2002)", taxa: [
     { name: "Zea mays subsp. parviglumis", continents: ["NORTH_AMERICA"] },
@@ -90,6 +118,14 @@ const RELATIVES: readonly PackageRelatives[] = [
   { packageId: "millet", note: "green foxtail, the wild ancestor of foxtail millet (Zhao 2011); broomcorn millet's wild ancestor is unknown to botany", taxa: [
     { name: "Setaria viridis", continents: ["ASIA"] },
   ] },
+  // Wild manioc is the case that forced the read to be pinned to a usage key
+  // (W16, `readUsageOf`): GBIF treats `Manihot esculenta subsp.
+  // flabellifolia` as a synonym of `Manihot esculenta` — CASSAVA — so the
+  // query that asked for the wild subspecies was answered with 23,587
+  // records of the crop, where the subspecies itself carries 1,448. Every
+  // bake from W9 to W15 fitted this package to the modern cassava planting
+  // map, which is precisely the circularity the native-range screen exists
+  // to remove, arriving by a door the screen does not watch.
   { packageId: "tubers", note: "wild manioc (Olsen & Schaal 1999); wild sweet potato is excluded, its range reaching Mexico", taxa: [
     { name: "Manihot esculenta subsp. flabellifolia", continents: ["SOUTH_AMERICA"] },
   ] },
@@ -171,6 +207,62 @@ async function familyKeyOf(name: string): Promise<number> {
   return key;
 }
 
+/** Name parts, rank markers dropped: WCVP and the GBIF backbone both write "Zea mays parviglumis". */
+function nameParts(name: string): number {
+  return name.replace(/\b(subsp\.|var\.|f\.|ssp\.)\s*/g, "").replace(/\s+/g, " ").trim().split(" ").length;
+}
+
+/** True where the accepted name is COARSER than the one asked for — fewer parts, so a rank up. */
+function coarser(named: string, accepted: string): boolean {
+  return nameParts(accepted) < nameParts(named);
+}
+
+interface Usage { readonly key: number; readonly name: string; readonly matched: number; readonly status: string; }
+
+/**
+ * WHICH TAXON IS ACTUALLY READ (W16). GBIF answers a `scientificName` query
+ * with the ACCEPTED usage of that name, and for a wild progenitor the
+ * accepted usage is sometimes the crop: `Manihot esculenta subsp.
+ * flabellifolia` is a synonym of `Manihot esculenta`, so the query that
+ * asked for wild manioc was answered with 23,587 records of CASSAVA where
+ * the subspecies itself carries 1,448 — the modern planting map, read as
+ * the wild range, which is the circularity the native-range screen exists to
+ * remove. So the read is pinned to a usage key, and a synonym is followed
+ * only where following does not move UP the rank ladder: the same rule the
+ * WCVP screen already applies to distributions, for the same reason — an
+ * infraspecific name exists to separate the wild form from the crop, and
+ * resolving it to the species throws that distinction away.
+ *
+ * Where following is safe it is also right, and the rule keeps it: wild
+ * einkorn's `Triticum boeoticum` is accepted as `T. monococcum subsp.
+ * aegilopoides` and reads 2,963 records against the synonym's own 216, and
+ * the Ozark gourd's `Cucurbita pepo subsp. ozarkana` is accepted as `C.
+ * melopepo var. ozarkana`, 152 against 76. Both stay whole.
+ */
+const usages = new Map<string, Usage>();
+async function readUsageOf(name: string): Promise<Usage> {
+  const cached = usages.get(name);
+  if (cached) return cached;
+  const match = await fetchJson(`https://api.gbif.org/v1/species/match?name=${encodeURIComponent(name)}`);
+  const matched = typeof match.usageKey === "number" ? match.usageKey : 0;
+  const named = typeof match.canonicalName === "string" ? match.canonicalName : name;
+  const status = typeof match.status === "string" ? match.status : "UNKNOWN";
+  let key = matched;
+  let read = named;
+  if (status === "SYNONYM" && typeof match.acceptedUsageKey === "number") {
+    const accepted = await fetchJson(`https://api.gbif.org/v1/species/${match.acceptedUsageKey}`);
+    const acceptedName = typeof accepted?.canonicalName === "string" ? accepted.canonicalName : "";
+    if (acceptedName !== "" && !coarser(named, acceptedName)) {
+      key = match.acceptedUsageKey;
+      read = acceptedName;
+    }
+  }
+  if (key <= 0) throw new Error(`GBIF has no usage for ${name}`);
+  const usage: Usage = { key, name: read, matched, status };
+  usages.set(name, usage);
+  return usage;
+}
+
 /**
  * The target-group background (W11): how many records of the taxon's own
  * FAMILY were collected in the same ground, by the same kind of survey. A
@@ -197,11 +289,11 @@ async function backgroundOf(groupParam: string, continent: string, lon: number, 
   return count;
 }
 
-async function occurrencesOf(taxon: Taxon): Promise<{ points: Array<[number, number, string]>; total: number }> {
+async function occurrencesOf(taxon: Taxon, usage: Usage): Promise<{ points: Array<[number, number, string]>; total: number }> {
   const points: Array<[number, number, string]> = [];
   let total = 0;
   for (const continent of taxon.continents) {
-    const base = `https://api.gbif.org/v1/occurrence/search?scientificName=${encodeURIComponent(taxon.name)}`
+    const base = `https://api.gbif.org/v1/occurrence/search?taxonKey=${usage.key}`
       + `&continent=${continent}&hasCoordinate=true&hasGeospatialIssue=false&limit=${PAGE}`;
     const head = await fetchJson(`${base}&offset=0`);
     total += head.count ?? 0;
@@ -318,7 +410,7 @@ async function nativeRegionsOf(name: string): Promise<string[] | undefined> {
   if (hit && hit.taxonomicStatus === "SYNONYM" && hit.acceptedKey) {
     const accepted = await fetchJson(`https://api.gbif.org/v1/species/${hit.acceptedKey}`);
     const acceptedCanonical = typeof accepted?.canonicalName === "string" ? accepted.canonicalName : "";
-    if (acceptedCanonical.split(/\s+/).length >= canonical.split(/\s+/).length) hit = accepted;
+    if (acceptedCanonical !== "" && !coarser(canonical, acceptedCanonical)) hit = accepted;
   }
   let regions: string[] | null = null;
   if (hit?.key) {
@@ -359,16 +451,17 @@ const packages: unknown[] = [];
 for (const entry of RELATIVES) {
   const taxa: unknown[] = [];
   for (const taxon of entry.taxa) {
-    const readKey = `points:${taxon.name}:${taxon.continents.join(",")}`;
+    const usage = await readUsageOf(taxon.name);
+    const readKey = `points:usage${usage.key}:${taxon.continents.join(",")}`;
     let read = cacheGet<{ points: Array<[number, number, string]>; total: number }>(readKey);
     if (!read) {
-      read = await occurrencesOf(taxon);
+      read = await occurrencesOf(taxon, usage);
       cacheSet(readKey, read);
     }
     const screened = await screenToNative(taxon, read.points);
     const points = screened.kept;
     const total = read.total;
-    console.log(`  ${taxon.name}: ${screened.note}`);
+    console.log(`  ${taxon.name}: read as ${usage.name} (usage ${usage.key}, ${usage.status}); ${screened.note}`);
     // Cells are kept PER TAXON (W10). A package is a founder SET and it is
     // rich where its members CO-OCCUR: western Anatolia has wild einkorn but
     // not wild emmer, the south-eastern arc has einkorn, emmer and barley
@@ -444,6 +537,13 @@ for (const entry of RELATIVES) {
     }).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     taxa.push({
       name: taxon.name,
+      // What GBIF was actually asked for. A name is not a taxon: `usageKey`
+      // is the usage the records were read under and `read` is its canonical
+      // name, so a bake that silently followed a synonym into the crop is
+      // visible in the file rather than only in the counts (W16).
+      usageKey: usage.key,
+      read: usage.name,
+      matchedStatus: usage.status,
       continents: taxon.continents,
       records: total,
       sampled: points.length,
@@ -459,7 +559,7 @@ for (const entry of RELATIVES) {
 }
 
 writeFileSync("data/reality/crop-occurrences.json", `${JSON.stringify({
-  source: "Each cell is [longitude, latitude, weight]: the weight is the taxon's record count in the cell DIVIDED BY the records of its whole family in the same ground (the target-group background, Phillips et al. 2009), normalised so every taxon of a package counts equally however well surveyed it is. A raw count is abundance times collection effort; the family's count is that effort, so the ratio so every taxon of a package counts equally however well surveyed it is, and it measures how COMMON the plant is there, which is what separates Harlan's massive stands from sporadic occurrences and is what the envelope is fitted against. GBIF occurrence records of each package's WILD progenitors, restricted to the continents the lineage is native to (GBIF's own continent field; the modern spread of a domesticate is thereby excluded — sunflower alone has 44,705 European records). Coordinates are deduplicated to a 0.25-degree grid; the counts are the full matching totals, the sampled figures what this bake read. Cells are listed PER TAXON: the simulation fits an envelope to each member separately, and a package's stand richness is where its members CO-OCCUR — both the founder-package concept and the correction for per-species survey effort, since an intersection cannot be inflated by one over-collected member. No range is drawn.",
+  source: "Each cell is [longitude, latitude, weight]: the weight is the taxon's record count in the cell DIVIDED BY the records of its whole family in the same ground (the target-group background, Phillips et al. 2009), normalised so every taxon of a package counts equally however well surveyed it is. A raw count is abundance times collection effort; the family's count is that effort, so the ratio so every taxon of a package counts equally however well surveyed it is, and it measures how COMMON the plant is there, which is what separates Harlan's massive stands from sporadic occurrences and is what the envelope is fitted against. GBIF occurrence records of each package's WILD progenitors, restricted to the continents the lineage is native to (GBIF's own continent field; the modern spread of a domesticate is thereby excluded — sunflower alone has 44,705 European records). Each taxon is read under the GBIF USAGE KEY recorded beside it as `usageKey`/`read`, never by name: a name query is answered with the ACCEPTED usage of that name, and for a wild subspecies that can be the crop — `Manihot esculenta subsp. flabellifolia` resolves to `Manihot esculenta`, cassava, and answered with 23,587 records of the modern planting map where the subspecies itself carries 1,448. A synonym is followed only where following does not move up the rank ladder. Coordinates are deduplicated to a 0.25-degree grid; the counts are the full matching totals, the sampled figures what this bake read. Cells are listed PER TAXON: the simulation fits an envelope to each member separately, and a package's stand richness is where its members CO-OCCUR — both the founder-package concept and the correction for per-species survey effort, since an intersection cannot be inflated by one over-collected member. No range is drawn.",
   citation: "GBIF.org occurrence search API, api.gbif.org/v1/occurrence/search. Individual dataset citations resolve through each record's datasetKey.",
   fetched: new Date().toISOString().slice(0, 10),
   gridDegrees: GRID_DEGREES,
