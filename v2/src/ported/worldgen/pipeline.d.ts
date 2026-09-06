@@ -16,6 +16,10 @@ export interface PortedWorld {
    * actually there instead of a cell edge (W18). Null on presets that do not
    * carve; zero on every cell the raster resolved by itself. */
   readonly straitWidthKm: Float32Array | null;
+  /** The share of each cell standing above sea level, 0..1, measured on the
+   * 1-arc-minute grid (W19). The land/sea bit says WHETHER there is ground
+   * here; this says HOW MUCH. Null on presets that carry no cover plane. */
+  readonly landFraction: Float32Array | null;
   readonly _seed: number;
   readonly rivers?: unknown;
   readonly deposits?: Record<string, Float32Array>;

@@ -288,6 +288,7 @@ pub struct PeopleKernel {
     fertility: Vec<f64>,
     water_access: Vec<f64>,
     relief_multiplier: Vec<f64>,
+    land_share: Vec<f64>,
     forager_capacity: Vec<f64>,
     disease_burden: Vec<f64>,
     cell_area: Vec<f64>,
@@ -387,6 +388,7 @@ impl PeopleKernel {
         fertility: &[f64],
         water_access: &[f64],
         relief_multiplier: &[f64],
+        land_share: &[f64],
         forager_capacity: &[f64],
         disease_burden: &[f64],
         cell_area: &[f64],
@@ -420,6 +422,7 @@ impl PeopleKernel {
             fertility: copy_f64(fertility, cells),
             water_access: copy_f64(water_access, cells),
             relief_multiplier: copy_f64(relief_multiplier, cells),
+            land_share: copy_f64(land_share, cells),
             forager_capacity: copy_f64(forager_capacity, cells),
             disease_burden: copy_f64(disease_burden, cells),
             cell_area: copy_f64(cell_area, cells),
@@ -688,6 +691,10 @@ impl PeopleKernel {
             * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
             * (1.0 + access * PEOPLE_WATER_ACCESS_GAIN)
             * self.relief_multiplier[cell]
+            // Fields are ground (W19): a cell half of which is open water
+            // grows half the crop. The forager side arrives already scaled,
+            // as a data array.
+            * self.land_share[cell]
     }
 
     pub fn begin_growth(&mut self, dt_months: f64) {

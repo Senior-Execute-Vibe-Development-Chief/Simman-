@@ -44,7 +44,7 @@ import { migrationShareForArea } from "../src/sim/people/migration";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
-import { cellAreasKm2 } from "../src/sim/people/habitability";
+import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity } from "../src/sim/people/habitability";
 import { mixtureCapacity } from "../src/sim/people/capacity";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../src/ported/worldgen/cropPackages.js";
 import { orographicFootprintRadius, orographicShare } from "../src/ported/worldgen/realClimateData.js";
@@ -109,6 +109,7 @@ function peopleFixture(): Substrate {
     N: cells,
     preset: "people-fixture",
     straitWidthKm: new Float32Array(cells),
+    landFraction: new Float32Array(cells).fill(1),
     elevation: new Float32Array(cells),
     landMask,
     climate: { temperature, moisture },
@@ -918,6 +919,53 @@ async function main(): Promise<void> {
       moved++;
     }
     assert.equal(moved, 0, "pricing a carved channel moves nothing outside it");
+  }
+
+  {
+    // W19: every capacity law is a density per km² of LAND, and the area it is
+    // multiplied by to reach a headcount is the whole cell. A cell the
+    // coastline runs through therefore has to charge its living to the ground
+    // it actually has. Three properties: the ground-derived terms scale with
+    // the cover exactly; the water's-edge term does not, because water inside
+    // the cell IS that edge and does not take it away; and no cell whose cover
+    // did not change moves at all.
+    const width = 240;
+    const coverCell = 60 * width + 100;
+    // A quarter, so the scaling is exact in binary and the assertion can be
+    // an equality rather than a tolerance.
+    const COVER = 0.25;
+    const build = (share: number): PeopleWorld => {
+      const base = peopleFixture();
+      base.coast[coverCell] = 1; // give the cell a shore, so there is an aquatic term to hold fixed
+      base.landFraction[coverCell] = share;
+      return new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts" }, substrate: base }) as PeopleWorld;
+    };
+    const whole = build(1);
+    const part = build(COVER);
+    const terrestrialWhole = foragerTerrestrialCapacity(whole, coverCell);
+    const terrestrialPart = foragerTerrestrialCapacity(part, coverCell);
+    assert.ok(terrestrialWhole > 0, "the fixture cell feeds foragers off its ground");
+    assert.equal(terrestrialPart, terrestrialWhole * COVER, "the ground-derived living is charged to the ground");
+    const aquaticWhole = foragerCapacity(whole, coverCell) - terrestrialWhole;
+    const aquaticPart = foragerCapacity(part, coverCell) - terrestrialPart;
+    assert.ok(aquaticWhole > 0, "the fixture cell has a shore to fish");
+    assert.ok(Math.abs(aquaticPart - aquaticWhole) < 1e-12, "the water's edge is not diminished by water");
+    let grown = -1;
+    for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+      if (packageCapacityAt(whole, coverCell, packageIndex, 0) > 0) { grown = packageIndex; break; }
+    }
+    assert.ok(grown >= 0, "some package grows in the fixture, so the farmed law can be tested");
+    assert.equal(
+      packageCapacityAt(part, coverCell, grown, 0),
+      packageCapacityAt(whole, coverCell, grown, 0) * COVER,
+      "fields are ground too, and the wild stand is a share of the same capacity",
+    );
+    let coverMoved = 0;
+    for (let cell = 0; cell < whole.N; cell++) {
+      if ((whole._foragerCapacity[cell] ?? 0) === (part._foragerCapacity[cell] ?? 0)) continue;
+      coverMoved++;
+    }
+    assert.equal(coverMoved, 1, "charging the ground moves only the cell whose cover changed");
   }
 
   console.log(JSON.stringify({

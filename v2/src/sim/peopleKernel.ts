@@ -7,6 +7,7 @@ import initThreads, {
   PeopleKernel as ThreadedPeopleKernel,
 } from "../wasm/people-threads/people.js";
 import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
+import { landShare } from "./people/habitability";
 import type { PeopleWorld } from "./people/types";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import {
@@ -326,6 +327,10 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
       packageIndex * world._landCells.length,
     );
   }
+  // The ground share each capacity law charges (W19), built through the same
+  // law the reference kernel calls so both read identical numbers.
+  const landShareField = new Float64Array(world.N);
+  for (let cell = 0; cell < world.N; cell++) landShareField[cell] = landShare(world, cell);
   const yields = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.yield ?? 1);
   const cropFit = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
   const standingGain = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
@@ -347,6 +352,7 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     Float64Array.from(world.substrate.fertility),
     world._waterAccess,
     world._reliefMult,
+    landShareField,
     world._foragerCapacity,
     world._diseaseBurden,
     world.cellAreaKm2,

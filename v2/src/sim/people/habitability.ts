@@ -30,6 +30,19 @@ import type { PeopleWorld } from "./types";
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
+/**
+ * The share of a cell that is ground (W19). Every capacity law here is a
+ * density per km² of LAND, and the area it is multiplied by to reach a
+ * headcount is the whole cell — so a cell the coastline runs through has to
+ * charge its living to the ground it actually has, not to the sea beside it.
+ * The land/sea bit says WHETHER there is ground here; this says HOW MUCH.
+ * One wherever the world carries no cover plane, which is what every law
+ * did before the plane existed.
+ */
+export function landShare(world: PeopleWorld, cell: number): number {
+  return clamp01(world.substrate.landFraction[cell] ?? 1);
+}
+
 export function cellAreasKm2(width: number, height: number): Float64Array {
   const areas = new Float64Array(width * height);
   const northSouth = EARTH_MERIDIONAL_KM / height;
@@ -211,11 +224,18 @@ export function foragerTerrestrialCapacity(world: PeopleWorld, cell: number): nu
   return PEOPLE_FORAGER_CAPACITY_PER_KM2
     * (PEOPLE_FORAGER_FERTILITY_BASE + PEOPLE_FORAGER_FERTILITY_GAIN * fertility)
     * climate
-    * reliefMultiplier(world, cell);
+    * reliefMultiplier(world, cell)
+    * landShare(world, cell);
 }
 
 export function foragerCapacity(world: PeopleWorld, cell: number): number {
   const climate = 1 - PEOPLE_DISEASE_RATE * diseaseBurden(world, cell);
+  // The terrestrial living is charged to the cell's ground (W19); the aquatic
+  // living is not. The second term prices the WATER'S EDGE — shore, river
+  // bank, lake margin, floodplain — and water standing inside the cell does
+  // not take that edge away, it is that edge. Scaling it by the land share
+  // would say a narrow channel feeds fewer fishers than a dry plain beside a
+  // lake of the same access.
   return foragerTerrestrialCapacity(world, cell)
     + PEOPLE_FORAGER_AQUATIC_CAPACITY_PER_KM2 * aquaticAccess(world, cell) * climate;
 }

@@ -13,7 +13,7 @@ import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../../ported
 import type { CropPackage } from "../../ported/worldgen/cropPackages.js";
 import { occurrenceTaxaOf } from "../../ported/worldgen/cropOccurrenceData.js";
 import { deriveWildRange, fitWildEnvelope } from "./wildRange";
-import { channelStripShare } from "./habitability";
+import { channelStripShare, landShare } from "./habitability";
 import { dpow } from "../dmath";
 import type { PeopleWorld } from "./types";
 
@@ -134,7 +134,11 @@ export function packageCapacityAt(world: PeopleWorld, cell: number, packageIndex
     * (1 + technique * (world._standingGain[packageIndex]?.[packed] ?? 0))
     * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
     * (1 + access * PEOPLE_WATER_ACCESS_GAIN)
-    * (world._reliefMult[cell] ?? 0);
+    * (world._reliefMult[cell] ?? 0)
+    // Fields are ground (W19). A cell half of which is open water grows half
+    // the crop, and the wild stand law below — a share of this same capacity —
+    // thins with it, because the stand is the crop growing on that same ground.
+    * landShare(world, cell);
 }
 
 /**

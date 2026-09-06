@@ -3816,3 +3816,54 @@ Review corrections to the M1 build (all validated before merge):
     the sea. Until then this is a known over-credit of one basin, recorded
     in the ledger and not measured at the shipped grid; the `v2-long` arm
     is on request, not run.
+
+73. **W19a charged capacity to the land a cell actually has, and the cover
+    plane it needed measures height against the sea rather than dryness.**
+    (2026-09-06, owner: *"so we need finer data, write straits and mini
+    oceans on the coarser map from the fine data, and do the same for sub
+    coarse pixel islands?"* → **"go"**.)
+    `spec/handoffs/W19-the-land-a-cell-has.md`.
+
+    **(a) What the term is.** The shipped raster stores one BIT per cell for
+    geometry a few km across; a cell is ~21 km on a side and holds ~450 km²,
+    so a coast, an island, a strait or a lake shore cuts through the middle
+    of one. Every capacity law is a density **per km² of LAND** multiplied by
+    the **whole cell's** area, so a cell 30% dry has been fed as 100% dry.
+    `tools/build-landfrac.mts` bakes the share of each shipped cell above sea
+    level from the 1-arc-minute ETOPO grid already on disk (~126 samples per
+    cell, the same `altitude > 0` test the elevation bake uses), stored as
+    varint-delta corrections to the bit the elevation raster implies — 53,353
+    cells, 2.9% of the world, with a bake-time round-trip assertion.
+    `landShare()` multiplies exactly two capacity densities. The owner's
+    "entities … with their true size" was answered **no**: a named registry
+    is fine for drawing, but a mechanic that asks *which feature is this*
+    breaks the second cardinal rule, so this is a field on cells and no law
+    knows what it is looking at.
+
+    **(b) What it moved.** Substrate only, both grids, no history: dev loses
+    3.02 Mkm² (2.0%) of land-masked area to water and 2.2% of forager
+    terrestrial headroom; target 3.69 Mkm² (2.5%) and 2.6%. **10,424 target
+    cells covering ~3.0 Mkm² are majority water and were charged as fully dry
+    land.** The effect is LARGER at the finer grid. On the dev W5 SOLVE arm
+    nothing changed status: 1 CE 1,503.0 → 1,482.61M, all five European
+    arrivals in window, front 1.082 → 1.0922 km/yr, staples 8/10, hearths
+    unchanged.
+
+    **(c) The gap, stated rather than tuned away.** The plane measures HEIGHT
+    against the sea, not dryness, so ground below sea level but dry reads as
+    water: Qattara 0.000 at 29.5°N 27.0°E (0.164 as a ±0.5° box mean), the
+    Netherlands 0.051 (0.284 box), the Salton Sink 0.000 (0.675 box), Turfan
+    0.090 (0.667 box). **How much land this costs is NOT measured and is not
+    claimed** — separating dry below-sea-level ground from water needs a
+    hydrography layer the sim does not carry, and no threshold on elevation
+    alone can do it. The direction is safe (those basins are under-fed, never
+    over-fed), and the honest name for the plane is a height-derived cover
+    statistic.
+
+    **(d) What is deferred.** **W19b**: a cell the raster calls ocean but the
+    fine grid finds partly dry should hold people at its true area — the wave
+    in which sub-cell islands exist at all. It changes the land mask's
+    topology (routing, coasts, basins, ancestry), so it is a wave of its own
+    with its own probe, not a follow-on line. And the shipped-grid arm for
+    W17, W18 and W19a is `v2-long` on request; W19a's target-grid effect on
+    the population curve and `arrival:japan:solve:target` is unmeasured.

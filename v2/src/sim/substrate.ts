@@ -117,6 +117,13 @@ export interface Substrate {
    * own, which is everywhere outside those channels and everywhere at all on
    * a preset that does not carve (W18). */
   readonly straitWidthKm: Float32Array;
+  /** The share of the cell that stands above sea level, 0..1, measured on the
+   * 1-arc-minute grid (W19). A cell is a few hundred km2 and a coast, an
+   * island or a lake shore routinely cuts through the middle of one, so the
+   * land/sea bit above says WHETHER there is ground here and this says HOW
+   * MUCH. One everywhere on a preset with no real bathymetry, which is the
+   * behaviour every consumer had before the plane existed. */
+  readonly landFraction: Float32Array;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -381,6 +388,9 @@ export function buildSubstrate(
     // The carve runs on the world grid and buildTerritory samples it at RES 1,
     // so the field indexes exactly as every other substrate array does.
     straitWidthKm: world.straitWidthKm ?? new Float32Array(cells),
+    // Sampled on the world grid beside the elevation it corrects; a preset
+    // without it is wholly land wherever it is land at all.
+    landFraction: world.landFraction ?? new Float32Array(cells).fill(1),
   };
   return Object.freeze(substrate);
 }

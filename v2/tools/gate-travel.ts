@@ -583,6 +583,7 @@ function referenceSubstrate(): Substrate {
     N,
     preset: "reference-terrain",
     straitWidthKm: new Float32Array(N),
+    landFraction: new Float32Array(N).fill(1),
     elevation,
     landMask,
     climate: { temperature, moisture },

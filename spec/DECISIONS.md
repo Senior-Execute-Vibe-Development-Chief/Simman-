@@ -1243,6 +1243,77 @@ lawyered.
     trajectory arm for the non-solve European rows whose stated cause is now
     gone. QUESTIONS #72, `spec/handoffs/W18-the-width-of-the-water.md`.
 
+40. **W19a landed: a cell that is part water feeds part of a cell.** (Owner,
+    2026-09-06, on what should follow W18's channel width: *"so we need finer
+    data, write straits and mini oceans on the coarser map from the fine data,
+    and do the same for sub coarse pixel islands? have then be entities or
+    something like that on the map, with their true size and such"* → **"go"**
+    on the fine data.) **Yes to the data, NO to the entities**, and that "no"
+    is the design decision the wave rests on: a named registry of straits and
+    islets is fine for DRAWING, but the moment a mechanic asks *which feature
+    is this* the second cardinal rule is broken. So the fine measurement lands
+    as a FIELD on cells — like river magnitude, like W18's channel width — and
+    every law reads it without knowing what it is looking at.
+
+    The bug is the land/sea BIT. At the shipped grid a cell is ~21 km on a
+    side and holds ~450 km²; a coast, an island, a strait or a lake shore
+    routinely cuts through the middle of one, and thresholding that to
+    land-or-sea both erases land and invents it. Every capacity law is a
+    density **per km² of LAND**, and the area it is multiplied by to reach a
+    headcount is the **whole cell** — so a cell 30% dry has been fed, taxed
+    and settled as 100% dry.
+
+    `tools/build-landfrac.mts` bakes the missing quantity from the 1-arc-minute
+    ETOPO grid `build-riverdata.mts` already takes (**no new download**):
+    per shipped cell, the share of ~126 fine samples with `altitude > 0` —
+    verifiably the same land test the elevation bake uses. It is stored as
+    varint-delta CORRECTIONS to the bit the elevation raster already implies,
+    so 97.1% of the world is left out: 53,353 cells, 107 KB raw / 143 KB
+    base64 against 1,800 / 2,400 KB for the full plane, with a bake-time
+    byte-for-byte round-trip assertion. `landShare()` reads it and multiplies
+    exactly TWO capacity densities: `foragerTerrestrialCapacity` and
+    `packageCapacityAt` — two and not three, because the wild stand is built
+    FROM `packageCapacityAt` and thins with it automatically.
+
+    Four things were deliberately NOT done, each because it would have been
+    shorter and wrong. The **aquatic** forager term is not scaled: it prices
+    the water's EDGE, and water inside the cell *is* that edge rather than a
+    subtraction from it. **`cellAreaKm2` is not overloaded**, because
+    `migrationShareForArea` reads it as a row property meaning geometric
+    extent — the overload would say people migrate faster out of a half-water
+    cell. **`_reliefMult` is not the carrier**, because it is a penalty
+    response and not a share. And **`PEOPLE_CAPACITY_FLOOR_PER_KM2` is not
+    scaled**: it is a numerical density floor worth ~58 people across all 163
+    wholly-wet target cells. Because `world.people` is a DENSITY, scaling the
+    density is exactly "charge the living to the land the cell has" and every
+    downstream consumer follows for free; the farm-vs-forage adoption test is
+    untouched, both sides scaling by the same share.
+
+    Substrate only, both grids, no history: dev loses **3.02 Mkm² (2.0%)** of
+    land-masked area to water and 2.2% of forager terrestrial headroom; target
+    **3.69 Mkm² (2.5%)** and 2.6%. **10,424 target cells covering ~3.0 Mkm²
+    are MAJORITY WATER and were charged as fully dry land.** The effect is
+    LARGER at the finer grid, not smaller — more marginal coastal cells
+    survive the land mask there — which is the third cardinal rule earning its
+    place a fourth time.
+
+    On the dev W5 SOLVE arm **no row changed status and nothing became
+    stale**: population 1 CE 1,503.0 → 1,482.61M (≈1.4% lower against 2.2% of
+    headroom removed, the shape a curve saturating into an M3b ceiling gives),
+    all five European arrivals still in window, `europe-front-speed` 1.082 →
+    1.0922 km/yr inside the 0.6–1.3 band, density ordering preserved, staples
+    still 8/10 with the same two failures, every hearth row unchanged.
+
+    **W19b is named and NOT built**: letting a cell the raster calls ocean but
+    the fine grid finds partly dry hold people at its true area — the wave in
+    which sub-cell islands exist at all. That changes the land mask's
+    topology (routing, coasts, basins, ancestry) and wants its own wave.
+    **No shipped-grid arm was run** for W17, W18 or W19a; all three are
+    `v2-long` on request. The plane measures height against the sea rather
+    than dryness, so dry ground below sea level reads as water; the size of
+    that gap is not measurable without a hydrography layer and is not claimed.
+    QUESTIONS #73, `spec/handoffs/W19-the-land-a-cell-has.md`.
+
 
 ## Proposed — working design, awaiting explicit ratification
 
