@@ -12,6 +12,7 @@ import {
   ROUTING_FIXTURE_TEMPERATURE,
   ROUTING_FIXTURE_WATER_ELEVATION,
   ROUTING_FIXTURE_WIND_MS,
+  TRAVEL_PASS_DIRECTIONS,
   TRAVEL_RIVER_TEST_MAGNITUDE,
   UINT8_SENTINEL,
 } from "../constants";
@@ -80,6 +81,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     landShapeWidth: width,
     landShapeHeight: height,
     landShapeBlock: 1,
+    passClimb: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
     elevation,
     landMask,
     climate,

@@ -3955,3 +3955,73 @@ Review corrections to the M1 build (all validated before merge):
     yet been DRAWN at sub-cell resolution beyond the coastline: icons,
     borders and markers inside a cell are what this makes possible and are not
     in this wave. The below-sea-level gap of #73(c) is inherited unchanged.
+
+75. **W21 priced the pass, not the mean: a per-edge climb table baked from the
+    fine DEM replaces a direction-less ascent, and the router's land modes are
+    pruned by exact dominance.** (2026-09-07, owner: **"Do it"** on the design
+    — one bake that turns fine terrain into coarse edge costs, plus the
+    partition overlay measured and shipped only if it pays.)
+    `spec/handoffs/W21-the-lowest-crossing.md`, ledger §W21a / §W21b.
+
+    **(a) What was wrong.** A sim cell carries one elevation: the MEAN of its
+    ~1-arc-minute samples. The router charged `|Δelev| × slope_factor` per
+    edge, so two lowland cells with a ridge between them cost the same as two
+    lowland cells on a plain, and a valley floor next to a plateau paid the
+    plateau's mean as if the whole cell were the summit. A mean is the wrong
+    statistic for a crossing: the cost of getting from one cell to the next is
+    an EXTREMAL property — the lowest of the highest points along any crossing
+    — and averaging destroys it before the router ever sees it. The same
+    trap as W19's cover plane (an extensive statistic asked to answer an
+    extremal question) in the third dimension.
+
+    **(b) The mechanism.** `tools/build-passheights.mts` runs, once per sim
+    grid, a bounded minimax search over the fine samples in the bounding box
+    of each pair of adjacent land cells (the diagonal boxes include the side
+    cells, which is exactly the router's no-corner-cutting rule), endpoints
+    excluded, sea samples at 0, antimeridian unwrapped; the same search as
+    the river-gradient bake with one change of operator — sum for travel
+    time, max for a pass. What it stores is the EXTRA climb: `max(0, pass −
+    max(mean_a, mean_b))` in 32 m bytes, four directions per cell (E, SE, S,
+    SW; the others are read from the neighbour), sparse-encoded with a
+    round-trip assertion. The router's land term becomes `(|Δelev| + 2·climb)
+    × slope_factor` — up to the pass and back down, symmetric by
+    construction, zero on every water mode. `TRAVEL_PASS_DIRECTIONS = 4` is
+    the one new constant. No place names anywhere in the mechanism.
+
+    **(c) Truth probes, blind.** The table's maxima fall on Bogda Shan
+    (2240 m, dev) and the St Elias range (2112 m, target); Innsbruck 192 m,
+    Santiago eastward 896 m, Tbilisi southward 640 m, the Khyber 384/1024 m,
+    Andorra 448–480 m northward at target, Kathmandu 0 at dev (a whole
+    Himalayan cell is its own mean there). 33% of dev land edges and 9.3% of
+    target edges carry a nonzero climb; no entry reaches the byte cap.
+
+    **(d) What it moved.** Pure routing, no history: 29 reality rows move at
+    most 1.2% in days, no status changes, the manifest is neither stale nor
+    exceeded, `gate:travel` passes at both grids. Land-mode distance maps
+    from the route origins shift by a mean +0.37% (max +6.4%) at dev and
+    +0.26% (max +8.3%, 15 cells above +5%) at target: the mountain matters
+    where there IS a mountain and nowhere else, which is the expected shape
+    of a correct extremal term.
+
+    **(e) W21b — dominance pruning, and the overlay that does not pay.** Land
+    modes share every per-edge factor, so a mode that is available wherever
+    another is, no dearer per km anywhere and strictly cheaper somewhere can
+    never lie on a shortest path; the router now finds these after
+    `customize` and neither seeds nor transfers into them. Under the default
+    metric pack (35 km/day) dominates foot and cart. Proven bit-identical
+    against the pre-pruning module: 10 distance maps × 5 metrics + 60 queries
+    per grid, 7.29 M finite target entries and 134 k dev entries, zero differ.
+    Target query 1671 → 1149 ms, distance map 1695 → 1175 ms in the same
+    process. The CRP partition overlay was measured on paper and NOT built:
+    boundary cliques of (60 cells × modes)² over ~2,200 land blocks are
+    hundreds of MB per metric and tens of seconds per customize, the A*
+    bound already has ~7× slack on land, and the sim never routes per tick
+    (`query`/`distanceMap` serve the shell, the gate, the bench and the
+    battery). `preprocess()` stays as the M1 phase marker it was.
+
+    **(f) Deferred.** The migration pass's slope term still reads the mean
+    elevation, so people and traders see two different mountains — a seam to
+    close in its own wave. The table measures height, never dryness or
+    glaciation. A roughness (within-cell relief) bake is the obvious sibling
+    statistic and is not built. `npm run coverage` was not run for the
+    substrate fields W19a, W20a and W21a added; recorded in the handoff §8.

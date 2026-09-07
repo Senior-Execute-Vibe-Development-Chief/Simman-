@@ -12,11 +12,14 @@ import {
   TRAVEL_MONTH_PHASE,
   TRAVEL_SEASONAL_AMPLITUDE,
   DEFAULT_OCEAN_LEVEL,
+  ELEVATION_METERS_PER_UNIT,
+  TRAVEL_PASS_DIRECTIONS,
 } from "./constants";
 import { dsin } from "./dmath";
 import { buildWorld, type PortedTerritory, type PortedWorld } from "../ported/worldgen/pipeline.js";
 import { computeSeasonalRiverFlow } from "../ported/worldgen/riverGen.js";
 import { classifyBiome } from "../ported/worldgen/biomeClass.js";
+import { PASS_CLIMB_M_PER_BYTE } from "../ported/worldgen/passClimbData.js";
 import {
   fillRealClimate,
   isRealClimateAvailable,
@@ -141,6 +144,14 @@ export interface Substrate {
    * crosses the two grids therefore sums over a whole block, and no cell of
    * the plane is ever split between two cells of the sim. */
   readonly landShapeBlock: number;
+  /** The extra climb a land route makes crossing to each neighbour BEYOND the
+   * difference of the two cells' means: the lowest crossing of their shared
+   * boundary measured on the 1-arc-minute grid, minus the higher mean, floored
+   * at zero (W21). Elevation units, `cells × TRAVEL_PASS_DIRECTIONS`, directions
+   * E, SE, S, SW; the other four are the neighbour's entry for the opposite
+   * direction. Zero on any edge touching sea and on every preset without a
+   * baked table, which is exactly the ascent the router charged before. */
+  readonly passClimb: Float32Array;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -441,6 +452,24 @@ export function buildSubstrate(
     landShapeWidth: world.landShapeWidth,
     landShapeHeight: world.landShapeHeight,
     landShapeBlock: shapeBlock,
+    passClimb: passClimbOf(world, cells),
   };
   return Object.freeze(substrate);
+}
+
+/** The baked pass table in elevation units, or all zeros where the preset
+ * carries none — the router then charges exactly the ascent it always did. */
+function passClimbOf(world: PortedWorld, cells: number): Float32Array {
+  const out = new Float32Array(cells * TRAVEL_PASS_DIRECTIONS);
+  const bytes = world.passClimb;
+  if (!bytes) return out;
+  if (bytes.length !== out.length) {
+    throw new Error(
+      `the pass table holds ${bytes.length} entries for ${cells} cells; ` +
+        `expected ${out.length}`,
+    );
+  }
+  const unitsPerByte = PASS_CLIMB_M_PER_BYTE / ELEVATION_METERS_PER_UNIT;
+  for (let i = 0; i < out.length; i++) out[i] = bytes[i]! * unitsPerByte;
+  return out;
 }

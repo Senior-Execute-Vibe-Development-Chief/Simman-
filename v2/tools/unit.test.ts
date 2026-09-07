@@ -115,6 +115,7 @@ function peopleFixture(): Substrate {
     landShapeWidth: width,
     landShapeHeight: height,
     landShapeBlock: 1,
+    passClimb: new Float32Array(cells * 4),
     elevation: new Float32Array(cells),
     landMask,
     climate: { temperature, moisture },

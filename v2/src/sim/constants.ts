@@ -141,6 +141,11 @@ export const TRAVEL_RELIEF_THRESHOLD = 0.07; // spec/09-constants-ledger.md §M1
 export const TRAVEL_ELEVATION_FACTOR = 5; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
 export const TRAVEL_RELIEF_COST_FACTOR = 4; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
 export const TRAVEL_SLOPE_COST_FACTOR = 3; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
+// A cell's mean hides the boundary: two cells can share a mean while a ridge
+// stands between them, or a valley threads through. The pass table carries the
+// lowest crossing of each land edge measured on the fine DEM, four directions
+// per cell (E, SE, S, SW); the other four are the neighbour's opposite entry.
+export const TRAVEL_PASS_DIRECTIONS = 4; // spec/09-constants-ledger.md §W21a — stored pass directions per cell
 export const TRAVEL_COLD_THRESHOLD = 0.35; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_COLD_COST_FACTOR = 2; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_MUD_COST_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost

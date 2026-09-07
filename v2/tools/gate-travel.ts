@@ -589,6 +589,7 @@ function referenceSubstrate(): Substrate {
     landShapeWidth: REF_WIDTH,
     landShapeHeight: REF_HEIGHT,
     landShapeBlock: 1,
+    passClimb: new Float32Array(N * 4),
     elevation,
     landMask,
     climate: { temperature, moisture },

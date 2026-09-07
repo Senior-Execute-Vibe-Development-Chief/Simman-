@@ -10,6 +10,9 @@ const COASTAL_MODE: usize = 4;
 // dy = +1 is SOUTH (y grows downward on the grid).
 const D8_DX: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
 const D8_DY: [isize; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
+// Pass climbs are stored for the first four directions of the rose only;
+// the other four read the neighbour's entry for the opposite direction.
+const PASS_DIRECTIONS: usize = 4;
 
 #[derive(Clone, Copy)]
 struct HeapEntry {
@@ -85,6 +88,12 @@ pub struct Router {
     height: usize,
     land: Vec<u8>,
     elevation: Vec<f64>,
+    // Extra climb per land edge, elevation units, beyond the difference of
+    // the two cells' means: the lowest crossing of the boundary as measured
+    // on the fine DEM (W21). Cells × PASS_DIRECTIONS, zero where unknown.
+    // Single precision: the table is baked in 32 m bytes, so f32 carries it
+    // exactly and the shipped-grid copy is 26 MB instead of 52.
+    pass_climb: Vec<f32>,
     river_direction: Vec<u8>,
     // Real edge lengths: one north–south extent, one east–west extent per
     // row (cos-latitude). Diagonals use the hypotenuse of the two;
@@ -104,6 +113,14 @@ pub struct Router {
     // along the channel by the caller).
     river_gradient: Vec<f64>,
     partition: Vec<u32>,
+    // A land mode that another land mode beats or matches on EVERY cell it
+    // can enter (same or wider mask, no dearer per-km cost) can never carry a
+    // strictly shorter path, because the land modes share every per-edge
+    // factor (ascent, pass climb, no current, no wind) and transfers cost the
+    // same whichever pair they join. Its nodes are simply never opened. This
+    // is exact — it changes no distance — and it is recomputed per metric,
+    // since which modes exist and what they cost is the metric's business.
+    dominated: [bool; MODE_COUNT],
     distances: Vec<f64>,
     previous: Vec<i32>,
     heap: MinHeap,
@@ -134,6 +151,7 @@ impl Router {
         river_direction: &[u8],
         north_south_km: f64,
         row_east_west_km: &[f64],
+        pass_climb: &[f32],
     ) -> Router {
         let cells = width.saturating_mul(height);
         let mut land_copy = vec![0; cells];
@@ -142,6 +160,10 @@ impl Router {
         let mut elevation_copy = vec![0.0; cells];
         let elevation_len = elevation.len().min(cells);
         elevation_copy[..elevation_len].copy_from_slice(&elevation[..elevation_len]);
+        let pass_entries = cells.saturating_mul(PASS_DIRECTIONS);
+        let mut pass_climb_copy = vec![0.0f32; pass_entries];
+        let pass_len = pass_climb.len().min(pass_entries);
+        pass_climb_copy[..pass_len].copy_from_slice(&pass_climb[..pass_len]);
         let mut river_direction_copy = vec![255; cells];
         let river_direction_len = river_direction.len().min(cells);
         river_direction_copy[..river_direction_len]
@@ -168,6 +190,7 @@ impl Router {
             height,
             land: land_copy,
             elevation: elevation_copy,
+            pass_climb: pass_climb_copy,
             river_direction: river_direction_copy,
             north_south_km,
             row_east_west_km: row_km,
@@ -180,6 +203,7 @@ impl Router {
             wind_v: vec![0.0; cells],
             river_gradient: vec![0.0; cells],
             partition: vec![0; cells],
+            dominated: [false; MODE_COUNT],
             distances: vec![INFINITY; nodes],
             previous: vec![-1; nodes],
             heap: MinHeap::new(nodes.min(1024)),
@@ -253,8 +277,46 @@ impl Router {
         self.river_up_gradient_limit = river_up_gradient_limit;
         self.wind_gain = wind_gain;
         self.wind_ref_ms = if wind_ref_ms > 0.0 { wind_ref_ms } else { 1.0 };
+        self.find_dominated_modes();
         self.customized = true;
         true
+    }
+
+    /// Mark every land mode some other land mode dominates: the other mode is
+    /// available wherever this one is and costs no more per km on any cell,
+    /// and is strictly cheaper somewhere (or, when the two are identical
+    /// everywhere, has the lower index, so exactly one of the pair survives).
+    fn find_dominated_modes(&mut self) {
+        self.dominated = [false; MODE_COUNT];
+        let cells = self.land.len();
+        for mode in 0..RIVER_MODE {
+            'candidates: for other in 0..RIVER_MODE {
+                if other == mode {
+                    continue;
+                }
+                let mut strictly_cheaper = false;
+                for cell in 0..cells {
+                    if self.mode_mask[cell] & (1 << mode) == 0 {
+                        continue;
+                    }
+                    if self.mode_mask[cell] & (1 << other) == 0 {
+                        continue 'candidates;
+                    }
+                    let own = self.costs_per_km[cell * MODE_COUNT + mode];
+                    let theirs = self.costs_per_km[cell * MODE_COUNT + other];
+                    if theirs > own {
+                        continue 'candidates;
+                    }
+                    if theirs < own {
+                        strictly_cheaper = true;
+                    }
+                }
+                if strictly_cheaper || other < mode {
+                    self.dominated[mode] = true;
+                    break;
+                }
+            }
+        }
     }
 
     pub fn query(&mut self, start: u32, goal: u32) -> f64 {
@@ -343,7 +405,7 @@ impl Router {
     }
 
     fn seed_node(&mut self, cell: usize, mode: usize) {
-        if self.mode_mask[cell] & (1 << mode) == 0 {
+        if self.mode_mask[cell] & (1 << mode) == 0 || self.dominated[mode] {
             return;
         }
         let node = cell * MODE_COUNT + mode;
@@ -432,8 +494,17 @@ impl Router {
             // Ascent term, Naismith-style: climbing costs extra days in
             // proportion to the height gained, independent of the horizontal
             // grid — so total climb telescopes correctly across resolutions.
+            // The pass climb is the height the crossing rises ABOVE the higher
+            // of the two cells and comes back down again, hence twice: under
+            // the |Δ| convention a leg 100→1000→300 costs |200| + 2×700.
             let slope = if mode < RIVER_MODE {
-                (self.elevation[next_cell] - self.elevation[cell]).abs() * self.slope_factor
+                let climb = if direction < PASS_DIRECTIONS {
+                    self.pass_climb[cell * PASS_DIRECTIONS + direction]
+                } else {
+                    self.pass_climb[next_cell * PASS_DIRECTIONS + direction - PASS_DIRECTIONS]
+                } as f64;
+                ((self.elevation[next_cell] - self.elevation[cell]).abs() + 2.0 * climb)
+                    * self.slope_factor
             } else {
                 0.0
             };
@@ -491,7 +562,10 @@ impl Router {
             return;
         }
         for next_mode in 0..MODE_COUNT {
-            if next_mode == mode || self.mode_mask[cell] & (1 << next_mode) == 0 {
+            if next_mode == mode
+                || self.mode_mask[cell] & (1 << next_mode) == 0
+                || self.dominated[next_mode]
+            {
                 continue;
             }
             let next_node = cell * MODE_COUNT + next_mode;

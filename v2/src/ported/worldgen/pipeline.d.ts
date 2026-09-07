@@ -30,6 +30,10 @@ export interface PortedWorld {
    * each axis, so a cell of any grid covers a whole block of these. */
   readonly landShapeWidth: number;
   readonly landShapeHeight: number;
+  /** Extra climb per land edge beyond the difference of the two cells' means,
+   * in bytes of PASS_CLIMB_M_PER_BYTE metres, cells × 4 directions (E, SE, S,
+   * SW) on this world's own grid (W21). Null where no table was baked. */
+  readonly passClimb: Uint8Array | null;
   readonly _seed: number;
   readonly rivers?: unknown;
   readonly deposits?: Record<string, Float32Array>;
