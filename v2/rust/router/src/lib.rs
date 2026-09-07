@@ -13,6 +13,12 @@ const D8_DY: [isize; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
 // Pass climbs are stored for the first four directions of the rose only;
 // the other four read the neighbour's entry for the opposite direction.
 const PASS_DIRECTIONS: usize = 4;
+/// W22: the crossing table shares the pass table's stored rose. High bit:
+/// ground runs between the two cells' land. Low seven bits: width, in source
+/// samples, of the widest water channel between their water; zero is none.
+const CROSSING_DIRECTIONS: usize = 4;
+const CROSSING_LAND_LINK: u8 = 0x80;
+const CROSSING_WIDTH_MASK: u8 = 0x7f;
 
 #[derive(Clone, Copy)]
 struct HeapEntry {
@@ -94,6 +100,10 @@ pub struct Router {
     // Single precision: the table is baked in 32 m bytes, so f32 carries it
     // exactly and the shipped-grid copy is 26 MB instead of 52.
     pass_climb: Vec<f32>,
+    // How each cell is joined to its neighbours, one byte per edge, cells ×
+    // CROSSING_DIRECTIONS (W22): a land mode crosses an edge only where the
+    // ground meets, a sea mode only where there is water between the cells.
+    crossings: Vec<u8>,
     river_direction: Vec<u8>,
     // Real edge lengths: one north–south extent, one east–west extent per
     // row (cos-latitude). Diagonals use the hypotenuse of the two;
@@ -152,6 +162,7 @@ impl Router {
         north_south_km: f64,
         row_east_west_km: &[f64],
         pass_climb: &[f32],
+        crossings: &[u8],
     ) -> Router {
         let cells = width.saturating_mul(height);
         let mut land_copy = vec![0; cells];
@@ -164,6 +175,10 @@ impl Router {
         let mut pass_climb_copy = vec![0.0f32; pass_entries];
         let pass_len = pass_climb.len().min(pass_entries);
         pass_climb_copy[..pass_len].copy_from_slice(&pass_climb[..pass_len]);
+        let crossing_entries = cells.saturating_mul(CROSSING_DIRECTIONS);
+        let mut crossings_copy = vec![0u8; crossing_entries];
+        let crossing_len = crossings.len().min(crossing_entries);
+        crossings_copy[..crossing_len].copy_from_slice(&crossings[..crossing_len]);
         let mut river_direction_copy = vec![255; cells];
         let river_direction_len = river_direction.len().min(cells);
         river_direction_copy[..river_direction_len]
@@ -191,6 +206,7 @@ impl Router {
             land: land_copy,
             elevation: elevation_copy,
             pass_climb: pass_climb_copy,
+            crossings: crossings_copy,
             river_direction: river_direction_copy,
             north_south_km,
             row_east_west_km: row_km,
@@ -453,11 +469,23 @@ impl Router {
             if self.mode_mask[next_cell] & (1 << mode) == 0 {
                 continue;
             }
-            // A ship moves on WATER: land cells carry sea modes only as ports
-            // (nodes for embarking), never as corridors — an edge between two
-            // land cells is not sailable (M1 review, owner play-report:
-            // "coastal" legs were crossing Britain overland at 80 km/day).
-            if mode >= COASTAL_MODE && self.land[cell] != 0 && self.land[next_cell] != 0 {
+            // What lies on the EDGE between the two cells (W22). A land mode
+            // crosses only where the ground meets: two land cells with a
+            // channel between them are two banks, not a road. A ship moves on
+            // WATER: it crosses only where the source found a channel, so a
+            // land cell is a port, never a corridor (M1 review, owner
+            // play-report: "coastal" legs were crossing Britain overland at
+            // 80 km/day), and a strait narrower than a cell still sails. River
+            // mode is its own connector, below.
+            let crossing = if direction < CROSSING_DIRECTIONS {
+                self.crossings[cell * CROSSING_DIRECTIONS + direction]
+            } else {
+                self.crossings[next_cell * CROSSING_DIRECTIONS + direction - CROSSING_DIRECTIONS]
+            };
+            if mode < RIVER_MODE && crossing & CROSSING_LAND_LINK == 0 {
+                continue;
+            }
+            if mode >= COASTAL_MODE && crossing & CROSSING_WIDTH_MASK == 0 {
                 continue;
             }
             // No corner-cutting: a diagonal move must pass THROUGH one of its

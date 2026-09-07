@@ -190,8 +190,10 @@ fudge factors.
   yield, so its clock all but stops: arrival pre-empts invention with no
   rule for it. Boats hop 100 km (`PEOPLE_COASTAL_HOP_KM`, the Neolithic's
   own crossings), which at the shipped grid opens the Aegean, the Marmara
-  and the Korea Strait. The dev grid cannot represent those straits, so the
-  European rows and Japan are measured at the shipped grid.
+  and the Korea Strait. Since W22 every edge carries the ground and the
+  water width the fine coastline measures, so a strait narrower than a cell
+  is crossed at its own width at either grid; the European rows now pass at
+  dev, and Japan is still measured at the shipped grid.
 - **Who farms what, where, and why (W8).** Wild stands are a field: each
   package carries the habitat envelope of its wild ancestor, sampled at the
   plant's documented localities, and its range is a polygon, so richness

@@ -26,28 +26,17 @@ function patchedV1SimDir(): string {
     fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
     join(dir, "earthData.js"),
   );
-  // The v2 strait carve is polyline-based and its table grew (QUESTIONS.md
-  // #21/#25 — the Black Sea link, the Singapore pinch, no rectangle bites);
-  // the carve mutates elevation, which the earth arm asserts byte-exact, so
-  // the v1 copy runs with v2's own EARTH_STRAITS + carveStraits block spliced
-  // in — one source of truth, lifted from the v2 module at patch time.
+  // v2 no longer carves straits (W22): a channel the raster cannot hold is
+  // carried on the edges between cells, and no cell is opened. v1 still
+  // carves rectangle boxes, and the carve mutates the elevation the earth arm
+  // asserts byte-exact, so the v1 copy runs with its carve made a no-op.
   const worldgenPath = join(dir, "worldgen.js");
   const worldgenSource = readFileSync(worldgenPath, "utf8");
-  const v2WorldgenSource = readFileSync(
-    fileURLToPath(new URL("../src/ported/worldgen/worldgen.js", import.meta.url)),
-    "utf8",
-  );
-  // The signature is matched loosely because v2's carve takes an OPTIONAL
-  // fourth argument (W18: the per-cell channel width it records). v1's call
-  // site passes three, so the spliced block runs with the recorder absent and
-  // writes exactly v1's elevation — which is what this arm asserts byte-exact.
   const straitBlock = /const EARTH_STRAITS = \[[\s\S]*?\nfunction carveStraits\(elevation, W, H[^)]*\) \{[\s\S]*?\n\}/;
-  const v2Block = v2WorldgenSource.match(straitBlock)?.[0];
-  assert.ok(v2Block?.includes("path:"), "v2 strait block changed shape — update the oracle patch");
-  assert.ok(v2Block?.includes("widthKm:"), "v2 strait rows lost their measured width — update the oracle patch");
   const v1Block = worldgenSource.match(straitBlock)?.[0];
   assert.ok(v1Block, "v1 strait block changed shape — update the oracle patch");
-  writeFileSync(worldgenPath, worldgenSource.replace(v1Block, v2Block ?? ""));
+  const noCarve = "const EARTH_STRAITS = [];\nfunction carveStraits(elevation, W, H) {}";
+  writeFileSync(worldgenPath, worldgenSource.replace(v1Block, noCarve));
   return dir;
 }
 const v1SimDir = patchedV1SimDir();

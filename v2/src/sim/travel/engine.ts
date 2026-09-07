@@ -49,6 +49,7 @@ export class TravelEngine {
       northSouthKm(substrate),
       rowEastWestKm(substrate),
       substrate.passClimb,
+      substrate.crossings,
     );
     router.preprocess();
     return new TravelEngine(substrate, router);

@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/sim/worldgen.js; deviations: Math transcendental calls use v2 dmath; local imports point at the copied v2 supplier; EARTH_STRAITS carves real channel POLYLINES one cell wide instead of v1's rectangle boxes, and the table adds Malacca/Singapore, Messina and Magellan (QUESTIONS.md #25 — the boxes gouged coasts and still left the Bosporus mouth and the Singapore pinch sealed at the shipped grid; the oracle patches the same block into its v1 copy).
+ * source: src/sim/worldgen.js; deviations: Math transcendental calls use v2 dmath; local imports point at the copied v2 supplier; v1's EARTH_STRAITS carve is gone — no cell is opened, the channels the raster cannot hold are carried on the edges between cells by the baked crossing table (W22; the oracle removes the carve from its v1 copy so the two elevations still agree byte for byte).
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import { dexp, dpow, dcos, dsin, datan2 } from "../../sim/dmath.ts";
@@ -27,6 +27,7 @@ import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthD
 import { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";
 import { LAND_SHAPE, LAND_SHAPE_W, LAND_SHAPE_H, decodeLandShape } from "./landShapeData.js";
 import { decodePassClimb } from "./passClimbData.js";
+import { decodeCrossings } from "./crossingData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture, terrainShelter } from "./moistureSolver.js";
@@ -65,83 +66,6 @@ function dirDist(mask, W, H, dir, cap) {
 // solved wind and climate are used. Each half is probed independently, so a
 // caller may supply either, both or neither. `_legacyArg` keeps the old
 // positional signature stable for the ~60 node probes in tools/.
-// Sub-pixel narrow straits seal shut on a ~20 km/pixel heightmap (Gibraltar is
-// ~14 km, the Bosporus ~1-3 km — finer than one pixel), turning real seas into
-// closed lakes and severing real sea lanes: the Mediterranean loses its
-// Atlantic link, the Black Sea closes (its rivers — the Danube! — then class
-// as TERMINAL drainage and the transmission loss erases them), the
-// Malacca/Singapore pinch plugs. Each row is COASTLINE DATA (R7): the course
-// of a real navigable sea channel as [lat, lon] waypoints along the actual
-// strait. The carve walks the polyline at any grid and opens ONLY land cells
-// the channel crosses, one cell wide — ocean untouched, coasts intact. (v1
-// carved rectangle BOXES instead: they gouged visible bites out of the Spanish
-// and Moroccan coasts and still left the Bosporus's own mouth and the
-// Singapore pinch sealed at the shipped grid — QUESTIONS.md #25.)
-// `widthKm` is the channel's MINIMUM width — the width at the narrows, which is
-// where a crossing is actually made. Where a row traces a CHAIN of channels it
-// carries the largest of their minima, so the figure bounds the crossing
-// whichever channel is taken. Coastline data (R7) like the paths themselves;
-// see spec/09-constants-ledger.md §W18 for the sources.
-const EARTH_STRAITS = [
-  // Gibraltar — Mediterranean ↔ Atlantic (~14 km)
-  // 13 km at the narrows, Point Marroquí (ES) to Point Cires (MA).
-  { widthKm: 13, path: [[36.0, -6.2], [35.95, -5.7], [35.95, -5.2], [36.05, -4.8]] },
-  // Dardanelles → Marmara → Bosporus — Aegean ↔ Black Sea (1-3 km channels;
-  // the Marmara itself falls below the enclosed-sea bar and reads as land)
-  // Bosporus 0.7 km at Rumelihisarı/Anadoluhisarı, Dardanelles 1.2 km abreast
-  // Çanakkale: the chain carries the wider of the two, so either route clears.
-  { widthKm: 1.2, path: [[40.0, 25.9], [40.2, 26.35], [40.35, 26.7], [40.55, 27.2], [40.75, 27.9], [40.9, 28.6], [41.05, 29.0], [41.25, 29.15], [41.45, 29.4]] },
-  // Malacca → Singapore strait — Indian Ocean ↔ South China Sea (~16 km pinch
-  // between Singapore and the Riau islands; history's busiest sea lane)
-  // 2.8 km at the Phillip Channel, the waterway's narrowest point.
-  { widthKm: 2.8, path: [[2.4, 101.8], [1.9, 102.8], [1.5, 103.4], [1.2, 103.85], [1.1, 104.35], [1.3, 104.9]] },
-  // Messina — Tyrrhenian ↔ Ionian (~3 km)
-  // 3.1 km at the narrows, Punta del Faro to Punta Pezzo.
-  { widthKm: 3.1, path: [[38.35, 15.65], [38.2, 15.63], [38.0, 15.6], [37.9, 15.6]] },
-  // Magellan — Atlantic ↔ Pacific (2-30 km winding channel through the fjords)
-  // 3 km at the Primera Angostura, the narrowest of the winding channel.
-  { widthKm: 3, path: [[-52.35, -68.4], [-52.6, -69.5], [-53.3, -70.8], [-53.6, -71.3], [-53.4, -72.6], [-52.9, -73.6], [-52.6, -74.7]] },
-];
-// `channelWidthKm`, when supplied, records the real width of every land cell
-// the carve OPENS (W18). Opening a sub-pixel channel makes a land cell read as
-// water, and a consumer that measures water on the cell lattice then sees a
-// whole cell edge of open sea where the channel is a kilometre or two wide —
-// at the reference grid, 167 km of Bosporus. The record is exactly the carve's
-// own deviation from the DEM: a cell the raster resolves as water on its own is
-// never marked, so the field empties itself as the grid gets finer and the
-// lattice distance stands everywhere else.
-function carveStraits(elevation, W, H, channelWidthKm = null) {
-  const open = (x, y, widthKm) => {
-    const i = y * W + x;
-    if (elevation[i] > 0) {
-      elevation[i] = -0.02;   // open the land plug as a shallow strait
-      if (channelWidthKm) {
-        const held = channelWidthKm[i];
-        channelWidthKm[i] = held > 0 ? Math.min(held, widthKm) : widthKm;   // two channels over one cell: the narrower governs the crossing
-      }
-    }
-  };
-  for (const s of EARTH_STRAITS) {
-    for (let p = 1; p < s.path.length; p++) {
-      const x0 = ((Math.round((s.path[p - 1][1] + 180) / 360 * W) % W) + W) % W;
-      const y0 = Math.min(H - 1, Math.max(0, Math.round((90 - s.path[p - 1][0]) / 180 * H)));
-      const x1 = ((Math.round((s.path[p][1] + 180) / 360 * W) % W) + W) % W;
-      const y1 = Math.min(H - 1, Math.max(0, Math.round((90 - s.path[p][0]) / 180 * H)));
-      let dx = x1 - x0;
-      if (dx > W / 2) dx -= W; else if (dx < -W / 2) dx += W;   // wrap-aware
-      const dy = y1 - y0, steps = Math.max(1, Math.max(Math.abs(dx), Math.abs(dy)));
-      open(x0, y0, s.widthKm);
-      let px = x0, py = y0;
-      for (let t = 1; t <= steps; t++) {
-        const x = (((x0 + Math.round(dx * t / steps)) % W) + W) % W;
-        const y = Math.min(H - 1, Math.max(0, y0 + Math.round(dy * t / steps)));
-        if (x !== px && y !== py) open(x, py, s.widthKm);   // 4-connect diagonal steps: a channel must hold for orthogonal flood-fills (riverGen's ocean fill) and read continuous on the map
-        open(x, y, s.widthKm);
-        px = x; py = y;
-      }
-    }
-  }
-}
 
 export function generateWorld(W, H, seed, preset, oceanLevel, _legacyArg = true, realWind = false, _tecParams = {}, realWindFns = null) {
 initNoise(seed);const rng=mkRng(seed);
@@ -163,7 +87,7 @@ const summerDry=new Float32Array(W*H);
 const tAmp=new Float32Array(W*H),warmRainFrac=new Float32Array(W*H);
 let realClimateUsed=false;
 let tecPlates=null,tecWindX=null,tecWindY=null;
-let straitWidthKm=null;   // W18: set by the strait carve on the presets that carve; null elsewhere
+let crossings=null;   // W22: one byte per edge from the 1-arc-minute grid — the ground between two cells, and the water between them; null on presets with no real bathymetry
 let landFraction=null;    // W19: the share of each cell standing above sea level, from the 1-arc-minute grid; null on presets with no real bathymetry
 // W20: WHERE that ground is, on a fixed grid finer than any the sim steps —
 // read-only geometry the world is drawn from and measured against, never a
@@ -173,7 +97,7 @@ let landShape=null;let passClimb=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
-const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);landShape=decodeLandShape(LAND_SHAPE);passClimb=decodePassClimb(W,H);
+const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);landShape=decodeLandShape(LAND_SHAPE);passClimb=decodePassClimb(W,H);crossings=decodeCrossings(W,H);
 // Pass 1: elevation + temperature
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
@@ -228,7 +152,7 @@ tecWindX=earthWind.windX;tecWindY=earthWind.windY;
 // ── Earth (Sim) mode: real heightmap + full wind-based climate simulation ──
 // Uses same elevation as Earth mode but applies wind-advected moisture/temperature
 const eData=decodeEarth(EARTH_ELEV);
-const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);landShape=decodeLandShape(LAND_SHAPE);passClimb=decodePassClimb(W,H);
+const fData=decodeLandFrac(LAND_FRAC,eData);landFraction=new Float32Array(W*H);landShape=decodeLandShape(LAND_SHAPE);passClimb=decodePassClimb(W,H);crossings=decodeCrossings(W,H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
 landFraction[i]=sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255;// W19: cover, not height — a coast cuts through a cell and the bit above rounds that away
@@ -236,8 +160,7 @@ const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.00
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}
-straitWidthKm=new Float32Array(W*H);
-carveStraits(elevation,W,H,straitWidthKm);   // open Gibraltar etc. so the Mediterranean links to the ocean (sub-pixel straits otherwise seal it into a lake), and record how wide each opened channel really is (W18)
+// Nothing is carved (W22): a channel the raster cannot hold as a cell lies on the edge between two cells, in `crossings`, and the ocean fill reads it there.
 // Coast distance BFS
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);const cdQ=[];
@@ -945,4 +868,4 @@ const em=elevation[i]>0?moisture[i]/demand(temperature[i]):1;
 const aridBoost=3.9*Math.max(0,Math.min(1,1-em))*Math.min(1,lat/0.22);   // °C
 tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
-return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,straitWidthKm,landFraction,landShape,landShapeWidth:LAND_SHAPE_W,landShapeHeight:LAND_SHAPE_H,passClimb,_seed:seed};}
+return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,crossings,landFraction,landShape,landShapeWidth:LAND_SHAPE_W,landShapeHeight:LAND_SHAPE_H,passClimb,_seed:seed};}

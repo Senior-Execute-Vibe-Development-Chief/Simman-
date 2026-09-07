@@ -6,8 +6,10 @@ import { collect } from "./lib/collect";
 import { entityRng, hash32, mkRng, passRng } from "../src/ported/rng";
 import { loadWorld, serializeWorld } from "../src/sim/persist";
 import { populationTotal } from "../src/sim/people";
-import { runRoutingBatteries } from "../src/sim/travel/battery";
+import { routingFixtureSubstrate, runRoutingBatteries } from "../src/sim/travel/battery";
+import { TravelEngine } from "../src/sim/travel/engine";
 import type { Substrate } from "../src/sim/substrate";
+import { crossingIndex, fallbackCrossings } from "../src/sim/crossings";
 import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
@@ -26,6 +28,9 @@ import {
   PEOPLE_ADOPTION_RATE_PER_YEAR,
   PEOPLE_CHANNEL_STRIP_KM,
   PEOPLE_CHILD_AGE_YEARS,
+  CROSSING_SAMPLE_KM,
+  ROUTING_FIXTURE_DEV_HEIGHT,
+  ROUTING_FIXTURE_DEV_WIDTH,
   PEOPLE_COASTAL_HOP_KM,
   PEOPLE_CROP_NEIGHBOR_COUNT,
   PEOPLE_FARMED_MARKER_SHARE,
@@ -108,7 +113,7 @@ function peopleFixture(): Substrate {
     height,
     N: cells,
     preset: "people-fixture",
-    straitWidthKm: new Float32Array(cells),
+    crossings: fallbackCrossings(landMask, width, height),
     landFraction: new Float32Array(cells).fill(1),
     // No geometry finer than the fixture itself: its own mask, block of one.
     landShape: new Uint8Array(landMask),
@@ -157,6 +162,50 @@ async function main(): Promise<void> {
   assert.equal(checkDmathGoldens().length, 26);
   const routing = await runRoutingBatteries();
   assert.ok(routing.every((result) => result.queries >= 72));
+
+  {
+    // W22: the router reads the EDGE, not the two cells. On the fixture row 0
+    // is water and every other row land, with the mask's own rule on every
+    // edge (ground between land cells, open water on any edge touching the
+    // sea). Three edges are then changed and only those three routes move.
+    const width = ROUTING_FIXTURE_DEV_WIDTH;
+    const height = ROUTING_FIXTURE_DEV_HEIGHT;
+    const leftLand = width + 1;
+    const rightLand = width + 2;
+    const leftSea = 1;
+    const rightSea = 2;
+    const foot = { month: 0, modes: ["foot"] as const, capabilities: [] as const };
+    const coastal = { month: 0, modes: ["coastal"] as const, capabilities: ["boats"] as const };
+    const plain = await TravelEngine.create(routingFixtureSubstrate("dev"));
+    const footDirect = plain.query(leftLand, rightLand, foot);
+    assert.equal(footDirect.path.length, 2, "adjacent land with ground between is one step");
+    const sailAround = plain.query(leftLand, rightLand, coastal);
+    assert.ok(sailAround.path.length > 2, "two land cells with no water between are not sailed across");
+    const sailDirect = plain.query(leftSea, rightSea, coastal);
+    assert.equal(sailDirect.path.length, 2, "open water is sailed in one step");
+
+    const edited = routingFixtureSubstrate("dev");
+    // The ground between the two land cells is cut, and a channel runs there.
+    edited.crossings[crossingIndex(width, height, leftLand, 1, 0)] = 1;
+    // The open water between the two sea cells is closed.
+    edited.crossings[crossingIndex(width, height, leftSea, 1, 0)] = 0;
+    const engine = await TravelEngine.create(edited);
+    const footAround = engine.query(leftLand, rightLand, foot);
+    assert.ok(footAround.path.length > 2 && footAround.days > footDirect.days,
+      "two land cells with a channel between them are two banks, not a road");
+    const sailChannel = engine.query(leftLand, rightLand, coastal);
+    assert.equal(sailChannel.path.length, 2, "a channel one sample wide between two land cells is sailed");
+    assert.ok(sailChannel.days < sailAround.days);
+    const sailBlocked = engine.query(leftSea, rightSea, coastal);
+    assert.ok(sailBlocked.path.length > 2 && sailBlocked.days > sailDirect.days,
+      "a water edge with no channel on it is not sailed");
+    // Untouched edges route exactly as before: a walk whose shortest line
+    // crosses none of the three edited edges (the fixture wraps in x, so a
+    // walk that starts next to the cut would go round the far side instead).
+    const midLand = width + Math.floor(width / 2);
+    const far = width + width - 2;
+    assert.equal(engine.query(midLand, far, foot).days, plain.query(midLand, far, foot).days);
+  }
 
   const world = new World({
     seed: 77,
@@ -865,26 +914,33 @@ async function main(): Promise<void> {
   }
 
   {
-    // W18: a hop across a channel the raster had to have CARVED is charged the
-    // channel, not the cell. One water cell between two land cells is two
-    // lattice edges — 333 km at the reference grid, four times the longest
+    // W22 (was W18): a hop over water is charged the water the source says
+    // is on the edge, not the cell. One water cell between two land cells is
+    // two lattice edges — 333 km at the reference grid, four times the longest
     // crossing the Neolithic is known to have made — so the hop is refused
-    // even where the real water is a kilometre wide. Where the carve opened
-    // the cell we know how wide the water really is, and the step is charged
-    // that instead. Nothing else in the table may move.
+    // where the table says the edge is open water. Where the table says a
+    // channel one sample wide lies on each edge, the step is charged that
+    // instead. Nothing else in the table may move.
     const width = 240;
     const row = 60;
     const channelCell = row * width + 120;
-    const build = (channelKm: number): PeopleWorld => {
+    const CHANNEL_SAMPLES = 1;
+    const build = (channel: boolean): PeopleWorld => {
       const base = peopleFixture();
       base.landMask[channelCell] = 0;
       base.elevation[channelCell] = -0.02;
-      if (channelKm > 0) base.straitWidthKm[channelCell] = channelKm;
+      base.crossings.set(fallbackCrossings(base.landMask, base.width, base.height));
+      if (channel) {
+        for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
+          const dx = PEOPLE_NEIGHBOR_DX[direction] ?? 0;
+          const dy = PEOPLE_NEIGHBOR_DY[direction] ?? 0;
+          base.crossings[crossingIndex(base.width, base.height, channelCell, dx, dy)] = CHANNEL_SAMPLES;
+        }
+      }
       return new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts" }, substrate: base }) as PeopleWorld;
     };
-    const CHANNEL_KM = 1.2;
-    const uncarved = build(0);
-    const carved = build(CHANNEL_KM);
+    const uncarved = build(false);
+    const carved = build(true);
     const slotsOf = (world: PeopleWorld, cell: number): readonly number[] => {
       const packed = world._packedOf[cell] ?? 0;
       const base = packed * PEOPLE_CROP_NEIGHBOR_COUNT;
@@ -907,14 +963,14 @@ async function main(): Promise<void> {
         crossings.add(slot);
       }
     }
-    assert.equal(crossings.size, PEOPLE_CROP_NEIGHBOR_COUNT, "every bank reaches the far side once the channel is priced");
+    assert.equal(crossings.size, PEOPLE_CROP_NEIGHBOR_COUNT, "every bank reaches the far side once the channel is on the edges");
     for (const slot of crossings) {
       assert.equal(uncarved._neighborTargets[slot], -1, "a cell edge of open sea is four crossings too far");
-      assert.ok(Math.abs((carved._neighborDistanceKm[slot] ?? 0) - 2 * Math.fround(CHANNEL_KM)) < 1e-9,
-        "the step is charged the channel at each end: a run of one carved cell is two crossings");
+      assert.ok(Math.abs((carved._neighborDistanceKm[slot] ?? 0) - 2 * CHANNEL_SAMPLES * CROSSING_SAMPLE_KM) < 1e-9,
+        "the step is charged the channel at each end: a run of one water cell is two edges");
       assert.ok((carved._neighborDistanceKm[slot] ?? 0) < PEOPLE_COASTAL_HOP_KM);
     }
-    // And the term is confined to the cell the carve opened: every other slot
+    // And the term is confined to the edges that changed: every other slot
     // in the table, land edge and sea hop alike, is bit-identical.
     let moved = 0;
     for (let slot = 0; slot < carved._neighborTargets.length; slot++) {
@@ -924,7 +980,7 @@ async function main(): Promise<void> {
         && carved._neighborMode[slot] === uncarved._neighborMode[slot]) continue;
       moved++;
     }
-    assert.equal(moved, 0, "pricing a carved channel moves nothing outside it");
+    assert.equal(moved, 0, "a channel on eight edges moves nothing outside them");
   }
 
   {

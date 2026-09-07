@@ -11,6 +11,7 @@ import {
   ROUTING_UNREACHABLE_DAYS,
 } from "../src/sim/constants";
 import { buildSubstrate, type Substrate } from "../src/sim/substrate";
+import { fallbackCrossings } from "../src/sim/crossings";
 import { createTravelEngine, TravelEngine, type TravelRoute } from "../src/sim/travel/engine";
 import { freightCost, rowEastWestKm, type Capability, type TravelMetric, type TravelMode } from "../src/sim/travel/cost";
 import { type GridPreset, World } from "../src/sim/world";
@@ -582,7 +583,7 @@ function referenceSubstrate(): Substrate {
     height: REF_HEIGHT,
     N,
     preset: "reference-terrain",
-    straitWidthKm: new Float32Array(N),
+    crossings: fallbackCrossings(landMask, REF_WIDTH, REF_HEIGHT),
     landFraction: new Float32Array(N).fill(1),
     // No geometry finer than the fixture itself: its own mask, block of one.
     landShape: new Uint8Array(landMask),

@@ -11,11 +11,12 @@ export interface PortedWorld {
   readonly tAmp: Float32Array;
   readonly warmRainFrac: Float32Array;
   readonly preset: string;
-  /** Real width, km, of every land cell the strait carve OPENED — the carve's
-   * own deviation from the DEM, so a consumer can charge the water that is
-   * actually there instead of a cell edge (W18). Null on presets that do not
-   * carve; zero on every cell the raster resolved by itself. */
-  readonly straitWidthKm: Float32Array | null;
+  /** How each cell is joined to its neighbours, one byte per edge, cells × 4
+   * directions (E, SE, S, SW) on this world's own grid (W22): bit 7 says the
+   * two cells' ground meets, bits 0..6 the width in 1-arc-minute samples of
+   * the widest water channel between them (0 none, 127 open water). Null
+   * where no table was baked. */
+  readonly crossings: Uint8Array | null;
   /** The share of each cell standing above sea level, 0..1, measured on the
    * 1-arc-minute grid (W19). The land/sea bit says WHETHER there is ground
    * here; this says HOW MUCH. Null on presets that carry no cover plane. */

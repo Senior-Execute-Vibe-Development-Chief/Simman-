@@ -1,4 +1,5 @@
 import {
+  MATH_NEGATIVE_ONE,
   DEG_TO_RAD,
   EARTH_CIRCUMFERENCE_KM,
   EARTH_HALF_DEGREES,
@@ -51,6 +52,7 @@ import { dcos } from "../dmath";
 import { monthIndex } from "../scheduler";
 import { D8_DX, D8_DY } from "../../ported/worldgen/riverGen.js";
 import type { Substrate } from "../substrate";
+import { crossingAt, crossingHasGround } from "../crossings";
 import { sampleRiverReachGradients } from "../../ported/worldgen/riverDirSample.js";
 
 export const TRAVEL_MODES = [
@@ -428,6 +430,19 @@ function edgeLengthKm(substrate: Substrate, from: number, to: number): number {
   return Math.sqrt(eastWest * eastWest + northSouth * northSouth);
 }
 
+/** Whether ground runs between two adjacent cells (W22): a land edge on the
+ * mask is a road only when the crossing table says the two cells' land meets. */
+function migrationEdgeHasGround(substrate: Substrate, from: number, to: number): boolean {
+  const fromY = Math.floor(from / substrate.width);
+  const toY = Math.floor(to / substrate.width);
+  let dx = (to - toY * substrate.width) - (from - fromY * substrate.width);
+  if (dx > 1) dx -= substrate.width;
+  else if (dx < MATH_NEGATIVE_ONE) dx += substrate.width;
+  return crossingHasGround(crossingAt(
+    substrate.crossings, substrate.width, substrate.height, from, dx, toY - fromY,
+  ));
+}
+
 /**
  * Narrow read API for people migration. It is the M1 foot-mode edge cost,
  * including the current month's land climate factor and true Earth geometry.
@@ -440,6 +455,7 @@ export function migrationEdgeCost(
   month: number,
 ): number {
   if (!substrate.landMask[from] || !substrate.landMask[to]) return Number.POSITIVE_INFINITY;
+  if (!migrationEdgeHasGround(substrate, from, to)) return Number.POSITIVE_INFINITY;
   const daysPerKm = 1 / TRAVEL_FOOT_KM_PER_DAY
     * terrainFactor(substrate, to)
     * seasonalFactor(substrate, to, month, false);

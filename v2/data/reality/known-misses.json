@@ -33,7 +33,7 @@
     "check": "route",
     "id": "rome-london",
     "grid": "target",
-    "reason": "The sea legs are honest; the land legs lack roads (M7), so the mixed journey runs 37.5 vs ORBIS's ~27-day express figure."
+    "reason": "The sea legs are honest; the land legs lack roads (M7), so the mixed journey runs 40.4 vs ORBIS's ~27-day express figure (37.5 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land): three cells on the old path that touched a water cell without holding any sea are no longer ports)."
   },
   {
     "check": "route",
@@ -74,7 +74,7 @@
   {
     "check": "crossGrid",
     "id": "rome-london",
-    "reason": "Dev land-bridges the Channel (sub-pixel strait at 165 km cells), so the two grids answer different journeys. Dev-raster geometry."
+    "reason": "Dev's 165 km cells and target's 20 km cells answer different journeys: dev now sails the Channel on a land-to-land edge the source finds 50 km of water on (before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land) it land-bridged the sub-pixel strait), but its coarse coast still lands and embarks a cell at a time (36.3 vs 40.4 d). Dev-raster geometry."
   },
   {
     "check": "crossGrid",
@@ -110,7 +110,7 @@
   {
     "check": "crossGrid",
     "id": "london-bordeaux",
-    "reason": "Dev's coarse coast IS a chord (10.9 d, passes); target's honest coastline forces the no-chords coastal model to trace every bay (17.7 d). The gap is the recorded pilotage-chord coarseness, not a physics divergence."
+    "reason": "Before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land) dev's coarse coast WAS a chord (10.9 d): coastal mode sailed the Channel into a 165 km cell of Anjou that holds no sea at all and out again into Biscay. The table refuses both edges, so dev now rounds Brittany a cell at a time (21.8 d) against target's honest coastline tracing every bay (17.6 d). The gap is the recorded pilotage-chord coarseness at two resolutions, not a physics divergence."
   },
   {
     "check": "crossGrid",
@@ -121,5 +121,39 @@
     "check": "crossGrid",
     "id": "rome-alexandria-winter",
     "reason": "Same dev-raster re-wetting as the summer row (32%); the shipped grid holds ~142 d."
+  },
+  {
+    "check": "route",
+    "id": "rome-london",
+    "grid": "dev",
+    "reason": "36.3 vs the 27-day figure (33.8 with the 25% band; 31.6 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)). Dev's coarse raster made a 165 km cell of central France (47\u00b0N 2\u00b0E, no sea in it, landFraction 1.000) a port because it touches the water-majority Channel cell at a corner; the source finds no water there, so the journey walks two more cells to a cell that does hold the Channel's water. The land legs still lack roads (M7), the same class as the target row."
+  },
+  {
+    "check": "route",
+    "id": "calicut-aden",
+    "grid": "dev",
+    "reason": "52.5 vs the 40-day figure (52.0 with the 30% band; 43.0 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)). The gate's start cell at dev (the 165 km cell at 11\u00b0N 77\u00b0E) holds no sea at all (landFraction 1.000); it counted as a port only because it touches the water-majority Arabian-Sea cell at a corner. The source finds no water on that edge, so the journey walks one cell south to a cell whose water reaches the sea (a 5.6 km channel), a foot leg that costs the ~10 days. Passes at the shipped grid (39.6 vs 40), where the start cell is on the coast. Dev-raster geometry."
+  },
+  {
+    "check": "route",
+    "id": "london-bordeaux",
+    "grid": "dev",
+    "reason": "21.8 vs the 12-day figure (15.0 with the 25% band; 10.9 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land), which passed by sailing THROUGH a 165 km cell of Anjou that holds no sea: in from the Channel, out into Biscay). The table refuses both edges, so coastal mode now rounds Brittany a cell at a time. Target traces the honest coastline at 17.6 d (its own known miss); dev's coarser lattice adds a cell's worth of detour on top. The pilotage-chord coastal model is the scheduled fix for both."
+  },
+  {
+    "check": "route",
+    "id": "calicut-aden-monsoon",
+    "grid": "dev",
+    "reason": "38.3 vs the 25-day figure (32.5 with the 30% band; 27.8 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)): the same lost corner-port at dev's inland start cell as calicut-aden, one foot cell to the coast before the with-monsoon passage. Passes at the shipped grid (24.9 vs 25). Dev-raster geometry."
+  },
+  {
+    "check": "crossGrid",
+    "id": "calicut-aden",
+    "reason": "24.5% dev/target split: dev walks a 165 km cell to reach water the source finds (its start cell holds no sea and was a port only by corner adjacency before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)); target starts on the coast and passes. Dev-raster geometry."
+  },
+  {
+    "check": "crossGrid",
+    "id": "calicut-aden-monsoon",
+    "reason": "34.9% dev/target split, the same lost corner-port at dev's start cell as crossGrid:calicut-aden on the shorter with-monsoon passage. Dev-raster geometry."
   }
 ]

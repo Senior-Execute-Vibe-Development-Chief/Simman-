@@ -19,10 +19,11 @@ import {
 import { hash32 } from "../../ported/rng";
 import type { GridPreset } from "../world";
 import type { Substrate } from "../substrate";
+import { fallbackCrossings } from "../crossings";
 import { TravelEngine } from "./engine";
 import type { TravelMetric, TravelMode } from "./cost";
 
-function fixtureSubstrate(grid: GridPreset): Substrate {
+export function routingFixtureSubstrate(grid: GridPreset): Substrate {
   const width = grid === "dev" ? ROUTING_FIXTURE_DEV_WIDTH : ROUTING_FIXTURE_TARGET_WIDTH;
   const height = grid === "dev" ? ROUTING_FIXTURE_DEV_HEIGHT : ROUTING_FIXTURE_TARGET_HEIGHT;
   const N = width * height;
@@ -73,7 +74,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     height,
     N,
     preset: "routing-fixture",
-    straitWidthKm: new Float32Array(N),
+    crossings: fallbackCrossings(landMask, width, height),
     landFraction: new Float32Array(N).fill(1),
     // The fixture has no geometry finer than itself, so the shape plane is its
     // own mask at a block of one — the smallest whole multiple there is.
@@ -140,7 +141,7 @@ export interface RoutingBatteryResult {
 }
 
 export async function runRoutingBattery(grid: GridPreset): Promise<RoutingBatteryResult> {
-  const substrate = fixtureSubstrate(grid);
+  const substrate = routingFixtureSubstrate(grid);
   const engine = await TravelEngine.create(substrate);
   let hash = hash32(substrate.width, substrate.height, grid);
   let queries = 0;

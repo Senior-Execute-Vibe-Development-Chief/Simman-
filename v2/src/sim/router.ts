@@ -27,6 +27,7 @@ export async function createWasmRouter(
   northSouthKm: number,
   rowEastWestKm: Float64Array,
   passClimb: Float32Array,
+  crossings: Uint8Array,
 ): Promise<WasmRouter> {
   await initializeRouter();
   return new Router(
@@ -38,5 +39,6 @@ export async function createWasmRouter(
     northSouthKm,
     rowEastWestKm,
     passClimb,
+    crossings,
   );
 }

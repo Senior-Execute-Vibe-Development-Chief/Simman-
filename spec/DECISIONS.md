@@ -1242,6 +1242,11 @@ lawyered.
     history there is recorded as needed (`v2-long`, on request), as is a
     trajectory arm for the non-solve European rows whose stated cause is now
     gone. QUESTIONS #72, `spec/handoffs/W18-the-width-of-the-water.md`.
+    **Superseded by W22 (2026-09-07):** the carve and `straitWidthKm` are
+    deleted; every edge now carries the ground and the water width measured
+    on the fine coastline (`spec/handoffs/W22-ground-and-water.md`, QUESTIONS
+    #76), and the hop rule above reads that table instead of the carve's
+    record.
 
 40. **W19a landed: a cell that is part water feeds part of a cell.** (Owner,
     2026-09-06, on what should follow W18's channel width: *"so we need finer

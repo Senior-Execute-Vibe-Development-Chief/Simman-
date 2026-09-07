@@ -20,6 +20,7 @@ import { buildWorld, type PortedTerritory, type PortedWorld } from "../ported/wo
 import { computeSeasonalRiverFlow } from "../ported/worldgen/riverGen.js";
 import { classifyBiome } from "../ported/worldgen/biomeClass.js";
 import { PASS_CLIMB_M_PER_BYTE } from "../ported/worldgen/passClimbData.js";
+import { fallbackCrossings } from "./crossings";
 import {
   fillRealClimate,
   isRealClimateAvailable,
@@ -115,11 +116,18 @@ export interface Substrate {
   readonly relief: Float32Array;
   readonly coast: Uint8Array;
   readonly coastDistanceKm: Float32Array;
-  /** Real width, km, of a sub-pixel channel the strait carve had to OPEN for
-   * the raster to hold it — zero wherever the grid resolves the water on its
-   * own, which is everywhere outside those channels and everywhere at all on
-   * a preset that does not carve (W18). */
-  readonly straitWidthKm: Float32Array;
+  /** How each cell is JOINED to its neighbours, one byte per edge, measured
+   * on the 1-arc-minute grid (W22): the high bit says ground runs between the
+   * two cells' land, the low seven bits the width in source samples of the
+   * widest water channel between their water, zero where there is none. The
+   * mask says what a cell mostly is; this says what lies on the edge between
+   * two of them, which at every grid the sim steps is where a strait, an
+   * isthmus or an island's shore actually is. `cells × TRAVEL_PASS_DIRECTIONS`
+   * in the router's rose (E, SE, S, SW); the other four directions are the
+   * neighbour's opposite entry. A preset without a bake carries the mask's
+   * own rule: land to land is ground, anything touching water is open water,
+   * which is exactly what every consumer applied before the table existed. */
+  readonly crossings: Uint8Array;
   /** The share of the cell that stands above sea level, 0..1, measured on the
    * 1-arc-minute grid (W19). A cell is a few hundred km2 and a coast, an
    * island or a lake shore routinely cuts through the middle of one, so the
@@ -439,9 +447,7 @@ export function buildSubstrate(
     relief: territory.tRelief,
     coast: territory.tCoast,
     coastDistanceKm: coastDistances(elevation, width, height),
-    // The carve runs on the world grid and buildTerritory samples it at RES 1,
-    // so the field indexes exactly as every other substrate array does.
-    straitWidthKm: world.straitWidthKm ?? new Float32Array(cells),
+    crossings: crossingsOf(world, landMask, width, height),
     // Sampled on the world grid beside the elevation it corrects; a preset
     // without it is wholly land wherever it is land at all.
     landFraction: world.landFraction ?? new Float32Array(cells).fill(1),
@@ -455,6 +461,25 @@ export function buildSubstrate(
     passClimb: passClimbOf(world, cells),
   };
   return Object.freeze(substrate);
+}
+
+/** The baked crossing table, or the mask's own rule where the preset carries
+ * none — two land cells share ground, an edge touching water is open water. */
+function crossingsOf(
+  world: PortedWorld,
+  landMask: Uint8Array,
+  width: number,
+  height: number,
+): Uint8Array {
+  const bytes = world.crossings;
+  if (!bytes) return fallbackCrossings(landMask, width, height);
+  const expected = width * height * TRAVEL_PASS_DIRECTIONS;
+  if (bytes.length !== expected) {
+    throw new Error(
+      `the crossing table holds ${bytes.length} entries for ${width}x${height}; expected ${expected}`,
+    );
+  }
+  return bytes;
 }
 
 /** The baked pass table in elevation units, or all zeros where the preset

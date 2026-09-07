@@ -4025,3 +4025,61 @@ Review corrections to the M1 build (all validated before merge):
     glaciation. A roughness (within-cell relief) bake is the obvious sibling
     statistic and is not built. `npm run coverage` was not run for the
     substrate fields W19a, W20a and W21a added; recorded in the handoff §8.
+
+76. **W22 measured the edge, not the cell: a per-edge table of ground and water
+    width baked from the fine coastline replaces the hand-carved strait list,
+    and the Bosporus, Malacca and the Øresund are found blind by the bake.**
+    (2026-09-07, owner: **"So what now? Island and strait stuff?"**, with the
+    standing constraint from the day before — *"2 will cut places like
+    Malaysia in half though"* — that nothing be carved or drowned.)
+    `spec/handoffs/W22-ground-and-water.md`, ledger §W22.
+
+    **(a) The wrong question.** Every consumer of adjacency asked what the
+    two CELLS were and inferred the edge: two land cells share ground and
+    never water, an edge touching a water cell is open sea. A cell's land bit
+    is a majority over a few hundred km² and a majority has no shape, so the
+    Bosporus was two land cells, Malacca was two land cells, and W18 patched
+    five of these by name. The same inference was wrong the other way: a land
+    cell touching a water-majority cell at a corner while holding no sea was
+    a port, and Anjou was sailed through from the Channel into Biscay.
+
+    **(b) The mechanism.** `tools/build-crossings.mts` reads the 1-arc-minute
+    grid W19a–W21a read and stores one byte per edge, four per cell: bit 7,
+    an 8-connected path of land samples joins the two cells' land seats
+    (largest body, nearest the centre); bits 0–6, the width in samples of
+    the widest 4-connected channel between the water seats, 0 none, 127 open
+    water. Land 8-connected and water 4-connected so the two can never cross
+    at a corner. The router lets land modes cross on ground only and sea
+    modes on width only; the people table hops a land–land edge with a
+    channel at `min(edge, width × 1.853 km)` under `PEOPLE_COASTAL_HOP_KM`
+    and walks water only where every step has width; the ocean fill floods
+    across any edge with width, treating a land cell it reaches as a conduit.
+    A preset without a bake gets the old inference exactly, so every fixture
+    is byte-identical to its pre-W22 self.
+
+    **(c) Honesty, blind by coordinate.** Bosporus, Dardanelles, Messina and
+    Magellan width 1; Gibraltar and Malacca 7; Øresund 3, Kerch 7, Bonifacio
+    5, Torres 25/29, Bering 51 at dev and open at target; Suez and Panama not
+    water-linked; Thrace–Troad, Calabria–Sicily, Malaya–Sumatra,
+    Spain–Morocco, Jutland–Zealand not ground-linked; Kra–Johor, Egypt–Sinai,
+    Costa Rica–Colombia linked. The Baltic drains to the ocean through the
+    Øresund at dev, where the fallback had it terminal; the Caspian and Aral
+    stay terminal.
+
+    **(d) What moved, and what it cost.** Dev sea routes got LONGER and four
+    reality rows now miss at dev, recorded in `known-misses.json` with no band
+    widened: the table refuses corner ports and land corridors the 165 km
+    raster granted. Target keeps every row's status. The dev people arm,
+    re-run against the stashed pre-W22 tree, has the European front arriving
+    160–270 years later (Balkans −6627 → −6361, Rhine −5171 → −5010, Cardial
+    −5871 → −5647), every row still in its window, and nothing outside Europe
+    moved by more than a decade.
+
+    **(e) Open.** One seat per cell (a cell on two seas is a port on the
+    larger); land modes still live on land-majority cells only, so the shore
+    inside a water-majority cell cannot be walked to; two majorities (ETOPO's
+    and the coarse heightmap's) leave 73 dev / 1,401 target land cells with no
+    ground link, mostly true islands; the width is geometric, never current,
+    depth or ice; the channels are not drawn on the land plane. The
+    shipped-grid history arm — what the measured Aegean, Marmara and Korea
+    Strait do to Japan and the European rows — remains `v2-long` on request.

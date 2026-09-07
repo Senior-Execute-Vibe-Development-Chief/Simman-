@@ -146,6 +146,14 @@ export const TRAVEL_SLOPE_COST_FACTOR = 3; // spec/09-constants-ledger.md §M1 p
 // lowest crossing of each land edge measured on the fine DEM, four directions
 // per cell (E, SE, S, SW); the other four are the neighbour's opposite entry.
 export const TRAVEL_PASS_DIRECTIONS = 4; // spec/09-constants-ledger.md §W21a — stored pass directions per cell
+// W22: how two adjacent cells are JOINED, one byte per edge from the same
+// 1-arc-minute source: a land link (ground runs between the two cells' land)
+// and a water width (the narrowest point of the widest channel between their
+// water, in samples). The table shares the pass table's stored rose, E, SE, S,
+// SW, and the other four directions are the neighbour's opposite entry.
+export const CROSSING_SAMPLE_KM = 1.853; // spec/09-constants-ledger.md §W22 — one arc-minute of meridian, the pitch of the source grid a width is counted in
+export const CROSSING_ROSE_DX = [1, 1, 0, -1, -1, -1, 0, 1] as const; // spec/09-constants-ledger.md §W22 — the router's D8 rose: E, SE, S, SW, W, NW, N, NE
+export const CROSSING_ROSE_DY = [0, 1, 1, 1, 0, -1, -1, -1] as const; // spec/09-constants-ledger.md §W22 — the router's D8 rose: E, SE, S, SW, W, NW, N, NE
 export const TRAVEL_COLD_THRESHOLD = 0.35; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_COLD_COST_FACTOR = 2; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_MUD_COST_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
