@@ -143,7 +143,12 @@
   },
   {
     "check": "crossGrid",
-    "id": "rome-london",
-    "reason": "dev 34.6 vs target 40.1 d (13.8%). Cleared at 8.3% after W22d (37.4 vs 40.8) and returned with W23 (the sim's mask follows the 1-arc-minute cover: a cell is land when at least half of it is): the dev cell that holds Rome (165 km, 41.3N 12.8E) is 35% land \u2014 the Tyrrhenian takes the rest \u2014 so it is sea now, and the gate's start rounds to the next land cell north-west (42.8N 11.3E), one coastal hop nearer London; the route itself is unchanged from that cell on. A start-cell rounding at dev's resolution, not a routing difference; the target route moved 40.8 -> 40.1 d by the same cover change on the Tyrrhenian shore."
+    "id": "alexandria-antioch",
+    "reason": "12.1% vs the 10% band (dev 39.4 vs target 34.6 d; 10.0% before W23): dev's 165 km Levant coast road is marginally stretched. Dev-raster geometry (its dev route row was FIXED by the ETOPO coastline and ratcheted out). W23 (the mask reads the cover and the ground bit) moved the target shore a cell on the Orontes mouth; the dev route is unchanged."
+  },
+  {
+    "check": "crossGrid",
+    "id": "rome-paris",
+    "reason": "16.5% (dev 54.0 vs target 45.1 d). Dev crosses the Alps in one coarse cell; target resolves the Rhone corridor. Dev-raster geometry over honest ETOPO relief. Re-measured after W23 (the mask reads the cover and the ground bit): both rows still the M7 no-roads miss, the cross-grid spread still the Alps at 165 km."
   }
 ]

@@ -28,6 +28,7 @@ import { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";
 import { LAND_SHAPE, LAND_SHAPE_W, LAND_SHAPE_H, decodeLandShape } from "./landShapeData.js";
 import { decodePassClimb } from "./passClimbData.js";
 import { decodeCrossings } from "./crossingData.js";
+import { coverByte, hasGroundLink } from "./coverMask.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture, terrainShelter } from "./moistureSolver.js";
@@ -103,8 +104,8 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
 landFraction[i]=sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255;// W19: cover, not height — a coast cuts through a cell and the bit above rounds that away
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
-// W23: the cell is land when at least half of it stands above the sea by the 1-arc-minute cover, whatever the height-weighted coarse byte says — a bay the coarse grid sealed reads as shelf sea, a dry floor below sea level as lowland (the minimum land byte, as the coarse bake itself gives polders). A cell whose two readings agree keeps its elevation to the byte.
-const hm=landFraction[i]>=0.5?(he<3?3:he):(he<3?he:2);
+// W23: which cells are land is read off the fine measurements (coverMask.js): at least half the cell above the sea, or ground joined to a neighbour's; a cell whose two readings agree keeps its elevation to the byte.
+const hm=coverByte(he,landFraction[i],hasGroundLink(crossings,W,H,x,y));
 if(hm<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-hm/3))*0.12+depth);
 }else{let e=(hm-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
@@ -159,8 +160,8 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
 landFraction[i]=sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255;// W19: cover, not height — a coast cuts through a cell and the bit above rounds that away
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
-// W23: the cell is land when at least half of it stands above the sea by the 1-arc-minute cover, whatever the height-weighted coarse byte says — a bay the coarse grid sealed reads as shelf sea, a dry floor below sea level as lowland (the minimum land byte, as the coarse bake itself gives polders). A cell whose two readings agree keeps its elevation to the byte.
-const hm=landFraction[i]>=0.5?(he<3?3:he):(he<3?he:2);
+// W23: which cells are land is read off the fine measurements (coverMask.js): at least half the cell above the sea, or ground joined to a neighbour's; a cell whose two readings agree keeps its elevation to the byte.
+const hm=coverByte(he,landFraction[i],hasGroundLink(crossings,W,H,x,y));
 if(hm<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-hm/3))*0.12+depth);
 }else{let e=(hm-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}

@@ -86,24 +86,54 @@ Eyre, Death Valley, Turfan, the Dead Sea, the Chott, the Salton Sink, the
 Aral, Superior, Baikal, Astrakhan and the Volga delta → LAND; the Caspian,
 the Azov (via the Kerch Strait, 7 samples wide) and the Black Sea → water.
 
-### 3b. The sim's mask follows the fine majority (`worldgen.js`)
+### 3b. Which cells are land (`src/ported/worldgen/coverMask.js`)
 
-Where the cover plane exists (the earth presets), a cell is land when
-`landFraction ≥ 0.5`. The elevation byte is untouched wherever the two
-readings agree, so those cells keep their elevation to the bit. A cell the
-byte calls land that the cover calls water takes the shelf byte (2, the
-shallowest sea the raster has): a bay is shelf. A cell the byte calls sea
-that the cover calls land takes the minimum land byte (3): the coarse bake
-already gives polders and endorheic floors that byte, because the raster
-cannot express negative land. The oracle's v1 copy receives the same rule,
-spelled the same way over the same cover plane, and the elevation arm stays
-byte-exact.
+The coarse byte's land bit is a height-weighted vote; the cover plane says
+how much of the cell is land by area; the crossing table (W22) says whether
+the land in a cell is JOINED by ground to a neighbour's. The bit stands
+except where the fine measurement contradicts it:
+
+- a cell the byte calls LAND whose land is under half the cell AND joins no
+  neighbour's land is water — an islet, or the water the coarse grid sealed
+  and landed (the Azov). Land that joins a neighbour's is a shore of the
+  body it belongs to, however little of the cell it fills (the Cyclades, a
+  fjord coast, an island astride a cell edge), and stays land;
+- a cell the byte calls SEA that is at least half land by the cover is land
+  — a dry floor below the datum, a delta the byte rounded away. A sea cell
+  holding a sliver of joined shore stays sea: that is the water a coast is
+  sailed on, and the sliver is already charged as cover (W19a).
+
+The elevation byte is untouched wherever the bit stands, so those cells keep
+their elevation to the bit. A cell turning water takes the shelf byte (2, the
+shallowest sea the raster has); a cell turning land takes the minimum land
+byte (3, what the coarse bake gives polders). Both worldgen presets read the
+one function; the oracle's v1 copy receives the same module over the same
+cover plane and crossing table, and the elevation arm stays byte-exact.
+
+Two drafts were measured and rejected on the way, and both are recorded
+because each was a real finding. **Cover alone** (land iff at least half the
+cell is land) turned 9,929 target cells to water, and 8,864 of them were
+joined shore — the Greek islands among them (160 cells in the Aegean and
+Ionian box), fjord coasts, every archipelago; the owner saw the Aegean go.
+The first probe had reported none of them joined, because it called the
+crossing helper with the wrong arguments; that claim was published and is
+withdrawn here. **Cover or ground** (land iff mostly land OR joined to a
+neighbour) turned the coast inside out the other way: every water-majority
+coastal cell holding a sliver of joined shore became land, 14,999 cells at
+target, and a ship loses the water it sails a coast on. The rule above is
+the asymmetric one the two measurements force, and it is what the owner
+asked for in the first place: the grey tiles become water, the dry floors
+become land, and nothing else moves.
 
 ### 3c. What the lens shows
 
 Land is land, sea is sea, straits are lines. The third tone is gone because
 the set it painted — sim land with no ground link and cover under a half —
-is empty by construction: every such cell is now water.
+is exactly the set that is water now. And an islet the mask cannot hold is
+still DRAWN: the plane's land inside a water cell used to take the cell's
+own colour, which for a water cell is the sea's, so a one-cell island was
+invisible on every lens; it now takes a land tone (the cell's lowland
+terrain, muted where the lens mutes land, dark on the sailing lens).
 
 ## 4. What it moved (substrate only, no history)
 
@@ -123,17 +153,16 @@ test:
 
 | grid | → water | → land | of the flipped-to-water, with a ground link |
 |---|---:|---:|---:|
-| dev 240×120 | 111 (101 clusters, 92 single) | 29 (20 clusters, 18 single) | 0 |
-| target 1800×900 | 9,929 (4,588 clusters, 2,778 single) | 2,126 (920 clusters, 688 single) | 0 |
+| dev 240×120 | 11 (all single) | 29 (20 clusters, 18 single) | 0 |
+| target 1800×900 | 1,065 (574 clusters, 431 single) | 2,126 (920 clusters, 688 single) | 0 |
 
-Every cell that turns water was already a cell no walker could enter or
-leave (no ground link to any neighbour), which is what the W22d lens had been
-painting grey. The largest clusters at target, blind by coordinate. To water:
-the Azov (133 cells), the head of the Gulf of California (109), Queen Maud
-Gulf (91), the Laptev shore (81), the channels of the Canadian Arctic (62,
-43, 34, 33 …), the Strait of Georgia (51), the Gulf of Paria (32), Maracaibo
-(28), the Marmara's north row (26), the Strait of Magellan's inner reach
-(26). To land: the north Caspian depression — the Volga delta, Astrakhan,
+Every cell that turns water is a cell no walker could enter or leave (no
+ground link to any neighbour), which is exactly what the W22d lens painted
+grey; the Aegean and Ionian box loses 13 single cells, islets under half a
+cell that touch no other land, and every joined island stays. The largest
+clusters at target, blind by coordinate. To water: the Azov (85 cells), the
+head of the Gulf of California (73), Queen Maud Gulf (34), the Laptev shore
+(10, 8, 7). To land: the north Caspian depression — the Volga delta, Astrakhan,
 the Kalmyk and Kazakh steppe — as one cluster of 729 cells, the Turkmen
 shore (43), the Kura lowland (27), and single coastal fragments the byte
 rounded away, and the dry floors: the Qattara, Eyre and Chott cells now
@@ -174,9 +203,9 @@ elevation is byte-exact there and the oracle proves it.
 
 ## 7. Verification
 
-**Travel gate, both grids: pass**, nothing stale, no band widened. The **Volga** row is the one that moved: the first draft (the datum as every body's surface) drowned the Volga's floodplain up to Volgograd and put the mouth at 48.6°N, outside the row's box; with the sea at its own level the mouth is at 45.9°N 47.7°E, the delta, after 140 cells. Two cross-grid rows CLEARED and were deleted: alexandria-antioch (10.0% → 7.0%) and rome-paris (0.2%; dev 46.5 vs target 46.6). One cross-grid row RETURNED and is recorded: rome-london, cleared at 8.3% after W22d, is 13.8% again (dev 37.4 → 34.6 d, target 40.8 → 40.1) because the dev cell that holds Rome is 35% land — the Tyrrhenian takes the rest — and is sea now, so the gate's start rounds to the next land cell north-west, one coastal hop nearer London; the route from that cell is unchanged. A start-cell rounding at 165 km, not a routing difference. Every other row is unchanged to the tenth of a day.
+**Travel gate, both grids: pass**, nothing stale, no band widened. The **Volga** row is the one that moved: the first draft (the datum as every body's surface) drowned the Volga's floodplain up to Volgograd and put the mouth at 48.6°N, outside the row's box; with the sea at its own level the mouth is at 45.9°N 47.7°E, the delta, after 140 cells. Every route row is unchanged from W22d to the tenth of a day (Rome–London 37.4 / 40.8 d, London–Bordeaux 21.9 / 17.7 d) and the cross-grid table is W22d's. Under the rejected cover-only draft the gate had read differently — two cross-grid rows cleared and rome-london's returned — because the dev cell that holds Rome (35% land, joined to its shore) had turned to sea and the gate's start had rounded a hop north-west; the corrected rule keeps that cell land and the manifest is W22d's again, with the two rows' reasons carrying their W23 re-measurement (alexandria-antioch 12.1%, rome-paris 16.5%).
 
-**People gate, dev solve arm: pass** before and after (the pre-W23 tree re-run from a stash for the baseline), nothing stale, every hearth on the same cell, every staple verdict the same, no people constant changed. What moved: the north Caspian depression and the Volga delta are land and settle, and every enclosed depression holds ground; people −5000 109.7 → 112.1M, −3000 792.3 → 810.0M, −1000 1,372 → 1,389M, 1 CE 1,484 → 1,495M; the first caged basin −3071 → −3169; the second highland-roots hearth −5171 → −5381 and a millet hearth −4625 → −4751 (same cells); the European front a generation later everywhere (Balkans −6361 → −6333, central Europe −5381 → −5346, Rhine −5010 → −4975, Cardial −5647 → −5619, inland −5703 → −5661, front speed 1.18 → 1.17 km/yr), every one inside its window; Fertile Crescent −6830 → −6837, Nile −6606 → −6634, Yellow River −6627 → −6613, Indus −4443 → −4436, Ganges −5346 → −5367, Japan still unreached.
+**People gate, dev solve arm: pass** before and after (the pre-W23 tree re-run from a stash for the baseline), nothing stale, every hearth on the same cell, every staple verdict the same, no people constant changed. What moved: the north Caspian depression and the Volga delta are land and settle, and every enclosed depression holds ground; people −5000 109.7 → 110.9M, −3000 792.3 → 798.8M, −1000 1,372 → 1,376M, 1 CE 1,484 → 1,487M; the first caged basin −3071 both; the front speed 1.18 km/yr both; five hearths move by 7–140 years on their own cells (tubers −4121 → −3981 the largest); the European rows by a decade (central Europe −5381 → −5388, Rhine −5010 → −5017, Cardial −5647 → −5640, inland −5703 → −5696), Nile −6606 → −6613, Indus −4443 → −4429, Sahel −4933 → −4947, every one inside its window; Japan still unreached.
 
 Mechanical: lint, typecheck, unit, kernel-parity, smoke (routing hashes dev 297213567 / target 2997680649, unchanged — the fixture has no cover plane), oracle (elevation, relief, coast exact on both grids with the v1 copy carrying the same mask rule over the same cover plane), `bench --check` (pass, no re-baseline), chromium browser smoke (pass, world hashes dev 64e16935452e6c26 / target 217a88344bd3a6b1 identical to the worker). No state and no metric were added, so `coverage` and `monotone` were not required; the v1 coverage residue (`_goodsFlowsLevy`) stands as recorded in W22.
 

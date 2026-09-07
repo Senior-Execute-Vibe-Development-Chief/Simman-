@@ -40,17 +40,19 @@ function patchedV1SimDir(): string {
   // least half of it stands above the sea, whatever the coarse byte says. The
   // earth arm asserts elevation byte-exact, so the v1 copy gets the same
   // rule, spelled the same way, over the same cover plane.
-  copyFileSync(
-    fileURLToPath(new URL("../src/ported/worldgen/landCoverData.js", import.meta.url)),
-    join(dir, "landCoverData.js"),
-  );
+  for (const module of ["landCoverData.js", "crossingData.js", "coverMask.js"]) {
+    copyFileSync(
+      fileURLToPath(new URL(`../src/ported/worldgen/${module}`, import.meta.url)),
+      join(dir, module),
+    );
+  }
   const v1Elevation = [
     "if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;",
     "elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);",
     "}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}",
   ].join("\n");
   const coverElevation = [
-    "const hm=(sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255)>=0.5?(he<3?3:he):(he<3?he:2);",
+    "const hm=coverByte(he,sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255,hasGroundLink(crossingTable,W,H,x,y));",
     "if(hm<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;",
     "elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-hm/3))*0.12+depth);",
     "}else{let e=(hm-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}",
@@ -63,8 +65,13 @@ function patchedV1SimDir(): string {
   assert.ok(patched.includes(v1Import), "v1 earthData import changed shape — update the oracle patch");
   patched = patched
     .replaceAll(v1Elevation, coverElevation)
-    .replaceAll(v1Decode, `${v1Decode}const fData=decodeLandFrac(LAND_FRAC,eData);`)
-    .replace(v1Import, `${v1Import}\nimport { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";`);
+    .replaceAll(v1Decode, `${v1Decode}const fData=decodeLandFrac(LAND_FRAC,eData);const crossingTable=decodeCrossings(W,H);`)
+    .replace(v1Import, [
+      v1Import,
+      'import { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";',
+      'import { decodeCrossings } from "./crossingData.js";',
+      'import { coverByte, hasGroundLink } from "./coverMask.js";',
+    ].join("\n"));
   writeFileSync(worldgenPath, patched);
   return dir;
 }

@@ -440,6 +440,20 @@ function terrainColor(cell: number, moisture: number, _y: number): [number, numb
   return river >= 2 ? [45, 125, 155] : [brown, green, 62 + dither * 5];
 }
 
+/** The tone of land the plane holds inside a cell the mask calls water: the
+ * cell's own lowland terrain, muted where the lens mutes land, dark on the
+ * sailing lens — an islet is drawn, and it is never painted as sea. */
+function isletColor(cell: number, selectedMonth: number): [number, number, number] {
+  if (lens.value === "sailing") return [38, 42, 46];
+  const y = Math.floor(cell / substrate.width);
+  const moisture = substrate.moisture[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
+  const [red, green, blue] = terrainColor(cell, moisture, y);
+  if (lens.value === "wind" || lens.value === "rivers") {
+    return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
+  }
+  return [red, green, blue];
+}
+
 function pixelColor(cell: number, selectedMonth: number): [number, number, number] {
   const y = Math.floor(cell / substrate.width);
   const climateIndex = cell * MONTHS_PER_YEAR + selectedMonth;
@@ -548,7 +562,9 @@ function renderBase(selectedMonth: number): void {
     const water = pack(waterColor());
     for (let cell = 0; cell < substrate.N; cell++) {
       const colour = pack(pixelColor(cell, selectedMonth));
-      shapeLand[cell] = colour;
+      // Plane land inside a WATER cell (an islet the mask cannot hold) is
+      // still land on the map: it takes a land tone, never the sea's.
+      shapeLand[cell] = substrate.landMask[cell] ? colour : pack(isletColor(cell, selectedMonth));
       shapeWater[cell] = planeBlank[cell] ? colour : water;
     }
     // Each cell's colour over the whole block of the plane it covers, with the

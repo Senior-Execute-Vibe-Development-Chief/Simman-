@@ -11,6 +11,7 @@ import { TravelEngine } from "../src/sim/travel/engine";
 import type { Substrate } from "../src/sim/substrate";
 import { crossingIndex, fallbackCrossings } from "../src/sim/crossings";
 import { CROSSING_LAND_LINK } from "../src/ported/worldgen/crossingData.js";
+import { coverByte, FIRST_LAND_BYTE, hasGroundLink, SHELF_BYTE } from "../src/ported/worldgen/coverMask.js";
 import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
@@ -161,6 +162,36 @@ async function main(): Promise<void> {
   if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize.");
   assert.deepEqual(tsRngVectors(), v1RngVectors(), "RNG port diverged from v1 oracle");
   assert.equal(checkDmathGoldens().length, 26);
+  // W23: which cells are land, read off the fine measurements. The byte's
+  // bit stands except where the cover and the ground contradict it.
+  {
+    const land = FIRST_LAND_BYTE + 40;
+    const sea = 1;
+    assert.equal(coverByte(land, 1, true), land, "a land cell mostly land keeps its byte");
+    assert.equal(coverByte(land, 0.2, true), land, "joined shore stays land however little of the cell it fills");
+    assert.equal(coverByte(land, 0.2, false), SHELF_BYTE, "an islet under half the cell, joined to nothing, is shelf sea");
+    assert.equal(coverByte(land, 0.6, false), land, "an island over half the cell stands on its own");
+    assert.equal(coverByte(sea, 0.7, false), FIRST_LAND_BYTE, "a sea byte over a mostly-land cell is the first land byte");
+    assert.equal(coverByte(sea, 0.3, true), sea, "a sea cell holding a sliver of joined shore stays sea");
+    assert.equal(coverByte(sea, 0, false), sea, "open sea keeps its byte");
+    // The ground link is read from the cell's own four entries and from the
+    // four neighbours that store the mirrored edge; x wraps.
+    const width = 4;
+    const height = 3;
+    const table = new Uint8Array(width * height * 4);
+    assert.equal(hasGroundLink(table, width, height, 1, 1), false);
+    table[(1 * width + 1) * 4 + 2] = CROSSING_LAND_LINK; // own S entry
+    assert.equal(hasGroundLink(table, width, height, 1, 1), true);
+    assert.equal(hasGroundLink(table, width, height, 1, 2), true, "the south neighbour reads the same edge");
+    table.fill(0);
+    table[(0 * width + 2) * 4 + 3] = CROSSING_LAND_LINK; // (2,0)'s SW entry is (1,1)'s NE
+    assert.equal(hasGroundLink(table, width, height, 1, 1), true);
+    assert.equal(hasGroundLink(table, width, height, 2, 0), true);
+    table.fill(0);
+    table[(1 * width + 3) * 4 + 0] = CROSSING_LAND_LINK; // (3,1)'s E entry wraps to (0,1)
+    assert.equal(hasGroundLink(table, width, height, 0, 1), true, "the wrap-around west neighbour");
+    assert.equal(hasGroundLink(table, width, height, 3, 1), true);
+  }
   const routing = await runRoutingBatteries();
   assert.ok(routing.every((result) => result.queries >= 72));
 

@@ -4128,14 +4128,20 @@ Review corrections to the M1 build (all validated before merge):
     caught it. The Azov stays water through the Kerch Strait. No place is
     named.
 
-    **(c) Whose majority.** A cell is land when at least half of it is land
-    by the cover. Where the coarse byte agrees the elevation is untouched to
-    the bit (the oracle proves it, its v1 copy patched with the same rule);
-    where it disagrees the cell takes the shelf byte or the minimum land
-    byte. At target 9,974 cells turn water and 1,341 turn land; every cell
-    that turns water already had no ground link to any neighbour, so no
-    walker loses a step and no ship gains a corridor it did not have. At dev
-    it is 112 and 15.
+    **(c) Whose majority.** The byte's bit stands except where the fine
+    measurement contradicts it: a land cell whose land is under half the
+    cell and joins no neighbour's (the W22 ground bit) is water; a sea cell
+    at least half land by the cover is land; everything else keeps its byte,
+    and the oracle proves the elevation exact there. At target 1,065 cells
+    turn water — the Azov, the head of the Gulf of California, the Arctic
+    channels, islets under half a cell that touch nothing — and 2,126 turn
+    land, the north Caspian depression most of them. Two drafts were measured
+    and rejected: cover alone drowned every joined shore under half a cell,
+    the Greek islands included (the owner: *"we lost all of the greek islands
+    we had"*; the probe that had said no such cell was joined had a
+    wrong-argument bug, and that published claim is withdrawn); cover OR
+    ground landed every water-majority coastal cell with a sliver of shore.
+    The asymmetric rule is what the two measurements force.
 
     **(d) What did NOT change.** The router, the people table and the ocean
     fill read the same tables, regenerated. `EARTH_ELEV` is not re-baked:
@@ -4146,13 +4152,11 @@ Review corrections to the M1 build (all validated before merge):
     the case that made it visible is water now, the rule is not fixed.
 
     **(e) Verification.** Travel gate pass at both grids: the Volga's mouth
-    is at the delta (45.9°N) once the Caspian stands at its own level, two
-    cross-grid rows cleared and were deleted, and rome-london's returned
-    (13.8%) because the dev cell that holds Rome is 35% land and is sea now,
-    so the gate's start rounds one hop nearer London — recorded as the
-    start-cell rounding it is. People gate pass before and after: the Caspian
-    depression settles, people at 1 CE 1,484 → 1,495M, every hearth on its
-    cell, every staple the same, the European front a generation later and
-    inside every window. Lint, unit, parity, smoke (routing hashes
+    is at the delta (45.9°N) once the Caspian stands at its own level, and
+    every route and cross-grid row is W22d's to the tenth of a day. People
+    gate pass before and after: the Caspian depression settles, people at
+    1 CE 1,484 → 1,487M, every hearth on its cell, every staple the same,
+    every arrival inside its window. Lint, unit (a cover-mask truth table
+    and the mirrored ground-link read), parity, smoke (routing hashes
     unchanged), oracle (elevation exact), bench, browser smoke: pass. No
     band widened; no constant of the sim changed.
