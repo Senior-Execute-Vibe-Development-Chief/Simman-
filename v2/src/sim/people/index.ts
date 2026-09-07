@@ -163,6 +163,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._neighborTargets = neighbors.targets;
   world._neighborDistanceKm = neighbors.distanceKm;
   world._neighborMode = neighbors.mode;
+  world._neighborAscent = neighbors.ascent;
 }
 
 function seedPopulation(world: PeopleWorld): number {

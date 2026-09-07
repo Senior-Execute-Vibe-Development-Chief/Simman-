@@ -4160,3 +4160,40 @@ Review corrections to the M1 build (all validated before merge):
     and the mirrored ground-link read), parity, smoke (routing hashes
     unchanged), oracle (elevation exact), bench, browser smoke: pass. No
     band widened; no constant of the sim changed.
+
+78. **W24 let migration see passes, and put passes and biomes on the map**
+    (2026-09-07, owner: *"show all passes on a map somewhere (maybe in what
+    is now the 'sailing' map?), make the terrain show the biome colours, as
+    well as if that tile would have snow on it in this month, in white. also
+    let migration see passes"*).
+
+    **(a) The mechanism.** The people table's land step now carries the
+    router's climb: `ascent = |Δmean| + 2 × passClimb(edge)`, read from the
+    W21 table through the same four stored directions, and
+    `cost = daysPerKm × km + ascent × TRAVEL_SLOPE_COST_FACTOR` in the
+    TypeScript reference and the Rust kernel alike (parity to the bit). W21
+    §8.1 is closed. At the reference grid the term is a few percent of a
+    step (167 km, ~8 d; a 940 m climb is 0.3 d), and the dev solve arm moves
+    by less than that: people at 1 CE 1,486.7M both, the first caged basin
+    −3071 → −3064, two hearths by seven years on their cells, every arrival
+    on the same side of its window. At the shipped grid the share is three
+    times larger; that is a `v2-long` measurement.
+
+    **(b) The crossings lens** (the sailing lens renamed) draws what the
+    raster hides on the edges: straits as before, and now every land–land
+    edge with a pass climb, amber at a slight one and white-hot at 1,500 m,
+    from six canvas pixels per cell.
+
+    **(c) The terrain lens** is the biome — one colour per classifier id —
+    and white where the month's mean temperature is below the river lens's
+    freezing bar. One bar, one field: lying snow and river ice are the same
+    monthly-mean condition on the sim's temperature, and a second constant
+    for snow would have had nothing to ground it. It is a monthly mean, not
+    a snowpack.
+
+    **(d) Verification.** Lint, typecheck, unit (one pass on one fixture
+    edge: the ascent from both sides, the cost at the slope factor, every
+    other slot bit-identical), parity, smoke (routing hashes unchanged),
+    travel gate both grids (every row W23's), people gate dev, oracle, bench,
+    browser smoke: pass. No band widened; no constant of the sim changed; no
+    data re-baked.

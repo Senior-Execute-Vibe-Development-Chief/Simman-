@@ -2,8 +2,10 @@ import {
   CROSSING_ROSE_DX,
   CROSSING_ROSE_DY,
   CROSSING_SAMPLE_KM,
+  ELEVATION_METERS_PER_UNIT,
   M0_DEFAULT_SEED,
   MONTHS_PER_YEAR,
+  TRAVEL_PASS_DIRECTIONS,
   TRAVEL_RIVER_MIN_MAGNITUDE,
   RIVER_FREEZING_TEMPERATURE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
@@ -13,6 +15,10 @@ import { buildSubstrate, type Substrate } from "../sim/substrate";
 import { crossingHasGround, crossingIsOpenWater, crossingWaterWidth } from "../sim/crossings";
 import { yearFromStep } from "../sim/horizon";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
+import {
+  B_BOREAL, B_COLD_DESERT, B_DESERT, B_FLOODPLAIN, B_GRASSLAND, B_ICE, B_MEDITERRANEAN, B_SAVANNA,
+  B_SHRUBLAND, B_SUBTROP, B_TAIGA, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_DRY, B_TROP_RAIN, B_TUNDRA,
+} from "../ported/worldgen/biomeClass.js";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
 import { riverReachGradient, type Capability, type TravelMetric } from "../sim/travel/cost";
 import type { GridPreset } from "../sim/world";
@@ -378,11 +384,11 @@ function setZoom(next: number, fx = 0.5, fy = 0.5): void {
  * shape plane draws this inside a land cell too, wherever the cell's ground
  * does not reach, so it has to be one definition rather than three. */
 function waterColor(): [number, number, number] {
-  if (lens.value === "sailing") return [52, 120, 190];
+  if (lens.value === "crossings") return [52, 120, 190];
   return lens.value === "wind" || lens.value === "rivers" ? [16, 34, 54] : [25, 55, 86];
 }
 
-// Sailing lens (W22): what a ship can use. Land is land and sea is sea — a
+// Crossings lens (W22, "sailing" until W24): what a ship can use. Land is land and sea is sea — a
 // coast cell is a port a ship touches, never a place it is drawn on — and
 // what the raster hides is drawn on the EDGES: every strait, water between
 // two land cells whose ground does not meet, is a line between the two cell
@@ -423,31 +429,94 @@ const channels: ChannelEdge[] = (() => {
   return list;
 })();
 
-function sailingColor(cell: number): [number, number, number] {
+// Passes (W24): the other thing the raster hides. A land edge the two cells'
+// means call flat can climb a range between them; the pass table (W21) holds
+// how far above the higher mean the lowest crossing of each edge goes. Every
+// edge with a climb is drawn on the crossings lens, between the two cell
+// centres, the higher the brighter.
+interface PassEdge { readonly cell: number; readonly direction: number; readonly climbM: number }
+// The climb at which a drawn pass is white-hot: the height of the
+// Brenner (1,370 m) over the Inn valley, near enough — the great Alpine
+// passes climb 1,000-2,000 m above the valleys either side.
+const PASS_DRAW_CLIMB_M = 1500;
+// Fewer canvas pixels per sim cell than this and the passes are a wash over
+// the whole map: they are drawn from the zoom where an edge is a line.
+const PASS_DRAW_MIN_CELL_PX = 6;
+const passes: PassEdge[] = (() => {
+  const list: PassEdge[] = [];
+  const { passClimb, width, height, landMask } = substrate;
+  for (let cell = 0; cell < substrate.N; cell++) {
+    if (!landMask[cell]) continue;
+    const y = Math.floor(cell / width);
+    const x = cell - y * width;
+    for (let direction = 0; direction < TRAVEL_PASS_DIRECTIONS; direction++) {
+      const climb = passClimb[cell * TRAVEL_PASS_DIRECTIONS + direction] ?? 0;
+      if (climb <= 0) continue;
+      const ny = y + (CROSSING_ROSE_DY[direction] ?? 0);
+      if (ny < 0 || ny >= height) continue;
+      const neighbour = ny * width + ((x + (CROSSING_ROSE_DX[direction] ?? 0) + width) % width);
+      if (!landMask[neighbour]) continue;
+      list.push({ cell, direction, climbM: climb * ELEVATION_METERS_PER_UNIT });
+    }
+  }
+  return list;
+})();
+
+function crossingsColor(cell: number): [number, number, number] {
   if (!substrate.landMask[cell]) return waterColor();
   return [38, 42, 46];
 }
 
-function terrainColor(cell: number, moisture: number, _y: number): [number, number, number] {
-  const elevation = substrate.elevation[cell];
+/** The colour of each biome the classifier returns (biomeClass.js); a
+ * natural-map palette, one tone per class. */
+const BIOME_COLORS: ReadonlyMap<number, readonly [number, number, number]> = new Map([
+  [B_TUNDRA, [152, 162, 140]],
+  [B_ICE, [222, 230, 238]],
+  [B_TAIGA, [42, 92, 72]],
+  [B_BOREAL, [58, 112, 82]],
+  [B_TEMP_FOREST, [62, 132, 62]],
+  [B_TEMP_RAIN, [32, 112, 72]],
+  [B_TROP_RAIN, [22, 100, 42]],
+  [B_SAVANNA, [172, 162, 82]],
+  [B_GRASSLAND, [142, 176, 92]],
+  [B_DESERT, [216, 190, 130]],
+  [B_SHRUBLAND, [176, 150, 96]],
+  [B_TROP_DRY, [112, 142, 62]],
+  [B_SUBTROP, [52, 126, 72]],
+  [B_COLD_DESERT, [170, 165, 140]],
+  [B_FLOODPLAIN, [96, 152, 82]],
+  [B_MEDITERRANEAN, [132, 152, 72]],
+]);
+const SNOW_COLOR: readonly [number, number, number] = [240, 244, 248];
+
+/** Terrain (W24): the cell's biome in its colour, and white where the month's
+ * mean temperature is below freezing — the same bar the river lens freezes
+ * at, since lying snow and river ice are the one monthly-mean condition.
+ * Lakes and large rivers keep their water tones. */
+function terrainColor(cell: number, selectedMonth: number): [number, number, number] {
   if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [55, 135, 165];
   const river = substrate.rivers.magnitude[cell];
+  if (river >= 2) return [45, 125, 155];
+  const temperature = substrate.temperature[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
+  if (temperature < RIVER_FREEZING_TEMPERATURE) return [SNOW_COLOR[0], SNOW_COLOR[1], SNOW_COLOR[2]];
+  const biome = BIOME_COLORS.get(substrate.biome[cell] ?? -1);
+  if (biome) return [biome[0], biome[1], biome[2]];
+  // A land cell the classifier did not place (it returns -1 at or below the
+  // datum): the old height-and-moisture tone, so nothing is left unpainted.
+  const elevation = substrate.elevation[cell];
+  const moisture = substrate.moisture[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
   const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);
   const brown = clamp(135 - elevation * 90, 40, 170);
-  // Per-cell hash dither, not a row stripe: the old (y % 3) blue banding read
-  // as horizontal scanlines at zoom (owner play-report).
   const dither = ((cell * 2654435761) >>> 28) & 3;
-  return river >= 2 ? [45, 125, 155] : [brown, green, 62 + dither * 5];
+  return [brown, green, 62 + dither * 5];
 }
 
 /** The tone of land the plane holds inside a cell the mask calls water: the
  * cell's own lowland terrain, muted where the lens mutes land, dark on the
- * sailing lens — an islet is drawn, and it is never painted as sea. */
+ * crossings lens — an islet is drawn, and it is never painted as sea. */
 function isletColor(cell: number, selectedMonth: number): [number, number, number] {
-  if (lens.value === "sailing") return [38, 42, 46];
-  const y = Math.floor(cell / substrate.width);
-  const moisture = substrate.moisture[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
-  const [red, green, blue] = terrainColor(cell, moisture, y);
+  if (lens.value === "crossings") return [38, 42, 46];
+  const [red, green, blue] = terrainColor(cell, selectedMonth);
   if (lens.value === "wind" || lens.value === "rivers") {
     return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
   }
@@ -462,7 +531,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   if (lens.value === "wind") {
     // Muted geography so the arrow glyphs carry the signal over land and sea alike.
     if (!substrate.landMask[cell]) return waterColor();
-    const [red, green, blue] = terrainColor(cell, moisture, y);
+    const [red, green, blue] = terrainColor(cell, selectedMonth);
     return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
   }
   if (lens.value === "rivers") {
@@ -494,10 +563,10 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
       if (gradient > TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM) return [240, 170, 40];
       return [70, 225, 90];
     }
-    const [red, green, blue] = terrainColor(cell, moisture, y);
+    const [red, green, blue] = terrainColor(cell, selectedMonth);
     return [Math.round(red * 0.35), Math.round(green * 0.35), Math.round(blue * 0.35)];
   }
-  if (lens.value === "sailing") return sailingColor(cell);
+  if (lens.value === "crossings") return crossingsColor(cell);
   if (!substrate.landMask[cell]) return waterColor();
   if (lens.value === "population") {
     // Log ramp over the historically meaningful density span, 0.01..100
@@ -548,7 +617,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const v = clamp(value, 0, 1);
     return [Math.round(60 + 40 * v), Math.round(45 + 175 * v), Math.round(40 + 25 * (1 - v))];
   }
-  return terrainColor(cell, moisture, y);
+  return terrainColor(cell, selectedMonth);
 }
 
 function renderBase(selectedMonth: number): void {
@@ -720,6 +789,40 @@ function drawChannels(): void {
   }
 }
 
+/** Every pass, as a line on its edge, from the zoom where an edge is a line.
+ * Batched by brightness so a mountain range is a few strokes, not thousands. */
+function drawPasses(): void {
+  const cellPx = table.width * zoom / substrate.width;
+  if (cellPx < PASS_DRAW_MIN_CELL_PX) return;
+  const margin = Math.max(4, table.width / 100);
+  const stroke = Math.max(1.5, table.width / 400);
+  const BUCKETS = 8;
+  const paths: Path2D[] = Array.from({ length: BUCKETS }, () => new Path2D());
+  for (const edge of passes) {
+    const y = Math.floor(edge.cell / substrate.width);
+    const x = edge.cell - y * substrate.width;
+    const [sax, say] = toScreenXY(x, y);
+    if (sax < -margin || say < -margin || sax > canvas.width + margin || say > canvas.height + margin) continue;
+    const nx = (x + (CROSSING_ROSE_DX[edge.direction] ?? 0) + substrate.width) % substrate.width;
+    const ny = y + (CROSSING_ROSE_DY[edge.direction] ?? 0);
+    const [sbx, sby] = toScreenXY(nx, ny);
+    if (Math.abs(sbx - sax) > table.width * zoom / 2) continue;
+    const height = Math.min(1, edge.climbM / PASS_DRAW_CLIMB_M);
+    const bucket = Math.min(BUCKETS - 1, Math.floor(height * BUCKETS));
+    paths[bucket]!.moveTo(sax, say);
+    paths[bucket]!.lineTo(sbx, sby);
+  }
+  context.lineCap = "round";
+  for (let bucket = 0; bucket < BUCKETS; bucket++) {
+    const height = (bucket + 0.5) / BUCKETS;
+    // Amber and faint at a low pass, white-hot at the great ones: the
+    // lattice of slight climbs stays legible without washing over the land.
+    context.strokeStyle = `rgba(255, ${Math.round(150 + 105 * height)}, ${Math.round(60 + 195 * height)}, ${(0.1 + 0.9 * height).toFixed(2)})`;
+    context.lineWidth = stroke * (0.4 + 0.8 * height);
+    context.stroke(paths[bucket]!);
+  }
+}
+
 // Pointer events arrive faster than frames; a drag that redrew on every one
 // stacked several 6.5M-pixel resamples behind a single frame and stuttered.
 // One draw per animation frame, with the latest position.
@@ -781,7 +884,10 @@ function draw(): void {
     }
   }
   if (lens.value === "wind") drawWindArrows(selectedMonth);
-  if (lens.value === "sailing") drawChannels();
+  if (lens.value === "crossings") {
+    drawChannels();
+    drawPasses();
+  }
   if (startCell !== undefined) {
     const y = Math.floor(startCell / substrate.width);
     const [sx, sy] = toScreenXY(startCell - y * substrate.width, y);
@@ -973,10 +1079,12 @@ speedInput.addEventListener("input", () => {
 });
 
 const riverLegend = document.querySelector<HTMLElement>("#river-legend");
-const sailingLegend = document.querySelector<HTMLElement>("#sailing-legend");
+const crossingsLegend = document.querySelector<HTMLElement>("#crossings-legend");
+const terrainLegend = document.querySelector<HTMLElement>("#terrain-legend");
 lens.addEventListener("change", () => {
   if (riverLegend) riverLegend.hidden = lens.value !== "rivers";
-  if (sailingLegend) sailingLegend.hidden = lens.value !== "sailing";
+  if (crossingsLegend) crossingsLegend.hidden = lens.value !== "crossings";
+  if (terrainLegend) terrainLegend.hidden = lens.value !== "terrain";
   draw();
 });
 projectionSelect.addEventListener("change", () => {

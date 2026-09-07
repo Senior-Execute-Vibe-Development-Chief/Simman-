@@ -1,4 +1,6 @@
 import {
+  CROSSING_ROSE_DX,
+  CROSSING_ROSE_DY,
   CROSSING_SAMPLE_KM,
   MATH_HALF,
   MATH_NEGATIVE_ONE,
@@ -8,6 +10,8 @@ import {
   PEOPLE_NEIGHBOR_DY,
   PEOPLE_NEIGHBOR_OPPOSITE,
   TRAVEL_COASTAL_KM_PER_DAY,
+  TRAVEL_PASS_DIRECTIONS,
+  TRAVEL_SLOPE_COST_FACTOR,
 } from "../constants";
 import {
   crossingAt,
@@ -23,6 +27,9 @@ export interface PeopleNeighborTable {
   readonly distanceKm: Float64Array;
   /** 0 = land/foot edge, 1 = coastal water hop. */
   readonly mode: Uint8Array;
+  /** The height a land step climbs, elevation units: |Δmean| + 2 × the pass
+   * climb above the higher mean (W24, the router's own term); 0 on a hop. */
+  readonly ascent: Float64Array;
 }
 
 function edgeLengthKm(
@@ -42,6 +49,24 @@ function edgeLengthKm(
   const eastWest = dx * ((horizontal[fromY] ?? 0) + (horizontal[toY] ?? 0)) * MATH_HALF;
   const northSouth = dy * vertical;
   return Math.sqrt(eastWest * eastWest + northSouth * northSouth);
+}
+
+/**
+ * The pass climb of one stencil step (W21's table, W24 for the front): four
+ * directions are stored per cell, E, SE, S, SW in the router's rose; the
+ * other four are the neighbour's entry for the opposite direction.
+ */
+function passClimbOf(world: PeopleWorld, from: number, to: number, direction: number): number {
+  const dx = PEOPLE_NEIGHBOR_DX[direction] ?? 0;
+  const dy = PEOPLE_NEIGHBOR_DY[direction] ?? 0;
+  let rose = 0;
+  for (let index = 0; index < CROSSING_ROSE_DX.length; index++) {
+    if (CROSSING_ROSE_DX[index] === dx && CROSSING_ROSE_DY[index] === dy) { rose = index; break; }
+  }
+  const table = world.substrate.passClimb;
+  return rose < TRAVEL_PASS_DIRECTIONS
+    ? table[from * TRAVEL_PASS_DIRECTIONS + rose] ?? 0
+    : table[to * TRAVEL_PASS_DIRECTIONS + rose - TRAVEL_PASS_DIRECTIONS] ?? 0;
 }
 
 /** The edge byte of one stencil step, read from the crossing table (W22). */
@@ -131,6 +156,7 @@ export function buildPeopleNeighborTable(world: PeopleWorld): PeopleNeighborTabl
   const targets = new Int32Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT);
   const distanceKm = new Float64Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT);
   const mode = new Uint8Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT);
+  const ascent = new Float64Array(landCount * PEOPLE_CROP_NEIGHBOR_COUNT);
   targets.fill(MATH_NEGATIVE_ONE);
   const lengths = migrationEdgeLengths(world.substrate);
   const horizontal = lengths.horizontal;
@@ -146,6 +172,10 @@ export function buildPeopleNeighborTable(world: PeopleWorld): PeopleNeighborTabl
         if (crossingHasGround(byte)) {
           targets[slot] = adjacent;
           distanceKm[slot] = edgeLengthKm(world, cell, adjacent, horizontal, vertical);
+          // The climb the step makes: the ascent between the two means, and
+          // the pass above the higher of them up and back down (W21's rule).
+          ascent[slot] = Math.abs((world.substrate.elevation[adjacent] ?? 0) - (world.substrate.elevation[cell] ?? 0))
+            + 2 * passClimbOf(world, cell, adjacent, direction);
           continue;
         }
         // Two land cells whose ground does not meet: the far bank is reached
@@ -165,7 +195,7 @@ export function buildPeopleNeighborTable(world: PeopleWorld): PeopleNeighborTabl
       mode[slot] = 1;
     }
   }
-  return { targets, distanceKm, mode };
+  return { targets, distanceKm, mode, ascent };
 }
 
 export function neighborSlot(direction: number): number {
@@ -174,5 +204,11 @@ export function neighborSlot(direction: number): number {
 
 export function coastalHopCost(distanceKm: number): number {
   return distanceKm / TRAVEL_COASTAL_KM_PER_DAY;
+}
+
+/** The days a land step costs: the target's days/km over the distance, plus
+ * the climb at the router's Naismith rate (W24). Both kernels spell it so. */
+export function landStepCost(daysPerKm: number, distanceKm: number, ascent: number): number {
+  return daysPerKm * distanceKm + ascent * TRAVEL_SLOPE_COST_FACTOR;
 }
 

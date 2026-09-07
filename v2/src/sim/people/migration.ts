@@ -15,7 +15,7 @@ import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm } from "../travel/co
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { activePackageIndices, packageCapacity } from "./crop";
 import type { PeopleWorld } from "./types";
-import { coastalHopCost } from "./neighbors";
+import { coastalHopCost, landStepCost } from "./neighbors";
 
 /** Two weights per pair: the forager weight then the farmer weight. */
 const PAIR_GROUPS = 2;
@@ -83,7 +83,11 @@ function conductance(world: PeopleWorld, target: number, slot: number): number {
   const distance = world._neighborDistanceKm[slot] ?? 0;
   const cost = world._neighborMode[slot] === 1
     ? coastalHopCost(distance)
-    : (world._migrationDaysPerKm[target] ?? Number.POSITIVE_INFINITY) * distance;
+    : landStepCost(
+      world._migrationDaysPerKm[target] ?? Number.POSITIVE_INFINITY,
+      distance,
+      world._neighborAscent[slot] ?? 0,
+    );
   return Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0;
 }
 

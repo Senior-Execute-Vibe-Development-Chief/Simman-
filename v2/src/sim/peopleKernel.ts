@@ -366,6 +366,7 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     world._neighborTargets,
     world._neighborDistanceKm,
     world._neighborMode,
+    world._neighborAscent,
   ];
 }
 

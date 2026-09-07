@@ -46,8 +46,11 @@ import {
   PEOPLE_NEIGHBOR_DY,
   PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
+  TRAVEL_PASS_DIRECTIONS,
+  TRAVEL_SLOPE_COST_FACTOR,
 } from "../src/sim/constants";
 import { migrationShareForArea } from "../src/sim/people/migration";
+import { landStepCost } from "../src/sim/people/neighbors";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
@@ -1023,6 +1026,77 @@ async function main(): Promise<void> {
       moved++;
     }
     assert.equal(moved, 0, "a channel on eight edges moves nothing outside them");
+  }
+
+  {
+    // W24: a land step is charged what the router charges it — the ascent
+    // between the two means plus the pass above them up and back down, at
+    // the slope factor — so migration sees passes. The pass table stores four
+    // directions per cell; the step west out of the eastern cell reads the
+    // western cell's eastward entry. Every edge the pass does not sit on is
+    // bit-identical to the flat fixture.
+    const width = 240;
+    const west = 60 * width + 100;
+    const east = west + 1;
+    const CLIMB = 0.05;
+    const RISE = 0.02;
+    const build = (pass: boolean): PeopleWorld => {
+      const base = peopleFixture();
+      if (pass) {
+        base.passClimb[west * TRAVEL_PASS_DIRECTIONS] = CLIMB;
+        base.elevation[east] = RISE;
+      }
+      return new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts" }, substrate: base }) as PeopleWorld;
+    };
+    const flat = build(false);
+    const passed = build(true);
+    const slotOf = (world: PeopleWorld, cell: number, dx: number, dy: number): number => {
+      const direction = PEOPLE_NEIGHBOR_DX.findIndex((x, k) => x === dx && PEOPLE_NEIGHBOR_DY[k] === dy);
+      assert.ok(direction >= 0);
+      return (world._packedOf[cell] ?? 0) * PEOPLE_CROP_NEIGHBOR_COUNT + direction;
+    };
+    const eastward = slotOf(passed, west, 1, 0);
+    const westward = slotOf(passed, east, -1, 0);
+    assert.equal(passed._neighborTargets[eastward], east);
+    assert.equal(passed._neighborTargets[westward], west);
+    // The substrate holds both in single precision; the table is built from what it holds.
+    const expected = Math.fround(RISE) + 2 * Math.fround(CLIMB);
+    assert.ok(Math.abs((passed._neighborAscent[eastward] ?? 0) - expected) < 1e-9, "the step east climbs the rise and the pass");
+    assert.ok(Math.abs((passed._neighborAscent[westward] ?? 0) - expected) < 1e-9, "the step west reads the west cell's eastward entry");
+    const km = passed._neighborDistanceKm[eastward] ?? 0;
+    assert.ok(km > 0);
+    const DAYS_PER_KM = 0.05;
+    assert.equal(landStepCost(DAYS_PER_KM, km, 0), DAYS_PER_KM * km, "a flat step costs the walk alone");
+    assert.equal(
+      landStepCost(DAYS_PER_KM, km, expected),
+      DAYS_PER_KM * km + expected * TRAVEL_SLOPE_COST_FACTOR,
+      "the climb is charged at the router's slope factor",
+    );
+    assert.equal(flat._neighborAscent.length, passed._neighborAscent.length);
+    assert.equal(flat._neighborAscent.length, flat._landCells.length * PEOPLE_CROP_NEIGHBOR_COUNT);
+    // The rise moves the ascent of every edge touching the eastern cell; the
+    // pass moves the one edge it sits on. Nothing else in the table moves.
+    const touched = new Set<number>();
+    for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
+      const dx = PEOPLE_NEIGHBOR_DX[direction] ?? 0;
+      const dy = PEOPLE_NEIGHBOR_DY[direction] ?? 0;
+      const around = (60 + dy) * width + (101 + dx);
+      touched.add(slotOf(passed, east, dx, dy));
+      touched.add(slotOf(passed, around, -dx, -dy));
+    }
+    let moved = 0;
+    for (let slot = 0; slot < passed._neighborAscent.length; slot++) {
+      if (touched.has(slot)) {
+        assert.ok((passed._neighborAscent[slot] ?? 0) >= Math.fround(RISE), "every edge onto the rise climbs it");
+        continue;
+      }
+      assert.equal(flat._neighborAscent[slot], 0);
+      if (passed._neighborAscent[slot] === flat._neighborAscent[slot]
+        && passed._neighborTargets[slot] === flat._neighborTargets[slot]
+        && passed._neighborDistanceKm[slot] === flat._neighborDistanceKm[slot]) continue;
+      moved++;
+    }
+    assert.equal(moved, 0, "a pass on one edge moves nothing outside the cells it joins");
   }
 
   {

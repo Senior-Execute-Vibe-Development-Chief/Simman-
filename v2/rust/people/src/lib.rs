@@ -36,6 +36,8 @@ const PEOPLE_BAND_COUNT: usize = 16;
 const PEOPLE_CROP_NEIGHBOR_COUNT: usize = 8;
 const PEOPLE_NEIGHBOR_OPPOSITE: [usize; PEOPLE_CROP_NEIGHBOR_COUNT] = [1, 0, 3, 2, 7, 6, 5, 4];
 const TRAVEL_COASTAL_KM_PER_DAY: f64 = 80.0;
+// The router's Naismith rate, days per elevation unit climbed (TRAVEL_SLOPE_COST_FACTOR).
+const TRAVEL_SLOPE_COST_FACTOR: f64 = 3.0;
 const PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR: f64 = 15.0;
 /// Two weights per neighbour pair: the forager weight, then the farmer weight (W6).
 const PAIR_GROUPS: usize = 2;
@@ -306,6 +308,8 @@ pub struct PeopleKernel {
     neighbor_targets: Vec<i32>,
     neighbor_distance: Vec<f64>,
     neighbor_mode: Vec<u8>,
+    /// Per-slot climb of a land step, elevation units (W24): |Δmean| + 2 × pass climb; 0 on a hop.
+    neighbor_ascent: Vec<f64>,
 
     // Authoritative people state and all hot-path scratch live in this
     // instance. JavaScript only keeps typed-array views onto these vectors.
@@ -402,6 +406,7 @@ impl PeopleKernel {
         neighbor_targets: &[i32],
         neighbor_distance: &[f64],
         neighbor_mode: &[u8],
+        neighbor_ascent: &[f64],
     ) -> PeopleKernel {
         let cells = width.saturating_mul(height);
         let land = copy_u8(land, cells, 0);
@@ -444,6 +449,10 @@ impl PeopleKernel {
                 neighbor_mode,
                 PEOPLE_CROP_NEIGHBOR_COUNT.saturating_mul(land_count),
                 0,
+            ),
+            neighbor_ascent: copy_f64(
+                neighbor_ascent,
+                PEOPLE_CROP_NEIGHBOR_COUNT.saturating_mul(land_count),
             ),
             land_cells,
             packed_of,
@@ -864,11 +873,13 @@ impl PeopleKernel {
         }
     }
 
-    fn edge_cost(&self, target: usize, distance: f64, mode: u8) -> f64 {
+    fn edge_cost(&self, target: usize, distance: f64, mode: u8, ascent: f64) -> f64 {
         if mode == 1 {
             distance / TRAVEL_COASTAL_KM_PER_DAY
         } else {
-            self.days(target) * distance
+            // The target's days/km over the distance, plus the climb at the
+            // router's Naismith rate (W24); the reference kernel spells it so.
+            self.days(target) * distance + ascent * TRAVEL_SLOPE_COST_FACTOR
         }
     }
 
@@ -1065,6 +1076,7 @@ impl PeopleKernel {
                     target,
                     self.neighbor_distance.get(slot).copied().unwrap_or(0.0),
                     self.neighbor_mode.get(slot).copied().unwrap_or(0),
+                    self.neighbor_ascent.get(slot).copied().unwrap_or(0.0),
                 );
                 let ease = if cost.is_finite() && cost >= 0.0 {
                     1.0 / (1.0 + cost)

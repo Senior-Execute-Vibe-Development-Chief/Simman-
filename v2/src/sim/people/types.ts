@@ -123,6 +123,8 @@ export interface PeopleWorld extends World {
   _neighborTargets: Int32Array;
   _neighborDistanceKm: Float64Array;
   _neighborMode: Uint8Array;
+  /** Per-slot climb of a land step, elevation units (W24); 0 on a hop. */
+  _neighborAscent: Float64Array;
   /** Per-cell foot days/km for the tick's month (migration conductance numerator). */
   _migrationDaysPerKm: Float64Array;
   /** Lazy per-month days/km caches — climate is periodic, so 12 fills total. */

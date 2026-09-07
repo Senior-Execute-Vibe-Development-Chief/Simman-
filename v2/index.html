@@ -36,7 +36,7 @@
             <option value="native">Wild stands</option>
             <option value="wind">Wind</option>
             <option value="rivers">River passability</option>
-            <option value="sailing">Sailing</option>
+            <option value="crossings">Crossings</option>
           </select>
         </label>
         <label>Projection
@@ -90,10 +90,31 @@
           <span style="color:#50c8c8">■ lake</span> ·
           <span style="color:#cde1eb">■ frozen (this month)</span>
         </span>
-        <span id="sailing-legend" hidden> · sailing lens:
+        <span id="crossings-legend" hidden> · crossings lens:
           <span style="color:#3478be">■ sea</span> ·
           <span style="color:#c8f0ff">— strait: water between two land cells with no ground between (brighter = narrower)</span> ·
+          <span style="color:#ffc850">— pass: a land edge that climbs above both cells (brighter = higher; drawn from 6 px per cell)</span> ·
           <span style="color:#262a2e">■ land</span>
+        </span>
+        <span id="terrain-legend"> · terrain lens (biome, this month's snow):
+          <span style="color:#f0f4f8">■ snow</span> ·
+          <span style="color:#98a28c">■ tundra</span> ·
+          <span style="color:#aaa58c">■ cold desert</span> ·
+          <span style="color:#2a5c48">■ taiga</span> ·
+          <span style="color:#3a7052">■ boreal</span> ·
+          <span style="color:#3e843e">■ temperate forest</span> ·
+          <span style="color:#207048">■ temperate rain</span> ·
+          <span style="color:#347e48">■ subtropical</span> ·
+          <span style="color:#16642a">■ tropical rain</span> ·
+          <span style="color:#708e3e">■ tropical dry</span> ·
+          <span style="color:#849848">■ mediterranean</span> ·
+          <span style="color:#8eb05c">■ grassland</span> ·
+          <span style="color:#aca252">■ savanna</span> ·
+          <span style="color:#609852">■ floodplain</span> ·
+          <span style="color:#b09660">■ shrubland</span> ·
+          <span style="color:#d8be82">■ desert</span> ·
+          <span style="color:#dee6ee">■ ice</span> ·
+          <span style="color:#2d7d9b">■ river / lake</span>
         </span>
       </p>
       <p id="grid-hint"></p>

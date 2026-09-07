@@ -134,8 +134,8 @@ queries per grid — target 7,288,126 finite entries, dev 134,362 — 0 entries,
 - Not a water passage table: a strait's or a channel's real width on a sea
   edge is the same search on the other plane and is deliberately out of scope
   (the owner's framing; W18 carries the carved widths).
-- Not a change to migration: the kernel's migration cost has no slope term
-  at all and does not read the table. Adding it is a kernel-and-parity wave.
+- Not a change to migration (in W21): the kernel's migration cost had no
+  slope term at all and did not read the table. W24 added it.
 - Not a time gate and not a fitted outcome: nothing in the bake or the router
   names a place, a year or a result; every entry is a measurement.
 
@@ -163,10 +163,10 @@ runner's noise (1.2–2.0 s), and the table itself is 26 MB.
 
 ## 8. What is still open
 
-1. **Migration does not see passes.** `fillMigrationDaysPerKm` and the kernel
-   read `terrainFactor` per cell; the front walks over ridges at their mean.
-   The table is on the substrate; the wave is the kernel's edge cost plus
-   parity.
+1. ~~**Migration does not see passes.**~~ Closed by W24
+   (`spec/handoffs/W24-passes-and-biomes.md`): the people table carries a
+   per-slot ascent (`|Δmean| + 2 × climb`) and both kernels charge it at
+   `TRAVEL_SLOPE_COST_FACTOR`.
 2. **Height, not dryness**, as in #73(c): samples below sea level count as 0.
 3. **The per-cell terrain factor is still the mean's.** Slowness per km across
    broken ground (as opposed to the height of the one crossing) is a

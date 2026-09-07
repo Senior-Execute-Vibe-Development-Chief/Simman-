@@ -232,4 +232,4 @@ Mechanical: lint, typecheck, unit, kernel-parity, smoke (routing hashes dev 2972
    worldgen's lake machinery decides which of it holds water. Whether it
    finds the Aral, Superior and Baikal is a measurement this wave did not
    make.
-5. W22 §8.1–8.8 stand.
+5. W22 §8.1–8.8 stand. (W21 §8.1, migration and passes, is closed by W24.)
