@@ -36,7 +36,36 @@ function patchedV1SimDir(): string {
   const v1Block = worldgenSource.match(straitBlock)?.[0];
   assert.ok(v1Block, "v1 strait block changed shape — update the oracle patch");
   const noCarve = "const EARTH_STRAITS = [];\nfunction carveStraits(elevation, W, H) {}";
-  writeFileSync(worldgenPath, worldgenSource.replace(v1Block, noCarve));
+  // v2 decides land by the 1-arc-minute cover (W23): a cell is land when at
+  // least half of it stands above the sea, whatever the coarse byte says. The
+  // earth arm asserts elevation byte-exact, so the v1 copy gets the same
+  // rule, spelled the same way, over the same cover plane.
+  copyFileSync(
+    fileURLToPath(new URL("../src/ported/worldgen/landCoverData.js", import.meta.url)),
+    join(dir, "landCoverData.js"),
+  );
+  const v1Elevation = [
+    "if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;",
+    "elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);",
+    "}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}",
+  ].join("\n");
+  const coverElevation = [
+    "const hm=(sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255)>=0.5?(he<3?3:he):(he<3?he:2);",
+    "if(hm<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;",
+    "elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-hm/3))*0.12+depth);",
+    "}else{let e=(hm-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}",
+  ].join("\n");
+  const v1Decode = "const eData=decodeEarth(EARTH_ELEV);";
+  const v1Import = 'import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";';
+  let patched = worldgenSource.replace(v1Block, noCarve);
+  assert.equal(patched.split(v1Elevation).length - 1, 2, "v1 elevation block changed shape — update the oracle patch");
+  assert.equal(patched.split(v1Decode).length - 1, 2, "v1 earth decode changed shape — update the oracle patch");
+  assert.ok(patched.includes(v1Import), "v1 earthData import changed shape — update the oracle patch");
+  patched = patched
+    .replaceAll(v1Elevation, coverElevation)
+    .replaceAll(v1Decode, `${v1Decode}const fData=decodeLandFrac(LAND_FRAC,eData);`)
+    .replace(v1Import, `${v1Import}\nimport { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";`);
+  writeFileSync(worldgenPath, patched);
   return dir;
 }
 const v1SimDir = patchedV1SimDir();

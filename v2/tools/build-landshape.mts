@@ -20,10 +20,9 @@
  *     "above sea level" means, and majority is the same rule the elevation
  *     bake's own mask uses — a cell is what most of it is.
  *
- * Consequence worth stating: ground that lies BELOW sea level but is dry
- * (endorheic floors, polders) counts as water here, exactly as in the other
- * two planes. This measures height against the sea, not dryness — QUESTIONS.md
- * records the gap. And a landform smaller than half a cell of this plane has
+ * Since W23 "land" is the shared fine rule (tools/lib/fine-water.mts): the
+ * ocean and sea-sized enclosed basins are water, every smaller floor below
+ * the sea is land, in all four planes alike. And a landform smaller than half a cell of this plane has
  * no bit of its own: the plane has a resolution limit like any other, it is
  * just a much finer one.
  *
@@ -39,8 +38,9 @@
  *
  * Usage: npx tsx tools/build-landshape.mts etopo1-21601x10801.bin
  */
-import { closeSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { buildFineLand, readEtopo } from "./lib/fine-water.mjs";
 
 // Twice the shipped grid on each axis (1800x900), fifteen times the dev grid,
 // and a whole multiple of both — so every cell of either grid covers a whole
@@ -56,11 +56,7 @@ const EARTH_RADIUS_KM = 6371;
 
 const binPath = process.argv[2];
 if (!binPath) throw new Error("usage: build-landshape.mts <etopo1-WxH.bin>");
-const dims = /-(\d+)x(\d+)\.bin$/.exec(binPath);
-if (!dims) throw new Error("input filename must carry its dimensions, e.g. etopo1-21601x10801.bin");
-const SRC_W = Number(dims[1]);
-const SRC_H = Number(dims[2]);
-if (statSync(binPath).size !== SRC_W * SRC_H * 2) throw new Error("bin size does not match its dimensions");
+const { src, SRC_W, SRC_H } = readEtopo(binPath);
 if (SRC_W < OUT_W * 4) throw new Error("source grid is too coarse to place a coastline inside these cells");
 
 // Bin every source sample into the output cell that contains it. Row 0 of the
@@ -68,29 +64,27 @@ if (SRC_W < OUT_W * 4) throw new Error("source grid is too coarse to place a coa
 const landN = new Uint32Array(OUT_W * OUT_H);
 const allN = new Uint32Array(OUT_W * OUT_H);
 {
-  const fd = openSync(binPath, "r");
-  const rowBytes = Buffer.alloc(SRC_W * 2);
-  // The output column of each source column never changes — resolve it once.
+  // What is land is the shared fine rule (W23, tools/lib/fine-water.mts).
+  const { land, stats } = buildFineLand(src, SRC_W, SRC_H);
+  console.log(`fine water: ${stats.oceanSamples} ocean samples, ${stats.enclosedSeasKept} enclosed seas kept (levels ${stats.enclosedSeaLevels.map((s) => `${s.level} m below the datum, ${s.samples} samples, rim ${s.rimSamples}`).join("; ")}), ${stats.enclosedBodiesToLand} enclosed bodies (${stats.samplesReturnedToLand} samples) returned to land`);
   const colOf = new Int32Array(SRC_W);
   for (let sx = 0; sx < SRC_W; sx++) {
     const lon = -180 + (360 * sx) / (SRC_W - 1);
     colOf[sx] = lon >= 180 ? -1 : Math.min(OUT_W - 1, Math.floor(((lon + 180) / 360) * OUT_W));
   }
   for (let sy = 0; sy < SRC_H; sy++) {
-    readSync(fd, rowBytes, 0, SRC_W * 2, sy * SRC_W * 2);
-    const row = new Int16Array(rowBytes.buffer, rowBytes.byteOffset, SRC_W);
     const lat = -90 + (180 * sy) / (SRC_H - 1);
     const oy = Math.min(OUT_H - 1, Math.floor(((90 - lat) / 180) * OUT_H));
     const base = oy * OUT_W;
+    const rowBase = sy * SRC_W;
     for (let sx = 0; sx < SRC_W; sx++) {
       const ox = colOf[sx]!;
       if (ox < 0) continue; // the +180 column duplicates -180
       const o = base + ox;
       allN[o]!++;
-      if (row[sx]! > 0) landN[o]!++;
+      if (land[rowBase + sx]) landN[o]!++;
     }
   }
-  closeSync(fd);
 }
 
 const shape = new Uint8Array(OUT_W * OUT_H);

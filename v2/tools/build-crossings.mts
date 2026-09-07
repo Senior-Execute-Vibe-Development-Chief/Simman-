@@ -57,6 +57,7 @@
  */
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { buildFineLand } from "./lib/fine-water.mjs";
 
 const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -82,7 +83,11 @@ const grids = (gridArgs.length ? gridArgs : ["240x120", "1800x900"]).map((g) => 
 
 const raw = readFileSync(binPath);
 const src = new Int16Array(raw.buffer, raw.byteOffset, SRC_W * SRC_H);
-const isLandAt = (sy: number, sx: number): boolean => src[sy * SRC_W + sx]! > 0;
+// What is land is the shared fine rule (W23, tools/lib/fine-water.mts): the
+// ocean and sea-sized enclosed basins are water, every smaller floor below the
+// sea is land, so a dry depression holds ground and a ship never crosses it.
+const fineLand = buildFineLand(src, SRC_W, SRC_H).land;
+const isLandAt = (sy: number, sx: number): boolean => fineLand[sy * SRC_W + sx] === 1;
 
 // Distance to the nearest land sample, 4-connected, capped, over the whole
 // grid: two raster sweeps each way (the city-block transform), with the

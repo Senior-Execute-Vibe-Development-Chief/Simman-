@@ -200,13 +200,14 @@ sea level as water, §8.9 — Qattara and Lake Eyre).
 8. Shipped-grid history arms for W17–W22 remain `v2-long` on request; what
    the measured Aegean, Marmara and Korea Strait do to `arrival:japan` and the
    European rows at the shipped grid is the first thing that arm should read.
-9. **The bake reads dry ground below sea level as water.** ETOPO1 carries no
-   water mask, so the Qattara Depression (22 target cells), Lake Eyre (13),
-   Chott el Djerid and their kind hold no land seat, no ground link, and are
-   impassable on foot and to migration. The fix is ocean by flood fill from
-   the map edge plus the lakes the sim names; the Caspian is the case to
-   check first.
+9. ~~**The bake reads dry ground below sea level as water.**~~ **Closed by
+   W23** (`spec/handoffs/W23-what-is-water.md`): the four fine bakes share
+   one rule — ocean by flood fill plus sea-sized enclosed bodies, everything
+   smaller returned to land — and the sim's mask follows the measured cover.
+   The Qattara, Eyre and Chott cells hold ground; the Azov, the Marmara's
+   north row and the Arctic channels are water.
 10. **Sea modes on a land cell follow the coarse coast flag, not the table.**
-    The Azov's 85 sim-land cells are crossable by the table and refused by
-    the mode mask (7% carry the flag). A land cell with a water edge should
-    be a port by the table.
+    The Azov's 85 sim-land cells were crossable by the table and refused by
+    the mode mask (7% carried the flag). W23 made those cells water, which
+    removes the instance and not the rule: a land cell with a water edge
+    should be a port by the table. Carried as W23 §8.1.

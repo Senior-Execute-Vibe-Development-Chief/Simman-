@@ -15,14 +15,12 @@
  * but says nothing about how the land inside a cell is arranged.
  *
  * Rule (a physical statement, no place names):
- *   - LAND_FRAC[cell] = (1-arc-minute samples in the cell with altitude > 0)
+ *   - LAND_FRAC[cell] = (1-arc-minute samples in the cell that are land)
  *                       / (samples in the cell), quantized to a byte.
- *     `altitude > 0` is the same land test the elevation bake uses, so the two
- *     planes agree on what "above sea level" means.
  *
- * Consequence worth stating: ground that lies BELOW sea level but is dry
- * (endorheic floors, polders) counts as water here. This plane measures
- * height against the sea, not dryness — QUESTIONS.md records the gap.
+ * Since W23 "land" is the shared fine rule (tools/lib/fine-water.mts): the
+ * ocean and sea-sized enclosed basins are water, and every smaller floor
+ * below the sea — a dry depression, a lake the coarse grid judges — is land.
  *
  * Input: the 1-arc-minute ETOPO1 grid, raw little-endian int16, dimensions in
  * the filename, rows ascending from −90. See tools/fetch-etopo1.md for the
@@ -30,8 +28,9 @@
  *
  * Usage: npx tsx tools/build-landfrac.mts etopo1-21601x10801.bin
  */
-import { closeSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { buildFineLand, readEtopo } from "./lib/fine-water.mjs";
 
 const OUT_W = 1920;
 const OUT_H = 960;
@@ -40,41 +39,36 @@ const LAND_BYTE = 3;
 
 const binPath = process.argv[2];
 if (!binPath) throw new Error("usage: build-landfrac.mts <etopo1-WxH.bin>");
-const dims = /-(\d+)x(\d+)\.bin$/.exec(binPath);
-if (!dims) throw new Error("input filename must carry its dimensions, e.g. etopo1-21601x10801.bin");
-const SRC_W = Number(dims[1]);
-const SRC_H = Number(dims[2]);
-if (statSync(binPath).size !== SRC_W * SRC_H * 2) throw new Error("bin size does not match its dimensions");
+const { src, SRC_W, SRC_H } = readEtopo(binPath);
 if (SRC_W < OUT_W * 4) throw new Error("source grid is too coarse to measure sub-cell cover");
 
 // Bin every source sample into the shipped cell that contains it. Row 0 of the
-// source is −90 (ascending); row 0 of the output is +90.
+// source is −90 (ascending); row 0 of the output is +90. What is land is the
+// shared fine rule (W23, tools/lib/fine-water.mts): ocean and sea-sized
+// enclosed basins are water, every smaller floor below the sea is land.
 const landN = new Uint32Array(OUT_W * OUT_H);
 const allN = new Uint32Array(OUT_W * OUT_H);
 {
-  const fd = openSync(binPath, "r");
-  const rowBytes = Buffer.alloc(SRC_W * 2);
-  // The output column of each source column never changes — resolve it once.
+  const { land, stats } = buildFineLand(src, SRC_W, SRC_H);
+  console.log(`fine water: ${stats.oceanSamples} ocean samples, ${stats.enclosedSeasKept} enclosed seas kept (levels ${stats.enclosedSeaLevels.map((s) => `${s.level} m below the datum, ${s.samples} samples, rim ${s.rimSamples}`).join("; ")}), ${stats.enclosedBodiesToLand} enclosed bodies (${stats.samplesReturnedToLand} samples) returned to land`);
   const colOf = new Int32Array(SRC_W);
   for (let sx = 0; sx < SRC_W; sx++) {
     const lon = -180 + (360 * sx) / (SRC_W - 1);
     colOf[sx] = lon >= 180 ? -1 : Math.min(OUT_W - 1, Math.floor(((lon + 180) / 360) * OUT_W));
   }
   for (let sy = 0; sy < SRC_H; sy++) {
-    readSync(fd, rowBytes, 0, SRC_W * 2, sy * SRC_W * 2);
-    const row = new Int16Array(rowBytes.buffer, rowBytes.byteOffset, SRC_W);
     const lat = -90 + (180 * sy) / (SRC_H - 1);
     const oy = Math.min(OUT_H - 1, Math.floor(((90 - lat) / 180) * OUT_H));
     const base = oy * OUT_W;
+    const rowBase = sy * SRC_W;
     for (let sx = 0; sx < SRC_W; sx++) {
       const ox = colOf[sx]!;
       if (ox < 0) continue; // the +180 column duplicates −180
       const o = base + ox;
       allN[o]!++;
-      if (row[sx]! > 0) landN[o]!++;
+      if (land[rowBase + sx]) landN[o]!++;
     }
   }
-  closeSync(fd);
 }
 
 const frac = new Uint8Array(OUT_W * OUT_H);

@@ -50,6 +50,7 @@
  */
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { buildFineLand } from "./lib/fine-water.mjs";
 
 // The encoding step. 255 steps reach 8,160 m, above every land crossing on
 // Earth (the highest motorable and caravan passes sit near 5,600 m); the
@@ -77,6 +78,9 @@ const grids = (gridArgs.length ? gridArgs : ["240x120", "1800x900"]).map((g) => 
 
 const raw = readFileSync(binPath);
 const src = new Int16Array(raw.buffer, raw.byteOffset, SRC_W * SRC_H);
+// What is land is the shared fine rule (W23, tools/lib/fine-water.mts); a
+// land sample below the sea stands at sea level for the climb.
+const fineLand = buildFineLand(src, SRC_W, SRC_H).land;
 const heightAt = (sy: number, sx: number): number => {
   const v = src[sy * SRC_W + sx]!;
   return v > 0 ? v : 0;
@@ -134,8 +138,7 @@ function bakeGrid(W: number, H: number): Baked {
     for (let sx = 0; sx < SRC_COLS; sx++) {
       const o = base + colOf[sx]!;
       allN[o]!++;
-      const v = src[rowBase + sx]!;
-      if (v > 0) { landN[o]!++; landSum[o]! += v; }
+      if (fineLand[rowBase + sx]) { landN[o]!++; landSum[o]! += Math.max(0, src[rowBase + sx]!); }
     }
   }
   const land = new Uint8Array(cells);

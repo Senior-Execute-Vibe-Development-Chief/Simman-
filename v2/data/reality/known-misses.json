@@ -73,11 +73,6 @@
   },
   {
     "check": "crossGrid",
-    "id": "alexandria-antioch",
-    "reason": "10.0% vs the 10% band: dev's 165 km Levant coast road is marginally stretched. Dev-raster geometry (its dev route row was FIXED by the ETOPO coastline and ratcheted out)."
-  },
-  {
-    "check": "crossGrid",
     "id": "chang-an-dunhuang",
     "reason": "Dev-raster geometry over broken terrain \u2014 finer cells resolve a cheaper corridor."
   },
@@ -96,11 +91,6 @@
     "id": "rome-paris",
     "grid": "dev",
     "reason": "Dev's 7-cell diagonal must cross a 165 km cell that now averages 1231 m of honest ETOPO Alpine relief \u2014 the raster cannot resolve the Rhone corridor around it. Target takes the corridor (28%, the no-roads class). Dev-raster geometry."
-  },
-  {
-    "check": "crossGrid",
-    "id": "rome-paris",
-    "reason": "Dev crosses the Alps in one coarse cell; target resolves the Rhone corridor. Dev-raster geometry over honest ETOPO relief."
   },
   {
     "check": "crossGrid",
@@ -150,5 +140,10 @@
     "check": "crossGrid",
     "id": "calicut-aden-monsoon",
     "reason": "34.9% dev/target split, the same lost corner-port at dev's start cell as crossGrid:calicut-aden on the shorter with-monsoon passage. Dev-raster geometry."
+  },
+  {
+    "check": "crossGrid",
+    "id": "rome-london",
+    "reason": "dev 34.6 vs target 40.1 d (13.8%). Cleared at 8.3% after W22d (37.4 vs 40.8) and returned with W23 (the sim's mask follows the 1-arc-minute cover: a cell is land when at least half of it is): the dev cell that holds Rome (165 km, 41.3N 12.8E) is 35% land \u2014 the Tyrrhenian takes the rest \u2014 so it is sea now, and the gate's start rounds to the next land cell north-west (42.8N 11.3E), one coastal hop nearer London; the route itself is unchanged from that cell on. A start-cell rounding at dev's resolution, not a routing difference; the target route moved 40.8 -> 40.1 d by the same cover change on the Tyrrhenian shore."
   }
 ]

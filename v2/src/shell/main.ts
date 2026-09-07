@@ -386,19 +386,14 @@ function waterColor(): [number, number, number] {
 // coast cell is a port a ship touches, never a place it is drawn on — and
 // what the raster hides is drawn on the EDGES: every strait, water between
 // two land cells whose ground does not meet, is a line between the two cell
-// centres, which is where a strait lives in the sim. One tone is kept for
-// the cells the two grids disagree on: land in the sim's coarse mask that the
-// fine source finds almost wholly under water (the Azov, the Marmara's north
-// row) and so holds no ground at all — a ship crosses them, a walker cannot.
+// centres, which is where a strait lives in the sim. Since W23 the sim's mask
+// follows the fine source (a cell is land when at least half of it is), so
+// there is no third kind of cell: what a ship crosses is sea, or a strait.
 interface ChannelEdge { readonly cell: number; readonly direction: number; readonly width: number }
 // The brightness scale of a drawn strait: white-hot at a sample or two, the
 // sea's own tone by the time it is as wide as half a cell's edge at the
 // equator, in source samples.
 const CHANNEL_DRAW_SAMPLES = (40075 / substrate.width) / 2 / CROSSING_SAMPLE_KM;
-// 1 where a land cell has ground to at least one neighbour. A land cell
-// without any is either a true one-cell island (mostly land in the source) or
-// the mismatch above (mostly water in the source); the land fraction says which.
-const hasGround = new Uint8Array(substrate.N);
 const channels: ChannelEdge[] = (() => {
   const list: ChannelEdge[] = [];
   const { crossings, width, height } = substrate;
@@ -410,10 +405,6 @@ const channels: ChannelEdge[] = (() => {
       const ny = y + (CROSSING_ROSE_DY[direction] ?? 0);
       if (ny < 0 || ny >= height) continue;
       const neighbour = ny * width + ((x + (CROSSING_ROSE_DX[direction] ?? 0) + width) % width);
-      if (crossingHasGround(byte)) {
-        hasGround[cell] = 1;
-        hasGround[neighbour] = 1;
-      }
       const channel = crossingWaterWidth(byte);
       if (channel === 0) continue;
       const grade = crossingIsOpenWater(byte) ? 2 : 1;
@@ -432,16 +423,8 @@ const channels: ChannelEdge[] = (() => {
   return list;
 })();
 
-/** The sim's land that the source finds mostly under water: no ground link
- * to any neighbour, and less than half the cell above the sea. */
-function drownedLand(cell: number): boolean {
-  return substrate.landMask[cell] !== 0 && !hasGround[cell]
-    && (substrate.landFraction[cell] ?? 1) < 0.5;
-}
-
 function sailingColor(cell: number): [number, number, number] {
   if (!substrate.landMask[cell]) return waterColor();
-  if (drownedLand(cell)) return [70, 100, 120];
   return [38, 42, 46];
 }
 

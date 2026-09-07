@@ -4099,3 +4099,60 @@ Review corrections to the M1 build (all validated before merge):
     which leaves those cells impassable on foot; and sea modes on a land
     cell follow the coarse coast flag rather than the table, which leaves the
     Azov crossable by the table and refused by the mask.
+
+77. **W23 decided what is water: one rule for the four fine bakes, and a mask
+    that believes the measured cover** (2026-09-07, owner: *"i want the small
+    islands and real water ones to just become water tiles, and the dry
+    ground below sea level to become land tiles"*).
+
+    **(a) The grey tone was three things.** The sailing lens kept one tone
+    for sim land the fine source found mostly under water. Asked what it was,
+    the honest answer was three sets: real water the coarse grid had sealed
+    and landed (the Azov, the Marmara's north row, the head of the Gulf of
+    California, the Arctic channels); dry ground below sea level that the
+    bakes read as water because ETOPO1 has no water mask (the Qattara, Lake
+    Eyre, the Chott); and single-cell islets. The owner ruled the first and
+    third water and the second land.
+
+    **(b) One definition.** `tools/lib/fine-water.mts`: a body of standing
+    water is what lies at or below its own surface and connects to it. The
+    ocean's surface is the datum, entered from the polar rows; an enclosed
+    body of at least 100,000 km² is a sea whose surface is its largest flat
+    patch — the source's own mark of a water surface — and the ground between
+    that level and the datum is dry; everything else is land. All four
+    1-arc-minute bakes read that byte now; none tests altitude. 18,305
+    enclosed bodies returned to land; the Caspian is the one sea kept, found
+    at 28 m below the datum, and ~280,000 km² of its dry rim (Astrakhan, the
+    Volga delta, the Kalmyk steppe) became land — the first draft read it as
+    sea, as the coarse bake still does, and the travel gate's Volga row
+    caught it. The Azov stays water through the Kerch Strait. No place is
+    named.
+
+    **(c) Whose majority.** A cell is land when at least half of it is land
+    by the cover. Where the coarse byte agrees the elevation is untouched to
+    the bit (the oracle proves it, its v1 copy patched with the same rule);
+    where it disagrees the cell takes the shelf byte or the minimum land
+    byte. At target 9,974 cells turn water and 1,341 turn land; every cell
+    that turns water already had no ground link to any neighbour, so no
+    walker loses a step and no ship gains a corridor it did not have. At dev
+    it is 112 and 15.
+
+    **(d) What did NOT change.** The router, the people table and the ocean
+    fill read the same tables, regenerated. `EARTH_ELEV` is not re-baked:
+    the elevation bytes still come from the 6-arc-minute source, and making
+    the two one is a global elevation change every climate field would feel —
+    recorded as open (handoff §8.2), a `v2-long` measurement when it comes.
+    Sea modes on a land cell still follow the coarse coast flag (W22 §8.10);
+    the case that made it visible is water now, the rule is not fixed.
+
+    **(e) Verification.** Travel gate pass at both grids: the Volga's mouth
+    is at the delta (45.9°N) once the Caspian stands at its own level, two
+    cross-grid rows cleared and were deleted, and rome-london's returned
+    (13.8%) because the dev cell that holds Rome is 35% land and is sea now,
+    so the gate's start rounds one hop nearer London — recorded as the
+    start-cell rounding it is. People gate pass before and after: the Caspian
+    depression settles, people at 1 CE 1,484 → 1,495M, every hearth on its
+    cell, every staple the same, the European front a generation later and
+    inside every window. Lint, unit, parity, smoke (routing hashes
+    unchanged), oracle (elevation exact), bench, browser smoke: pass. No
+    band widened; no constant of the sim changed.
