@@ -789,8 +789,12 @@ function drawChannels(): void {
   }
 }
 
-/** Every pass, as a line on its edge, from the zoom where an edge is a line.
- * Batched by brightness so a mountain range is a few strokes, not thousands. */
+/** Every pass as a saddle mark where the two cells meet: a short tick across
+ * the line between their centres, at its midpoint (the shared edge, or the
+ * shared corner on a diagonal), longer and brighter the higher the climb.
+ * The table holds one climb per edge and no position along it, so the
+ * midpoint is the only honest place; a full centre-to-centre line read as a
+ * ruled lattice over every range (owner). Batched by brightness. */
 function drawPasses(): void {
   const cellPx = table.width * zoom / substrate.width;
   if (cellPx < PASS_DRAW_MIN_CELL_PX) return;
@@ -806,19 +810,29 @@ function drawPasses(): void {
     const nx = (x + (CROSSING_ROSE_DX[edge.direction] ?? 0) + substrate.width) % substrate.width;
     const ny = y + (CROSSING_ROSE_DY[edge.direction] ?? 0);
     const [sbx, sby] = toScreenXY(nx, ny);
-    if (Math.abs(sbx - sax) > table.width * zoom / 2) continue;
+    const dx = sbx - sax;
+    const dy = sby - say;
+    if (Math.abs(dx) > table.width * zoom / 2) continue;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
     const height = Math.min(1, edge.climbM / PASS_DRAW_CLIMB_M);
     const bucket = Math.min(BUCKETS - 1, Math.floor(height * BUCKETS));
-    paths[bucket]!.moveTo(sax, say);
-    paths[bucket]!.lineTo(sbx, sby);
+    // The tick lies across the crossing: perpendicular to the step, a
+    // quarter of the step at a slight climb and half of it at a great one.
+    const half = length * (0.125 + 0.125 * height);
+    const px = -dy / length * half;
+    const py = dx / length * half;
+    const mx = sax + dx / 2;
+    const my = say + dy / 2;
+    paths[bucket]!.moveTo(mx - px, my - py);
+    paths[bucket]!.lineTo(mx + px, my + py);
   }
   context.lineCap = "round";
   for (let bucket = 0; bucket < BUCKETS; bucket++) {
     const height = (bucket + 0.5) / BUCKETS;
-    // Amber and faint at a low pass, white-hot at the great ones: the
-    // lattice of slight climbs stays legible without washing over the land.
-    context.strokeStyle = `rgba(255, ${Math.round(150 + 105 * height)}, ${Math.round(60 + 195 * height)}, ${(0.1 + 0.9 * height).toFixed(2)})`;
-    context.lineWidth = stroke * (0.4 + 0.8 * height);
+    // Amber and faint at a low pass, white-hot at the great ones.
+    context.strokeStyle = `rgba(255, ${Math.round(150 + 105 * height)}, ${Math.round(60 + 195 * height)}, ${(0.15 + 0.85 * height).toFixed(2)})`;
+    context.lineWidth = stroke * (0.6 + 1.2 * height);
     context.stroke(paths[bucket]!);
   }
 }

@@ -4181,8 +4181,10 @@ Review corrections to the M1 build (all validated before merge):
 
     **(b) The crossings lens** (the sailing lens renamed) draws what the
     raster hides on the edges: straits as before, and now every land–land
-    edge with a pass climb, amber at a slight one and white-hot at 1,500 m,
-    from six canvas pixels per cell.
+    edge with a pass climb as a saddle tick across the midpoint of the step
+    (the table holds no position along the edge; a full centre-to-centre
+    line read as a ruled lattice, the owner's word), amber at a slight one
+    and white-hot at 1,500 m, from six canvas pixels per cell.
 
     **(c) The terrain lens** is the biome — one colour per classifier id —
     and white where the month's mean temperature is below the river lens's

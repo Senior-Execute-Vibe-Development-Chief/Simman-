@@ -64,9 +64,13 @@ conductance and follow.
 The sailing lens is renamed: it is where the map shows what the raster hides
 on the EDGES, and there are now two such things. Straits (W22) are drawn as
 before. **Passes** are every land–land edge whose stored climb is above zero,
-drawn as a line between the two cell centres: amber and faint for a slight
-climb, white-hot at 1,500 m — the great Alpine passes climb 1,000–2,000 m
-above the valleys either side. They are batched into eight strokes by
+drawn as a saddle tick across the midpoint of the line between the two cell
+centres (the shared edge, or the shared corner on a diagonal): longer, amber
+and faint for a slight climb, white-hot at 1,500 m — the great Alpine passes
+climb 1,000–2,000 m above the valleys either side. The first cut drew the
+whole centre-to-centre line and the owner read it as a ruled lattice over
+every range; the table holds one climb per edge and no position along it,
+so the midpoint is the only honest place. They are batched into eight strokes by
 brightness (a range is a few paths, not thousands of style changes) and
 drawn only from six canvas pixels per cell, which is zoom 3 at the shipped
 grid; below that the lattice of slight climbs is a wash over the land. The
@@ -160,4 +164,8 @@ walks the v1 world, which holds no people table; the pre-W22
    state and its own wave, and would feed habitability before it fed a lens.
 3. **Passes are drawn only on the crossings lens.** A faint overlay on the
    terrain lens was not asked for and would compete with the biome colours.
+4. **A pass is marked where the cells meet, not where the saddle lies.** The
+   bake keeps the lowest crossing's height and not its position along the
+   minimax path; one more byte per edge and a re-bake would put the Brenner
+   at the Brenner.
 4. W23 §8.1–8.4 stand; W22 §8.1–8.8 stand; W21 §8.1 is closed by this wave.
