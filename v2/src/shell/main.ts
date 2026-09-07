@@ -1,4 +1,7 @@
 import {
+  CROSSING_ROSE_DX,
+  CROSSING_ROSE_DY,
+  CROSSING_SAMPLE_KM,
   M0_DEFAULT_SEED,
   MONTHS_PER_YEAR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
@@ -7,6 +10,7 @@ import {
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
 } from "../sim/constants";
 import { buildSubstrate, type Substrate } from "../sim/substrate";
+import { crossingHasGround, crossingIsOpenWater, crossingWaterWidth } from "../sim/crossings";
 import { yearFromStep } from "../sim/horizon";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
@@ -114,10 +118,35 @@ let graticuleLines: Array<Array<[number, number]>> = [];
 // while sampling, so the spin is instant at any grid.
 let centreDegrees = 0;
 
-/** The central meridian in radians, snapped to the whole-cell shift the table uses. */
+/** The central meridian in radians, exactly where the drag put it. The base
+ * image is sampled at the whole-column shift the table snaps to; the rest of
+ * the spin — under half a plane column — is applied as a translation of the
+ * base when it is drawn (`residualPixels`), so a drag moves the world
+ * continuously instead of in column steps (an 18-pixel jump per step at
+ * 64× zoom, and the vertical pan was continuous beside it — the jitter). */
 function centralMeridian(): number {
-  const shift = table.shiftFor(degreesToRadians(centreDegrees));
+  return degreesToRadians(centreDegrees);
+}
+
+/** The snapped meridian the base image was sampled at. */
+function snappedMeridian(): number {
+  const shift = table.shiftFor(centralMeridian());
   return (shift / PLANE_W) * 2 * Math.PI;
+}
+
+/** How far, in projected pixels, the drawn base must move to sit at the exact
+ * meridian: the sub-column residual, scaled by the width of the parallel at
+ * the middle of the view (a plane column is narrower toward the poles). */
+function residualPixels(): number {
+  const delta = centralMeridian() - snappedMeridian();
+  const wrapped = Math.atan2(Math.sin(delta), Math.cos(delta));
+  const columns = (wrapped / (2 * Math.PI)) * PLANE_W;
+  const middle = lonLatAtScreen(0.5, 0.5);
+  const lat = middle ? middle[1] : 0;
+  const centre = snappedMeridian();
+  const [westX] = table.lonLatToPixel(centre - Math.PI + 1e-9, lat, centre);
+  const [eastX] = table.lonLatToPixel(centre + Math.PI - 1e-9, lat, centre);
+  return columns * Math.max(0, eastX - westX) / table.width;
 }
 
 function formatCentre(): string {
@@ -349,7 +378,59 @@ function setZoom(next: number, fx = 0.5, fy = 0.5): void {
  * shape plane draws this inside a land cell too, wherever the cell's ground
  * does not reach, so it has to be one definition rather than three. */
 function waterColor(): [number, number, number] {
+  if (lens.value === "sailing") return [52, 120, 190];
   return lens.value === "wind" || lens.value === "rivers" ? [16, 34, 54] : [25, 55, 86];
+}
+
+// Sailing lens (W22): what a ship can use. The crossing table is per EDGE, so
+// a cell is coloured by its edges — open sea where any of its eight edges is
+// open water, a shore (a port: a land cell a ship can be at) where a land cell
+// has any water edge at all, and dark where nothing sails. The channels the
+// raster cannot hold as cells of their own — every edge whose water is
+// narrower than open sea — are drawn on top as lines between the two cell
+// centres, which is where a strait lives in the sim: on the edge.
+interface ChannelEdge { readonly cell: number; readonly direction: number; readonly width: number }
+// The brightness scale of a drawn strait: white-hot at a sample or two, the
+// sea's own tone by the time it is as wide as half a cell's edge at the
+// equator, in source samples.
+const CHANNEL_DRAW_SAMPLES = (40075 / substrate.width) / 2 / CROSSING_SAMPLE_KM;
+const seaEdges = new Uint8Array(substrate.N);   // 1: any water edge; 2: any open-water edge
+const channels: ChannelEdge[] = (() => {
+  const list: ChannelEdge[] = [];
+  const { crossings, width, height } = substrate;
+  for (let cell = 0; cell < substrate.N; cell++) {
+    const y = Math.floor(cell / width);
+    const x = cell - y * width;
+    for (let direction = 0; direction < 4; direction++) {
+      const byte = crossings[cell * 4 + direction] ?? 0;
+      const channel = crossingWaterWidth(byte);
+      if (channel === 0) continue;
+      const ny = y + (CROSSING_ROSE_DY[direction] ?? 0);
+      if (ny < 0 || ny >= height) continue;
+      const neighbour = ny * width + ((x + (CROSSING_ROSE_DX[direction] ?? 0) + width) % width);
+      const grade = crossingIsOpenWater(byte) ? 2 : 1;
+      seaEdges[cell] = Math.max(seaEdges[cell] ?? 0, grade);
+      seaEdges[neighbour] = Math.max(seaEdges[neighbour] ?? 0, grade);
+      // Only the straits the raster HIDES are drawn: water between two cells
+      // the sim calls LAND whose ground does NOT meet — two banks, not one
+      // shore. Two coastal cells on the same shore share ground and also
+      // share the sea along it (their water seats sit a few samples from
+      // land, so that edge always measures narrow); that is a coast, not a
+      // strait, and a water cell already shows as water.
+      if (grade === 1 && !crossingHasGround(byte)
+        && substrate.landMask[cell] && substrate.landMask[neighbour]) {
+        list.push({ cell, direction, width: channel });
+      }
+    }
+  }
+  return list;
+})();
+
+function sailingColor(cell: number): [number, number, number] {
+  const grade = seaEdges[cell] ?? 0;
+  if (!substrate.landMask[cell]) return grade > 0 ? waterColor() : [30, 40, 56];
+  if (grade > 0) return [150, 140, 105];
+  return [38, 42, 46];
 }
 
 function terrainColor(cell: number, moisture: number, _y: number): [number, number, number] {
@@ -407,6 +488,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const [red, green, blue] = terrainColor(cell, moisture, y);
     return [Math.round(red * 0.35), Math.round(green * 0.35), Math.round(blue * 0.35)];
   }
+  if (lens.value === "sailing") return sailingColor(cell);
   if (!substrate.landMask[cell]) return waterColor();
   if (lens.value === "population") {
     // Log ramp over the historically meaningful density span, 0.01..100
@@ -599,6 +681,47 @@ function drawWindArrows(selectedMonth: number): void {
   }
 }
 
+/** Every channel narrower than open sea, as a line on its edge; the narrower
+ * the brighter, so a strait a ship threads reads over the sea it joins. */
+function drawChannels(): void {
+  const margin = Math.max(4, table.width / 100);
+  const stroke = Math.max(1.5, table.width / 400);
+  context.lineCap = "round";
+  for (const edge of channels) {
+    const y = Math.floor(edge.cell / substrate.width);
+    const x = edge.cell - y * substrate.width;
+    const [sax, say] = toScreenXY(x, y);
+    if (sax < -margin || say < -margin || sax > canvas.width + margin || say > canvas.height + margin) continue;
+    const nx = (x + (CROSSING_ROSE_DX[edge.direction] ?? 0) + substrate.width) % substrate.width;
+    const ny = y + (CROSSING_ROSE_DY[edge.direction] ?? 0);
+    const [sbx, sby] = toScreenXY(nx, ny);
+    if (Math.abs(sbx - sax) > table.width * zoom / 2) continue;
+    // Width in samples: a kilometre or two is white-hot, a channel near the
+    // cell's own size is barely brighter than the sea.
+    const narrow = 1 - Math.min(1, Math.log2(edge.width) / Math.log2(CHANNEL_DRAW_SAMPLES));
+    const weight = narrow * narrow;
+    context.strokeStyle = `rgba(${Math.round(120 + 135 * narrow)}, ${Math.round(200 + 55 * narrow)}, 255, ${(0.12 + 0.88 * weight).toFixed(2)})`;
+    context.lineWidth = stroke * (0.6 + narrow);
+    context.beginPath();
+    context.moveTo(sax, say);
+    context.lineTo(sbx, sby);
+    context.stroke();
+  }
+}
+
+// Pointer events arrive faster than frames; a drag that redrew on every one
+// stacked several 6.5M-pixel resamples behind a single frame and stuttered.
+// One draw per animation frame, with the latest position.
+let drawQueued = false;
+function scheduleDraw(): void {
+  if (drawQueued) return;
+  drawQueued = true;
+  window.requestAnimationFrame(() => {
+    drawQueued = false;
+    draw();
+  });
+}
+
 function draw(): void {
   const selectedMonth = Number(month.value);
   monthLabel.textContent = `Month ${selectedMonth + 1}`;
@@ -608,7 +731,7 @@ function draw(): void {
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(
     base,
-    viewX, viewY, table.width / zoom, table.height / zoom,
+    viewX + residualPixels(), viewY, table.width / zoom, table.height / zoom,
     0, 0, canvas.width, canvas.height,
   );
   drawGraticule();
@@ -647,6 +770,7 @@ function draw(): void {
     }
   }
   if (lens.value === "wind") drawWindArrows(selectedMonth);
+  if (lens.value === "sailing") drawChannels();
   if (startCell !== undefined) {
     const y = Math.floor(startCell / substrate.width);
     const [sx, sy] = toScreenXY(startCell - y * substrate.width, y);
@@ -670,11 +794,13 @@ function cellFromPointer(event: MouseEvent): number | undefined {
   const bounds = canvas.getBoundingClientRect();
   const fx = (event.clientX - bounds.left) / bounds.width;
   const fy = (event.clientY - bounds.top) / bounds.height;
-  const px = clamp(Math.floor(viewX + fx * table.width / zoom), 0, table.width - 1);
+  // The base is drawn shifted by the sub-column residual, so the pick reads
+  // the pixel the pointer is actually over.
+  const px = clamp(Math.floor(viewX + residualPixels() + fx * table.width / zoom), 0, table.width - 1);
   const py = clamp(Math.floor(viewY + fy * table.height / zoom), 0, table.height - 1);
   // The table addresses the shape plane; the pointer picks the SIM cell whose
   // block that pixel falls in.
-  const planeCell = table.cellAt(px, py, table.shiftFor(degreesToRadians(centreDegrees)));
+  const planeCell = table.cellAt(px, py, table.shiftFor(centralMeridian()));
   if (planeCell < 0) return undefined;
   const planeY = Math.floor(planeCell / PLANE_W);
   const planeX = planeCell - planeY * PLANE_W;
@@ -764,7 +890,7 @@ canvas.addEventListener("pointermove", (event) => {
   centreDegrees -= dx / rowWidthScreen * 360;
   viewY -= dy / bounds.height * table.height / zoom;
   applyCentre();
-  draw();
+  scheduleDraw();
 });
 function releasePointer(event: PointerEvent): void {
   const had = pointers.delete(event.pointerId);
@@ -836,8 +962,10 @@ speedInput.addEventListener("input", () => {
 });
 
 const riverLegend = document.querySelector<HTMLElement>("#river-legend");
+const sailingLegend = document.querySelector<HTMLElement>("#sailing-legend");
 lens.addEventListener("change", () => {
   if (riverLegend) riverLegend.hidden = lens.value !== "rivers";
+  if (sailingLegend) sailingLegend.hidden = lens.value !== "sailing";
   draw();
 });
 projectionSelect.addEventListener("change", () => {
