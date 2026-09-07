@@ -10,6 +10,7 @@ import { routingFixtureSubstrate, runRoutingBatteries } from "../src/sim/travel/
 import { TravelEngine } from "../src/sim/travel/engine";
 import type { Substrate } from "../src/sim/substrate";
 import { crossingIndex, fallbackCrossings } from "../src/sim/crossings";
+import { CROSSING_LAND_LINK } from "../src/ported/worldgen/crossingData.js";
 import type { PeopleWorld } from "../src/sim/people/types";
 import { hashWorld, runSteps, World } from "../src/sim/world";
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
@@ -199,6 +200,16 @@ async function main(): Promise<void> {
     const sailBlocked = engine.query(leftSea, rightSea, coastal);
     assert.ok(sailBlocked.path.length > 2 && sailBlocked.days > sailDirect.days,
       "a water edge with no channel on it is not sailed");
+    // W22d: an edge that carries BOTH ground and a channel is one shore, not
+    // a strait — the ship keeps to the water cell beside it and the walker
+    // takes the ground. The same edge with the ground cut (above) is sailed.
+    const shore = routingFixtureSubstrate("dev");
+    shore.crossings[crossingIndex(width, height, leftLand, 1, 0)] = CROSSING_LAND_LINK | 1;
+    const shoreEngine = await TravelEngine.create(shore);
+    assert.ok(shoreEngine.query(leftLand, rightLand, coastal).path.length > 2,
+      "two land cells whose ground meets are not sailed between, channel or not");
+    assert.equal(shoreEngine.query(leftLand, rightLand, foot).path.length, 2,
+      "the ground on a shore edge is still walked");
     // Untouched edges route exactly as before: a walk whose shortest line
     // crosses none of the three edited edges (the fixture wraps in x, so a
     // walk that starts next to the cut would go round the far side instead).

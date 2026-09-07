@@ -4083,3 +4083,19 @@ Review corrections to the M1 build (all validated before merge):
     depth or ice; the channels are not drawn on the land plane. The
     shipped-grid history arm — what the measured Aegean, Marmara and Korea
     Strait do to Japan and the European rows — remains `v2-long` on request.
+
+    **(f) W22d, the same-shore rule** (2026-09-07, owner: *"make all beige
+    tiles … into land tiles, in the way that you cannot sail through them"*,
+    then **"do it"** on the rule below rather than the blanket). Closing
+    every land-to-land sea edge would shut the straits W22 opened, since a
+    strait narrower than a cell is water between two land cells. The rule
+    built: a ship passes between two land cells only where their ground does
+    not meet; where a walker can cross, the ship keeps to the water cell
+    beside the shared shore. The people table already read the bit this way;
+    the router now agrees. Rome–London 36.3 → 37.4 / 40.4 → 40.8 d, its
+    cross-grid row cleared and was deleted, nothing else moved beyond a tenth
+    of a day. Two findings from the lens are recorded in the handoff §8.9–10:
+    the bake reads dry ground below sea level (Qattara, Lake Eyre) as water,
+    which leaves those cells impassable on foot; and sea modes on a land
+    cell follow the coarse coast flag rather than the table, which leaves the
+    Azov crossable by the table and refused by the mask.

@@ -488,6 +488,19 @@ impl Router {
             if mode >= COASTAL_MODE && crossing & CROSSING_WIDTH_MASK == 0 {
                 continue;
             }
+            // A ship passes between two LAND cells only where their ground
+            // does not meet — the two banks of a strait, an island and its
+            // mainland. Where a walker can cross, the two cells are one shore
+            // and the ship keeps to the water cell beside it (the sea along a
+            // shore is always there), so a coast cell is a port and never a
+            // corridor; where the walker cannot, the ship may.
+            if mode >= COASTAL_MODE
+                && self.land[cell] != 0
+                && self.land[next_cell] != 0
+                && crossing & CROSSING_LAND_LINK != 0
+            {
+                continue;
+            }
             // No corner-cutting: a diagonal move must pass THROUGH one of its
             // two orthogonal intermediate cells — two land cells touching only
             // at a corner across a strait are not a road, and two sea cells

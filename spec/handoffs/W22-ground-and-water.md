@@ -156,6 +156,24 @@ sim in commit `26bc0f3c` and is unrelated to W22. Recorded here as the v1
 tool's standing residue; W22's own field is measured by nothing in
 `collect()`, exactly as W19a–W21a's fields are (W21 §8.6).
 
+## 7b. W22d — the same-shore rule (2026-09-07, later the same day)
+
+On seeing the sailing lens the owner asked for the "sailable land" cells to
+become plain land a ship cannot pass through. Closing every land-to-land sea
+edge would have shut the straits W22 opened (a strait narrower than a cell IS
+water between two land cells), so the rule built instead reads the ground
+bit: **a ship passes between two land cells only where their ground does not
+meet.** Where a walker can cross, the two cells are one shore and the ship
+keeps to the water cell beside it, which the shared shore guarantees is
+there; where the walker cannot, the ship may. This is the reading the people
+table has used since W22; the router now agrees with it. Rome–London moved
+36.3 → 37.4 d at dev and 40.4 → 40.8 d at target, its cross-grid row cleared
+(8.3%) and was deleted; nothing else moved by more than a tenth of a day.
+The lens paints land and sea as such, draws the straits on their edges, and
+keeps one tone for sim-land the source finds mostly under water (the Azov,
+the Marmara's north row, and — until the bake stops reading dry ground below
+sea level as water, §8.9 — Qattara and Lake Eyre).
+
 ## 8. What is still open
 
 1. **One seat per cell.** A cell holding two disconnected bodies is stood for
@@ -182,3 +200,13 @@ tool's standing residue; W22's own field is measured by nothing in
 8. Shipped-grid history arms for W17–W22 remain `v2-long` on request; what
    the measured Aegean, Marmara and Korea Strait do to `arrival:japan` and the
    European rows at the shipped grid is the first thing that arm should read.
+9. **The bake reads dry ground below sea level as water.** ETOPO1 carries no
+   water mask, so the Qattara Depression (22 target cells), Lake Eyre (13),
+   Chott el Djerid and their kind hold no land seat, no ground link, and are
+   impassable on foot and to migration. The fix is ocean by flood fill from
+   the map edge plus the lakes the sim names; the Caspian is the case to
+   check first.
+10. **Sea modes on a land cell follow the coarse coast flag, not the table.**
+    The Azov's 85 sim-land cells are crossable by the table and refused by
+    the mode mask (7% carry the flag). A land cell with a water edge should
+    be a port by the table.

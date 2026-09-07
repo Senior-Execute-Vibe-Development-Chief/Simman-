@@ -382,19 +382,23 @@ function waterColor(): [number, number, number] {
   return lens.value === "wind" || lens.value === "rivers" ? [16, 34, 54] : [25, 55, 86];
 }
 
-// Sailing lens (W22): what a ship can use. The crossing table is per EDGE, so
-// a cell is coloured by its edges — open sea where any of its eight edges is
-// open water, a shore (a port: a land cell a ship can be at) where a land cell
-// has any water edge at all, and dark where nothing sails. The channels the
-// raster cannot hold as cells of their own — every edge whose water is
-// narrower than open sea — are drawn on top as lines between the two cell
-// centres, which is where a strait lives in the sim: on the edge.
+// Sailing lens (W22): what a ship can use. Land is land and sea is sea — a
+// coast cell is a port a ship touches, never a place it is drawn on — and
+// what the raster hides is drawn on the EDGES: every strait, water between
+// two land cells whose ground does not meet, is a line between the two cell
+// centres, which is where a strait lives in the sim. One tone is kept for
+// the cells the two grids disagree on: land in the sim's coarse mask that the
+// fine source finds almost wholly under water (the Azov, the Marmara's north
+// row) and so holds no ground at all — a ship crosses them, a walker cannot.
 interface ChannelEdge { readonly cell: number; readonly direction: number; readonly width: number }
 // The brightness scale of a drawn strait: white-hot at a sample or two, the
 // sea's own tone by the time it is as wide as half a cell's edge at the
 // equator, in source samples.
 const CHANNEL_DRAW_SAMPLES = (40075 / substrate.width) / 2 / CROSSING_SAMPLE_KM;
-const seaEdges = new Uint8Array(substrate.N);   // 1: any water edge; 2: any open-water edge
+// 1 where a land cell has ground to at least one neighbour. A land cell
+// without any is either a true one-cell island (mostly land in the source) or
+// the mismatch above (mostly water in the source); the land fraction says which.
+const hasGround = new Uint8Array(substrate.N);
 const channels: ChannelEdge[] = (() => {
   const list: ChannelEdge[] = [];
   const { crossings, width, height } = substrate;
@@ -403,14 +407,16 @@ const channels: ChannelEdge[] = (() => {
     const x = cell - y * width;
     for (let direction = 0; direction < 4; direction++) {
       const byte = crossings[cell * 4 + direction] ?? 0;
-      const channel = crossingWaterWidth(byte);
-      if (channel === 0) continue;
       const ny = y + (CROSSING_ROSE_DY[direction] ?? 0);
       if (ny < 0 || ny >= height) continue;
       const neighbour = ny * width + ((x + (CROSSING_ROSE_DX[direction] ?? 0) + width) % width);
+      if (crossingHasGround(byte)) {
+        hasGround[cell] = 1;
+        hasGround[neighbour] = 1;
+      }
+      const channel = crossingWaterWidth(byte);
+      if (channel === 0) continue;
       const grade = crossingIsOpenWater(byte) ? 2 : 1;
-      seaEdges[cell] = Math.max(seaEdges[cell] ?? 0, grade);
-      seaEdges[neighbour] = Math.max(seaEdges[neighbour] ?? 0, grade);
       // Only the straits the raster HIDES are drawn: water between two cells
       // the sim calls LAND whose ground does NOT meet — two banks, not one
       // shore. Two coastal cells on the same shore share ground and also
@@ -426,10 +432,16 @@ const channels: ChannelEdge[] = (() => {
   return list;
 })();
 
+/** The sim's land that the source finds mostly under water: no ground link
+ * to any neighbour, and less than half the cell above the sea. */
+function drownedLand(cell: number): boolean {
+  return substrate.landMask[cell] !== 0 && !hasGround[cell]
+    && (substrate.landFraction[cell] ?? 1) < 0.5;
+}
+
 function sailingColor(cell: number): [number, number, number] {
-  const grade = seaEdges[cell] ?? 0;
-  if (!substrate.landMask[cell]) return grade > 0 ? waterColor() : [30, 40, 56];
-  if (grade > 0) return [150, 140, 105];
+  if (!substrate.landMask[cell]) return waterColor();
+  if (drownedLand(cell)) return [70, 100, 120];
   return [38, 42, 46];
 }
 
