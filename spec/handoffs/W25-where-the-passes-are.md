@@ -80,15 +80,22 @@ hold 34 passes of prominence ≥900 m. Among them:
 
 | lat, lon | altitude | prominence | which |
 |---|---:|---:|---|
-| 45.88°N 7.08°E | 2,446 m | 1,825 m | the Great St Bernard (2,469 m) |
 | 46.22°N 8.02°E | 2,151 m | 1,642 m | the Simplon (2,005 m) |
 | 46.97°N 11.48°E | 1,696 m | 1,631 m | the Brenner (1,370 m) |
 | 45.67°N 6.88°E | 2,313 m | 1,272 m | the Little St Bernard (2,188 m) |
+| 45.26°N 6.90°E | 2,253 m | 881 m | the Mont Cenis (2,081 m) |
+| 45.87°N 7.17°E | 2,508 m | 365 m | the Great St Bernard (2,469 m) — see below |
 | 46.57°N 8.57°E | 2,211 m | 909 m | the Gotthard (2,106 m) |
 | 47.17°N 12.50°E | 2,382 m | 925 m | the Hochtor (2,504 m) |
 
-None of these is named to the bake. The altitudes are the raster's, which
-smooths a narrow col upward (the Brenner most of all).
+None of these is named to the bake; each lies within 4 km of its surveyed
+col (the Great St Bernard within 1 km). The altitudes are the raster's,
+which smooths a narrow col upward (the Brenner most of all). The raster
+also opens crossings the survey does not: Monte Rosa's key col, 1,825 m of
+prominence, lands 7 km west of the Great St Bernard at 45.88°N 7.08°E and
+2,446 m, on a ridge the smoothing has lowered below the true pass, so the
+Great St Bernard itself carries only 365 m. Known gap 2 is that, and it is
+the raster's reading, not the survey's.
 
 ## 5. Does it tell the truth?
 

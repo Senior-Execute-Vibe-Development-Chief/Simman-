@@ -4220,9 +4220,12 @@ Review corrections to the M1 build (all validated before merge):
     Suez isthmus — 5,666 m below Kilimanjaro, 11 m above the sea — out of
     the list. 30,497 passes, 19 s, no place named, no grid in the rule.
 
-    **(c) Read back blind**, the Alps hold the Great St Bernard, the
-    Simplon, the Brenner, the Little St Bernard, the Gotthard and the
-    Hochtor within a sample of where they are, at the raster's altitudes.
+    **(c) Read back blind**, the Alps hold the Simplon, the Brenner, the
+    Little St Bernard, the Mont Cenis, the Gotthard and the Hochtor within
+    4 km of where they are, at the raster's altitudes. The Great St Bernard
+    is listed 1 km from its col but with 365 m of prominence: the smoothed
+    raster opens a lower crossing 7 km west of it, and Monte Rosa's key col
+    (1,825 m) lands there. The raster's reading, recorded as such.
 
     **(d) The lens** draws each pass at its own coordinates, larger and
     brighter with prominence, the eighteen range-dividing cols at zoom 1
