@@ -2,10 +2,8 @@ import {
   CROSSING_ROSE_DX,
   CROSSING_ROSE_DY,
   CROSSING_SAMPLE_KM,
-  ELEVATION_METERS_PER_UNIT,
   M0_DEFAULT_SEED,
   MONTHS_PER_YEAR,
-  TRAVEL_PASS_DIRECTIONS,
   TRAVEL_RIVER_MIN_MAGNITUDE,
   RIVER_FREEZING_TEMPERATURE,
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
@@ -15,6 +13,7 @@ import { buildSubstrate, type Substrate } from "../sim/substrate";
 import { crossingHasGround, crossingIsOpenWater, crossingWaterWidth } from "../sim/crossings";
 import { yearFromStep } from "../sim/horizon";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
+import { decodePasses, PASS_SOURCE_COLS, PASS_SOURCE_ROWS } from "../ported/worldgen/passData.js";
 import {
   B_BOREAL, B_COLD_DESERT, B_DESERT, B_FLOODPLAIN, B_GRASSLAND, B_ICE, B_MEDITERRANEAN, B_SAVANNA,
   B_SHRUBLAND, B_SUBTROP, B_TAIGA, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_DRY, B_TROP_RAIN, B_TUNDRA,
@@ -429,38 +428,22 @@ const channels: ChannelEdge[] = (() => {
   return list;
 })();
 
-// Passes (W24): the other thing the raster hides. A land edge the two cells'
-// means call flat can climb a range between them; the pass table (W21) holds
-// how far above the higher mean the lowest crossing of each edge goes. Every
-// edge with a climb is drawn on the crossings lens, between the two cell
-// centres, the higher the brighter.
-interface PassEdge { readonly cell: number; readonly direction: number; readonly climbM: number }
-// The climb at which a drawn pass is white-hot: the height of the
-// Brenner (1,370 m) over the Inn valley, near enough — the great Alpine
-// passes climb 1,000-2,000 m above the valleys either side.
-const PASS_DRAW_CLIMB_M = 1500;
-// Fewer canvas pixels per sim cell than this and the passes are a wash over
-// the whole map: they are drawn from the zoom where an edge is a line.
-const PASS_DRAW_MIN_CELL_PX = 6;
-const passes: PassEdge[] = (() => {
-  const list: PassEdge[] = [];
-  const { passClimb, width, height, landMask } = substrate;
-  for (let cell = 0; cell < substrate.N; cell++) {
-    if (!landMask[cell]) continue;
-    const y = Math.floor(cell / width);
-    const x = cell - y * width;
-    for (let direction = 0; direction < TRAVEL_PASS_DIRECTIONS; direction++) {
-      const climb = passClimb[cell * TRAVEL_PASS_DIRECTIONS + direction] ?? 0;
-      if (climb <= 0) continue;
-      const ny = y + (CROSSING_ROSE_DY[direction] ?? 0);
-      if (ny < 0 || ny >= height) continue;
-      const neighbour = ny * width + ((x + (CROSSING_ROSE_DX[direction] ?? 0) + width) % width);
-      if (!landMask[neighbour]) continue;
-      list.push({ cell, direction, climbM: climb * ELEVATION_METERS_PER_UNIT });
-    }
-  }
-  return list;
-})();
+// Passes (W25; W24 drew the edge table and the owner read it as "VERY large
+// and geometric and odd" — it had no position in it). A pass is a saddle of
+// the terrain, measured on the 1-arc-minute raster with no cell in the rule
+// (tools/build-passes.mts): the key col of a summit whose ridge drops at
+// least PASS_MIN_PROMINENCE_M to it, which a route climbs at least
+// PASS_MIN_CLIMB_M to reach. Each has its own coordinates; the lens places
+// it there on any grid, the largest first.
+const passList = decodePasses();
+// The prominence at which a drawn pass is white-hot: the great Alpine passes
+// separate massifs by 1,500-2,000 m (the Great St Bernard 1,825 m, the
+// Simplon 1,642 m, the Brenner 1,631 m on the raster).
+const PASS_DRAW_PROMINENCE_M = 1500;
+// How many are drawn: at zoom 1 only the passes that divide whole ranges
+// (prominence ≥ 3,000 m, a few dozen on Earth); each doubling of the zoom
+// halves the bar, so every pass in the list shows from zoom 10.
+const PASS_DRAW_PROMINENCE_AT_ZOOM_1_M = 3000;
 
 function crossingsColor(cell: number): [number, number, number] {
   if (!substrate.landMask[cell]) return waterColor();
@@ -789,51 +772,35 @@ function drawChannels(): void {
   }
 }
 
-/** Every pass as a saddle mark where the two cells meet: a short tick across
- * the line between their centres, at its midpoint (the shared edge, or the
- * shared corner on a diagonal), longer and brighter the higher the climb.
- * The table holds one climb per edge and no position along it, so the
- * midpoint is the only honest place; a full centre-to-centre line read as a
- * ruled lattice over every range (owner). Batched by brightness. */
+/** Every pass above the zoom's prominence bar, at its own coordinates: a
+ * disc, larger and brighter the more its ridge drops to it, ringed dark so
+ * it reads on snow and on sea alike. Nothing here is on the sim grid. */
 function drawPasses(): void {
-  const cellPx = table.width * zoom / substrate.width;
-  if (cellPx < PASS_DRAW_MIN_CELL_PX) return;
+  const bar = PASS_DRAW_PROMINENCE_AT_ZOOM_1_M / zoom;
   const margin = Math.max(4, table.width / 100);
-  const stroke = Math.max(1.5, table.width / 400);
-  const BUCKETS = 8;
-  const paths: Path2D[] = Array.from({ length: BUCKETS }, () => new Path2D());
-  for (const edge of passes) {
-    const y = Math.floor(edge.cell / substrate.width);
-    const x = edge.cell - y * substrate.width;
-    const [sax, say] = toScreenXY(x, y);
-    if (sax < -margin || say < -margin || sax > canvas.width + margin || say > canvas.height + margin) continue;
-    const nx = (x + (CROSSING_ROSE_DX[edge.direction] ?? 0) + substrate.width) % substrate.width;
-    const ny = y + (CROSSING_ROSE_DY[edge.direction] ?? 0);
-    const [sbx, sby] = toScreenXY(nx, ny);
-    const dx = sbx - sax;
-    const dy = sby - say;
-    if (Math.abs(dx) > table.width * zoom / 2) continue;
-    const length = Math.hypot(dx, dy);
-    if (length === 0) continue;
-    const height = Math.min(1, edge.climbM / PASS_DRAW_CLIMB_M);
-    const bucket = Math.min(BUCKETS - 1, Math.floor(height * BUCKETS));
-    // The tick lies across the crossing: perpendicular to the step, a
-    // quarter of the step at a slight climb and half of it at a great one.
-    const half = length * (0.125 + 0.125 * height);
-    const px = -dy / length * half;
-    const py = dx / length * half;
-    const mx = sax + dx / 2;
-    const my = say + dy / 2;
-    paths[bucket]!.moveTo(mx - px, my - py);
-    paths[bucket]!.lineTo(mx + px, my + py);
-  }
-  context.lineCap = "round";
-  for (let bucket = 0; bucket < BUCKETS; bucket++) {
-    const height = (bucket + 0.5) / BUCKETS;
-    // Amber and faint at a low pass, white-hot at the great ones.
-    context.strokeStyle = `rgba(255, ${Math.round(150 + 105 * height)}, ${Math.round(60 + 195 * height)}, ${(0.15 + 0.85 * height).toFixed(2)})`;
-    context.lineWidth = stroke * (0.6 + 1.2 * height);
-    context.stroke(paths[bucket]!);
+  const unit = Math.max(1.5, table.width / 400);
+  const centre = centralMeridian();
+  const { count, column, row, prominence } = passList;
+  for (let k = 0; k < count; k++) {
+    const p = prominence[k] ?? 0;
+    // Sorted by prominence descending: past the bar, every later one is too.
+    if (p < bar) break;
+    const lon = (-Math.PI + ((column[k] ?? 0) / PASS_SOURCE_COLS) * 2 * Math.PI);
+    const lat = (-Math.PI / 2 + ((row[k] ?? 0) / (PASS_SOURCE_ROWS - 1)) * Math.PI);
+    const [px, py] = table.lonLatToPixel(lon, lat, centre);
+    const sx = (px - viewX) * zoom;
+    const sy = (py - viewY) * zoom;
+    if (sx < -margin || sy < -margin || sx > canvas.width + margin || sy > canvas.height + margin) continue;
+    const height = Math.min(1, p / PASS_DRAW_PROMINENCE_M);
+    // A hill pass is a dot, a pass between massifs a disc three times as wide.
+    const radius = unit * (0.35 + 1.2 * height);
+    context.beginPath();
+    context.arc(sx, sy, radius, 0, Math.PI * 2);
+    context.fillStyle = `rgb(255, ${Math.round(150 + 105 * height)}, ${Math.round(60 + 195 * height)})`;
+    context.fill();
+    context.lineWidth = Math.max(1, unit * 0.4);
+    context.strokeStyle = "rgba(20, 16, 10, 0.85)";
+    context.stroke();
   }
 }
 

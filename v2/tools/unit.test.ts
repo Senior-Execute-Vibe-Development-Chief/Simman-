@@ -51,6 +51,9 @@ import {
 } from "../src/sim/constants";
 import { migrationShareForArea } from "../src/sim/people/migration";
 import { landStepCost } from "../src/sim/people/neighbors";
+import {
+  decodePasses, PASS_COUNT, PASS_MIN_CLIMB_M, PASS_MIN_PROMINENCE_M, PASS_SOURCE_COLS, PASS_SOURCE_ROWS,
+} from "../src/ported/worldgen/passData.js";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
@@ -1097,6 +1100,25 @@ async function main(): Promise<void> {
       moved++;
     }
     assert.equal(moved, 0, "a pass on one edge moves nothing outside the cells it joins");
+  }
+
+  {
+    // W25: the pass list is what its header says. Every entry is above the
+    // datum, its ridge drops at least the prominence bar to it, a route
+    // climbs at least the climb bar to reach it, it lies on the raster, and
+    // the list is sorted largest first so a lens can stop at a bar.
+    const list = decodePasses();
+    assert.equal(list.count, PASS_COUNT);
+    assert.ok(list.count > 0);
+    for (let k = 0; k < list.count; k++) {
+      assert.ok((list.altitude[k] ?? 0) > 0, "a pass stands above the datum");
+      assert.ok((list.prominence[k] ?? 0) >= PASS_MIN_PROMINENCE_M);
+      assert.ok((list.climb[k] ?? 0) >= PASS_MIN_CLIMB_M);
+      assert.ok((list.climb[k] ?? 0) <= (list.altitude[k] ?? 0), "a route climbs at most from the datum");
+      assert.ok((list.column[k] ?? 0) < PASS_SOURCE_COLS);
+      assert.ok((list.row[k] ?? 0) < PASS_SOURCE_ROWS);
+      if (k > 0) assert.ok((list.prominence[k - 1] ?? 0) >= (list.prominence[k] ?? 0), "largest first");
+    }
   }
 
   {

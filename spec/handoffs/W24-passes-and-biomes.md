@@ -164,8 +164,8 @@ walks the v1 world, which holds no people table; the pre-W22
    state and its own wave, and would feed habitability before it fed a lens.
 3. **Passes are drawn only on the crossings lens.** A faint overlay on the
    terrain lens was not asked for and would compete with the biome colours.
-4. **A pass is marked where the cells meet, not where the saddle lies.** The
-   bake keeps the lowest crossing's height and not its position along the
-   minimax path; one more byte per edge and a re-bake would put the Brenner
-   at the Brenner.
+4. ~~**A pass is marked where the cells meet, not where the saddle lies.**~~
+   Closed by W25 (`spec/handoffs/W25-where-the-passes-are.md`): passes are
+   their own bake, saddles of the raster at their own coordinates; the edge
+   table stays the cost.
 4. W23 §8.1–8.4 stand; W22 §8.1–8.8 stand; W21 §8.1 is closed by this wave.

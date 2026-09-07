@@ -4199,3 +4199,32 @@ Review corrections to the M1 build (all validated before merge):
     travel gate both grids (every row W23's), people gate dev, oracle, bench,
     browser smoke: pass. No band widened; no constant of the sim changed; no
     data re-baked.
+
+79. **W25 measured where the passes are** (2026-09-07, owner on W24's
+    overlay: *"Those passes look VERY large and geometric and odd?"* — *"is
+    the way we figure out WHERE they are isn't good? I don't see how it CAN
+    be"* — *"build it"*).
+
+    **(a) It could not.** W21's table is the cost of crossing each grid edge,
+    the height of the lowest route between two cell centres, with no
+    position in it and an entry on every land edge whether a range is there
+    or not. The router and migration are right to charge it; drawn, it can
+    only sit on the grid. A pass is a property of the terrain.
+
+    **(b) The rule.** A saddle of the 1-arc-minute height field whose ridge
+    drops at least 300 m to it on both sides (its prominence, by the
+    standard sweep from the highest sample down: where two summits' ground
+    first meets is their col, and the lower summit's height above it is the
+    drop) and which a route climbs at least 300 m to reach from the lowest
+    ground within a day's walk (25 km). The second bar is what keeps the
+    Suez isthmus — 5,666 m below Kilimanjaro, 11 m above the sea — out of
+    the list. 30,497 passes, 19 s, no place named, no grid in the rule.
+
+    **(c) Read back blind**, the Alps hold the Great St Bernard, the
+    Simplon, the Brenner, the Little St Bernard, the Gotthard and the
+    Hochtor within a sample of where they are, at the raster's altitudes.
+
+    **(d) The lens** draws each pass at its own coordinates, larger and
+    brighter with prominence, the eighteen range-dividing cols at zoom 1
+    and the whole list from zoom 10. Nothing in the sim changed; the edge
+    table stays the cost. Handoff `spec/handoffs/W25-where-the-passes-are.md`.
