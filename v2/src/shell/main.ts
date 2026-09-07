@@ -14,6 +14,8 @@ import { crossingHasGround, crossingIsOpenWater, crossingWaterWidth } from "../s
 import { yearFromStep } from "../sim/horizon";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { decodePasses, PASS_SOURCE_COLS, PASS_SOURCE_ROWS } from "../ported/worldgen/passData.js";
+import { decodeWaypoints, WALK_DIRECTIONS, WALK_SOURCE_COLS, WALK_SOURCE_ROWS } from "../ported/worldgen/walkData.js";
+import { edgeWindow, sampleBins, WALK_DX, WALK_DY } from "../ported/worldgen/sampleBins.js";
 import {
   B_BOREAL, B_COLD_DESERT, B_DESERT, B_FLOODPLAIN, B_GRASSLAND, B_ICE, B_MEDITERRANEAN, B_SAVANNA,
   B_SHRUBLAND, B_SUBTROP, B_TAIGA, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_DRY, B_TROP_RAIN, B_TUNDRA,
@@ -445,6 +447,64 @@ const PASS_DRAW_PROMINENCE_M = 1500;
 // halves the bar, so every pass in the list shows from zoom 10.
 const PASS_DRAW_PROMINENCE_AT_ZOOM_1_M = 3000;
 
+// The ground a land step walks (W26): each baked edge's waypoints, as
+// fractions of the edge's window in the shared binning, decoded on the first
+// route and placed through the projection. A route is drawn along them
+// instead of centre to centre, so it goes up the valley and over the col.
+const walkBins = sampleBins(substrate.width, substrate.height, WALK_SOURCE_COLS, WALK_SOURCE_ROWS);
+let walkWaypoints: Map<number, Uint8Array> | null | undefined;
+const LAND_MODE_COUNT = 3;
+/** Screen points from cell a's centre to cell b's along the baked walk, or
+ * null where the step has no waypoints or crosses the seam. */
+function walkScreenPoints(a: number, b: number): [number, number][] | null {
+  if (walkWaypoints === undefined) walkWaypoints = decodeWaypoints(substrate.width, substrate.height);
+  if (!walkWaypoints) return null;
+  const width = substrate.width;
+  const ay = Math.floor(a / width);
+  const by = Math.floor(b / width);
+  const ax = a - ay * width;
+  const bx = b - by * width;
+  let dx = bx - ax;
+  if (dx > 1) dx -= width;
+  else if (dx < -1) dx += width;
+  const dy = by - ay;
+  // The edge is stored from one of its two cells, in one of four directions.
+  let stored = -1;
+  let from = a;
+  let fx = ax;
+  let fy = ay;
+  let reversed = false;
+  for (let d = 0; d < WALK_DIRECTIONS; d++) {
+    if (WALK_DX[d] === dx && WALK_DY[d] === dy) { stored = d; break; }
+    if (WALK_DX[d] === -dx && WALK_DY[d] === -dy) { stored = d; from = b; fx = bx; fy = by; reversed = true; break; }
+  }
+  if (stored < 0) return null;
+  const points = walkWaypoints.get(from * WALK_DIRECTIONS + stored);
+  if (!points || points.length === 0) return null;
+  const window = edgeWindow(walkBins, fx, fy, stored);
+  const cols = window.c1 - window.c0 + 1;
+  const rows = window.r1 - window.r0 + 1;
+  const centre = centralMeridian();
+  const [sax, say] = toScreenXY(ax, ay);
+  const [sbx, sby] = toScreenXY(bx, by);
+  const out: [number, number][] = [[sax, say]];
+  const count = points.length / 2;
+  for (let k = 0; k < count; k++) {
+    const index = reversed ? count - 1 - k : k;
+    const sx = window.c0 + ((points[index * 2] ?? 0) / 255) * Math.max(1, cols - 1);
+    const sy = window.r0 + ((points[index * 2 + 1] ?? 0) / 255) * Math.max(1, rows - 1);
+    const lon = -Math.PI + (((sx % WALK_SOURCE_COLS) + WALK_SOURCE_COLS) % WALK_SOURCE_COLS / WALK_SOURCE_COLS) * 2 * Math.PI;
+    const lat = -Math.PI / 2 + (sy / (WALK_SOURCE_ROWS - 1)) * Math.PI;
+    const [px, py] = table.lonLatToPixel(lon, lat, centre);
+    out.push([(px - viewX) * zoom, (py - viewY) * zoom]);
+  }
+  out.push([sbx, sby]);
+  for (let k = 1; k < out.length; k++) {
+    if (Math.abs((out[k]?.[0] ?? 0) - (out[k - 1]?.[0] ?? 0)) > table.width * zoom / 2) return null;
+  }
+  return out;
+}
+
 function crossingsColor(cell: number): [number, number, number] {
   if (!substrate.landMask[cell]) return waterColor();
   return [38, 42, 46];
@@ -840,9 +900,18 @@ function draw(): void {
       const by = Math.floor(b / substrate.width);
       const ax = a - ay * substrate.width;
       const bx = b - by * substrate.width;
-      context.strokeStyle = MODE_COLORS[lastRoute.modes[index] ?? 0] ?? "#ffd166";
+      const modeIndex = lastRoute.modes[index] ?? 0;
+      context.strokeStyle = MODE_COLORS[modeIndex] ?? "#ffd166";
       context.lineWidth = stroke;
       context.beginPath();
+      // A land step is drawn along the walk it was charged for (W26).
+      const walk = modeIndex < LAND_MODE_COUNT && a !== b ? walkScreenPoints(a, b) : null;
+      if (walk) {
+        context.moveTo(walk[0]?.[0] ?? 0, walk[0]?.[1] ?? 0);
+        for (let k = 1; k < walk.length; k++) context.lineTo(walk[k]?.[0] ?? 0, walk[k]?.[1] ?? 0);
+        context.stroke();
+        continue;
+      }
       const [sax, say] = toScreenXY(ax, ay);
       const [sbx, sby] = toScreenXY(bx, by);
       // A segment that crosses the seam is drawn out through it on both

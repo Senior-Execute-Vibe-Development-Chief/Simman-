@@ -9,7 +9,7 @@ import { populationTotal } from "../src/sim/people";
 import { routingFixtureSubstrate, runRoutingBatteries } from "../src/sim/travel/battery";
 import { TravelEngine } from "../src/sim/travel/engine";
 import type { Substrate } from "../src/sim/substrate";
-import { crossingIndex, fallbackCrossings } from "../src/sim/crossings";
+import { crossingAt, crossingHasGround, crossingIndex, fallbackCrossings } from "../src/sim/crossings";
 import { CROSSING_LAND_LINK } from "../src/ported/worldgen/crossingData.js";
 import { coverByte, FIRST_LAND_BYTE, hasGroundLink, SHELF_BYTE } from "../src/ported/worldgen/coverMask.js";
 import type { PeopleWorld } from "../src/sim/people/types";
@@ -30,6 +30,8 @@ import {
   PEOPLE_ADOPTION_RATE_PER_YEAR,
   PEOPLE_CHANNEL_STRIP_KM,
   PEOPLE_CHILD_AGE_YEARS,
+  CROSSING_ROSE_DX,
+  CROSSING_ROSE_DY,
   CROSSING_SAMPLE_KM,
   ROUTING_FIXTURE_DEV_HEIGHT,
   ROUTING_FIXTURE_DEV_WIDTH,
@@ -54,6 +56,9 @@ import { landStepCost } from "../src/sim/people/neighbors";
 import {
   decodePasses, PASS_COUNT, PASS_MIN_CLIMB_M, PASS_MIN_PROMINENCE_M, PASS_SOURCE_COLS, PASS_SOURCE_ROWS,
 } from "../src/ported/worldgen/passData.js";
+import { decodeWalks, decodeWaypoints, WALK_DIRECTIONS } from "../src/ported/worldgen/walkData.js";
+import { buildSubstrate } from "../src/sim/substrate";
+import { northSouthKm, rowEastWestKm } from "../src/sim/travel/cost";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
@@ -128,7 +133,9 @@ function peopleFixture(): Substrate {
     landShapeWidth: width,
     landShapeHeight: height,
     landShapeBlock: 1,
-    passClimb: new Float32Array(cells * 4),
+    walkKm: new Float32Array(cells * 4),
+    walkAscent: new Float32Array(cells * 4),
+    walkDescent: new Float32Array(cells * 4),
     elevation: new Float32Array(cells),
     landMask,
     climate: { temperature, moisture },
@@ -1032,21 +1039,28 @@ async function main(): Promise<void> {
   }
 
   {
-    // W24: a land step is charged what the router charges it — the ascent
-    // between the two means plus the pass above them up and back down, at
-    // the slope factor — so migration sees passes. The pass table stores four
-    // directions per cell; the step west out of the eastern cell reads the
-    // western cell's eastward entry. Every edge the pass does not sit on is
-    // bit-identical to the flat fixture.
+    // W24/W26: a land step is charged what the router charges it — the
+    // measured walk's length and the metres it climbs in that direction
+    // where one was baked, else the straight geometry and the rise between
+    // the two means — at the slope factor, so migration sees the ground and
+    // the descent is free (Naismith). The walk tables store four directions
+    // per cell; the step west out of the eastern cell reads the western
+    // cell's eastward entry with its ascent back. Every edge the walk does
+    // not sit on is bit-identical to the flat fixture (the rise moves its
+    // own edges).
     const width = 240;
     const west = 60 * width + 100;
     const east = west + 1;
-    const CLIMB = 0.05;
+    const WALK_KM = 190;
+    const ASCENT = 0.12;
+    const DESCENT = 0.09;
     const RISE = 0.02;
     const build = (pass: boolean): PeopleWorld => {
       const base = peopleFixture();
       if (pass) {
-        base.passClimb[west * TRAVEL_PASS_DIRECTIONS] = CLIMB;
+        base.walkKm[west * TRAVEL_PASS_DIRECTIONS] = WALK_KM;
+        base.walkAscent[west * TRAVEL_PASS_DIRECTIONS] = ASCENT;
+        base.walkDescent[west * TRAVEL_PASS_DIRECTIONS] = DESCENT;
         base.elevation[east] = RISE;
       }
       return new World({ seed: 7, grid: "dev", config: { peopleKernel: "ts" }, substrate: base }) as PeopleWorld;
@@ -1062,10 +1076,14 @@ async function main(): Promise<void> {
     const westward = slotOf(passed, east, -1, 0);
     assert.equal(passed._neighborTargets[eastward], east);
     assert.equal(passed._neighborTargets[westward], west);
-    // The substrate holds both in single precision; the table is built from what it holds.
-    const expected = Math.fround(RISE) + 2 * Math.fround(CLIMB);
-    assert.ok(Math.abs((passed._neighborAscent[eastward] ?? 0) - expected) < 1e-9, "the step east climbs the rise and the pass");
-    assert.ok(Math.abs((passed._neighborAscent[westward] ?? 0) - expected) < 1e-9, "the step west reads the west cell's eastward entry");
+    // The substrate holds the tables in single precision; the table is built from what it holds.
+    const expected = Math.fround(ASCENT);
+    assert.ok(Math.abs((passed._neighborAscent[eastward] ?? 0) - expected) < 1e-9, "the step east is charged the walk's ascent out");
+    assert.ok(Math.abs((passed._neighborAscent[westward] ?? 0) - Math.fround(DESCENT)) < 1e-9, "the step west reads the west cell's eastward entry, climbing its descent");
+    assert.equal(passed._neighborDistanceKm[eastward], Math.fround(WALK_KM), "the step is the walk's length");
+    assert.equal(passed._neighborDistanceKm[westward], Math.fround(WALK_KM));
+    assert.ok((flat._neighborDistanceKm[eastward] ?? 0) > 0 && flat._neighborDistanceKm[eastward] !== passed._neighborDistanceKm[eastward],
+      "without a walk the step is the straight geometry");
     const km = passed._neighborDistanceKm[eastward] ?? 0;
     assert.ok(km > 0);
     const DAYS_PER_KM = 0.05;
@@ -1079,18 +1097,26 @@ async function main(): Promise<void> {
     assert.equal(flat._neighborAscent.length, flat._landCells.length * PEOPLE_CROP_NEIGHBOR_COUNT);
     // The rise moves the ascent of every edge touching the eastern cell; the
     // pass moves the one edge it sits on. Nothing else in the table moves.
-    const touched = new Set<number>();
+    // The rise is climbed stepping ONTO the eastern cell and free stepping
+    // off it (Naismith); the walk edge carries its own two ascents.
+    const onto = new Set<number>();
+    const off = new Set<number>();
     for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
       const dx = PEOPLE_NEIGHBOR_DX[direction] ?? 0;
       const dy = PEOPLE_NEIGHBOR_DY[direction] ?? 0;
       const around = (60 + dy) * width + (101 + dx);
-      touched.add(slotOf(passed, east, dx, dy));
-      touched.add(slotOf(passed, around, -dx, -dy));
+      off.add(slotOf(passed, east, dx, dy));
+      onto.add(slotOf(passed, around, -dx, -dy));
     }
     let moved = 0;
     for (let slot = 0; slot < passed._neighborAscent.length; slot++) {
-      if (touched.has(slot)) {
-        assert.ok((passed._neighborAscent[slot] ?? 0) >= Math.fround(RISE), "every edge onto the rise climbs it");
+      if (slot === eastward || slot === westward) continue;
+      if (onto.has(slot)) {
+        assert.ok(Math.abs((passed._neighborAscent[slot] ?? 0) - Math.fround(RISE)) < 1e-9, "every step onto the rise climbs it");
+        continue;
+      }
+      if (off.has(slot)) {
+        assert.equal(passed._neighborAscent[slot], 0, "every step off the rise descends for free");
         continue;
       }
       assert.equal(flat._neighborAscent[slot], 0);
@@ -1118,6 +1144,65 @@ async function main(): Promise<void> {
       assert.ok((list.column[k] ?? 0) < PASS_SOURCE_COLS);
       assert.ok((list.row[k] ?? 0) < PASS_SOURCE_ROWS);
       if (k > 0) assert.ok((list.prominence[k - 1] ?? 0) >= (list.prominence[k] ?? 0), "largest first");
+    }
+  }
+
+  {
+    // W26: the walk tables decode to what the header says, and the substrate
+    // multiplies the grid's own straight edge back in: on the dev grid every
+    // walked edge is at least as long as the straight line between the
+    // centres and never more than the capped detour longer; every walk
+    // lies on a land–land edge whose ground the crossing table joins; the
+    // waypoints of every edge that has them are inside the window (0–255)
+    // and at most six; and an edge with no walk reads zero on both tables.
+    const walks = decodeWalks(240, 120);
+    assert.ok(walks, "the dev grid carries a walk table");
+    const substrate = buildSubstrate(42042, {}, "dev");
+    const rows = rowEastWestKm(substrate);
+    const northSouth = northSouthKm(substrate);
+    let walked = 0;
+    let offMask = 0;
+    let offGround = 0;
+    for (let cell = 0; cell < substrate.N; cell++) {
+      const y = Math.floor(cell / substrate.width);
+      const x = cell - y * substrate.width;
+      for (let direction = 0; direction < WALK_DIRECTIONS; direction++) {
+        const slot = cell * WALK_DIRECTIONS + direction;
+        const km = substrate.walkKm[slot] ?? 0;
+        const detour = walks.detour[slot] ?? 0;
+        if (detour === 0) {
+          assert.equal(km, 0);
+          assert.equal(substrate.walkAscent[slot], 0);
+          assert.equal(substrate.walkDescent[slot], 0);
+          continue;
+        }
+        walked++;
+        const dx = CROSSING_ROSE_DX[direction] ?? 0;
+        const dy = CROSSING_ROSE_DY[direction] ?? 0;
+        const ny = y + dy;
+        const neighbour = ny * substrate.width + ((x + dx + substrate.width) % substrate.width);
+        // The bake reads the sim's own mask and crossing table, so a walk
+        // lies exactly where the router may walk: two land cells whose
+        // ground the table joins.
+        if (!substrate.landMask[cell] || !substrate.landMask[neighbour]) offMask++;
+        if (!crossingHasGround(crossingAt(substrate.crossings, substrate.width, substrate.height, cell, dx, dy))) offGround++;
+        const eastWest = dx === 0 ? 0 : dy === 0 ? (rows[y] ?? 0) : ((rows[y] ?? 0) + (rows[ny] ?? 0)) / 2;
+        const straight = Math.sqrt(eastWest * eastWest + (dy === 0 ? 0 : northSouth * northSouth));
+        assert.ok(km >= straight * (1 - 1e-6) && km <= straight * 1.52, `walk ${km} km against a straight ${straight} km`);
+        assert.ok((substrate.walkAscent[slot] ?? 0) >= 0 && (substrate.walkDescent[slot] ?? 0) >= 0);
+      }
+    }
+    assert.ok(walked > 30000, `only ${walked} dev edges walked`);
+    assert.equal(offMask, 0, `${offMask} of ${walked} walks touch a cell the sim calls water`);
+    assert.equal(offGround, 0, `${offGround} of ${walked} walks cross an edge whose ground the table does not join`);
+    // How many edges bend enough to carry waypoints is an outcome of the
+    // search, not a bar: the test asks only that the table is there and
+    // that every entry is well formed.
+    const waypoints = decodeWaypoints(240, 120);
+    assert.ok(waypoints && waypoints.size > 0, "the dev grid carries waypoints");
+    for (const [edge, points] of waypoints) {
+      assert.ok((walks.detour[edge] ?? 0) > 0, "waypoints belong to a walked edge");
+      assert.ok(points.length >= 2 && points.length <= 12 && points.length % 2 === 0);
     }
   }
 

@@ -4231,3 +4231,32 @@ Review corrections to the M1 build (all validated before merge):
     brighter with prominence, the eighteen range-dividing cols at zoom 1
     and the whole list from zoom 10. Nothing in the sim changed; the edge
     table stays the cost. Handoff `spec/handoffs/W25-where-the-passes-are.md`.
+
+80. **W26 measured the walk between two cells** (2026-09-07, owner:
+    *"can we make path finding MORE realistic then?"* — *"build it"*).
+
+    **(a) What was wrong.** The router walked a chain of cell centres and
+    charged three proxies for the walk between two of them — the straight
+    distance, the rise between the means, and twice the lowest crossing's
+    height above them (W21) — and drew the chain.
+
+    **(b) The rule.** For every land–land edge the crossing table joins, the
+    cheapest walk between the two centre samples over the 1-arc-minute land
+    samples of the two cells' window under the sim's own foot law (a metre
+    of vertical worth ~8 m of ground, Naismith's ratio through the ledger's
+    constants). Stored: its length as a detour over the straight line, its
+    climb in each direction, and up to six waypoints. The router and the
+    people table charge the length and the climb IN THE DIRECTION OF TRAVEL
+    at the slope factor; the descent is free, as Naismith has it. Before,
+    an edge cost the hump's up and down both ways. The pass table is gone.
+
+    **(c) What moved.** Every land route by a few percent; Athens–Corinth
+    at the shipped grid from 18% under ORBIS to 5% under it, unasked. The
+    dev people arm moves by days to decades inside every window. A draft
+    that charged the total vertical both ways failed Chang'an–Luoyang at
+    12 expected days; the directed law is the fix, and no window moved.
+
+    **(d) Open.** Unreachable edges fall back (478 dev, 2,060 target); the
+    corridor is still chosen at cell scale; 11.3 MB of data; the shipped
+    grid's history is `v2-long`. Handoff
+    `spec/handoffs/W26-the-walk-between-two-cells.md`.

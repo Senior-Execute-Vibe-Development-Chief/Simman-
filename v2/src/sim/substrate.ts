@@ -1,4 +1,6 @@
 import {
+  CROSSING_ROSE_DX,
+  CROSSING_ROSE_DY,
   CLIMATE_MONTHLY_RATIO_MAX,
   CLIMATE_MONTHLY_RATIO_MIN,
   DEGC_PER_TEMPERATURE_UNIT,
@@ -19,7 +21,8 @@ import { dsin } from "./dmath";
 import { buildWorld, type PortedTerritory, type PortedWorld } from "../ported/worldgen/pipeline.js";
 import { computeSeasonalRiverFlow } from "../ported/worldgen/riverGen.js";
 import { classifyBiome } from "../ported/worldgen/biomeClass.js";
-import { PASS_CLIMB_M_PER_BYTE } from "../ported/worldgen/passClimbData.js";
+import { WALK_DETOUR_UNIT, WALK_VERTICAL_UNIT_M } from "../ported/worldgen/walkData.js";
+import { northSouthKm, rowEastWestKm } from "./travel/cost";
 import { fallbackCrossings } from "./crossings";
 import {
   fillRealClimate,
@@ -159,7 +162,16 @@ export interface Substrate {
    * E, SE, S, SW; the other four are the neighbour's entry for the opposite
    * direction. Zero on any edge touching sea and on every preset without a
    * baked table, which is exactly the ascent the router charged before. */
-  readonly passClimb: Float32Array;
+  /** The walk between two adjacent land cells (W26), cells × TRAVEL_PASS_DIRECTIONS
+   * (E, SE, S, SW; the other four are the neighbour's, with the two ascents
+   * swapped): its length in km, its ascent from the cell to the neighbour
+   * and its ascent back, in elevation units, measured on the fine land
+   * under the foot law. Zero where the edge is not land–land or the preset
+   * carries no table: the router and the people table then use the
+   * straight geometry and the rise between the two means. */
+  readonly walkKm: Float32Array;
+  readonly walkAscent: Float32Array;
+  readonly walkDescent: Float32Array;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -458,7 +470,7 @@ export function buildSubstrate(
     landShapeWidth: world.landShapeWidth,
     landShapeHeight: world.landShapeHeight,
     landShapeBlock: shapeBlock,
-    passClimb: passClimbOf(world, cells),
+    ...walksOf(world, cells),
   };
   return Object.freeze(substrate);
 }
@@ -482,19 +494,42 @@ function crossingsOf(
   return bytes;
 }
 
-/** The baked pass table in elevation units, or all zeros where the preset
- * carries none — the router then charges exactly the ascent it always did. */
-function passClimbOf(world: PortedWorld, cells: number): Float32Array {
-  const out = new Float32Array(cells * TRAVEL_PASS_DIRECTIONS);
-  const bytes = world.passClimb;
-  if (!bytes) return out;
-  if (bytes.length !== out.length) {
+/** The baked walk tables in km and elevation units, or all zeros where the
+ * preset carries none — the router then charges the straight geometry and
+ * the two means, as it did before W26. The bake stores each walk's detour
+ * over the straight line; the straight line is this grid's own edge length
+ * (the router's: one north–south extent, one east–west extent per row, the
+ * hypotenuse of the two rows' mean for a diagonal), multiplied back in here. */
+function walksOf(world: PortedWorld, cells: number): { walkKm: Float32Array; walkAscent: Float32Array; walkDescent: Float32Array } {
+  const walkKm = new Float32Array(cells * TRAVEL_PASS_DIRECTIONS);
+  const walkAscent = new Float32Array(cells * TRAVEL_PASS_DIRECTIONS);
+  const walkDescent = new Float32Array(cells * TRAVEL_PASS_DIRECTIONS);
+  const walks = world.walks;
+  if (!walks) return { walkKm, walkAscent, walkDescent };
+  if (walks.detour.length !== walkKm.length) {
     throw new Error(
-      `the pass table holds ${bytes.length} entries for ${cells} cells; ` +
-        `expected ${out.length}`,
+      `the walk table holds ${walks.detour.length} entries for ${cells} cells; ` +
+        `expected ${walkKm.length}`,
     );
   }
-  const unitsPerByte = PASS_CLIMB_M_PER_BYTE / ELEVATION_METERS_PER_UNIT;
-  for (let i = 0; i < out.length; i++) out[i] = bytes[i]! * unitsPerByte;
-  return out;
+  const { width, height } = world;
+  const rows = rowEastWestKm({ width, height });
+  const northSouth = northSouthKm({ height });
+  for (let cell = 0; cell < cells; cell++) {
+    const y = Math.floor(cell / width);
+    for (let direction = 0; direction < TRAVEL_PASS_DIRECTIONS; direction++) {
+      const slot = cell * TRAVEL_PASS_DIRECTIONS + direction;
+      const detour = walks.detour[slot] ?? 0;
+      if (detour === 0) continue;
+      const dx = CROSSING_ROSE_DX[direction] ?? 0;
+      const dy = CROSSING_ROSE_DY[direction] ?? 0;
+      const eastWest = dx === 0 ? 0 : dy === 0 ? (rows[y] ?? 0) : ((rows[y] ?? 0) + (rows[y + 1] ?? 0)) * MATH_HALF;
+      const north = dy === 0 ? 0 : northSouth;
+      const straight = Math.sqrt(eastWest * eastWest + north * north);
+      walkKm[slot] = straight * (1 + (detour - 1) * WALK_DETOUR_UNIT);
+      walkAscent[slot] = ((walks.up[slot] ?? 0) * WALK_VERTICAL_UNIT_M) / ELEVATION_METERS_PER_UNIT;
+      walkDescent[slot] = ((walks.down[slot] ?? 0) * WALK_VERTICAL_UNIT_M) / ELEVATION_METERS_PER_UNIT;
+    }
+  }
+  return { walkKm, walkAscent, walkDescent };
 }

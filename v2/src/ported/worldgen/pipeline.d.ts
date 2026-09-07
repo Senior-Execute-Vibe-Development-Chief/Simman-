@@ -31,10 +31,11 @@ export interface PortedWorld {
    * each axis, so a cell of any grid covers a whole block of these. */
   readonly landShapeWidth: number;
   readonly landShapeHeight: number;
-  /** Extra climb per land edge beyond the difference of the two cells' means,
-   * in bytes of PASS_CLIMB_M_PER_BYTE metres, cells × 4 directions (E, SE, S,
-   * SW) on this world's own grid (W21). Null where no table was baked. */
-  readonly passClimb: Uint8Array | null;
+  /** The walk between adjacent land cells (W26): its detour over the straight
+   * line (bytes of WALK_DETOUR_UNIT, 1 = none, 0 = no walk) and its ascent
+   * out and back in WALK_VERTICAL_UNIT_M steps, cells × 4 directions (E, SE,
+   * S, SW) on this world's own grid. Null where no table was baked. */
+  readonly walks: { readonly detour: Uint8Array; readonly up: Uint16Array; readonly down: Uint16Array } | null;
   readonly _seed: number;
   readonly rivers?: unknown;
   readonly deposits?: Record<string, Float32Array>;

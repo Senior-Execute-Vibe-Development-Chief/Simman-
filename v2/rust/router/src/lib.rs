@@ -94,12 +94,16 @@ pub struct Router {
     height: usize,
     land: Vec<u8>,
     elevation: Vec<f64>,
-    // Extra climb per land edge, elevation units, beyond the difference of
-    // the two cells' means: the lowest crossing of the boundary as measured
-    // on the fine DEM (W21). Cells × PASS_DIRECTIONS, zero where unknown.
-    // Single precision: the table is baked in 32 m bytes, so f32 carries it
-    // exactly and the shipped-grid copy is 26 MB instead of 52.
-    pass_climb: Vec<f32>,
+    // The walk between two adjacent land cells (W26), cells × PASS_DIRECTIONS
+    // (E, SE, S, SW; the other four are the neighbour's, ascents swapped):
+    // its length in km, its ascent from the cell to the neighbour and its
+    // ascent back, in elevation units, measured on the fine land under the
+    // foot law. Zero where the edge is not land–land or no table was baked:
+    // the step then costs the straight geometry and the rise between the
+    // two means.
+    walk_km: Vec<f32>,
+    walk_ascent: Vec<f32>,
+    walk_descent: Vec<f32>,
     // How each cell is joined to its neighbours, one byte per edge, cells ×
     // CROSSING_DIRECTIONS (W22): a land mode crosses an edge only where the
     // ground meets, a sea mode only where there is water between the cells.
@@ -161,7 +165,9 @@ impl Router {
         river_direction: &[u8],
         north_south_km: f64,
         row_east_west_km: &[f64],
-        pass_climb: &[f32],
+        walk_km: &[f32],
+        walk_ascent: &[f32],
+        walk_descent: &[f32],
         crossings: &[u8],
     ) -> Router {
         let cells = width.saturating_mul(height);
@@ -171,10 +177,16 @@ impl Router {
         let mut elevation_copy = vec![0.0; cells];
         let elevation_len = elevation.len().min(cells);
         elevation_copy[..elevation_len].copy_from_slice(&elevation[..elevation_len]);
-        let pass_entries = cells.saturating_mul(PASS_DIRECTIONS);
-        let mut pass_climb_copy = vec![0.0f32; pass_entries];
-        let pass_len = pass_climb.len().min(pass_entries);
-        pass_climb_copy[..pass_len].copy_from_slice(&pass_climb[..pass_len]);
+        let walk_entries = cells.saturating_mul(PASS_DIRECTIONS);
+        let mut walk_km_copy = vec![0.0f32; walk_entries];
+        let walk_km_len = walk_km.len().min(walk_entries);
+        walk_km_copy[..walk_km_len].copy_from_slice(&walk_km[..walk_km_len]);
+        let mut walk_ascent_copy = vec![0.0f32; walk_entries];
+        let walk_ascent_len = walk_ascent.len().min(walk_entries);
+        walk_ascent_copy[..walk_ascent_len].copy_from_slice(&walk_ascent[..walk_ascent_len]);
+        let mut walk_descent_copy = vec![0.0f32; walk_entries];
+        let walk_descent_len = walk_descent.len().min(walk_entries);
+        walk_descent_copy[..walk_descent_len].copy_from_slice(&walk_descent[..walk_descent_len]);
         let crossing_entries = cells.saturating_mul(CROSSING_DIRECTIONS);
         let mut crossings_copy = vec![0u8; crossing_entries];
         let crossing_len = crossings.len().min(crossing_entries);
@@ -205,7 +217,9 @@ impl Router {
             height,
             land: land_copy,
             elevation: elevation_copy,
-            pass_climb: pass_climb_copy,
+            walk_km: walk_km_copy,
+            walk_ascent: walk_ascent_copy,
+            walk_descent: walk_descent_copy,
             crossings: crossings_copy,
             river_direction: river_direction_copy,
             north_south_km,
@@ -532,22 +546,33 @@ impl Router {
             if edge_km <= 0.0 {
                 continue;
             }
-            // Ascent term, Naismith-style: climbing costs extra days in
-            // proportion to the height gained, independent of the horizontal
-            // grid — so total climb telescopes correctly across resolutions.
-            // The pass climb is the height the crossing rises ABOVE the higher
-            // of the two cells and comes back down again, hence twice: under
-            // the |Δ| convention a leg 100→1000→300 costs |200| + 2×700.
-            let slope = if mode < RIVER_MODE {
-                let climb = if direction < PASS_DIRECTIONS {
-                    self.pass_climb[cell * PASS_DIRECTIONS + direction]
+            // A land step is the measured walk where one was baked (W26): its
+            // length replaces the straight edge and the metres it CLIMBS in
+            // this direction are charged at the Naismith rate, days per unit
+            // of height, independent of the horizontal grid; the descent is
+            // free, as Naismith has it, so the edge is directed. A step read
+            // from the neighbour's stored entry climbs that entry's descent.
+            // Where no walk was baked the step is the straight geometry and
+            // the rise between the two means.
+            let (edge_km, slope) = if mode < RIVER_MODE {
+                let (slot, ascent) = if direction < PASS_DIRECTIONS {
+                    let slot = cell * PASS_DIRECTIONS + direction;
+                    (slot, self.walk_ascent[slot])
                 } else {
-                    self.pass_climb[next_cell * PASS_DIRECTIONS + direction - PASS_DIRECTIONS]
-                } as f64;
-                ((self.elevation[next_cell] - self.elevation[cell]).abs() + 2.0 * climb)
-                    * self.slope_factor
+                    let slot = next_cell * PASS_DIRECTIONS + direction - PASS_DIRECTIONS;
+                    (slot, self.walk_descent[slot])
+                };
+                let walked = self.walk_km[slot] as f64;
+                if walked > 0.0 {
+                    (walked, ascent as f64 * self.slope_factor)
+                } else {
+                    (
+                        edge_km,
+                        (self.elevation[next_cell] - self.elevation[cell]).max(0.0) * self.slope_factor,
+                    )
+                }
             } else {
-                0.0
+                (edge_km, 0.0)
             };
             let river_factor = if mode == RIVER_MODE {
                 // Directional navigability at REACH scale: floating down

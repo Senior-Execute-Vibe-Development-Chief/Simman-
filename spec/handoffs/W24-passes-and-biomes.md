@@ -168,4 +168,7 @@ walks the v1 world, which holds no people table; the pre-W22
    Closed by W25 (`spec/handoffs/W25-where-the-passes-are.md`): passes are
    their own bake, saddles of the raster at their own coordinates; the edge
    table stays the cost.
-4. W23 §8.1–8.4 stand; W22 §8.1–8.8 stand; W21 §8.1 is closed by this wave.
+5. W23 §8.1–8.4 stand; W22 §8.1–8.8 stand; W21 §8.1 is closed by this wave.
+   The ascent this wave gave the people table (`|Δmean| + 2 × climb`, both
+   ways) is replaced by W26 with the measured walk's climb in the direction
+   of the step.

@@ -52,21 +52,27 @@ function edgeLengthKm(
 }
 
 /**
- * The pass climb of one stencil step (W21's table, W24 for the front): four
- * directions are stored per cell, E, SE, S, SW in the router's rose; the
- * other four are the neighbour's entry for the opposite direction.
+ * The walk of one stencil step (W26's tables; W24 gave the front the W21
+ * proxy): four directions are stored per cell, E, SE, S, SW in the router's
+ * rose; the other four are the neighbour's entry for the opposite direction,
+ * whose ascent back is this step's ascent. Returns the walk's length and the
+ * metres it climbs in this direction, or null where the edge carries none.
  */
-function passClimbOf(world: PeopleWorld, from: number, to: number, direction: number): number {
+function walkOf(world: PeopleWorld, from: number, to: number, direction: number): { km: number; ascent: number } | null {
   const dx = PEOPLE_NEIGHBOR_DX[direction] ?? 0;
   const dy = PEOPLE_NEIGHBOR_DY[direction] ?? 0;
   let rose = 0;
   for (let index = 0; index < CROSSING_ROSE_DX.length; index++) {
     if (CROSSING_ROSE_DX[index] === dx && CROSSING_ROSE_DY[index] === dy) { rose = index; break; }
   }
-  const table = world.substrate.passClimb;
-  return rose < TRAVEL_PASS_DIRECTIONS
-    ? table[from * TRAVEL_PASS_DIRECTIONS + rose] ?? 0
-    : table[to * TRAVEL_PASS_DIRECTIONS + rose - TRAVEL_PASS_DIRECTIONS] ?? 0;
+  const stored = rose < TRAVEL_PASS_DIRECTIONS;
+  const slot = stored
+    ? from * TRAVEL_PASS_DIRECTIONS + rose
+    : to * TRAVEL_PASS_DIRECTIONS + rose - TRAVEL_PASS_DIRECTIONS;
+  const km = world.substrate.walkKm[slot] ?? 0;
+  if (km <= 0) return null;
+  const ascent = (stored ? world.substrate.walkAscent[slot] : world.substrate.walkDescent[slot]) ?? 0;
+  return { km, ascent };
 }
 
 /** The edge byte of one stencil step, read from the crossing table (W22). */
@@ -171,11 +177,18 @@ export function buildPeopleNeighborTable(world: PeopleWorld): PeopleNeighborTabl
       if (world.substrate.landMask[adjacent]) {
         if (crossingHasGround(byte)) {
           targets[slot] = adjacent;
-          distanceKm[slot] = edgeLengthKm(world, cell, adjacent, horizontal, vertical);
-          // The climb the step makes: the ascent between the two means, and
-          // the pass above the higher of them up and back down (W21's rule).
-          ascent[slot] = Math.abs((world.substrate.elevation[adjacent] ?? 0) - (world.substrate.elevation[cell] ?? 0))
-            + 2 * passClimbOf(world, cell, adjacent, direction);
+          // The step is the measured walk where one was baked (W26): its
+          // length and the metres it climbs this way (Naismith: the descent
+          // is free); else the straight geometry and the rise between the
+          // two means, as the router falls back too.
+          const walk = walkOf(world, cell, adjacent, direction);
+          if (walk) {
+            distanceKm[slot] = walk.km;
+            ascent[slot] = walk.ascent;
+          } else {
+            distanceKm[slot] = edgeLengthKm(world, cell, adjacent, horizontal, vertical);
+            ascent[slot] = Math.max(0, (world.substrate.elevation[adjacent] ?? 0) - (world.substrate.elevation[cell] ?? 0));
+          }
           continue;
         }
         // Two land cells whose ground does not meet: the far bank is reached

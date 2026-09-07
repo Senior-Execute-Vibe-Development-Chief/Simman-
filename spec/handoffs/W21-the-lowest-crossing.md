@@ -175,6 +175,12 @@ runner's noise (1.2–2.0 s), and the table itself is 26 MB.
 4. **`preprocess()` still labels partitions nothing reads.** Left as the M1
    phase marker it is; the overlay is recorded as not paying on this raster.
 5. **Shipped-grid history arms** for W17–W21 remain `v2-long` on request.
+7. The pass table itself is superseded by W26
+   (`spec/handoffs/W26-the-walk-between-two-cells.md`): the lowest crossing
+   was a proxy for the walk, and the walk is now measured on the same
+   samples — its length and its climb in each direction — with the pass
+   table and its bake removed. §8.2 (height, not dryness) carries over to
+   the walk bake unchanged.
 6. W19a/W20a added substrate fields without running the v1 `npm run coverage`
    tool; W21a adds `passClimb` the same way (it is read by the router, which
    `collect()` does not measure). Recorded here rather than run.

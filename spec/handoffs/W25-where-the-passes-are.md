@@ -133,5 +133,8 @@ unchanged), the dev screenshot of the Alps.
    coastal cols appear only through smaller summits.
 4. **The list and the edge table are not reconciled**: an edge whose
    minimax route threads a listed pass is not linked to it. Linking them
-   would let the router name the pass a route takes.
+   would let the router name the pass a route takes. W26
+   (`spec/handoffs/W26-the-walk-between-two-cells.md`) replaces the edge
+   table with the measured walk and draws the walk's waypoints, so where a
+   route crosses is now visible; the link to the listed pass is still open.
 5. W24 §8.1–8.3 stand; W24 §8.4 is closed by this wave.

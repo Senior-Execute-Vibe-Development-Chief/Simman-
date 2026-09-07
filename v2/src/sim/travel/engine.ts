@@ -48,7 +48,9 @@ export class TravelEngine {
       substrate.rivers.direction,
       northSouthKm(substrate),
       rowEastWestKm(substrate),
-      substrate.passClimb,
+      substrate.walkKm,
+      substrate.walkAscent,
+      substrate.walkDescent,
       substrate.crossings,
     );
     router.preprocess();
