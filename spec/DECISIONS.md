@@ -1618,13 +1618,24 @@ lawyered.
   SHARE, which is 1.00 in every region by 1 CE — the sim has no slow state
   for agricultural development, so every farmed cell sits at its mature
   pre-industrial ceiling ~1,600 years after the front arrives, and 97 % of
-  the farmed world had farmers before −1600. The fix under (i) is a
-  per-cell husbandry state that rises only under pressure at the ceiling
-  (Boserup: fallow shortening and clearance forced by people on land) and
-  spreads only by contact, read by the technique regime and by W15's
-  paddy in place of the farmed share; the ceiling then also carries soil
-  (`tileFert` is a climate bell) and the disease burden, which today
-  divides the growth rate and the forager ceiling but not the farmed one.
+  the farmed world had farmers before −1600. **Reviewed against the spec
+  (same day): (i) is not new state.** It is `works` (02 box 2; 04 §4.1's
+  capacity factor; v1's validated LAND_WORKS: built by pressure at the
+  ceiling, rotting unstaffed, ×(1 + 2·w)) and the environmental stocks,
+  which M2 ruling 10 parks inert until M3+ with the food economy, plus
+  §11.3's farming-domain proficiency at M8 as the driver of the technique
+  term itself. The ceiling's deaths are M3's famine derivation (§4.1), the
+  disease pools are §16 at M7–M8. So the proposal reduces to two rulings:
+  **when the ruling-10 slots arm** (M3 as planned, or a wave of their own
+  before the food books, since they are field kernels that need no
+  community), and **what the technique term does until M8** — paid at the
+  front's arrival as today, which is the population excess the manifest
+  carries, or held at the first cultivator's 0.45 until a driver exists,
+  which puts the cores at a quarter of their bands instead. What the spec
+  does not hold and #84 adds: `tileFert` is a climate bell, not soil; the
+  disease burden divides the growth rate and the forager ceiling but not
+  the farmed one; eastern seeds at 0.81 of wheat is a catalogue datum to
+  check.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

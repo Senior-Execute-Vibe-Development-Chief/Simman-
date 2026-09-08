@@ -4465,13 +4465,49 @@ Review corrections to the M1 build (all validated before merge):
     3–4/km² error, not a 15/km² one.
 
     So the answer to "what is the issue" is (a): capacity is keyed to WHO
-    farms rather than to HOW the land has come to be farmed, and the fix
-    that follows the cardinal rules is a per-cell husbandry state that
-    rises only under pressure (P/K at the ceiling: Boserup's mechanism,
-    fallow shortening and clearance forced by people on land) and spreads
-    only by contact, with the technique regime — and W15's paddy — reading
-    it instead of the farmed share; then (b), the ceiling carrying the
-    land's soil and disease as the forager ceiling already does. P21 is
-    amended to say so. Not measured: the intensification rate's grounding
-    (the Boserup stage lags are the candidate datum) and what the
-    shipped grid says about (b) — the substrate probe is minutes there.
+    farms rather than to HOW the land has come to be farmed. **The spec
+    already holds the fix, and it is not new state** (reviewed against
+    `spec/02` box 2, `spec/04` §4.1, `spec/11`, `spec/10`, M2 ruling 10):
+
+    - **`works`** — "built land capital (irrigation, clearing; decays
+      unfed)", one of the six factors of §4.1's capacity (fertility ×
+      technique reached × water access × relief × works × environmental
+      stocks). It is v1's LAND_WORKS phase, validated there (research/03
+      row 91: ×(1 + 2·w), "the historical irrigation premium of
+      fully-improved over rain-fed land; works rot on a ~2-century
+      half-life when unstaffed"): `w += rate × (P/K − 0.5) × skill ×
+      irrigable`, rotting where P/K < 0.25. That is the pressure-driven,
+      Boserupian husbandry state — built by people on land, lost when
+      they leave. M2 ruling 10 parks it inert "at M3+ with the food
+      economy"; the standing rule is port, not reinvent.
+    - **Environmental stocks** — soil fatigue, deforestation — the same
+      ruling, the same milestone.
+    - **The technique term itself.** v1's capacity read `0.30 + 3.0 ×
+      devF`, a development ratchet that rose on the calendar-calibrated
+      learning rate §11.1 rejects. M2 re-founded it as `0.45 + 1.65 ×
+      technique` with technique the wave's arrival (ruling 8: 0..1, only
+      rising, 1 behind the front), and M3a made it the farmed share so
+      the hooks kept reading 0..1. Both pay "advanced farming" the day
+      the farmers arrive. The spec's slow driver for this term is §11.3
+      — farming-domain proficiency per community, rising with practice
+      volume × contact diversity × value at stake — at **M8**, with
+      §11.4 naming the field wave as that system's spatial expression.
+      Between M3a and M8 the term has no driver, and the ruling to make
+      is what it does meanwhile: paid at arrival (today) or held at the
+      first cultivator's 0.45 until a driver exists.
+    - **Bad years** (M3): the balance law is one-sided by design — §4.1
+      grows toward capacity and lets famine, plague and war "debit the
+      field directly where they happen"; the deaths above the ceiling
+      are M3's famine derivation, not a growth term.
+    - **Disease** (§16, M7–M8): dynamic pools replace "the static
+      tropical belt of 04"; herds (§15, M2–M3) carry draught and the
+      Level-0 domesticable-animals datum.
+
+    What the spec does NOT have in store, and #84 adds: fertility is a
+    climate bell, not soil (§02 box 1 calls it "soils/fertility"; it is
+    warmth × moisture with a laterite correction); the disease burden is
+    absent from the FARMED ceiling while present in the forager one; and
+    eastern seeds as a 0.81-of-wheat staple over 96 % of farmed North
+    America is a catalogue datum to check against the archaeobotany.
+    Not measured: what the shipped grid says about (b) — the substrate
+    probe is minutes there.
