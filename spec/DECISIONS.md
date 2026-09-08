@@ -1594,6 +1594,25 @@ lawyered.
   implies. Until then W17's single harvest stands, and the asymmetry is on
   the record rather than dialed out of it.
 
+- **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
+  QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
+  puts China and India at their real populations and ~730M people in
+  regions that held ~40M — sub-Saharan Africa, the Americas, Siberia —
+  farmed at 10–15 persons/km² because every package yields 0.8–1.15 of
+  wheat wherever its climate bell admits it, and reached a thousand to two
+  thousand years before the Bantu, maize or iron did. The population curve's
+  first cause is therefore not mortality (M3b, which would push the cores
+  under their bands) but capacity in the wrong places and the front's
+  reach. Proposed, not built: (i) farmed capacity carries the land's own
+  productivity — soil, growing season, disease burden, the technique
+  level — as the forager capacity already carries habitat (W8), so the
+  Congo and the boreal forest do not feed the density of the Nile delta;
+  (ii) the front's spread into those biomes waits on the same terms, not
+  on a date; (iii) the balance law lets a cell fall back to its ceiling
+  (the growth pass stops births at capacity but never takes a population
+  below it; the p90 farmed cell sits at 1.9 × capacity). Each term is a
+  sourced datum or a mechanism, none a fitted answer; the order and the
+  sources are the owner's ruling. M3b follows on the map this produces.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

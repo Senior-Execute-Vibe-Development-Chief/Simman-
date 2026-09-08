@@ -4333,3 +4333,70 @@ Review corrections to the M1 build (all validated before merge):
     every land step, but between two arms twelve waves apart its share is
     inside the others' noise. The per-commit dev arm is the clean reading
     (#81(d)).
+
+83. **Where the billion lives** (2026-09-08, owner: *"You keep saying it is
+    the next wave that will deal with population, allowing populations to
+    die?"* — *"Ok"* to measuring it first). The 1 CE world of the solve
+    arm decomposed by region against the 1 CE estimates (McEvedy & Jones
+    1978, HYDE 3.2 where higher; ~230M in all), at both grids, with the
+    land each region farms and the density it farms at.
+
+    | region | real ~M | dev M (×) | target M (×) | target farmed share, density |
+    | --- | ---: | ---: | ---: | --- |
+    | China proper | 60 | 119 (2.0) | **63 (1.1)** | 87%, 16/km² |
+    | Indian subcontinent | 60 | 79 (1.3) | **57 (1.0)** | 63%, 18/km² |
+    | Europe incl. European Russia | 35 | 119 (3.4) | 113 (3.2) | 97%, 15/km² |
+    | Anatolia | 6 | 10 (1.7) | 12 (2.0) | 98%, 13/km² |
+    | Levant, Mesopotamia, Iran, Arabia | 15 | 11 (0.7) | 7 (0.5) | 71%, 1.8/km² |
+    | Egypt | 4.5 | 2.5 (0.6) | 2.6 (0.6) | 92%, 2.6/km² |
+    | Maghreb | 4 | 8 (2.0) | 9 (2.1) | 94%, 1.4/km² |
+    | Sub-Saharan Africa | 15 | 405 (27) | **259 (17)** | 90%, 14.5/km² |
+    | Japan / Korea | 0.5 / 1 | 2.7 / 3.6 | 6.5 (13) / 3.5 (3.5) | 79% / 83%, 12–13/km² |
+    | Southeast Asia | 6 | 49 (8) | 28 (4.7) | 60%, 11/km² |
+    | Central Asia, Siberia, Mongolia | 3 | 86 (29) | **77 (26)** | 46%, 7.5/km² |
+    | North America north of 33°N | 2 | 143 (71) | **118 (59)** | 65%, 10/km² |
+    | Mesoamerica and Caribbean | 6 | 117 (19) | **68 (11)** | 80%, 17.5/km² |
+    | South America | 6 | 289 (48) | **162 (27)** | 80%, 12/km² |
+    | Australia, New Guinea, Pacific | 1 | 13 | 10.5 (10.5) | 10%, 9.5/km² |
+    | **world** | **~230** | **1,487 (6.5)** | **1,010 (4.4)** | 61% of all land farmed, 10.9/km² |
+
+    **(a) The excess is not where the mortality story puts it.** At the
+    grid that ships, China and India come out at their real 1 CE
+    populations. Eight regions that held ~40M people in 1 CE hold ~730M in
+    the sim — sub-Saharan Africa, the Americas, Siberia, Southeast Asia,
+    Japan — because the front has farmed 80–90 % of Africa and the
+    Americas and half of Siberia by 1 CE at 10–15 persons/km². Take those
+    eight to their real figures and the world is ~320M, inside the 1 CE
+    band. Europe's 3× is the same thing on a smaller scale: the boreal and
+    eastern forest farmed at 15/km² where the real figure north of the
+    Alps was one or two.
+
+    **(b) So M3b's bad years are not the fix for this row.** Famine
+    variance scales the whole curve; it would push China and India under
+    their bands to bring Africa down. The number that is wrong is
+    CAPACITY IN THE WRONG PLACES: every package yields 0.8–1.15 of wheat
+    per km² wherever its climate bell admits it, so manioc swidden in the
+    Congo and eastern seeds in Ohio carry the density of the Nile delta;
+    and the FRONT reaches them a thousand to two thousand years before
+    the Bantu, maize or the Iron Age did. Forty-two handoff references
+    defer the population curve to mortality; this measurement says the
+    first cause is the land's productivity and the front's timing, and
+    the manifest's population rows now say so.
+
+    **(c) A one-sided balance law.** The growth pass stops births at
+    capacity (crowding deaths equal births at P ≥ K) and adds a
+    graveyard term only above 30/km²; nothing brings a cell BELOW its
+    ceiling once inflow or a falling ceiling has put it above. The 90th
+    percentile farmed cell sits at 1.9 × its capacity at both grids
+    (Egypt 1.9, Siberia 1.7, the Maghreb 1.3). That is a mechanism
+    finding of its own: people never die back to what the land feeds.
+
+    **(d) What is measured and what is not.** The regional boxes are
+    coarse and the 1 CE figures are estimates to a factor of ~1.5; the
+    conclusion does not depend on either (a factor of 17–59 is not a
+    box). Not measured: how much of the density is the yield table and
+    how much the catchment law; how much of the front's reach is
+    diffusion speed and how much the absence of a barrier (disease,
+    soil, forest). Those are the next probes, each seconds at dev. The
+    probe is `probe-1ce.mts` in the session scratchpad; it is the
+    existing solve arm read at 1 CE.
