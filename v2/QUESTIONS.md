@@ -4304,3 +4304,32 @@ Review corrections to the M1 build (all validated before merge):
     165 km cells average a plateau's snow over its coast. The front walks
     the year's snow: every people-gate figure moved by one 84-month stride
     or none, every window held. Handoff `spec/handoffs/W27-the-snowpack.md`.
+
+82. **The shipped-grid arm after W27** (2026-09-08, owner: *"Run and
+    measure the sim"*). The first arm at the grid that ships since W15,
+    twelve waves between (`spec/handoffs/W27-the-snowpack.md` §9).
+
+    **(a) Nothing regressed in kind.** Every population band, density
+    ordering and European arrival window holds where the W15 arm held it.
+    Two rows cleared: north China's first millet hearth is in window
+    (−6844), and the lower Yangtze farms rice at 1 CE. One row failed: the
+    Amazon-margin tubers hearth lights a thousand years later (−3302)
+    while the package ignites first in eastern Brazil, 1,900 km east.
+
+    **(b) The world is a quarter fuller.** 398M people at −3000 against
+    308M on the W15 arm, 1,010M at 1 CE against 812M, with the −5000
+    figure in band and the orderings intact: the missing-mortality physics
+    of M3b wearing a larger number.
+
+    **(c) Three clocks moved.** Korea's millet ignition a thousand years
+    sooner carries Japan to −4349; the Andes are reached 1,234 years later
+    (inside the grace); the first caged basin moved from the Mekong to the
+    southern Urals, 357 years sooner. Which of W16–W27 moved each is
+    unmeasured. The per-commit dev diffs are the only attribution on
+    record and show none of the three, so a bisection of shipped-grid arms
+    is recorded as needed, not run.
+
+    **(d) On the snow itself** the arm is silent: W27's step factor rides
+    every land step, but between two arms twelve waves apart its share is
+    inside the others' noise. The per-commit dev arm is the clean reading
+    (#81(d)).

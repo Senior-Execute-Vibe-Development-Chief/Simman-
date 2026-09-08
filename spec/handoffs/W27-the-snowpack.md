@@ -310,3 +310,98 @@ Results: the bench ratchet passes with no re-baseline (dev substrate 1.63 → 1.
    this. Infrastructure (M7).
 8. W26 §8.1–8.7 stand. W24 §8.2 ("snow is a monthly mean, not a pack") is
    closed by this wave.
+
+## 9. The shipped-grid arm, run on request (2026-09-08, same day)
+
+Owner: *"Run and measure the sim"* — the exception the 2026-09-03 directive
+allows. `GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1 npx tsx
+tools/gate-people.ts` on `b4d49aff`, wall 02:01:47 → 02:33:26 UTC; the
+target solve leg 1,569 s (the W15 arm's 1,378 s). It is the first arm at the
+grid that ships since W15 (`spec/handoffs/W15-wind-and-husbandry.md` §6):
+W16 through W27 lie between the two. The dev solve arm inside it is
+byte-identical to the per-commit run of §4d, as it must be. The dev awake
+trajectory (3,000 years) holds −8000 at 13.15M in band with the Fertile
+Crescent reached at −6869 and two hearths lit; the agreement arm has the
+solve within 14 years of the awake kernel at the median (p90 21), 84 cells
+farmed by both and none by one, the two hearths within 1 and 3 years, and
+the population within 3.6 × 10⁻⁴ at −8000.
+
+The gate came back RED with **one unacknowledged row and two stale ones**:
+`hearth:amazon-margin:solve:target` fails, and
+`hearth:north-china:solve:target` and `staple:lower-yangtze:solve:target`
+now pass. The manifest carries the removal of the two, the new row with its
+measured reason, and a re-measurement note on every other target row.
+
+### 9a. What moved, W15 arm (`a2b40415`) → this arm (target grid, seed 42042)
+
+| row | W15 arm | this arm | verdict |
+| --- | ---: | ---: | --- |
+| people −8000 / −5000 (M) | 9.4 / 38.1 | 9.1 / 42.1 | in band, both |
+| people −3000 / −1000 / 1 CE (M) | 307.6 / 682.1 / 812.3 | 398.2 / 844.9 / 1,010.5 | miss, a quarter fuller (M3b) |
+| river / rain-fed / forager density (persons/km²) | 19.62 / 8.83 / 0.113 | 22.22 / 10.46 / 0.119 | ordering holds |
+| forager ordering (aquatic / fertile / poor) | 0.412 / 0.116 / 0.050 | 0.394 / 0.114 / 0.050 | ordering holds |
+| front, Europe (km/yr; design 0.936) | 0.891 | 0.898 | pass |
+| Fertile Crescent / Nile / Yellow River reached | −6836 / −6122 / −7081 | −6892 / −6225 / −6663 | in window |
+| Balkans / central Europe / Rhine / Cardial / inland | −5981 / −4708 / −4197 / −5411 / −5201 | −5933 / −4659 / −4162 / −5075 / −5143 | in window; the Cardial coast 336 yr later |
+| Indus / Ganges reached | −3007 / −4823 | −3805 / −4837 | in window (798 yr sooner) / early |
+| south India / Japan reached | −5727 / −3795 | −5725 / −4349 | early, both; Japan 554 yr sooner |
+| Mesoamerica / Andes / Sahel reached | −3855 / −3371 / −4159 | −3873 / −2137 / −4201 | in window; the Andes 1,234 yr later, inside the grace |
+| first caged basin | step 95352, −1754, 16.9°N 104.1°E | step 91068, −2111, 54.9°N 59.7°E | 357 yr sooner, in the southern Urals, not on the Mekong |
+| Kuk hearth (New Guinea roots) | −5563 | −5563 | pass |
+| north-China millet, first | −7313, 13 yr past the grace | **−6844**, three hearths, 14 cells | **cleared — stale row removed** |
+| Yangtze rice hearth | none | none | miss |
+| rice ignitions | Godavari −5983, W Deccan −4758, Myanmar −4646, Bengal −4534 | Godavari −5976, Bengal −4954, Myanmar −4492, W Deccan −4485, **Awadh −4226** | five |
+| millet ignitions outside the box | Balkhash −6837, Tarim −5997, Korea −5164, Bactria −4485 | Balkhash −7257, Tarim −6375, **Korea −6172**, Bactria −5024, Kura −327 | Korea a thousand years sooner, which is Japan's row |
+| highland roots outside the box | Angola −6382, Kenya–Tanzania −6347, Zimbabwe −3596, Transvaal −3498 | −6375 / −6319 / −3575 / −3463 | Ethiopian box still empty |
+| Amazon-margin tubers hearth | −4359, in window | **−3302, one cell** | **miss — new row**; tubers light first in eastern Brazil, −5388 (from −3638) |
+| eastern woodlands | −6193 | −6214 | early miss, unchanged |
+| **staple: lower Yangtze** | **millet (775)** | **rice (811)** | **cleared — stale row removed** |
+| staple: south China | rice (798) | rice (805) | pass |
+| staple: Indus / Nile | millet (617) / sorghum (762) | millet (682) / sorghum (812) | miss, unchanged |
+| staple: Ganges / loess / c. Europe / Sahel / Mesoamerica / Amazon | pass | pass | pass |
+
+### 9b. Read
+
+- **Nothing regressed in kind.** Every population band, ordering and
+  European window holds where the W15 arm held it; two rows cleared; one
+  row failed. Twenty-one target rows remain misses, nineteen of them the
+  ones W12 §2 recorded.
+- **The world is a quarter fuller at the late checkpoints.** 398M at −3000
+  against 307.6M, with the density ordering intact and the −5000 figure in
+  band. It is the same missing-mortality physics wearing a larger number:
+  M3b's row, not this wave's.
+- **Two clocks moved a thousand years and one moved sideways.** Korea's
+  millet ignition (−5164 → −6172) carries Japan 554 years sooner and
+  further from its window; the Amazon-margin box's own hearth (−4359 →
+  −3302) fell out of the grace while the package's first ignition moved
+  1,900 km east and 1,750 years earlier; the first caged basin left the
+  Mekong for the southern Urals, 357 years sooner. **Which of W16–W27 moved
+  each is unmeasured**: the per-commit dev diffs in the ledger rows of
+  those waves are the only attribution on record, and at dev none of the
+  three shows. A bisection is several 26-minute arms and is recorded as
+  needing one, not run.
+- **What this arm cannot say about the snow.** W27's step factor is charged
+  on every land step of every regime, but the front's arrivals at the
+  shipped grid moved by decades to centuries between two arms twelve waves
+  apart, and the snow's own share of that is inside the noise of the
+  others. The per-commit dev arm (§4d) is the only clean reading: one
+  84-month stride or none, everywhere.
+
+### 9c. The cadence bench
+
+`BENCH_CADENCE=1 npx tsx tools/bench.ts` on `b4d49aff`, alone, 4 CPUs
+(3 default workers). Per awake tick, ms, mean over 12 ticks:
+
+| grid | schedule | serial | 3 workers | 8 workers | YD→1 CE projected, serial / 3 workers |
+| --- | --- | ---: | ---: | ---: | ---: |
+| dev | every pass each month (stride 1) | 4.04 | 3.17 | 3.69 | 7.8 / 6.1 min |
+| dev | shipped | 0.18 | 0.20 | 0.16 | 0.35 / 0.38 min |
+| target | stride 1 | 256.3 | 120.5 | 102.6 | 497 / 234 min |
+| target | shipped | 10.17 | 5.83 | 5.65 | 19.7 / 11.3 min |
+
+Migration is the whole of the stride-1 cost (1,818 of 2,766 ms of phases
+at the shipped grid serial) and zero on the shipped schedule's sampled
+ticks, where it fires every 24 months; conversion (18.4 ms) and growth
+(35.3 ms) are the shipped tick. The W27 snow factor is inside the
+migration table build, not the tick. Substrate 45.3 s at target in this
+run.
