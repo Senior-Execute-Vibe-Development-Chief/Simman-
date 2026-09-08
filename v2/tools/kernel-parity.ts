@@ -14,6 +14,7 @@ const PEOPLE_FIELDS = [
   "technique",
   "works",
   "famineYears",
+  "farmedYears",
   "children",
   "working",
   "elders",

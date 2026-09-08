@@ -90,7 +90,7 @@ density cross further bars — labels derived, never capability-granting
 | Regional density ordering & magnitudes at matched development | river valleys ≫ rainfed ≫ steppe/forest; Egypt ~180/km² valley at classical | literature (research/01 §3) |
 | Farming arrival dates by region | wave ~1 km/yr from real hearths; spread order matches archaeology | Ammerman–Cavalli-Sforza tradition |
 | Yield anchors | Neolithic→classical 3–6× per-area | research/01 §3 |
-| Famine frequency by region | England ~2/millennium; Sahel chronic; Nile flood-regime | v1-validated bands |
+| Famine frequency by region | famine years per millennium of farmed years: England 3–30 (a national harvest a third short one year in thirty to three hundred), the Aegean 30–150, the Nile 20–80, the Deccan interior 20–100, the North China Plain 40–150, the Sahel 50–200 | the regional famine chronologies (Campbell & Ó Gráda 2011, Hoskins 1964/1968; Gallant 1991, Garnsey 1988; Hassan 1981, Allouche 1994; Famine Commission 1880, Bhatia 1967; Deng 1937, Yao 1942, Will 1990; Cissoko 1968, Watts 1983) — `v2/data/reality/famine-frequency.json`, W30. The earlier "England ~2/millennium" was v1's own output (research/03), not a datum, and is withdrawn |
 | Urban share (once towns exist) | 3–8% pre-industrial band | standard estimates |
 | Granary practice | cities hold 2–4× subsistence minimum | granary literature |
 | Conservation | zero unexplained flux, every audit tick | R5 |

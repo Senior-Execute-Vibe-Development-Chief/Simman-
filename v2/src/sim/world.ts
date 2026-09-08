@@ -95,6 +95,7 @@ export class World {
   elders!: Float64Array;
   works!: Float64Array;
   famineYears!: Float64Array;
+  farmedYears!: Float64Array;
   /** The harvest anomaly's raw AR(1) state on the weather grid (W29): the last year read, persisted and hashed. */
   harvestZ: Float64Array;
   /** Authoritative per-package farmer masses; allocated by the people layer. */

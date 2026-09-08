@@ -27,7 +27,7 @@ import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
 import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
 import { stepWorks } from "./works";
-import { seedHarvestYears, stepHarvest } from "./harvest";
+import { buildHarvestRows, seedHarvestYears, stepHarvest } from "./harvest";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
@@ -148,6 +148,9 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._irrigable = new Float64Array(length);
   world._yieldCv = new Float64Array(length);
   world._yearMul = new Float64Array(landCount);
+  world._harvestRowStart = new Int32Array(landCount + 1);
+  world._harvestRowCell = new Int32Array(0);
+  world._harvestRowWeight = new Float64Array(0);
   world._harvestDeathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._foragerCapacity = new Float64Array(length);
   world._foragerTerrestrial = new Float64Array(length);
@@ -198,6 +201,8 @@ export function initializePeople(worldInput: World): PeopleWorld {
   seedHarvestYears(world);
   annualClimateFromSubstrate(world);
   fillStaticHabitability(world);
+  // The rows read the routed water and the exposures the map just derived (W30).
+  buildHarvestRows(world);
   fillMigrationShareRows(world);
   initializeCropFields(world);
   applyWildStands(world);

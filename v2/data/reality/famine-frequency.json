@@ -1,0 +1,54 @@
+{
+ "source": "The frequency of famine years by region (W30): famine years per thousand farmed years, judged at the end of the dev W5 solve arm (YD to 1 CE) over the land cells inside each region's box [lonMin, lonMax, latMin, latMax] that farmers stood on (farmedYears > 0). A famine year is the label 04 §4.2 defines (a bottom-decile anomaly whose harvest fails by more than a third); the windows are the pre-modern historical famine chronologies named per region, set before the first measurement and never widened to pass. The boxes are the yield-variance table's.",
+ "statistic": "pooled sum of famineYears over the sum of farmedYears, per thousand, over the box's land cells with farmedYears > 0",
+ "regions": [
+  {
+   "id": "england",
+   "name": "England and northern France",
+   "box": [-5, 5, 46, 55],
+   "minimum": 3,
+   "maximum": 30,
+   "source": "Campbell and Ó Gráda 2011 (Harvest shortfalls, grain prices, and famines in preindustrial England, JEH): national harvests a third or more short in 1315-16, 1321, 1438, 1555-56 and 1596-97, seven years in three centuries; Hoskins 1964/1968 (harvest fluctuations 1480-1759). A famine year one in thirty to three hundred; v1's ~2 per millennium was its own output (research/03), not a datum"
+  },
+  {
+   "id": "aegean",
+   "name": "Greece and the Aegean",
+   "box": [20, 27, 36, 41],
+   "minimum": 30,
+   "maximum": 150,
+   "source": "Gallant 1991 (Risk and Survival in Ancient Greece: a wheat crop failing about one year in four on the dry margin, barley one in twenty); Garnsey 1988 (Famine and Food Supply in the Graeco-Roman World: food crises frequent, famines with mortality rarer). A famine year one in seven to thirty"
+  },
+  {
+   "id": "sahel",
+   "name": "The Sahel",
+   "box": [-15, 30, 13, 17.5],
+   "minimum": 50,
+   "maximum": 200,
+   "source": "Cissoko 1968 (famines and epidemics at Timbuktu and the Niger bend, 16th-18th c.); Watts 1983 (Silent Violence: chronic famine in Hausaland); the recorded 20th-century Sahel famines 1913-14, 1931, 1942, 1968-74 and 1983-85, thirteen years in a century. A famine year one in five to twenty"
+  },
+  {
+   "id": "nile",
+   "name": "The Nile valley",
+   "box": [30, 33, 22, 31],
+   "minimum": 20,
+   "maximum": 80,
+   "source": "Hassan 1981 (the Roda nilometer floods, low floods one year in five to ten, the failed flood rarer); Allouche 1994 (al-Maqrizi's Ighathat al-umma, the Egyptian famine chronology); Ó Gráda 2009 (Famine: A Short History, the Egyptian series). A famine year one in twelve to fifty"
+  },
+  {
+   "id": "south-india-interior",
+   "name": "The Deccan interior",
+   "box": [74, 80, 12, 18],
+   "minimum": 20,
+   "maximum": 100,
+   "source": "Famine Commission 1880 (the Deccan famine chronology from 1396); Bhatia 1967 (Famines in India: the interior's major famines about one in twenty to fifty years, lesser scarcities more often). A famine year one in ten to fifty"
+  },
+  {
+   "id": "north-china-plain",
+   "name": "The North China Plain",
+   "box": [110, 118, 33, 39],
+   "minimum": 40,
+   "maximum": 150,
+   "source": "Deng Yunte 1937 (History of Famine Relief in China: a drought or flood famine on the plain most decades); Yao 1942 (the flood and drought chronology 206 BCE-1911); Will 1990 (Bureaucracy and Famine in Eighteenth-Century China). A famine year one in seven to twenty-five"
+  }
+ ]
+}

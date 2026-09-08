@@ -52,6 +52,15 @@ export const FIELD_LIST: readonly FieldDefinition[] = [
     defaultValue: 0,
     allocate: (length) => new Float64Array(length),
   },
+  {
+    // The farmed years (W30): the years a cell's farmers have stood
+    // through, counted by the harvest pass on the same cells and years as
+    // the famine tally, so a famine frequency is the one over the other. A
+    // count of things that have happened: it never falls.
+    name: "farmedYears",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
 ];
 
 export type FieldHost = Record<string, unknown>;

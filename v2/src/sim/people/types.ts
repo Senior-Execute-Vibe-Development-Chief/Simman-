@@ -146,6 +146,10 @@ export interface PeopleWorld extends World {
   _yieldCv: Float64Array;
   /** The last harvest year's yield multiple per land cell (W29, packed scratch for the lens): 0 where nobody farms, the years passing over an unfarmed cell unread. */
   _yearMul: Float64Array;
+  /** The harvest rows (W30, static): each land cell's read of the year as weights over the weather grid, CSR by packed index (`_harvestRowStart` holds land + 1 offsets) — its own sky and its catchment's, blended by the harvest's exposure to each and normalised to unit variance under the smoothing, so the CV map keeps its meaning at every cell. Built once from the substrate; both kernels sum the same row in the same order. */
+  _harvestRowStart: Int32Array;
+  _harvestRowCell: Int32Array;
+  _harvestRowWeight: Float64Array;
   /** Per-band famine deaths of the last harvest firing (W29, oracle scratch), persons. */
   _harvestDeathsByBand: Float64Array;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */

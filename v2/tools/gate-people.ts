@@ -6,6 +6,7 @@ import neolithicArrivals from "../data/reality/neolithic-arrivals.json";
 import hearthCentres from "../data/reality/hearths.json";
 import stapleByRegion from "../data/reality/staple-by-region.json";
 import yieldVariance from "../data/reality/yield-variance.json";
+import famineFrequency from "../data/reality/famine-frequency.json";
 import { aquaticAccess } from "../src/sim/people/habitability";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { buildSubstrate } from "../src/sim/substrate";
@@ -554,6 +555,47 @@ function judgeStaples(world: World, scope: string): Record<string, unknown> {
 }
 
 /**
+ * The famine frequency against the historical chronologies (W30): per region
+ * the famine years per thousand farmed years, pooled over the box's land
+ * cells farmers stood on by the end of the arm. Farmed years are the tally's
+ * own denominator, so a region farmed late or thinly is judged on the years
+ * it was farmed. A region no farmer reached fails: there is nothing to judge.
+ * Rows `famine-frequency:<region>:<scope>`.
+ */
+function judgeFamineFrequency(world: World, scope: string): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const result: Record<string, unknown> = {};
+  for (const region of famineFrequency.regions) {
+    let famineYears = 0;
+    let farmedYears = 0;
+    let cells = 0;
+    for (const cell of people._landCells) {
+      const farmed = world.farmedYears[cell] ?? 0;
+      if (farmed <= 0) continue;
+      if (!insideBox(world, cell, region.box)) continue;
+      cells++;
+      farmedYears += farmed;
+      famineYears += world.famineYears[cell] ?? 0;
+    }
+    const perMillennium = farmedYears > 0 ? famineYears / farmedYears * 1000 : 0;
+    const pass = cells > 0 && perMillennium >= region.minimum && perMillennium <= region.maximum;
+    result[region.id] = {
+      cells,
+      famineYears,
+      farmedYears,
+      perMillennium,
+      minimum: region.minimum,
+      maximum: region.maximum,
+      pass,
+    };
+    const id = `famine-frequency:${region.id}:${scope}`;
+    measured.add(id);
+    if (!pass) failures.push(id);
+  }
+  return result;
+}
+
+/**
  * Forager density by habitat at the opening (W8, Binford): shores and stands
  * hold denser foragers than fertile interior land, which holds denser than
  * desert and boreal land. Measured on the static forager capacity.
@@ -607,6 +649,7 @@ function runSolveArm(grid: GridPreset): TrajectorySample {
     centres: judgeHearths(world, scope),
     staples: judgeStaples(world, scope),
     foragerOrdering: judgeForagerOrdering(world, scope),
+    famineFrequency: judgeFamineFrequency(world, scope),
   };
   findings.solve = solve;
   return sample;

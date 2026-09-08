@@ -1599,10 +1599,11 @@ lawyered.
   enters no room the movement sees (the migration hotspot is the mean-year
   capacity), so a starving cell's people die where they stand instead of
   walking to the neighbour whose year was better, and no store carries a
-  bad year — the granary is W30's (04 §4.1's food books). Proposed, not
+  bad year — the granary is W31's (04 §4.1's food books; the W30 slot went
+  to the catchment sky and the famine-frequency row, 2026-09-08). Proposed, not
   built: (i) the year's multiple scales the room the awake regime's
   movement reads, so the flight from a failed harvest is the hotspot law on
-  this year's harvest instead of the mean's; (ii) W30's store buffers the
+  this year's harvest instead of the mean's; (ii) W31's store buffers the
   year before the deaths law sees it, at the storable share the food books
   carry — which is where a famine's severity (Ó Gráda's harvest failures of
   a third to a half becoming deaths of a tenth to a third) comes from;
@@ -1613,6 +1614,29 @@ lawyered.
   watered ground, the shape of the regional famine chronologies, but
   whether the label should follow the deaths rather than the yield is a
   ruling.
+  **W30 (2026-09-08): the label now stands against a datum, and the sky a
+  valley reads is its catchment's** (`spec/handoffs/W30-the-catchment-sky.md`,
+  QUESTIONS #87). (a) Each land cell reads the year through a fixed row over
+  the weather grid — the bilinear local sky in the rain-fed share of its
+  yield variance plus the sky its surface water was rained from (W13's
+  routing walked in the composition of the flow) in the river-fed share,
+  normalised to unit variance under the smoothing — so the Nile delta reads
+  the highlands' year (95 % of its row upstream) and every cell reads a 1 σ
+  year as 1 σ, where the bilinear read alone averaged 0.70 of the variance
+  between centres and 1.4× at the poles (W29 gaps 4 and the unlabelled
+  corner loss, both closed by the same normalisation; no constant added).
+  (b) `farmedYears`, the years a cell's farmers stood through, is the
+  famine tally's denominator, and `data/reality/famine-frequency.json`
+  judges famine years per millennium of farmed years against the regional
+  chronologies (windows set before measuring): at the dev solve arm England
+  4.3 [3–30], the Aegean 68 [30–150], the Sahel 72 [50–200], the Nile 55
+  [20–80], the Deccan 71 [20–100], the North China Plain 72 [40–150] —
+  6/6, so v1's label is kept as a definition that now also holds against
+  the chronologies at the coarse grid; the shipped grid is `v2-long`. The
+  spec's "England ~2/millennium" was v1's own output (research/03) and 04
+  §4.4 now carries the chronologies instead. (i), (ii) — the store, W31 —
+  and (iii) remain proposed and unbuilt; the ruling on the label is no
+  longer needed to make the row honest, only to change it.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in
@@ -1682,7 +1706,7 @@ lawyered.
   deaths about one in six of the booked deaths. A fifth, not the fourfold
   excess: (i) the land's own productivity and (ii) the front's reach remain
   the first cause, the technique-term ruling is unchanged, and the store
-  (W30) and the flight (P22) are the harvest's own open ends.
+  (W31, the store) and the flight (P22) are the harvest's own open ends.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures
@@ -1698,7 +1722,7 @@ lawyered.
   **W29 (2026-09-08):** the harvest years are the first deaths in the
   curve (a fifth of it at dev, QUESTIONS #86), the mechanism that pays for
   a faster uncrowded rate in every bad year; the ruling on r is still the
-  owner's, and the store (W30) comes before it, since without one a faster
+  owner's, and the store (W31) comes before it, since without one a faster
   refill of the excess is paid in deaths at once.
 - **P10. Paleoclimate anomaly track** (review, 2026-09-02). The sim
   applies today's climatology from 9700 BCE; the Sahara was green from

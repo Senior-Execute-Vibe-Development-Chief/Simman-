@@ -4626,7 +4626,8 @@ Review corrections to the M1 build (all validated before merge):
     Found in passing, not fixed: (1) the deaths are in place — the year's
     multiple enters no room the movement sees, so a starving cell's people
     die where they stand rather than walk to the neighbour whose year was
-    better (P22); (2) no store carries a bad year (W30's granary), so every
+    better (P22); (2) no store carries a bad year (the granary, W31's since
+    W30 went to the catchment sky), so every
     failure is paid at once and the famine's severity is the yield's alone;
     (3) the cohorts die uniformly (M3b weights the young and the old);
     (4) the weather grid's polar rows read their own draw as their clamped
@@ -4635,3 +4636,60 @@ Review corrections to the M1 build (all validated before merge):
     84-month one is the same year tiling (every year once, in both), but
     the interleaving with the monthly movement is an agreement-arm matter
     (`v2-long`).
+
+87. **A valley reads its river's year, and the famine year holds against
+    the chronologies (2026-09-08, W30 — the catchment sky; handoff
+    `spec/handoffs/W30-the-catchment-sky.md`; the dev solve arm to 1 CE).**
+    Each land cell now reads the year through a fixed row over the weather
+    grid: its own bilinear sky in the rain-fed share of its yield variance
+    plus the sky its surface water was rained from — W13's routing walked
+    in the composition of the flow — in the river-fed share, normalised to
+    unit variance under the smoothing. No constant; the exposures are
+    `yieldVarianceParts`' own two terms. Four things fell out.
+
+    (a) The Nile delta reads the highlands' year: 95 % of its row is
+    upstream sky (its farmland wholly river-fed, its basin two weather
+    rows south). The Amazon 0.53, the Yangtze 0.52, the Huang 0.34, the
+    Mississippi 0.27, the Ganges 0.19; the Indus 0.06 and the Danube 0.03,
+    because their basins lie under the same 12° cells as their mouths, so
+    the catchment's sky is the local sky there. The row reads the
+    geometry; the distinguishing number is the flood share times how far
+    the basin reaches out of the mouth's own weather cells.
+
+    (b) The bilinear read had been reading a 0.83 σ year for a 1 σ one:
+    between four weather-cell centres it averaged four draws (variance
+    0.70 on average over the dev land, 0.44 at the worst corner), and 1.4×
+    at the poles (W29 gap 4). The rows read 0.89–1.10 at every land cell
+    over two thousand years. One normalisation closes both. The famine
+    label, a decile test, had therefore been firing at six years in a
+    hundred, not ten, wherever a cell sat between centres.
+
+    (c) The frequency row (`data/reality/famine-frequency.json`, famine
+    years per millennium of farmed years, `farmedYears` the tally's own
+    denominator, windows set before measuring from the regional
+    chronologies): England 4.3 [3–30], the Aegean 68 [30–150], the Sahel
+    72 [50–200], the Nile 55 [20–80], the Deccan 71 [20–100], the North
+    China Plain 72 [40–150] — 6/6. The bands are wide (a factor of three
+    to ten, what the chronologies support); what the row discriminates is
+    the fifteen-fold England–margin contrast and the flood regime under
+    the rain-fed margins. The spec's "England ~2/millennium" was v1's
+    output, withdrawn (04 §4.4). The label is still v1's, a definition
+    (P22) that now holds against a datum at dev; the shipped grid is
+    `v2-long`.
+
+    (d) The curve, a unit-variance year being a stronger year: −5000
+    101.2 → 95.9M (×0.95), −3000 723.4 → 640.1M (×0.89), −1000 1,482.8 →
+    1,307.6M (×0.88), 1 CE 1,689.4 → 1,491.3M (×0.88; ×0.71 against W28's
+    harvest-less 2,108M); river cells 30.4 → 27.6 persons/km², rain-fed
+    16.0 → 14.1, foragers unchanged; the caged basin forty-nine years
+    later on the same cell; the front unchanged; one arrival one stride.
+    Famine deaths 23.0 % of the booked deaths (W29 15.6 %), 0.77 per
+    thousand per year on the trapezoid (0.53); famine years per farmed
+    cell 223 → 452, England 5.6 → 33.9 (×6 on the rare tail, ×1.6 at the
+    decile). The variance fix, not a rate.
+
+    Found in passing, not fixed: the weather cells draw independently
+    beyond the 3 × 3 smoothing, so a Nile failure and a Deccan failure in
+    one year are a coincidence and never a teleconnection — a datum for
+    cross-regional failure correlation would be a data wave's; the store
+    is W31's; the flight and the cohorts as at #86.

@@ -138,7 +138,12 @@ function liveSnapshot(target: World): Record<string, unknown> {
   planes.people.set(target.people);
   planes.technique.set(target.technique);
   planes.works.set(target.works);
-  planes.famine.set(target.famineYears);
+  // The famine frequency (W30): the cell's tally of failed harvests over the
+  // years its farmers stood through; unfarmed land shows nothing.
+  for (let cell = 0; cell < target.N; cell++) {
+    const farmed = target.farmedYears[cell] ?? 0;
+    planes.famine[cell] = farmed > 0 ? (target.famineYears[cell] ?? 0) / farmed : 0;
+  }
   planes.harvest.fill(0);
   if (target.substrate) {
     const people = target as PeopleWorld;

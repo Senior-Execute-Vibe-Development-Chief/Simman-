@@ -109,6 +109,7 @@ interface PeopleKernelLike {
   begin_works(dtMonths: number): void;
   works_band(rawLo: number, rawHi: number): void;
   famine_years_ptr(): number;
+  farmed_years_ptr(): number;
   year_mul_ptr(): number;
   begin_harvest(grids: Float64Array, years: number): void;
   harvest_band(rawLo: number, rawHi: number, bandIndex: number): void;
@@ -377,6 +378,9 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     standingGain,
     world._irrigable,
     world._yieldCv,
+    world._harvestRowStart,
+    world._harvestRowCell,
+    world._harvestRowWeight,
     world._neighborTargets,
     world._neighborDistanceKm,
     world._neighborMode,
@@ -535,6 +539,7 @@ type KernelFieldName =
   | "technique"
   | "works"
   | "famineYears"
+  | "farmedYears"
   | "children"
   | "working"
   | "elders"
@@ -620,6 +625,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       technique: this.kernel.technique_ptr(),
       works: this.kernel.works_ptr(),
       famineYears: this.kernel.famine_years_ptr(),
+      farmedYears: this.kernel.farmed_years_ptr(),
       children: this.kernel.children_ptr(),
       working: this.kernel.working_ptr(),
       elders: this.kernel.elders_ptr(),
@@ -643,6 +649,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       "technique",
       "works",
       "famineYears",
+      "farmedYears",
       "children",
       "working",
       "elders",

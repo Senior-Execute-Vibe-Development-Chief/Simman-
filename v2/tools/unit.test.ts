@@ -108,13 +108,16 @@ import { stepWorks } from "../src/sim/people/works";
 import {
   HARVEST_CELLS,
   HARVEST_COLUMNS,
+  HARVEST_LOCAL_CORNERS,
   HARVEST_ROWS,
   advanceHarvestYear,
   harvestGridsOf,
+  harvestLocalWeights,
   harvestMultiplier,
   harvestYearsOf,
   isFamineYear,
   readHarvestAnomaly,
+  readHarvestRow,
   seedHarvestYears,
   smoothHarvestYear,
   stepHarvest,
@@ -1849,6 +1852,7 @@ async function main(): Promise<void> {
     assert.equal(a.people[cell], foragersHere + (2 * capacity - dead), "the foragers are untouched");
     assert.equal(a._yearMul[packed], 1, "at no variance every year is the mean year");
     assert.equal(a.famineYears[cell], 0, "and none is a famine");
+    assert.equal(a.farmedYears[cell], 1, "the farmed years count the year the farmers stood through (W30)");
     assert.ok(Math.abs(deaths - dead * (a.cellAreaKm2[cell] ?? 0)) < 1e-9, "the pass reports the dead as persons");
     a.farmers[wheatId]![packed] = capacity / 2;
     a.people[cell] = capacity / 2 + foragersHere;
@@ -1880,6 +1884,13 @@ async function main(): Promise<void> {
     assert.ok(hungryYears > 100 && hungryYears < 300, `about half the years fall short: ${hungryYears}`);
     assert.ok(famines > 10 && famines < 90, `about a tenth are famines: ${famines}`);
     assert.equal(a.famineYears[cell], famines);
+    assert.equal(a.farmedYears[cell], 399, "every firing on farmed ground counts its year (W30)");
+    let unfarmed = -1;
+    for (const candidate of a._landCells) {
+      if (candidate !== cell && (a._farmerTotal[a._packedOf[candidate] ?? 0] ?? 0) <= 0) { unfarmed = candidate; break; }
+    }
+    assert.ok(unfarmed >= 0, "the fixture holds unfarmed ground");
+    assert.equal(a.farmedYears[unfarmed], 0, "land nobody farms stands through no farmed year");
     // Saved and hashed with the rest of the state; the tally is a field.
     // (The pass leaves the technique share to the firing's commit: refresh
     // it as the commit would before comparing identities.)
@@ -1888,6 +1899,10 @@ async function main(): Promise<void> {
     const loaded = loadWorld(serializeWorld(a), substrate) as PeopleWorld;
     assert.deepEqual(Array.from(loaded.harvestZ), Array.from(a.harvestZ), "the anomaly state survives a save");
     assert.equal(loaded.famineYears[cell], a.famineYears[cell], "so does the tally");
+    assert.equal(loaded.farmedYears[cell], a.farmedYears[cell], "and its denominator (W30)");
+    assert.deepEqual(Array.from(loaded._harvestRowStart), Array.from(a._harvestRowStart), "the rows are rebuilt at load (W30)");
+    assert.deepEqual(Array.from(loaded._harvestRowCell), Array.from(a._harvestRowCell));
+    assert.deepEqual(Array.from(loaded._harvestRowWeight), Array.from(a._harvestRowWeight));
     assert.equal(hashWorld(loaded), hashWorld(a));
     loaded.harvestZ[0] = (loaded.harvestZ[0] ?? 0) + 1;
     assert.notEqual(hashWorld(loaded), hashWorld(a), "the anomaly state is in the world hash");
@@ -1938,8 +1953,126 @@ async function main(): Promise<void> {
     same(oracle.farmers[wheatId]!, kernel.farmers[wheatId]!, "the farmers");
     same(oracle._farmerTotal, kernel._farmerTotal, "the farmer totals");
     same(oracle.famineYears, kernel.famineYears, "the famine years");
+    same(oracle.farmedYears, kernel.farmedYears, "the farmed years");
     same(oracle._yearMul, kernel._yearMul, "the year's multiple");
     kernel._wasmPeopleKernel?.dispose();
+  }
+
+  // W30: the catchment sky. Each land cell's row over the weather grid — its
+  // own sky and, through the routing, its catchment's — is a fixed set of
+  // weights in the yield's own sensitivities, normalised to unit variance
+  // under the smoothing: a 1 σ year reads as a 1 σ year at every cell,
+  // corners and poles included, where the bilinear read alone lost variance
+  // between centres; the exposures sum to the map's CV; land no river
+  // reaches reads its own four corners alone; a river's mouth reads a sky
+  // its own corners do not; the rows are derived state, rebuilt at load.
+  {
+    const earth = buildSubstrate(42042, {}, "dev");
+    const world = new World({ seed: 30, grid: "dev", config: { peopleKernel: "ts" }, substrate: earth }) as PeopleWorld;
+    const count = world._landCells.length;
+    const starts = world._harvestRowStart;
+    assert.equal(starts.length, count + 1, "one start per land cell and a closing one");
+    assert.equal(starts[0], 0);
+    assert.equal(starts[count], world._harvestRowCell.length, "the closing start is the row store's length");
+    assert.equal(world._harvestRowCell.length, world._harvestRowWeight.length);
+    const localCells = new Int32Array(HARVEST_LOCAL_CORNERS);
+    const localWeights = new Float64Array(HARVEST_LOCAL_CORNERS);
+    let riverless = 0;
+    let longest = 0;
+    for (let packed = 0; packed < count; packed++) {
+      const cell = world._landCells[packed] ?? 0;
+      const start = starts[packed] ?? 0;
+      const end = starts[packed + 1] ?? 0;
+      assert.ok(end > start, "every land cell reads some sky");
+      longest = Math.max(longest, end - start);
+      for (let index = start; index < end; index++) {
+        const weather = world._harvestRowCell[index] ?? 0;
+        assert.ok(weather >= 0 && weather < HARVEST_CELLS, "a row's weather cells are on the grid");
+        if (index > start) assert.ok(weather > (world._harvestRowCell[index - 1] ?? 0), "weather cells ascend within a row");
+        assert.ok((world._harvestRowWeight[index] ?? 0) > 0, "a row's weights are positive");
+      }
+      const parts = yieldVarianceParts(world, cell);
+      assert.ok(Math.abs(parts.rainExposure + parts.floodExposure - parts.cv) < 1e-12, "the two exposures sum to the map's CV");
+      if ((world._runoffInflow[cell] ?? 0) > 0) continue;
+      // Nothing flows in: the row is the cell's own four corners, and no other.
+      const y = Math.floor(cell / world.width);
+      harvestLocalWeights(cell - y * world.width, y, world.width, world.height, localCells, localWeights, 0);
+      for (let index = start; index < end; index++) {
+        assert.ok(localCells.includes(world._harvestRowCell[index] ?? 0), "land no river reaches reads its own sky alone");
+      }
+      riverless++;
+    }
+    assert.ok(riverless > 0 && riverless < count, `some land is a headwater, some a valley: ${riverless} of ${count}`);
+    assert.ok(longest > HARVEST_LOCAL_CORNERS, `a valley reads more skies than its corners: ${longest}`);
+    // Unit variance at every cell over two thousand years, against the
+    // bilinear read's loss between centres.
+    const years = 2000;
+    const smoothed = new Float64Array(HARVEST_CELLS);
+    const rowSquares = new Float64Array(count);
+    const localSquares = new Float64Array(count);
+    for (let year = 0; year < years; year++) {
+      advanceHarvestYear(world, year);
+      smoothHarvestYear(world.harvestZ, smoothed, 0);
+      for (let packed = 0; packed < count; packed++) {
+        const value = readHarvestRow(world, smoothed, 0, packed);
+        rowSquares[packed] = (rowSquares[packed] ?? 0) + value * value;
+        const cell = world._landCells[packed] ?? 0;
+        const y = Math.floor(cell / world.width);
+        const local = readHarvestAnomaly(smoothed, 0, cell - y * world.width, y, world.width, world.height);
+        localSquares[packed] = (localSquares[packed] ?? 0) + local * local;
+      }
+    }
+    let rowMean = 0;
+    let rowMin = Infinity;
+    let rowMax = 0;
+    let localMin = Infinity;
+    let polarMin = Infinity;
+    let polarMax = 0;
+    for (let packed = 0; packed < count; packed++) {
+      const variance = (rowSquares[packed] ?? 0) / years;
+      rowMean += variance / count;
+      rowMin = Math.min(rowMin, variance);
+      rowMax = Math.max(rowMax, variance);
+      localMin = Math.min(localMin, (localSquares[packed] ?? 0) / years);
+      const y = Math.floor((world._landCells[packed] ?? 0) / world.width);
+      if (y < world.height / HARVEST_ROWS || y >= world.height - world.height / HARVEST_ROWS) {
+        polarMin = Math.min(polarMin, variance);
+        polarMax = Math.max(polarMax, variance);
+      }
+    }
+    assert.ok(Math.abs(rowMean - 1) < 0.05, `the rows read unit variance on average: ${rowMean}`);
+    assert.ok(rowMin > 0.75 && rowMax < 1.3, `and at every cell: ${rowMin}..${rowMax}`);
+    assert.ok(polarMin > 0.75 && polarMax < 1.3, `the polar rows included: ${polarMin}..${polarMax}`);
+    assert.ok(localMin < 0.85, `where the bilinear read alone lost variance between centres: ${localMin}`);
+    // A river's mouth reads a sky its own corners do not: a year that is
+    // 1 σ on the weather cell its row leans on upstream and calm everywhere
+    // else reads as a wet year at the mouth and as nothing under its own sky.
+    let mouth = -1;
+    let mouthInflow = 0;
+    for (const cell of world._landCells) {
+      if ((world._runoffInflow[cell] ?? 0) > mouthInflow) { mouthInflow = world._runoffInflow[cell] ?? 0; mouth = cell; }
+    }
+    assert.ok(mouth >= 0);
+    const mouthPacked = world._packedOf[mouth] ?? 0;
+    const mouthY = Math.floor(mouth / world.width);
+    harvestLocalWeights(mouth - mouthY * world.width, mouthY, world.width, world.height, localCells, localWeights, 0);
+    let upstreamSky = -1;
+    let upstreamWeight = 0;
+    let localShare = 0;
+    let rowTotal = 0;
+    for (let index = starts[mouthPacked] ?? 0; index < (starts[mouthPacked + 1] ?? 0); index++) {
+      const weather = world._harvestRowCell[index] ?? 0;
+      const weight = world._harvestRowWeight[index] ?? 0;
+      rowTotal += weight;
+      if (localCells.includes(weather)) { localShare += weight; continue; }
+      if (weight > upstreamWeight) { upstreamWeight = weight; upstreamSky = weather; }
+    }
+    assert.ok(upstreamSky >= 0, "the largest river's mouth reads an upstream sky");
+    assert.ok(localShare < rowTotal, `and leans on the catchment: ${1 - localShare / rowTotal} of its row is upstream`);
+    const upstreamYear = new Float64Array(HARVEST_CELLS);
+    upstreamYear[upstreamSky] = 1;
+    assert.ok(readHarvestRow(world, upstreamYear, 0, mouthPacked) > 0, "a wet year upstream is a wet year at the mouth");
+    assert.equal(readHarvestAnomaly(upstreamYear, 0, mouth - mouthY * world.width, mouthY, world.width, world.height), 0, "and nothing under the mouth's own sky");
   }
 
   console.log(JSON.stringify({

@@ -677,11 +677,12 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     return [Math.round(150 - 90 * swing), Math.round(130 + 90 * swing), Math.round(70 - 20 * swing)];
   }
   if (lens.value === "famine") {
-    // The famine years (W29): the cell's tally of harvest failures, dark
-    // where none, the red deepening with the count (saturating at twenty).
-    const count = overlayFamine?.[cell] ?? 0;
-    if (count <= 0) return [40, 36, 30];
-    const share = Math.min(1, count / 20);
+    // The famine frequency (W30): the cell's share of farmed years that
+    // failed, dark where none, the red deepening with the share (saturating
+    // at one year in ten, a famine-prone margin).
+    const frequency = overlayFamine?.[cell] ?? 0;
+    if (frequency <= 0) return [40, 36, 30];
+    const share = Math.min(1, frequency / 0.1);
     return [Math.round(90 + 165 * share), Math.round(50 - 30 * share), Math.round(40 - 20 * share)];
   }
   if (lens.value === "package") {

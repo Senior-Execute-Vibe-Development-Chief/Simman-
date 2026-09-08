@@ -329,6 +329,13 @@ pub struct PeopleKernel {
     irrigable: Vec<f64>,
     /// The yield-variance map (W29, static): each cell's harvest CV, full grid.
     yield_cv: Vec<f64>,
+    /// The harvest rows (W30, static): each land cell's weights over the weather
+    /// grid — its own sky and, through the routing, its catchment's — CSR by
+    /// packed land cell, weather cells ascending within a row. Built by the
+    /// oracle's `buildHarvestRows`; the kernel only reads them.
+    harvest_row_start: Vec<u32>,
+    harvest_row_cell: Vec<u32>,
+    harvest_row_weight: Vec<f64>,
     neighbor_targets: Vec<i32>,
     neighbor_distance: Vec<f64>,
     neighbor_mode: Vec<u8>,
@@ -345,6 +352,8 @@ pub struct PeopleKernel {
     works: Vec<f64>,
     /// The famine years (W29), full grid: the tally of failed harvests a cell's farmers lived through. Authoritative state.
     famine_years: Vec<f64>,
+    /// The farmed years (W30), full grid: the years a cell's farmers stood through, the famine tally's denominator. Authoritative state.
+    farmed_years: Vec<f64>,
     /// The last harvest year's yield multiple per land cell (W29), packed scratch for the lens.
     year_mul: Vec<f64>,
     /// The firing's smoothed harvest anomaly grids, `harvest_years` × HARVEST_CELLS (W29).
@@ -440,6 +449,9 @@ impl PeopleKernel {
         standing_gain: &[f64],
         irrigable: &[f64],
         yield_cv: &[f64],
+        harvest_row_start: &[i32],
+        harvest_row_cell: &[i32],
+        harvest_row_weight: &[f64],
         neighbor_targets: &[i32],
         neighbor_distance: &[f64],
         neighbor_mode: &[u8],
@@ -456,6 +468,23 @@ impl PeopleKernel {
             }
         }
         let land_count = land_cells.len();
+        // The harvest rows (W30) as the oracle built them, bounded so the
+        // read stays a straight dot product: one start per land cell and a
+        // closing one, cells within the weather grid, weights as given.
+        let mut row_start: Vec<u32> = (0..=land_count)
+            .map(|packed| harvest_row_start.get(packed).copied().unwrap_or(0).max(0) as u32)
+            .collect();
+        for packed in 1..=land_count {
+            row_start[packed] = row_start[packed].max(row_start[packed - 1]);
+        }
+        let row_length = row_start[land_count] as usize;
+        let row_cell: Vec<u32> = (0..row_length)
+            .map(|index| {
+                (harvest_row_cell.get(index).copied().unwrap_or(0).max(0) as usize)
+                    .min(HARVEST_CELLS - 1) as u32
+            })
+            .collect();
+        let row_weight = copy_f64(harvest_row_weight, row_length);
         PeopleKernel {
             width,
             height,
@@ -479,6 +508,9 @@ impl PeopleKernel {
             standing_gain: copy_f64(standing_gain, package_count.saturating_mul(land_count)),
             irrigable: copy_f64(irrigable, cells),
             yield_cv: copy_f64(yield_cv, cells),
+            harvest_row_start: row_start,
+            harvest_row_cell: row_cell,
+            harvest_row_weight: row_weight,
             neighbor_targets: neighbor_targets.to_vec(),
             neighbor_distance: copy_f64(
                 neighbor_distance,
@@ -499,6 +531,7 @@ impl PeopleKernel {
             technique: vec![0.0; cells],
             works: vec![0.0; cells],
             famine_years: vec![0.0; cells],
+            farmed_years: vec![0.0; cells],
             year_mul: vec![0.0; land_count],
             harvest_grids: Vec::new(),
             harvest_years: 0,
@@ -581,6 +614,10 @@ impl PeopleKernel {
 
     pub fn famine_years_ptr(&self) -> usize {
         self.famine_years.as_ptr() as usize
+    }
+
+    pub fn farmed_years_ptr(&self) -> usize {
+        self.farmed_years.as_ptr() as usize
     }
 
     pub fn year_mul_ptr(&self) -> usize {
@@ -1468,32 +1505,24 @@ impl PeopleKernel {
         self.harvest_deaths_by_band.fill(0.0);
     }
 
-    /// The anomaly at a sim cell, bilinear over the weather grid at `offset`:
-    /// columns wrap the globe, rows clamp at the poles. The oracle's
-    /// `readHarvestAnomaly`, the same expression in the same order.
-    fn harvest_anomaly(&self, offset: usize, x: usize, y: usize) -> f64 {
-        let fx = (x as f64 + MATH_HALF) / self.width as f64 * HARVEST_COLUMNS as f64 - MATH_HALF;
-        let fy = (y as f64 + MATH_HALF) / self.height as f64 * HARVEST_ROWS as f64 - MATH_HALF;
-        let cx = fx.floor();
-        let cy_raw = fy.floor();
-        let cy = cy_raw.min((HARVEST_ROWS - 2) as f64).max(0.0);
-        let dx = fx - cx;
-        let dy = (fy - cy).min(1.0).max(0.0);
-        let columns = HARVEST_COLUMNS as i64;
-        let cx0 = (((cx as i64) % columns + columns) % columns) as usize;
-        let cx1 = (cx0 + 1) % HARVEST_COLUMNS;
-        let top = offset + cy as usize * HARVEST_COLUMNS;
-        let bottom = top + HARVEST_COLUMNS;
-        (1.0 - dx) * (1.0 - dy) * self.harvest_grids[top + cx0]
-            + dx * (1.0 - dy) * self.harvest_grids[top + cx1]
-            + (1.0 - dx) * dy * self.harvest_grids[bottom + cx0]
-            + dx * dy * self.harvest_grids[bottom + cx1]
+    /// The year's anomaly at a land cell (W30): its row over the weather grid
+    /// at `offset`, summed in row order. The oracle's `readHarvestRow`, the
+    /// same products in the same order.
+    fn harvest_anomaly(&self, offset: usize, packed: usize) -> f64 {
+        let start = self.harvest_row_start[packed] as usize;
+        let end = self.harvest_row_start[packed + 1] as usize;
+        let mut sum = 0.0;
+        for index in start..end {
+            sum += self.harvest_row_weight[index]
+                * self.harvest_grids[offset + self.harvest_row_cell[index] as usize];
+        }
+        sum
     }
 
     /// The harvest pass (W29): the firing's years applied in place to the
     /// authoritative farmers, totals and people — the oracle's `stepHarvest`,
     /// the same expression in the same order. Writes farmers, farmer_total,
-    /// people, famine_years and year_mul.
+    /// people, famine_years, farmed_years and year_mul.
     pub fn harvest_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
         let hi = raw_hi.min(self.land_cells.len());
         let land_count = self.land_cells.len();
@@ -1501,19 +1530,20 @@ impl PeopleKernel {
         let mut deaths = 0.0;
         for packed in raw_lo.min(hi)..hi {
             let cell = self.land_cells[packed] as usize;
-            let y = cell / self.width;
-            let x = cell - y * self.width;
             let total = self.farmer_total[packed];
             // Nobody farms here: the years pass over unread, so the pass costs
             // the farmed world and not the whole land (the multiple is a harvest's).
             if total <= 0.0 {
                 continue;
             }
+            // The years the cell's farmers stand through (W30): the famine
+            // tally's denominator, counted on the same cells and years.
+            self.farmed_years[cell] += years as f64;
             let cv = self.yield_cv[cell];
             let foragers = (self.people[cell] - total).max(0.0);
             let mut cell_deaths = 0.0;
             for index in 0..years {
-                let anomaly = self.harvest_anomaly(index * HARVEST_CELLS, x, y);
+                let anomaly = self.harvest_anomaly(index * HARVEST_CELLS, packed);
                 let multiplier = (1.0 + anomaly * cv)
                     .min(HARVEST_MULTIPLIER_CEILING)
                     .max(HARVEST_MULTIPLIER_FLOOR);

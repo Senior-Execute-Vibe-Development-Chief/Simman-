@@ -172,6 +172,44 @@ export function routeRunoff(world: PeopleWorld): void {
 }
 
 /**
+ * W13's drainage order as a packed permutation (W30): Kahn's order over the
+ * flow graph — the same walk `routeRunoff` makes, cell for cell — and each
+ * land cell's downstream land cell as a packed index (−1 at a sink or the
+ * sea). The harvest rows route the weather down it in the composition of
+ * the flow. A cell on a cycle (none in a proper flow field) never enters
+ * the order; `order` is exactly the cells the walk reached.
+ */
+export function drainageOrder(world: PeopleWorld): { readonly order: Int32Array; readonly next: Int32Array } {
+  const { substrate } = world;
+  const count = world._landCells.length;
+  const pending = new Int32Array(world.N);
+  const order = new Int32Array(count);
+  const next = new Int32Array(count).fill(MATH_NEGATIVE_ONE);
+  for (let packed = 0; packed < count; packed++) {
+    const cell = world._landCells[packed] ?? 0;
+    const downstream = downstreamCell(world, cell);
+    if (downstream >= 0 && substrate.landMask[downstream]) {
+      next[packed] = world._packedOf[downstream] ?? MATH_NEGATIVE_ONE;
+      pending[downstream] = (pending[downstream] ?? 0) + 1;
+    }
+  }
+  let head = 0;
+  let tail = 0;
+  for (let packed = 0; packed < count; packed++) {
+    if ((pending[world._landCells[packed] ?? 0] ?? 0) === 0) order[tail++] = packed;
+  }
+  while (head < tail) {
+    const packed = order[head++] ?? 0;
+    const downstream = next[packed] ?? MATH_NEGATIVE_ONE;
+    if (downstream < 0) continue;
+    const cell = world._landCells[downstream] ?? 0;
+    pending[cell] = (pending[cell] ?? 0) - 1;
+    if (pending[cell] === 0) order[tail++] = downstream;
+  }
+  return { order: order.subarray(0, tail), next };
+}
+
+/**
  * The water the land itself gives a cell, rain aside (W13): the routed
  * stream, the floodplain, the river and the lake — the water that is there
  * in a month it does not rain. An area-weighted land property: floodplain is
@@ -224,7 +262,11 @@ export interface YieldVarianceParts {
   readonly water: number;
   /** The rain-fed CV before the water blend. */
   readonly cvRain: number;
-  /** The coefficient of variation of the annual harvest. */
+  /** The harvest's exposure to the cell's own sky (W30): the rain-fed CV over the rain-fed share plus the winter term — the part of the CV a local anomaly moves. */
+  readonly rainExposure: number;
+  /** The harvest's exposure to the river's sky (W30): the flood regime's CV over the surface-watered share — the part of the CV the catchment's anomaly moves. */
+  readonly floodExposure: number;
+  /** The coefficient of variation of the annual harvest: the two exposures together. */
   readonly cv: number;
 }
 
@@ -292,7 +334,9 @@ export function yieldVarianceParts(world: PeopleWorld, cell: number): YieldVaria
   const cvRain = HARVEST_CV_BASE + HARVEST_CV_MARGIN * rainMargin
     + HARVEST_CV_SEASON * seasonal * (1 - rainMargin * MATH_HALF);
   const cv = cvRain * (1 - water) + HARVEST_CV_FLOOD * water + HARVEST_CV_WINTER * winterRisk;
-  return { rainMargin, seasonal, winterRisk, water, cvRain, cv };
+  const rainExposure = cvRain * (1 - water) + HARVEST_CV_WINTER * winterRisk;
+  const floodExposure = HARVEST_CV_FLOOD * water;
+  return { rainMargin, seasonal, winterRisk, water, cvRain, rainExposure, floodExposure, cv };
 }
 
 /** The yield CV of a land cell (W29); zero on water. */
