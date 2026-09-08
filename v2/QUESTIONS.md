@@ -4558,3 +4558,80 @@ Review corrections to the M1 build (all validated before merge):
     overstates the free room wherever the fit is below one, so the wake
     comes later than the capacity says. A wave of its own: moving the wake
     moves every awake-regime measurement.
+
+86. **The harvest years take back a fifth, and the famine year is a steppe
+    year (2026-09-08, W29 — the harvest years; `probe-harvest.mts` in the
+    session scratchpad, the dev solve arm to 1 CE; handoff
+    `spec/handoffs/W29-the-harvest-years.md`).** v1's harvest.js ported to
+    both kernels: a spatially correlated, year-persistent weather anomaly
+    per 12° weather cell, read at every land cell and scaled by the cell's
+    own yield CV (W29a's map, validated 12/12 regions at the shipped grid
+    and 10/12 at dev) into the year's yield multiple; the farmers above
+    what the year feeds die at 0.3 per year of the excess, foragers exempt;
+    a bottom-decile year failing by more than a third is a famine year.
+    The first deaths in the curve. Four things fell out at dev.
+
+    (a) The curve: −5000 114.1 → 101.2M (×0.89), −3000 896.8 → 723.4M
+    (×0.81), −1000 1,849.7 → 1,482.8M (×0.80), 1 CE 2,108.0 → 1,689.4M
+    (×0.80); −8000 unchanged at 13.16M (foragers). The density ordering's
+    river cells 34.4 → 30.4 persons/km² (×0.88, the flood regime's CV
+    ~0.2), its rain-fed 20.3 → 16.0 (×0.79, CV 0.25–0.35), the forager
+    cells 0.087 → 0.087. That is the Malthusian stationary state below the
+    ceiling, in proportion to the variance: a farmed cell's mean-year
+    population is its ceiling less what the bad years kill, and the deaths
+    law's mean year is P21 (iii)'s balance law (a cell above its ceiling
+    falls back at the same rate). A fifth, not the fourfold excess: the
+    excess is still the capacity's (P21 (i), (ii)) and M3b's ordinary
+    mortality.
+
+    (b) The share: to 1 CE the harvest kills 2,543M against 13,710M booked
+    deaths and 17,936M births — 15.6 % of all deaths (12.9 % to −5000,
+    19.0 % to −3000, 16.8 % to −1000). Read with care: the growth pass's
+    births and deaths are the logistic's net terms at P15's crowded rate
+    (0.37 %/yr and 0.28 %/yr of the mean population), an order of magnitude
+    under crude rates, so "one death in six" is the share of the SIM's
+    booked deaths, not a crude-mortality claim. The honest figure is the
+    rate: about 0.5 famine deaths per thousand per year of the whole
+    population on the checkpoints' trapezoid (4.8 trillion person-years).
+    No reality row carries a datum for it yet; a famine-mortality row is a
+    data wave's.
+
+    (c) Where the famine years are: 4,369 farmed cells (technique ≥ 0.5) at
+    1 CE, 4,014 of which saw a famine year, 223 famine years per farmed
+    cell over the run. By the yield-variance regions (mean over their
+    farmed cells; the CV is the farmed-cell mean, not the gate's
+    fertility-weighted median): the Pontic steppe 450 (CV 0.31), the Kazakh
+    steppe 422 (0.35), the Ganges 379 (0.26), the North China plain 350
+    (0.25), south India's interior 294 (0.25), Mediterranean Spain 253
+    (0.27), the Aegean 236 (0.24), the Nile 230 (0.27), Mesopotamia 219
+    (0.29), the Sahel 202 (0.30), England 5.6 (0.13), Java no farmed cell.
+    The label is v1's: a famine year needs the anomaly under −1.28 AND the
+    multiple under 0.65, so at CV under 0.27 the decile year does not
+    qualify and the label needs a rarer one (England: a −2.7 σ year, one in
+    three hundred). The famine year is a steppe year, a Sahel year, a
+    Mediterranean-margin year; the reliably watered ground sees deaths in
+    its bad years but almost never the label. That is what the regional
+    famine chronologies look like, and it is a definition, not a datum: a
+    ruling on whether the label should follow the deaths instead is
+    DECISIONS P22.
+
+    (d) Everything else the gate reads holds: every hearth on its cell and
+    year, every staple verdict and farmed-cell count the same, the front
+    1.189 → 1.183 km/yr, three arrivals moved by one 84-month stride (south
+    India −4807 → −4814, central Europe −5367 → −5374, the Rhine −5017 →
+    −5010), the first caged basin −2763 → −2693, one cell south of where
+    it was (14.3°N 101.3°E), seventy years later because the basin below
+    its ceiling has more room.
+
+    Found in passing, not fixed: (1) the deaths are in place — the year's
+    multiple enters no room the movement sees, so a starving cell's people
+    die where they stand rather than walk to the neighbour whose year was
+    better (P22); (2) no store carries a bad year (W30's granary), so every
+    failure is paid at once and the famine's severity is the yield's alone;
+    (3) the cohorts die uniformly (M3b weights the young and the old);
+    (4) the weather grid's polar rows read their own draw as their clamped
+    neighbour and carry ~1.4× the variance — no farmland there, recorded;
+    (5) the awake regime's monthly harvest against the solve regime's
+    84-month one is the same year tiling (every year once, in both), but
+    the interleaving with the monthly movement is an agreement-arm matter
+    (`v2-long`).

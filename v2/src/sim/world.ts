@@ -17,6 +17,7 @@ import { ConservationLedger } from "./conservation";
 import { allocateFields, fieldEntries, type NumericField } from "./fields";
 import type { Substrate } from "./substrate";
 import { initializePeople, stepPeople } from "./people/index";
+import { HARVEST_CELLS } from "./people/harvest";
 import { evaluateWake, recordArrivals } from "./people/wake";
 import type { HearthState } from "./people/types";
 import { wakeTargetStep } from "./horizon";
@@ -58,6 +59,8 @@ export interface WorldDebug {
   peopleBirths: number;
   peopleDeaths: number;
   peopleMigration: number;
+  /** Famine deaths of the last people firing (W29), persons. */
+  peopleFamineDeaths: number;
   /** Neighbour pairs priced by the last movement firing (W6: a full region prices none). */
   pricedPairs: number;
 }
@@ -91,6 +94,9 @@ export class World {
   working!: Float64Array;
   elders!: Float64Array;
   works!: Float64Array;
+  famineYears!: Float64Array;
+  /** The harvest anomaly's raw AR(1) state on the weather grid (W29): the last year read, persisted and hashed. */
+  harvestZ: Float64Array;
   /** Authoritative per-package farmer masses; allocated by the people layer. */
   farmers: Record<string, Float64Array> = {};
   peopleInitialized = false;
@@ -135,10 +141,12 @@ export class World {
       peopleBirths: 0,
       peopleDeaths: 0,
       peopleMigration: 0,
+      peopleFamineDeaths: 0,
       pricedPairs: 0,
     };
     this.cellAreaKm2 = new Float64Array(this.N);
     this.capField = new Float64Array(this.N);
+    this.harvestZ = new Float64Array(HARVEST_CELLS);
     if (this.substrate) initializePeople(this);
     else allocateFields(this as unknown as Record<string, unknown>, this.N);
     this.awakeSchedule = resolveSchedule(this);
@@ -330,6 +338,9 @@ export function hashWorld(world: World): string {
     hashNumber(hash, years.length);
     hashField(hash, years);
   });
+  hashText(hash, "harvestZ");
+  hashNumber(hash, world.harvestZ.length);
+  hashField(hash, world.harvestZ);
   if (peopleState._peopledMask) {
     hashText(hash, "peopledMask");
     hashBytes(hash, peopleState._peopledMask);

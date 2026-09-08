@@ -64,6 +64,26 @@ import {
   PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
   PEOPLE_WORKS_BUILD_PER_YEAR,
+  HARVEST_COOL_ONSET_C,
+  HARVEST_COOL_RAMP_C,
+  HARVEST_CV_BASE,
+  HARVEST_CV_FLOOD,
+  HARVEST_CV_MARGIN,
+  HARVEST_CV_SEASON,
+  HARVEST_CV_WINTER,
+  HARVEST_MOISTURE_ONSET,
+  HARVEST_MONSOON_ONSET,
+  HARVEST_SEASON_AMPLITUDE_MIN_C,
+  EARTH_DEGREES,
+  EARTH_HALF_DEGREES,
+  HARVEST_FAMINE_LOSS,
+  HARVEST_LEAN_Z,
+  HARVEST_MULTIPLIER_CEILING,
+  HARVEST_MULTIPLIER_FLOOR,
+  HARVEST_WEATHER_CELL_DEGREES,
+  HARVEST_YEAR_PERSISTENCE,
+  PEOPLE_STARVATION_RATE_PER_YEAR,
+  MATH_HALF,
   PEOPLE_WORKS_DECAY_PER_YEAR,
   PEOPLE_WORKS_GAIN,
   PEOPLE_WORKS_PRESSURE_FLOOR,
@@ -83,10 +103,25 @@ import { northSouthKm, rowEastWestKm } from "../src/sim/travel/cost";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
-import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare } from "../src/sim/people/habitability";
+import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare, yieldVariance, yieldVarianceParts } from "../src/sim/people/habitability";
 import { stepWorks } from "../src/sim/people/works";
+import {
+  HARVEST_CELLS,
+  HARVEST_COLUMNS,
+  HARVEST_ROWS,
+  advanceHarvestYear,
+  harvestGridsOf,
+  harvestMultiplier,
+  harvestYearsOf,
+  isFamineYear,
+  readHarvestAnomaly,
+  seedHarvestYears,
+  smoothHarvestYear,
+  stepHarvest,
+} from "../src/sim/people/harvest";
 import { mixtureCapacity } from "../src/sim/people/capacity";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../src/ported/worldgen/cropPackages.js";
+import { demand } from "../src/ported/worldgen/biomeClass.js";
 import { orographicFootprintRadius, orographicShare } from "../src/ported/worldgen/realClimateData.js";
 import { stepFromYear } from "../src/sim/horizon";
 
@@ -157,6 +192,9 @@ function peopleFixture(): Substrate {
     landShapeBlock: 1,
     walkKm: new Float32Array(cells * 4),
     snow: emptySnowpack(cells),
+    dryFraction: new Float32Array(cells),
+    temperatureAmplitude: new Float32Array(cells),
+    warmRainFraction: new Float32Array(cells),
     walkAscent: new Float32Array(cells * 4),
     walkDescent: new Float32Array(cells * 4),
     elevation: new Float32Array(cells),
@@ -1546,9 +1584,369 @@ async function main(): Promise<void> {
     kernel._wasmPeopleKernel?.dispose();
   }
 
+  // W29: the yield-variance map. Each factor alone on a fixture cell, the
+  // water blend, the winter outside it, and the field filled on the dev
+  // substrate with every land cell inside the formula's range.
+  {
+    const substrate = peopleFixture();
+    const ts = new World({ seed: 13, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    // The seasonal fields are float32: a degree of amplitude is stored to
+    // ~1e-7 of itself, so the parts are read to that precision.
+    const near = (a: number, b: number, what: string): void => assert.ok(Math.abs(a - b) < 1e-6, `${what}: ${a} vs ${b}`);
+    for (let cell = 0; cell < ts.N; cell++) {
+      assert.equal(ts._yieldCv[cell], yieldVariance(ts, cell));
+      if (!substrate.landMask[cell]) assert.equal(ts._yieldCv[cell], 0, "water has no harvest");
+    }
+    const cell = ts._landCells[Math.floor(ts._landCells.length / 2)] ?? 0;
+    const savedMoisture = ts._annualMoisture[cell] ?? 0;
+    const savedSurface = ts._surfaceAccess[cell] ?? 0;
+    // The fixture: no dry season, no amplitude, no surface water.
+    assert.equal(substrate.dryFraction[cell], 0);
+    assert.equal(substrate.temperatureAmplitude[cell], 0);
+    assert.equal(ts._surfaceAccess[cell], 0);
+    // Reliably watered: the floor alone.
+    ts._annualMoisture[cell] = 1;
+    let parts = yieldVarianceParts(ts, cell);
+    assert.equal(parts.rainMargin, 0, "wet ground has no rain margin");
+    assert.equal(parts.seasonal, 0);
+    assert.equal(parts.winterRisk, 0, "no amplitude, no winter");
+    assert.equal(parts.water, 0, "no surface water, no flood share");
+    near(parts.cv, HARVEST_CV_BASE, "the reliably-watered floor");
+    // The desert margin: the full margin on top.
+    ts._annualMoisture[cell] = 0;
+    parts = yieldVarianceParts(ts, cell);
+    assert.equal(parts.rainMargin, 1, "no rain is the full margin");
+    near(parts.cv, HARVEST_CV_BASE + HARVEST_CV_MARGIN, "desert-edge rain farming");
+    // The half-dry year: the full season term on watered ground; a desert's
+    // twelve dry months and a rainforest's none add nothing.
+    ts._annualMoisture[cell] = 1;
+    substrate.dryFraction[cell] = 0.5;
+    parts = yieldVarianceParts(ts, cell);
+    near(parts.seasonal, 1, "the half-dry year is the full season");
+    near(parts.cv, HARVEST_CV_BASE + HARVEST_CV_SEASON, "one season carries the year");
+    substrate.dryFraction[cell] = 1;
+    assert.equal(yieldVarianceParts(ts, cell).seasonal, 0, "twelve dry months are the margin's business");
+    substrate.dryFraction[cell] = 0;
+    // The margin halves the season's addition on the way to the desert.
+    ts._annualMoisture[cell] = 0;
+    substrate.dryFraction[cell] = 0.5;
+    near(yieldVarianceParts(ts, cell).cv, HARVEST_CV_BASE + HARVEST_CV_MARGIN + HARVEST_CV_SEASON * (1 - MATH_HALF), "the season term is damped at the full margin");
+    substrate.dryFraction[cell] = 0;
+    ts._annualMoisture[cell] = 1;
+    // The monsoon: all the rain in the warm half is the full season, read
+    // only where the year has seasons.
+    substrate.warmRainFraction[cell] = 1;
+    substrate.temperatureAmplitude[cell] = (HARVEST_SEASON_AMPLITUDE_MIN_C - 1) / 100;
+    assert.equal(yieldVarianceParts(ts, cell).seasonal, 0, "under the amplitude gate the warm half is not a season");
+    // (A float32 field: a degree clear of the gate, not the gate itself.)
+    substrate.temperatureAmplitude[cell] = (HARVEST_SEASON_AMPLITUDE_MIN_C + 1) / 100;
+    parts = yieldVarianceParts(ts, cell);
+    near(parts.seasonal, 1, "the whole year's rain in the warm half is the full season");
+    substrate.warmRainFraction[cell] = MATH_HALF + HARVEST_MONSOON_ONSET / 2;
+    near(yieldVarianceParts(ts, cell).seasonal, 0, "at the onset concentration nothing is read");
+    // (Rain spread evenly over the year: the amplitude below is the winter's
+    // alone, not a monsoon's.)
+    substrate.warmRainFraction[cell] = MATH_HALF;
+    substrate.temperatureAmplitude[cell] = 0;
+    // The winter: the cool half's mean under the onset; a cool half at the
+    // onset nothing — scorching summers over a mild winter carry no risk.
+    const annualC = temperatureC(ts._annualTemperature[cell] ?? 0);
+    substrate.temperatureAmplitude[cell] = (annualC - HARVEST_COOL_ONSET_C) / 100;
+    near(yieldVarianceParts(ts, cell).winterRisk, 0, "a cool half at the onset carries no risk");
+    substrate.temperatureAmplitude[cell] = (annualC - HARVEST_COOL_ONSET_C + HARVEST_COOL_RAMP_C) / 100;
+    parts = yieldVarianceParts(ts, cell);
+    near(parts.winterRisk, 1, "a cool half a ramp under the onset is the full winter");
+    near(parts.cv, HARVEST_CV_BASE + HARVEST_CV_WINTER, "the winter adds on the floor");
+    // The water share is of the farmland: half the cell watered on wet
+    // ground is half the flood regime, and the winter stays outside the
+    // blend; a strip of watered ground in the desert, where no rain farms,
+    // is wholly the river's; no water at all is not a share.
+    ts._surfaceAccess[cell] = MATH_HALF;
+    parts = yieldVarianceParts(ts, cell);
+    near(parts.water, MATH_HALF, "half the cell watered on farmable ground is half the flood regime");
+    near(parts.cv, HARVEST_CV_BASE * MATH_HALF + HARVEST_CV_FLOOD * MATH_HALF + HARVEST_CV_WINTER, "the winter is outside the water blend");
+    substrate.temperatureAmplitude[cell] = 0;
+    ts._annualMoisture[cell] = 0;
+    ts._surfaceAccess[cell] = 0.05;
+    parts = yieldVarianceParts(ts, cell);
+    assert.equal(parts.water, 1, "a watered strip in the desert is wholly the river's");
+    near(parts.cv, HARVEST_CV_FLOOD, "a wholly river-fed valley carries the flood regime's own variance");
+    ts._annualMoisture[cell] = HARVEST_MOISTURE_ONSET;
+    ts._surfaceAccess[cell] = 0.2;
+    parts = yieldVarianceParts(ts, cell);
+    near(parts.water, 0.2 / (0.2 + (1 - 0.2) * (1 - parts.rainMargin)), "between, the rain-fed ground counts in proportion to the rain's viability");
+    ts._annualMoisture[cell] = 0;
+    ts._surfaceAccess[cell] = 0;
+    assert.equal(yieldVarianceParts(ts, cell).water, 0, "no water at all is not a share");
+    ts._annualMoisture[cell] = savedMoisture;
+    ts._surfaceAccess[cell] = savedSurface;
+    // The dev substrate: every land cell inside the formula's range, some
+    // land river-fed and not all, the deserts at the full margin, no margin
+    // above the semi-arid onset.
+    const earth = buildSubstrate(42042, {}, "dev");
+    const world = new World({ seed: 14, grid: "dev", config: { peopleKernel: "ts" }, substrate: earth }) as PeopleWorld;
+    const ceiling = HARVEST_CV_BASE + HARVEST_CV_MARGIN + HARVEST_CV_SEASON + HARVEST_CV_WINTER;
+    let rivers = 0;
+    let dryLand = 0;
+    for (const land of world._landCells) {
+      const cv = world._yieldCv[land] ?? 0;
+      assert.ok(cv >= Math.min(HARVEST_CV_BASE, HARVEST_CV_FLOOD) - 1e-12 && cv <= ceiling + 1e-12, `cv ${cv} inside the formula's range`);
+      const p = yieldVarianceParts(world, land);
+      if (p.water > 0) rivers++;
+      if (p.rainMargin >= 1) dryLand++;
+      const em = (world._annualMoisture[land] ?? 0) / demand(world._annualTemperature[land] ?? 0);
+      if (em >= HARVEST_MOISTURE_ONSET) assert.equal(p.rainMargin, 0, "above the semi-arid onset there is no margin");
+    }
+    assert.ok(rivers > 0 && rivers < world._landCells.length, "some land is river-fed, not all");
+    assert.ok(dryLand > 0, "the deserts sit at the full margin");
+  }
+
+  // W29: the harvest years. The weather grid's shape; the firings tile the
+  // year line in both regimes, each year once; the anomaly is a stationary
+  // unit-variance series with the stated persistence, a function of the
+  // seed and the year index alone; the bilinear read wraps columns and
+  // clamps rows; the multiple and the famine test; the deaths law on a
+  // fixture cell with foragers exempt and the famine tally kept; the state
+  // saved and hashed; the pass on the growth stride; both kernels bit for bit.
+  {
+    assert.equal(HARVEST_COLUMNS, EARTH_DEGREES / HARVEST_WEATHER_CELL_DEGREES);
+    assert.equal(HARVEST_ROWS, EARTH_HALF_DEGREES / HARVEST_WEATHER_CELL_DEGREES);
+    assert.equal(HARVEST_CELLS, HARVEST_COLUMNS * HARVEST_ROWS);
+    // Tiling: awake firings a year apart and solve firings seven years apart
+    // carry the same years, each exactly once; a flush to an epoch and the
+    // awake firings after an odd wake step lose none and repeat none.
+    const yearsCovered = (firings: Array<[number, number]>): number[] => {
+      const seen: number[] = [];
+      for (const [step, dt] of firings) {
+        const { first, last } = harvestYearsOf(step, dt);
+        for (let year = first; year <= last; year++) seen.push(year);
+      }
+      return seen;
+    };
+    const awake = yearsCovered(Array.from({ length: 14 }, (_, i) => [i * MONTHS_PER_YEAR, MONTHS_PER_YEAR] as [number, number]));
+    const solve = yearsCovered([[0, 84], [84, 84]]);
+    assert.deepEqual(awake, Array.from({ length: 14 }, (_, i) => i), "a year per awake firing");
+    assert.deepEqual(solve, awake, "the solve regime carries the same years, seven per firing");
+    const wake = yearsCovered([[0, 84], [84, 16], [108, 12], [120, 12]]);
+    assert.deepEqual(wake, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "a flush to step 100 and the awake firings after it tile the years");
+    assert.ok(harvestYearsOf(1, 6).last < harvestYearsOf(1, 6).first, "a firing with no harvest month carries no year");
+    assert.deepEqual(harvestYearsOf(12, 1), { first: 1, last: 1 }, "a one-month firing on the harvest month carries it");
+    // The series: seeded and advanced identically from the seed, differing
+    // by seed, stationary at unit variance with the stated persistence, and
+    // the smoothing keeps the variance.
+    const substrate = peopleFixture();
+    const a = new World({ seed: 21, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    const b = new World({ seed: 21, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    const c = new World({ seed: 22, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    assert.deepEqual(Array.from(a.harvestZ), Array.from(b.harvestZ), "the opening anomaly is the seed's");
+    assert.notDeepEqual(Array.from(a.harvestZ), Array.from(c.harvestZ), "another seed, another opening");
+    assert.ok(a.harvestZ.some((value) => value !== 0), "the opening is a draw, not a calm");
+    const sevenByOne = new Float64Array(7 * HARVEST_CELLS);
+    for (let year = 0; year < 7; year++) {
+      a.step = year * MONTHS_PER_YEAR;
+      sevenByOne.set(harvestGridsOf(a, MONTHS_PER_YEAR), year * HARVEST_CELLS);
+    }
+    b.step = 0;
+    const oneBySeven = harvestGridsOf(b, 84);
+    assert.deepEqual(Array.from(oneBySeven), Array.from(sevenByOne), "seven yearly firings and one seven-year firing read the same years");
+    assert.deepEqual(Array.from(a.harvestZ), Array.from(b.harvestZ), "and leave the same state");
+    a.step = 7 * MONTHS_PER_YEAR + 1;
+    assert.equal(harvestGridsOf(a, 1).length, 0, "a firing carrying no harvest month reads nothing");
+    let sum = 0;
+    let squares = 0;
+    let lagged = 0;
+    let smoothedSquares = 0;
+    let polarSquares = 0;
+    const years = 2000;
+    const smoothed = new Float64Array(HARVEST_CELLS);
+    const previous = Float64Array.from(c.harvestZ);
+    for (let year = 0; year < years; year++) {
+      advanceHarvestYear(c, year);
+      smoothHarvestYear(c.harvestZ, smoothed, 0);
+      for (let index = 0; index < HARVEST_CELLS; index++) {
+        const value = c.harvestZ[index] ?? 0;
+        sum += value;
+        squares += value * value;
+        lagged += value * (previous[index] ?? 0);
+        previous[index] = value;
+        // The polar rows' clamped neighbour is the cell itself, which
+        // weights the centre up: the interior keeps unit variance, the two
+        // polar rows (no farmland there) run a little over it.
+        const row = Math.floor(index / HARVEST_COLUMNS);
+        if (row === 0 || row === HARVEST_ROWS - 1) polarSquares += (smoothed[index] ?? 0) ** 2;
+        else smoothedSquares += (smoothed[index] ?? 0) ** 2;
+      }
+    }
+    const samples = years * HARVEST_CELLS;
+    const interiorSamples = years * HARVEST_COLUMNS * (HARVEST_ROWS - 2);
+    const polarSamples = years * HARVEST_COLUMNS * 2;
+    assert.ok(Math.abs(sum / samples) < 0.02, `the anomaly is centred: mean ${sum / samples}`);
+    assert.ok(Math.abs(squares / samples - 1) < 0.05, `unit variance: ${squares / samples}`);
+    assert.ok(Math.abs(lagged / samples - HARVEST_YEAR_PERSISTENCE) < 0.03, `the stated persistence: ${lagged / samples}`);
+    assert.ok(Math.abs(smoothedSquares / interiorSamples - 1) < 0.05, `the smoothing keeps unit variance inland: ${smoothedSquares / interiorSamples}`);
+    assert.ok(polarSquares / polarSamples > 1 && polarSquares / polarSamples < 1.5, `the polar rows run over it by the clamped share: ${polarSquares / polarSamples}`);
+    // The bilinear read: a flat grid reads flat everywhere; columns wrap so
+    // the seam blends both edges; rows clamp so the pole row reads itself.
+    const flat = new Float64Array(HARVEST_CELLS).fill(0.75);
+    for (const land of a._landCells) {
+      const y = Math.floor(land / a.width);
+      const x = land - y * a.width;
+      assert.ok(Math.abs(readHarvestAnomaly(flat, 0, x, y, a.width, a.height) - 0.75) < 1e-12, "a flat year reads flat");
+    }
+    const seam = new Float64Array(HARVEST_CELLS);
+    for (let row = 0; row < HARVEST_ROWS; row++) seam[row * HARVEST_COLUMNS] = 1;
+    const eastEdge = readHarvestAnomaly(seam, 0, a.width - 1, Math.floor(a.height / 2), a.width, a.height);
+    const westEdge = readHarvestAnomaly(seam, 0, 0, Math.floor(a.height / 2), a.width, a.height);
+    assert.ok(eastEdge > 0 && eastEdge < 1, "the eastern edge reads the column across the seam");
+    assert.ok(westEdge > eastEdge, "the western edge sits nearer that column");
+    const poles = new Float64Array(HARVEST_CELLS);
+    for (let column = 0; column < HARVEST_COLUMNS; column++) poles[column] = 1;
+    assert.equal(readHarvestAnomaly(poles, 0, 0, 0, a.width, a.height), 1, "the polar row reads its own row");
+    assert.equal(readHarvestAnomaly(poles, 0, 0, a.height - 1, a.width, a.height), 0, "the far pole reads nothing of it");
+    // The multiple and the famine test.
+    assert.equal(harvestMultiplier(0, 0.5), 1, "the mean year is the mean year");
+    assert.equal(harvestMultiplier(-4, 0.5), HARVEST_MULTIPLIER_FLOOR, "the worst year is the floor");
+    assert.equal(harvestMultiplier(4, 0.5), HARVEST_MULTIPLIER_CEILING, "the best is the ceiling");
+    assert.equal(harvestMultiplier(-1, 0.2), 1 - 0.2, "a valley's bad year is a fifth short");
+    assert.ok(isFamineYear(HARVEST_LEAN_Z - 0.01, HARVEST_FAMINE_LOSS - 0.01), "a bottom-decile year a third short is a famine");
+    assert.ok(!isFamineYear(HARVEST_LEAN_Z + 0.01, HARVEST_FAMINE_LOSS - 0.01), "an ordinary-decile year is not, however short");
+    assert.ok(!isFamineYear(HARVEST_LEAN_Z - 0.01, HARVEST_FAMINE_LOSS + 0.01), "nor a bottom-decile year on reliably watered ground");
+    // The deaths law on a fixture cell: at cv 0 every year is the mean year
+    // and the excess over the ceiling dies back at the rate; foragers above
+    // their own ceiling are untouched; at cv ½ the tally counts exactly the
+    // years the multiple fell under 1 + cv × lean z.
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    let cell = -1;
+    for (const candidate of a._landCells) {
+      const packed = a._packedOf[candidate] ?? -1;
+      if ((a._canGrow[wheat]?.[packed] ?? 0) === 0) continue;
+      cell = candidate;
+      break;
+    }
+    assert.ok(cell >= 0, "the fixture holds wheat ground");
+    const packed = a._packedOf[cell] ?? -1;
+    markPackageActive(a, wheat);
+    a.people[cell] = 1;
+    a.farmers[wheatId]![packed] = 1;
+    deriveTechniqueFromFarmers(a);
+    deriveCapacity(a);
+    const capacity = packageCapacity(a, cell, wheat);
+    assert.ok(capacity > 0);
+    a._yieldCv[cell] = 0;
+    const foragersHere = 3;
+    a.people[cell] = 2 * capacity + foragersHere;
+    a.farmers[wheatId]![packed] = 2 * capacity;
+    deriveTechniqueFromFarmers(a);
+    // The ceiling is the technique regime's (the farmed share moved with the
+    // foragers added): read it as the pass will.
+    const ceiling = packageCapacity(a, cell, wheat);
+    a.step = MONTHS_PER_YEAR;
+    const deaths = stepHarvest(a, MONTHS_PER_YEAR);
+    const dead = Math.min(2 * capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (2 * capacity - ceiling));
+    assert.equal(a.farmers[wheatId]![packed], 2 * capacity - dead, "the excess over the ceiling dies back at the rate");
+    assert.equal(a._farmerTotal[packed], 2 * capacity - dead, "the total follows");
+    assert.equal(a.people[cell], foragersHere + (2 * capacity - dead), "the foragers are untouched");
+    assert.equal(a._yearMul[packed], 1, "at no variance every year is the mean year");
+    assert.equal(a.famineYears[cell], 0, "and none is a famine");
+    assert.ok(Math.abs(deaths - dead * (a.cellAreaKm2[cell] ?? 0)) < 1e-9, "the pass reports the dead as persons");
+    a.farmers[wheatId]![packed] = capacity / 2;
+    a.people[cell] = capacity / 2 + foragersHere;
+    deriveTechniqueFromFarmers(a);
+    a.step = 2 * MONTHS_PER_YEAR;
+    assert.equal(stepHarvest(a, MONTHS_PER_YEAR), 0, "under the ceiling nobody starves in the mean year");
+    assert.equal(a.farmers[wheatId]![packed], capacity / 2);
+    a._yieldCv[cell] = MATH_HALF;
+    let famines = 0;
+    let hungryYears = 0;
+    for (let year = 3; year < 400; year++) {
+      a.farmers[wheatId]![packed] = capacity;
+      a.people[cell] = capacity + foragersHere;
+      deriveTechniqueFromFarmers(a);
+      a.step = year * MONTHS_PER_YEAR;
+      const before = a.famineYears[cell] ?? 0;
+      const ceilingNow = packageCapacity(a, cell, wheat);
+      stepHarvest(a, MONTHS_PER_YEAR);
+      const multiple: number = a._yearMul[packed] ?? 0;
+      const expected = capacity - ceilingNow * multiple > 0
+        ? Math.min(capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (capacity - ceilingNow * multiple))
+        : 0;
+      assert.equal(a.farmers[wheatId]![packed], capacity - expected, "the year's shortfall is the year's dead");
+      if (multiple < 1) hungryYears++;
+      const famine: boolean = multiple < 1 + MATH_HALF * HARVEST_LEAN_Z;
+      if (famine) famines++;
+      assert.equal((a.famineYears[cell] ?? 0) - before, famine ? 1 : 0, "the tally counts the bottom-decile failures");
+    }
+    assert.ok(hungryYears > 100 && hungryYears < 300, `about half the years fall short: ${hungryYears}`);
+    assert.ok(famines > 10 && famines < 90, `about a tenth are famines: ${famines}`);
+    assert.equal(a.famineYears[cell], famines);
+    // Saved and hashed with the rest of the state; the tally is a field.
+    // (The pass leaves the technique share to the firing's commit: refresh
+    // it as the commit would before comparing identities.)
+    deriveTechniqueFromFarmers(a);
+    deriveCapacity(a);
+    const loaded = loadWorld(serializeWorld(a), substrate) as PeopleWorld;
+    assert.deepEqual(Array.from(loaded.harvestZ), Array.from(a.harvestZ), "the anomaly state survives a save");
+    assert.equal(loaded.famineYears[cell], a.famineYears[cell], "so does the tally");
+    assert.equal(hashWorld(loaded), hashWorld(a));
+    loaded.harvestZ[0] = (loaded.harvestZ[0] ?? 0) + 1;
+    assert.notEqual(hashWorld(loaded), hashWorld(a), "the anomaly state is in the world hash");
+    // The pass is scheduled with growth in both regimes.
+    const awakeHarvest = resolveSchedule(a).find((row) => row.name === "people.harvest");
+    const awakeGrowth = resolveSchedule(a).find((row) => row.name === "people.growth");
+    assert.ok(awakeHarvest && awakeGrowth && awakeHarvest.stride === awakeGrowth.stride, "the harvest fires on the growth stride");
+    assert.equal(a.solveSchedule.find((row) => row.name === "people.harvest")?.stride, resolveSolveStrides(a).reaction);
+    // Both kernels: the same fields, byte for byte, after one solve firing
+    // over a world filled half again above its ceiling, and the same dead.
+    const earth = buildSubstrate(42042, {}, "dev");
+    const oracle = new World({ seed: 12, grid: "dev", config: { peopleKernel: "ts" }, substrate: earth }) as PeopleWorld;
+    const kernel = new World({ seed: 12, grid: "dev", config: { peopleKernel: "wasm", peopleWorkers: 1 }, substrate: earth }) as PeopleWorld;
+    assert.ok(kernel._wasmPeopleKernel, "the wasm kernel is up for the harvest parity check");
+    const kernelDeaths: number[] = [];
+    for (const world of [oracle, kernel]) {
+      for (const land of world._landCells) {
+        const at = world._packedOf[land] ?? -1;
+        if ((world._canGrow[wheat]?.[at] ?? 0) === 0) continue;
+        world.people[land] = 1;
+        world.farmers[wheatId]![at] = 1;
+      }
+      markPackageActive(world, wheat);
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      for (const land of world._landCells) {
+        const at = world._packedOf[land] ?? -1;
+        if ((world.farmers[wheatId]?.[at] ?? 0) <= 0) continue;
+        const ceiling = packageCapacity(world, land, wheat);
+        world.farmers[wheatId]![at] = ceiling * (1 + MATH_HALF);
+        world.people[land] = ceiling * (1 + MATH_HALF) + 1;
+      }
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      world.step = 84;
+      kernelDeaths.push(stepHarvest(world, resolveSolveStrides(world).reaction));
+    }
+    assert.ok((kernelDeaths[0] ?? 0) > 0, "a world above its ceiling starves somewhere");
+    assert.equal(kernelDeaths[0], kernelDeaths[1], "the two kernels count the same dead");
+    let famineCells = 0;
+    for (const land of oracle._landCells) if ((oracle.famineYears[land] ?? 0) > 0) famineCells++;
+    assert.ok(famineCells > 0, "seven years bring a famine somewhere");
+    const same = (left: Float64Array, right: Float64Array, what: string): void => assert.ok(
+      Buffer.from(left.buffer, left.byteOffset, left.byteLength).equals(Buffer.from(right.buffer, right.byteOffset, right.byteLength)),
+      `the two kernels agree on ${what}, bit for bit`,
+    );
+    same(oracle.people, kernel.people, "the people");
+    same(oracle.farmers[wheatId]!, kernel.farmers[wheatId]!, "the farmers");
+    same(oracle._farmerTotal, kernel._farmerTotal, "the farmer totals");
+    same(oracle.famineYears, kernel.famineYears, "the famine years");
+    same(oracle._yearMul, kernel._yearMul, "the year's multiple");
+    kernel._wasmPeopleKernel?.dispose();
+  }
+
   console.log(JSON.stringify({
     tests: "ok",
     works: "ok",
+    yieldVariance: "ok",
+    harvest: "ok",
     rng: "v1-byte-compatible",
     dmath: "golden",
     saveLoad: "byte-identical",

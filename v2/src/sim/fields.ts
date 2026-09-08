@@ -44,6 +44,14 @@ export const FIELD_LIST: readonly FieldDefinition[] = [
     defaultValue: 0,
     allocate: (length) => new Float64Array(length),
   },
+  {
+    // The famine years (W29): the tally of bottom-decile harvests that
+    // failed by more than a third while the cell's farmers lived through
+    // them. A count of things that have happened: it never falls.
+    name: "famineYears",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
 ];
 
 export type FieldHost = Record<string, unknown>;

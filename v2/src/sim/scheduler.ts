@@ -46,6 +46,7 @@ const SCHEDULE_NAMES = [
   MIGRATION_PASS,
   "people.cohorts",
   "people.works",
+  "people.harvest",
 ] as const;
 
 function positiveInteger(value: unknown, fallback: number): number {
@@ -181,6 +182,9 @@ export function resolveSchedule(world: World): readonly PassSchedule[] {
     // The works build and rot on the firing's committed people and derived
     // capacity (W28): the growth stride, after the commit.
     scheduleEntry(world, SCHEDULE_NAMES[6], growthStride),
+    // The harvest years (W29) fall between the firing's capacity and its
+    // growth, one per year of the firing: the growth stride.
+    scheduleEntry(world, SCHEDULE_NAMES[7], growthStride),
   ]);
 }
 

@@ -22,3 +22,7 @@ export const B_SUBTROP: number;
 export const B_COLD_DESERT: number;
 export const B_FLOODPLAIN: number;
 export const B_MEDITERRANEAN: number;
+/** Holdridge biotemperature, °C, from the sim temperature unit (t = 0.6 + °C/100), capped at 30. */
+export function bioTemp(t: number): number;
+/** Evaporative demand normalised to tropical PET, from the sim temperature unit: 0.13 at the pole, 1 at 30 °C biotemperature. */
+export function demand(t: number): number;

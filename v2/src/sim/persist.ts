@@ -1,6 +1,6 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W28 } from "./constants";
+import { SAVE_VERSION_W29 } from "./constants";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World, type WorldEvent } from "./world";
 import type { HearthState } from "./people/types";
@@ -9,7 +9,7 @@ import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
 import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W28;
+export const SAVE_VERSION = SAVE_VERSION_W29;
 
 export interface SerializedField {
   readonly length: number;
@@ -43,6 +43,8 @@ export interface SaveEnvelope {
     readonly hearthYears?: Record<string, SerializedField>;
     readonly peopledMask: string;
     readonly dominantPackage: string;
+    /** The harvest anomaly's raw AR(1) state on the weather grid (W29). */
+    readonly harvestZ: SerializedField;
   };
 }
 
@@ -151,6 +153,11 @@ export function saveWorld(world: World): SaveEnvelope {
       hearthYears,
       peopledMask,
       dominantPackage,
+      harvestZ: {
+        length: world.harvestZ.length,
+        encoding: "base64-float64-le",
+        data: base64FromField(world.harvestZ),
+      },
     },
   };
 }
@@ -196,6 +203,14 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   }
   world.peopleInitialized = data.people.initialized;
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
+  if (!data.people.harvestZ) throw new Error("Missing harvest anomaly state.");
+  const harvestZ = fieldFromBase64(data.people.harvestZ, {
+    name: "harvestZ",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  });
+  if (harvestZ.length !== world.harvestZ.length) throw new Error("Invalid harvest anomaly length.");
+  world.harvestZ.set(harvestZ);
   if (world.substrate) for (const [packageId, current] of Object.entries(asPeopleWorld(world).farmers)) {
     const serialized = data.people.farmerFields?.[packageId];
     if (!serialized) {

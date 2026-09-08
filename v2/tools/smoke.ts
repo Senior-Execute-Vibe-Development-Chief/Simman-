@@ -105,6 +105,7 @@ async function main(): Promise<void> {
     assert.equal(metrics["field.people.n"], deterministic.world.N, `collector missed ${grid} people field`);
     assert.equal(metrics["field.technique.n"], deterministic.world.N, `collector missed ${grid} technique field`);
     assert.equal(metrics["field.works.n"], deterministic.world.N, `collector missed ${grid} works field`);
+    assert.equal(metrics["field.famineYears.n"], deterministic.world.N, `collector missed ${grid} famine-years field`);
     assert.equal(metrics["world.step"], TICKS, `collector missed ${grid} step`);
     results.push({
       grid,

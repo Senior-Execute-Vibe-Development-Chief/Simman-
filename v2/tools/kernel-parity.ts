@@ -13,6 +13,7 @@ const PEOPLE_FIELDS = [
   "people",
   "technique",
   "works",
+  "famineYears",
   "children",
   "working",
   "elders",
@@ -20,6 +21,7 @@ const PEOPLE_FIELDS = [
 ] as const;
 
 const PEOPLE_SCRATCH = [
+  "_yearMul",
   "_peopleNext",
   "_techniqueNext",
   "_childrenMass",

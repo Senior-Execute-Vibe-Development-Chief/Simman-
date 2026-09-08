@@ -1594,6 +1594,25 @@ lawyered.
   implies. Until then W17's single harvest stands, and the asymmetry is on
   the record rather than dialed out of it.
 
+- **P22. The famine's flight and its store** (proposal, 2026-09-08,
+  W29, QUESTIONS #86). The harvest law kills in place: the year's multiple
+  enters no room the movement sees (the migration hotspot is the mean-year
+  capacity), so a starving cell's people die where they stand instead of
+  walking to the neighbour whose year was better, and no store carries a
+  bad year — the granary is W30's (04 §4.1's food books). Proposed, not
+  built: (i) the year's multiple scales the room the awake regime's
+  movement reads, so the flight from a failed harvest is the hotspot law on
+  this year's harvest instead of the mean's; (ii) W30's store buffers the
+  year before the deaths law sees it, at the storable share the food books
+  carry — which is where a famine's severity (Ó Gráda's harvest failures of
+  a third to a half becoming deaths of a tenth to a third) comes from;
+  (iii) the famine year's cohort weighting is M3b's. Each is a mechanism
+  with its own datum, none a rate. The famine-year LABEL (a bottom-decile
+  year failing by more than a third) is v1's and is kept: it fires ~10 % of
+  years wherever the yield CV exceeds 0.27 and almost never on reliably
+  watered ground, the shape of the regional famine chronologies, but
+  whether the label should follow the deaths rather than the yield is a
+  ruling.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in
@@ -1653,6 +1672,17 @@ lawyered.
   the dev cells cannot — `v2-long`. The other ruling-10 slots (the
   environmental stocks: soil fatigue, deforestation) stay inert until the
   food economy.
+  **W29 (2026-09-08): (iii) is BUILT** as the harvest law's mean year
+  (`spec/handoffs/W29-the-harvest-years.md`): the farmers above what the
+  year feeds die at 0.3 per year of the excess, so in a mean year a cell
+  above its ceiling falls back toward it at that rate and in a bad year —
+  the anomaly scaled by the cell's own yield CV — below it. Measured at dev
+  (QUESTIONS #86): the curve ×0.80 at −3000, −1000 and 1 CE (2,108 →
+  1,689M), the river cells' density ×0.88 and the rain-fed ×0.79, famine
+  deaths about one in six of the booked deaths. A fifth, not the fourfold
+  excess: (i) the land's own productivity and (ii) the front's reach remain
+  the first cause, the technique-term ruling is unchanged, and the store
+  (W30) and the flight (P22) are the harvest's own open ends.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures
@@ -1665,6 +1695,11 @@ lawyered.
   front at ~0.8–1 km/yr at both grids and lift the population curve toward
   capacity faster, which M3b's mortality then has to pay for; the owner
   rules on the order.
+  **W29 (2026-09-08):** the harvest years are the first deaths in the
+  curve (a fifth of it at dev, QUESTIONS #86), the mechanism that pays for
+  a faster uncrowded rate in every bad year; the ruling on r is still the
+  owner's, and the store (W30) comes before it, since without one a faster
+  refill of the excess is paid in deaths at once.
 - **P10. Paleoclimate anomaly track** (review, 2026-09-02). The sim
   applies today's climatology from 9700 BCE; the Sahara was green from
   ~9000 to ~4000 BCE, with lakes, herders, and the first Nile settlers

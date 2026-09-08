@@ -142,6 +142,12 @@ export interface PeopleWorld extends World {
   _reliefMult: Float64Array;
   /** The improvable share of each cell (W28, static): the ground water can be led onto — the surface access — plus what a wet climate improves by drainage and levelling alone. */
   _irrigable: Float64Array;
+  /** The yield-variance map (W29, static): the coefficient of variation of each cell's annual harvest, from the rain margin, the season's shape, the winter and the surface-water share. */
+  _yieldCv: Float64Array;
+  /** The last harvest year's yield multiple per land cell (W29, packed scratch for the lens): 0 where nobody farms, the years passing over an unfarmed cell unread. */
+  _yearMul: Float64Array;
+  /** Per-band famine deaths of the last harvest firing (W29, oracle scratch), persons. */
+  _harvestDeathsByBand: Float64Array;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;
   /** The terrestrial part of the forager capacity (W8): the living a stand's gatherers weigh their stand against. */

@@ -103,6 +103,8 @@ interface SnapshotPlanes {
   readonly technique: Float32Array;
   readonly packageView: Float32Array;
   readonly works: Float32Array;
+  readonly harvest: Float32Array;
+  readonly famine: Float32Array;
 }
 
 function snapshotPlanes(target: World): SnapshotPlanes {
@@ -120,12 +122,14 @@ function snapshotPlanes(target: World): SnapshotPlanes {
   const canGrowView = plane(2 + 1);
   const nativeView = plane(2 + 2);
   const works = plane(2 + 2 + 1);
+  const harvest = plane(2 + 2 + 2);
+  const famine = plane(2 + 2 + 2 + 1);
   if (target.substrate) {
     const overlays = staticOverlays(target as PeopleWorld);
     canGrowView.set(overlays.canGrow);
     nativeView.set(overlays.native);
   }
-  return { buffer, people, technique, packageView, works };
+  return { buffer, people, technique, packageView, works, harvest, famine };
 }
 
 function liveSnapshot(target: World): Record<string, unknown> {
@@ -134,7 +138,16 @@ function liveSnapshot(target: World): Record<string, unknown> {
   planes.people.set(target.people);
   planes.technique.set(target.technique);
   planes.works.set(target.works);
-  if (target.substrate) planes.packageView.set((target as PeopleWorld)._dominantPackage);
+  planes.famine.set(target.famineYears);
+  planes.harvest.fill(0);
+  if (target.substrate) {
+    const people = target as PeopleWorld;
+    planes.packageView.set(people._dominantPackage);
+    // The last harvest year's yield multiple is land-packed scratch (W29).
+    for (let packed = 0; packed < people._landCells.length; packed++) {
+      planes.harvest[people._landCells[packed] ?? 0] = people._yearMul[packed] ?? 0;
+    }
+  }
   // No world hash per snapshot: hashWorld walks every field with BigInt
   // arithmetic (5.3 s at the target grid — measured, review W3), which
   // made every tick batch take seconds regardless of the kernel. The hash
@@ -170,6 +183,9 @@ function reconstructedSnapshot(target: World, step: number): Record<string, unkn
   // The reconstruction carries no works: a condensation of the arrival
   // record, it shows unimproved land before the wake (W28, recorded).
   planes.works.fill(0);
+  // Nor a harvest year or a famine tally (W29): the record holds neither.
+  planes.harvest.fill(0);
+  planes.famine.fill(0);
   const years = step / MONTHS_PER_YEAR;
   let total = 0;
   for (let packed = 0; packed < people._landCells.length; packed++) {

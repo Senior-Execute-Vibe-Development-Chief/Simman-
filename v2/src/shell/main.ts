@@ -226,6 +226,8 @@ let overlayPackage: Float32Array | undefined;
 let overlayCanGrow: Float32Array | undefined;
 let overlayNative: Float32Array | undefined;
 let overlayWorks: Float32Array | undefined;
+let overlayHarvest: Float32Array | undefined;
+let overlayFamine: Float32Array | undefined;
 function displayDate(step: number): string {
   const year = yearFromStep(step);
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
@@ -287,18 +289,24 @@ worker.addEventListener("message", (event) => {
     const canGrowView = new Float32Array(buffer, 8 + count * 12, count);
     const nativeView = new Float32Array(buffer, 8 + count * 16, count);
     const worksView = new Float32Array(buffer, 8 + count * 20, count);
+    const harvestView = new Float32Array(buffer, 8 + count * 24, count);
+    const famineView = new Float32Array(buffer, 8 + count * 28, count);
     overlayPopulation = new Float32Array(count);
     overlayTechnique = new Float32Array(count);
     overlayPackage = new Float32Array(count);
     overlayCanGrow = new Float32Array(count);
     overlayNative = new Float32Array(count);
     overlayWorks = new Float32Array(count);
+    overlayHarvest = new Float32Array(count);
+    overlayFamine = new Float32Array(count);
     overlayPopulation.set(populationView);
     overlayTechnique.set(techniqueView);
     overlayPackage.set(packageView);
     overlayCanGrow.set(canGrowView);
     overlayNative.set(nativeView);
     overlayWorks.set(worksView);
+    overlayHarvest.set(harvestView);
+    overlayFamine.set(famineView);
     const reconstructed = event.data.reconstructed === true;
     if (!reconstructed) {
       const wokeNow = phase === "solve" && event.data.phase === "awake";
@@ -657,6 +665,24 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const value = Math.max(0, Math.min(1, overlayWorks?.[cell] ?? 0));
     if (value <= 0) return [40, 36, 30];
     return [Math.round(40 + 20 * value), Math.round(36 + 150 * value), Math.round(30 + 170 * value)];
+  }
+  if (lens.value === "harvest") {
+    // The last harvest year (W29): the year's yield multiple, a failed year
+    // red, an ordinary one the dun of a field, a bumper year green; land no
+    // year has been read on yet is dark.
+    const value = overlayHarvest?.[cell] ?? 0;
+    if (value <= 0) return [40, 36, 30];
+    const swing = Math.max(-1, Math.min(1, (value - 1) / 0.5));
+    if (swing < 0) return [Math.round(150 - 90 * swing), Math.round(130 + 100 * swing), Math.round(70 + 40 * swing)];
+    return [Math.round(150 - 90 * swing), Math.round(130 + 90 * swing), Math.round(70 - 20 * swing)];
+  }
+  if (lens.value === "famine") {
+    // The famine years (W29): the cell's tally of harvest failures, dark
+    // where none, the red deepening with the count (saturating at twenty).
+    const count = overlayFamine?.[cell] ?? 0;
+    if (count <= 0) return [40, 36, 30];
+    const share = Math.min(1, count / 20);
+    return [Math.round(90 + 165 * share), Math.round(50 - 30 * share), Math.round(40 - 20 * share)];
   }
   if (lens.value === "package") {
     const index = Math.floor(overlayPackage?.[cell] ?? 0);

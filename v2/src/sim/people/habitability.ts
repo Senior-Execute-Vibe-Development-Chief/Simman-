@@ -22,12 +22,28 @@ import {
   PEOPLE_WORKS_RAIN_FLOOR,
   PEOPLE_WORKS_RAIN_SHARE,
   PEOPLE_RELIEF_PENALTY,
+  HARVEST_COOL_ONSET_C,
+  HARVEST_COOL_RAMP_C,
+  HARVEST_CV_BASE,
+  HARVEST_CV_FLOOD,
+  HARVEST_CV_MARGIN,
+  HARVEST_CV_SEASON,
+  HARVEST_CV_WINTER,
+  HARVEST_GAUSSEN_SHAPE,
+  HARVEST_MOISTURE_ONSET,
+  HARVEST_MOISTURE_RAMP,
+  HARVEST_MONSOON_ONSET,
+  HARVEST_SEASON_AMPLITUDE_MIN_C,
+  DEGC_PER_TEMPERATURE_UNIT,
   MONTHS_PER_YEAR,
+  MATH_HALF,
   MATH_NEGATIVE_ONE,
   TRAVEL_HALF,
 } from "../constants";
 import { dcos } from "../dmath";
 import { D8_DX, D8_DY } from "../../ported/worldgen/riverGen.js";
+import { demand } from "../../ported/worldgen/biomeClass.js";
+import { temperatureC } from "../snow";
 import type { PeopleWorld } from "./types";
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -197,6 +213,94 @@ export function irrigableShare(world: PeopleWorld, cell: number): number {
   return clamp01((world._surfaceAccess[cell] ?? 0) + wet);
 }
 
+export interface YieldVarianceParts {
+  /** How close the rain-fed harvest sits to the crop's water minimum, 0..1: nothing where the effective moisture clears the semi-arid onset, one at the desert margin. */
+  readonly rainMargin: number;
+  /** How far one season carries the year, 0..1: the Gaussen dry-season shape or the warm half's rain concentration, whichever is larger. */
+  readonly seasonal: number;
+  /** The continental cold margin, 0..1, from the cool half's mean temperature. */
+  readonly winterRisk: number;
+  /** The surface-watered share of the cell's farmland, 0..1: the ground a river, a floodplain, a lake or the routed stream water against the ground the rain can farm. */
+  readonly water: number;
+  /** The rain-fed CV before the water blend. */
+  readonly cvRain: number;
+  /** The coefficient of variation of the annual harvest. */
+  readonly cv: number;
+}
+
+/**
+ * The yield-variance map (W29): the coefficient of variation of a cell's
+ * ANNUAL harvest — how hard the year-to-year swing hits this ground. v1's
+ * validated formula (harvest.js, 11 of 12 literature regions in band, the
+ * 2026-08-25 lap), on v2's own inputs. Four real factors, each named:
+ *
+ * - RAIN MARGIN: rain-fed variance rises as the effective moisture — the
+ *   annual index over the evaporative DEMAND, biomeClass's Holdridge layer,
+ *   so cool-wet England and hot-dry Mesopotamia are not confused at the
+ *   same index — nears the crop minimum.
+ * - SEASONALITY: a one-rainy-season regime bets the year on one season.
+ *   Two signals, the larger taken: the Gaussen dry-season shape, peaking at
+ *   the half-dry year (mediterranean, Sahel, monsoon with arid months; a
+ *   desert's twelve dry months are the margin's business); and the warm
+ *   half's rain concentration, which sees the East Asian monsoon that
+ *   stacks the rain in the warm half yet shows few Gaussen-arid months —
+ *   read only where the year has seasons (the amplitude gate: in the
+ *   low-amplitude tropics the "warmest six months" are the pre-rain heat).
+ * - WINTER RISK: the continental margin — winterkill, spring frost, the
+ *   short season between frost and drought — on the COOL half's mean, not
+ *   the amplitude: scorching summers over a mild winter carry no risk. The
+ *   axis that separates maritime England from the Pontic steppe at the
+ *   same annual water. It stays outside the water blend: a frozen valley
+ *   is frozen however well it floods.
+ * - THE WATER SHARE: a river-fed field decouples from the local rain and
+ *   carries the flood regime's own variance instead. The share is of the
+ *   cell's FARMLAND, not of its water: the surface-watered ground (W13's
+ *   surface access — routed stream, floodplain, river, lake — an area-
+ *   weighted term by construction) against the rain-fed ground, which is
+ *   the rest of the cell in proportion to the rain's viability, one minus
+ *   the margin. So a cell watered by its river reads as the river's, a
+ *   rain-fed plain beside it as the rain's, and on a desert bank where
+ *   rain farming is impossible whatever is farmed is water-fed — v1's
+ *   construction credit, stated as the ground it is: charging such a cell
+ *   the desert's rain-fed variance describes farms that cannot be there.
+ *
+ *   cvRain = BASE + MARGIN·rainMargin + SEASON·seasonal·(1 − rainMargin/2)
+ *   cv     = cvRain·(1 − water) + FLOOD·water + WINTER·winterRisk
+ */
+export function yieldVarianceParts(world: PeopleWorld, cell: number): YieldVarianceParts {
+  const substrate = world.substrate;
+  const moisture = world._annualMoisture[cell] ?? 0;
+  const temperature = world._annualTemperature[cell] ?? 0;
+  const effectiveMoisture = moisture / demand(temperature);
+  const rainMargin = clamp01((HARVEST_MOISTURE_ONSET - effectiveMoisture) / HARVEST_MOISTURE_RAMP);
+  const dry = substrate.dryFraction[cell] ?? 0;
+  const gaussen = Math.max(0, HARVEST_GAUSSEN_SHAPE * dry * (1 - dry) - 1);
+  const amplitudeC = (substrate.temperatureAmplitude[cell] ?? 0) * DEGC_PER_TEMPERATURE_UNIT;
+  const warmShare = substrate.warmRainFraction[cell] ?? MATH_HALF;
+  const concentration = Math.abs(warmShare - MATH_HALF) * 2;
+  const monsoon = amplitudeC >= HARVEST_SEASON_AMPLITUDE_MIN_C
+    ? Math.max(0, (concentration - HARVEST_MONSOON_ONSET) / (1 - HARVEST_MONSOON_ONSET))
+    : 0;
+  const seasonal = Math.max(gaussen, monsoon);
+  const coolHalfC = temperatureC(temperature) - amplitudeC;
+  const winterRisk = amplitudeC > 0
+    ? clamp01((HARVEST_COOL_ONSET_C - coolHalfC) / HARVEST_COOL_RAMP_C)
+    : 0;
+  const surface = clamp01(world._surfaceAccess[cell] ?? 0);
+  const rainFarmable = (1 - surface) * (1 - rainMargin);
+  const water = surface + rainFarmable > 0 ? surface / (surface + rainFarmable) : 0;
+  const cvRain = HARVEST_CV_BASE + HARVEST_CV_MARGIN * rainMargin
+    + HARVEST_CV_SEASON * seasonal * (1 - rainMargin * MATH_HALF);
+  const cv = cvRain * (1 - water) + HARVEST_CV_FLOOD * water + HARVEST_CV_WINTER * winterRisk;
+  return { rainMargin, seasonal, winterRisk, water, cvRain, cv };
+}
+
+/** The yield CV of a land cell (W29); zero on water. */
+export function yieldVariance(world: PeopleWorld, cell: number): number {
+  if (!world.substrate.landMask[cell]) return 0;
+  return yieldVarianceParts(world, cell).cv;
+}
+
 /** Water access: the year's rain and the land's own water together. */
 export function waterAccess(world: PeopleWorld, cell: number): number {
   return clamp01((world._annualMoisture[cell] ?? 0) + surfaceWaterAccess(world, cell));
@@ -276,6 +380,7 @@ export function fillStaticHabitability(world: PeopleWorld): void {
     world._surfaceAccess[cell] = surfaceWaterAccess(world, cell);
     world._waterAccess[cell] = waterAccess(world, cell);
     world._irrigable[cell] = irrigableShare(world, cell);
+    world._yieldCv[cell] = yieldVariance(world, cell);
     world._reliefMult[cell] = reliefMultiplier(world, cell);
     world._foragerCapacity[cell] = world.substrate.landMask[cell]
       ? foragerCapacity(world, cell)

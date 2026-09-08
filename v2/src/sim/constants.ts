@@ -310,7 +310,7 @@ export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed
 export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_DY = [-1, 1, 0, 0, -1, -1, 1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_OPPOSITE = [1, 0, 3, 2, 7, 6, 5, 4] as const; // spec/09-constants-ledger.md §M3a proposed — reverse stencil directions
-export const PEOPLE_SNAPSHOT_FIELD_COUNT = 6; // spec/09-constants-ledger.md §W28 — population, technique, package, can-grow, native, works overlays (5 through W27)
+export const PEOPLE_SNAPSHOT_FIELD_COUNT = 8; // spec/09-constants-ledger.md §W29 — population, technique, package, can-grow, native, works, harvest year, famine years overlays (6 through W28)
 
 // W5: the peopling solve and the wake. No physical constant is added; the
 // knee is the Power row CAGE_KNEE made concrete, the marker is the gate's
@@ -356,3 +356,35 @@ export const PEOPLE_WORKS_SKILL_FLOOR = 0.05; // spec/09-constants-ledger.md §W
 export const PEOPLE_WORKS_RAIN_FLOOR = 0.55; // spec/09-constants-ledger.md §W28 — annual moisture above which a climate is wet enough that its works are drainage and levelling, needing no water led on (v1 _ensureIrr; the worldgen's woodland moisture band)
 export const PEOPLE_WORKS_RAIN_SHARE = 0.6; // spec/09-constants-ledger.md §W28 — the improvable share of a cell at the wettest climate from rain alone (v1 _ensureIrr)
 export const SAVE_VERSION_W28 = 9; // spec/09-constants-ledger.md §W28 — the works field and pass in the envelope
+
+// W29 — the harvest years: the yield-variance map (v1 harvest.js, validated 11/12 literature regions, 2026-08-25).
+export const HARVEST_CV_BASE = 0.1; // spec/09-constants-ledger.md §W29 — the year-to-year coefficient of variation of the harvest on reliably watered temperate ground, the England/Java floor (v1 CV_BASE)
+export const HARVEST_CV_MARGIN = 0.35; // spec/09-constants-ledger.md §W29 — the CV added at the full semi-arid margin: desert-edge rain farming swings ~0.45 (v1 CV_MARGIN)
+export const HARVEST_CV_SEASON = 0.12; // spec/09-constants-ledger.md §W29 — the CV added where one rainy season carries the whole year (v1 CV_SEASON)
+export const HARVEST_CV_WINTER = 0.17; // spec/09-constants-ledger.md §W29 — the CV added at the full continental cold margin, winterkill and the season squeezed between frost and drought (v1 CV_WINTER)
+export const HARVEST_CV_FLOOD = 0.2; // spec/09-constants-ledger.md §W29 — the flood regime's own CV a wholly river-fed valley converges to, the pre-dam Nile's bad-flood years (v1 CV_FLOOD)
+export const HARVEST_MOISTURE_ONSET = 0.55; // spec/09-constants-ledger.md §W29 — effective moisture (the annual index over the evaporative demand) below which the rain margin opens: the semi-arid onset, the ~38th percentile of land (v1 CV_EM0)
+export const HARVEST_MOISTURE_RAMP = 0.5; // spec/09-constants-ledger.md §W29 — the effective-moisture span from that onset to the full margin (v1 CV_EM_RAMP)
+export const HARVEST_COOL_ONSET_C = 6; // spec/09-constants-ledger.md §W29 — the cool-half mean temperature, °C, below which the winter risk engages (v1 CV_COOL0)
+export const HARVEST_COOL_RAMP_C = 13; // spec/09-constants-ledger.md §W29 — the °C span from that onset to the full winter margin, a −7 °C cool half (v1 CV_COOL_RAMP)
+export const HARVEST_GAUSSEN_SHAPE = 8; // spec/09-constants-ledger.md §W29 — the dry-season shape 8·d·(1−d) − 1 over the Gaussen-dry share d of the year: one at the half-dry year, nothing under ~0.15 or over ~0.85 dry (v1's 4·d·(1−d) − ½, doubled)
+export const HARVEST_SEASON_AMPLITUDE_MIN_C = 4; // spec/09-constants-ledger.md §W29 — the seasonal temperature amplitude, °C, under which the warm half is not a season and the monsoon concentration is not read (v1: the low-amplitude tropics)
+export const HARVEST_MONSOON_ONSET = 0.3; // spec/09-constants-ledger.md §W29 — the warm-half rain concentration |share − ½|·2 above which the year rides one season (v1)
+// W29 — the harvest years themselves (v1 harvest.js): a spatially correlated,
+// year-persistent standard-normal weather anomaly per weather cell, read
+// bilinearly at every land cell and scaled by the cell's yield CV into the
+// year's yield multiple; farmers above what the year feeds die back at the
+// starvation rate; a bottom-decile year that also fails by more than a third
+// is a famine year. Nothing here is keyed on the calendar: the year index is
+// the world's own clock counted in twelves, the RNG stream's address only.
+export const HARVEST_WEATHER_CELL_DEGREES = 12; // spec/09-constants-ledger.md §W29 — the weather cell of a harvest year, degrees: the ~1,300 km synoptic scale a drought or a wet year covers (the 1315–17 rains over all of northern Europe; the 1876–78 monsoon failure over the whole Deccan; v1 CELL_DEG). The grid is EARTH_DEGREES ÷ this by EARTH_HALF_DEGREES ÷ this, 30 × 15
+export const HARVEST_YEAR_PERSISTENCE = 0.3; // spec/09-constants-ledger.md §W29 — the lag-one autocorrelation of a weather cell's anomaly: droughts run in twos and threes (the Nile flood series' lag-one correlation ~0.3, Hassan 1981; soil-moisture and ENSO memory; v1 RHO)
+export const HARVEST_DRAW_CLAMP = 3.5; // spec/09-constants-ledger.md §W29 — the standard-normal draw is clamped to ±3.5 σ: a one-in-four-thousand year is the worst the mechanism admits (v1)
+export const HARVEST_SMOOTH_CENTRE = 0.5; // spec/09-constants-ledger.md §W29 — the weight of a weather cell's own draw in the 3 × 3 spatial smoothing (v1)
+export const HARVEST_SMOOTH_EDGE = 0.125; // spec/09-constants-ledger.md §W29 — the weight of each of its four edge neighbours; the sum is renormalised to unit variance, √(centre² + 4·edge²) (v1)
+export const HARVEST_LEAN_Z = -1.28; // spec/09-constants-ledger.md §W29 — the bottom-decile anomaly, Φ⁻¹(0.1): a famine year is a one-in-ten year (v1)
+export const HARVEST_FAMINE_LOSS = 0.65; // spec/09-constants-ledger.md §W29 — the yield multiple under which a bottom-decile year is a famine year, a harvest more than a third short (Ó Gráda 2009: the great famines were harvest failures of a third to a half; v1)
+export const HARVEST_MULTIPLIER_FLOOR = 0.15; // spec/09-constants-ledger.md §W29 — the worst yield multiple a year can bring, a harvest nearly wholly lost (v1)
+export const HARVEST_MULTIPLIER_CEILING = 1.6; // spec/09-constants-ledger.md §W29 — the best, a bumper year (v1)
+export const PEOPLE_STARVATION_RATE_PER_YEAR = 0.3; // spec/09-constants-ledger.md §W29 — the share of the farmers above what the year's harvest feeds who die in that year: Finland 1695–97 lost a quarter to a third of its people over two failed harvests (Ó Gráda 2009), a half-shortfall year at this rate killing 15 % a year. The same law as P21 (iii)'s mean-year balance: a cell above its ceiling falls back toward it at this rate
+export const SAVE_VERSION_W29 = 10; // spec/09-constants-ledger.md §W29 — the harvest anomaly state and the famine-years field in the envelope; the harvest pass on the schedule

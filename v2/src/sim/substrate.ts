@@ -177,6 +177,16 @@ export interface Substrate {
    * cells whose pack never melts out. Empty where the preset has no rain in
    * mm to build it from. */
   readonly snow: Snowpack;
+  /** The seasonal shape of each cell's climate (W29), the worldgen's own
+   * three fields as v1's yield-variance map read them: the share of the year
+   * that is Gaussen-dry (a month whose rain in mm falls under twice its °C),
+   * the seasonal temperature amplitude in sim units (half the difference of
+   * the warm and cool halves' means), and the warm half's share of the
+   * year's rain. On the Earth preset the observed climatology's; on a
+   * procedural preset the solver's own. Static land properties. */
+  readonly dryFraction: Float32Array;
+  readonly temperatureAmplitude: Float32Array;
+  readonly warmRainFraction: Float32Array;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -493,6 +503,9 @@ export function buildSubstrate(
     landShapeBlock: shapeBlock,
     ...walksOf(world, cells),
     snow,
+    dryFraction: world.dryFrac,
+    temperatureAmplitude: world.tAmp,
+    warmRainFraction: world.warmRainFrac,
   };
   return Object.freeze(substrate);
 }

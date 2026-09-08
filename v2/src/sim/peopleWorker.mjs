@@ -122,6 +122,8 @@ function runBand(payload, band, index) {
     wasm.people_dispatch_migration_target(pointer, band.rawLo, band.rawHi, index);
   } else if (payload.operation === "works") {
     wasm.people_dispatch_works(pointer, band.rawLo, band.rawHi);
+  } else if (payload.operation === "harvest") {
+    wasm.people_dispatch_harvest(pointer, band.rawLo, band.rawHi, index);
   } else {
     throw new Error(`Unknown people band operation: ${payload.operation}`);
   }

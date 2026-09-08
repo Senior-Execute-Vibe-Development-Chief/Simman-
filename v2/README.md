@@ -111,8 +111,9 @@ fudge factors.
   the land a farming source can enter opens in proportion to the farmers it
   sends; a hearth ignites where a native range has been a peopled basin for
   the package's domestication lag (the M2 law).
-- Save format v9 persists people, farmer masses, derived technique, cohorts,
-  the works (the built land capital, W28),
+- Save format v10 persists people, farmer masses, derived technique, cohorts,
+  the works (the built land capital, W28), the harvest anomaly state and the
+  famine-years field (W29),
   peopled arrivals, hearth progress, the resolved pass schedules, the regime
   (phase, wake and caged steps) and the event log; terrain remains immutable
   substrate rebuilt from its identity.
@@ -123,6 +124,19 @@ fudge factors.
   fire annually, and the works build and rot on the growth stride after the
   commit, the capacity derived again at once; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
+- **The harvest years (W29).** Every year has a weather: a spatially
+  correlated, year-persistent standard-normal anomaly per 12° weather cell
+  (AR(1), lag-one 0.3, 3 × 3 smoothed), read bilinearly at every land cell
+  and scaled by the cell's own static yield CV (the rain margin, the single
+  season, the winter risk, the flood regime) into the year's yield multiple.
+  The `people.harvest` pass fires between capacity and growth on the growth
+  stride, tiling the month line by whole years (every year exactly once in
+  both regimes): the farmers above what the year feeds die at the
+  starvation rate, foragers are exempt, a bottom-decile year failing by
+  more than a third counts a famine year. The year index is only the RNG
+  stream's address; nothing is keyed on the calendar. Famine deaths are a
+  named sink (`people.famine`); the "Harvest year" and "Famine years"
+  overlays paint the last year's multiple and the count.
 - **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
   pass fires at one stride derived from the bounds the passes already carry
   (each group's hops on the rows it can be a source from, farmer growth,
@@ -172,8 +186,9 @@ fudge factors.
   wild-range mask per package, farmer masses in the same land-packed order as
   the kernel's cohort state, and an annual local adoption/reversion pass.
   Migration uses an eight-neighbour true-distance stencil with coastal hops
-  capped by the grounded crossing length. The package, can-grow, and native
-  overlays are available in the shell. QUESTIONS #37 has the M3a review:
+  capped by the grounded crossing length. The package, can-grow, native,
+  land works, harvest year and famine years overlays are available in the
+  shell. QUESTIONS #37 has the M3a review:
   what the delivered mechanisms did, what the corrections are, and the
   measurements.
 - `collect()` measures numeric leaves and distributions by default; its

@@ -46,6 +46,19 @@ const PEOPLE_WORKS_STAFF_FLOOR: f64 = 0.25;
 const PEOPLE_WORKS_BUILD_PER_YEAR: f64 = 0.0024;
 const PEOPLE_WORKS_DECAY_PER_YEAR: f64 = 0.0018;
 const PEOPLE_WORKS_SKILL_FLOOR: f64 = 0.05;
+// W29: the harvest years. The weather grid's shape and the deaths law mirror
+// the TypeScript constants of the same names.
+const EARTH_DEGREES: usize = 360;
+const EARTH_HALF_DEGREES: usize = 180;
+const HARVEST_WEATHER_CELL_DEGREES: usize = 12;
+const HARVEST_COLUMNS: usize = EARTH_DEGREES / HARVEST_WEATHER_CELL_DEGREES;
+const HARVEST_ROWS: usize = EARTH_HALF_DEGREES / HARVEST_WEATHER_CELL_DEGREES;
+const HARVEST_CELLS: usize = HARVEST_COLUMNS * HARVEST_ROWS;
+const HARVEST_LEAN_Z: f64 = -1.28;
+const HARVEST_FAMINE_LOSS: f64 = 0.65;
+const HARVEST_MULTIPLIER_FLOOR: f64 = 0.15;
+const HARVEST_MULTIPLIER_CEILING: f64 = 1.6;
+const PEOPLE_STARVATION_RATE_PER_YEAR: f64 = 0.3;
 /// Two weights per neighbour pair: the forager weight, then the farmer weight (W6).
 const PAIR_GROUPS: usize = 2;
 
@@ -314,6 +327,8 @@ pub struct PeopleKernel {
     standing_gain: Vec<f64>,
     /// The improvable share of each cell (W28, static): the ground works can be built on.
     irrigable: Vec<f64>,
+    /// The yield-variance map (W29, static): each cell's harvest CV, full grid.
+    yield_cv: Vec<f64>,
     neighbor_targets: Vec<i32>,
     neighbor_distance: Vec<f64>,
     neighbor_mode: Vec<u8>,
@@ -328,6 +343,13 @@ pub struct PeopleKernel {
     technique: Vec<f64>,
     /// The built land capital (W28), full grid, 0..1: authoritative state.
     works: Vec<f64>,
+    /// The famine years (W29), full grid: the tally of failed harvests a cell's farmers lived through. Authoritative state.
+    famine_years: Vec<f64>,
+    /// The last harvest year's yield multiple per land cell (W29), packed scratch for the lens.
+    year_mul: Vec<f64>,
+    /// The firing's smoothed harvest anomaly grids, `harvest_years` × HARVEST_CELLS (W29).
+    harvest_grids: Vec<f64>,
+    harvest_years: usize,
     children: Vec<f64>,
     working: Vec<f64>,
     elders: Vec<f64>,
@@ -387,6 +409,7 @@ pub struct PeopleKernel {
     works_dt_months: f64,
     births_by_band: [f64; PEOPLE_BAND_COUNT],
     deaths_by_band: [f64; PEOPLE_BAND_COUNT],
+    harvest_deaths_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_received_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_total_value: f64,
@@ -416,6 +439,7 @@ impl PeopleKernel {
         crop_fit: &[f64],
         standing_gain: &[f64],
         irrigable: &[f64],
+        yield_cv: &[f64],
         neighbor_targets: &[i32],
         neighbor_distance: &[f64],
         neighbor_mode: &[u8],
@@ -454,6 +478,7 @@ impl PeopleKernel {
             crop_fit: copy_f64(crop_fit, package_count.saturating_mul(land_count)),
             standing_gain: copy_f64(standing_gain, package_count.saturating_mul(land_count)),
             irrigable: copy_f64(irrigable, cells),
+            yield_cv: copy_f64(yield_cv, cells),
             neighbor_targets: neighbor_targets.to_vec(),
             neighbor_distance: copy_f64(
                 neighbor_distance,
@@ -473,6 +498,10 @@ impl PeopleKernel {
             people: vec![0.0; cells],
             technique: vec![0.0; cells],
             works: vec![0.0; cells],
+            famine_years: vec![0.0; cells],
+            year_mul: vec![0.0; land_count],
+            harvest_grids: Vec::new(),
+            harvest_years: 0,
             children: vec![0.0; cells],
             working: vec![0.0; cells],
             elders: vec![0.0; cells],
@@ -523,6 +552,7 @@ impl PeopleKernel {
             works_dt_months: 1.0,
             births_by_band: [0.0; PEOPLE_BAND_COUNT],
             deaths_by_band: [0.0; PEOPLE_BAND_COUNT],
+            harvest_deaths_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_received_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_total_value: 0.0,
@@ -547,6 +577,14 @@ impl PeopleKernel {
 
     pub fn works_ptr(&self) -> usize {
         self.works.as_ptr() as usize
+    }
+
+    pub fn famine_years_ptr(&self) -> usize {
+        self.famine_years.as_ptr() as usize
+    }
+
+    pub fn year_mul_ptr(&self) -> usize {
+        self.year_mul.as_ptr() as usize
     }
 
     pub fn children_ptr(&self) -> usize {
@@ -1416,6 +1454,115 @@ impl PeopleKernel {
             self.works[cell] = clamp01(works);
         }
     }
+
+    /// The firing's harvest years (W29): the smoothed anomaly grids, one after
+    /// another, HARVEST_CELLS each. The one per-firing input the kernel keeps;
+    /// the vector is reused, so it grows only on a firing carrying more years
+    /// than any before (the runtime re-attaches its views if the allocator grew).
+    pub fn begin_harvest(&mut self, grids: &[f64], years: usize) {
+        let length = years.saturating_mul(HARVEST_CELLS);
+        self.harvest_years = years;
+        self.harvest_grids.clear();
+        self.harvest_grids.extend_from_slice(&grids[..grids.len().min(length)]);
+        self.harvest_grids.resize(length, 0.0);
+        self.harvest_deaths_by_band.fill(0.0);
+    }
+
+    /// The anomaly at a sim cell, bilinear over the weather grid at `offset`:
+    /// columns wrap the globe, rows clamp at the poles. The oracle's
+    /// `readHarvestAnomaly`, the same expression in the same order.
+    fn harvest_anomaly(&self, offset: usize, x: usize, y: usize) -> f64 {
+        let fx = (x as f64 + MATH_HALF) / self.width as f64 * HARVEST_COLUMNS as f64 - MATH_HALF;
+        let fy = (y as f64 + MATH_HALF) / self.height as f64 * HARVEST_ROWS as f64 - MATH_HALF;
+        let cx = fx.floor();
+        let cy_raw = fy.floor();
+        let cy = cy_raw.min((HARVEST_ROWS - 2) as f64).max(0.0);
+        let dx = fx - cx;
+        let dy = (fy - cy).min(1.0).max(0.0);
+        let columns = HARVEST_COLUMNS as i64;
+        let cx0 = (((cx as i64) % columns + columns) % columns) as usize;
+        let cx1 = (cx0 + 1) % HARVEST_COLUMNS;
+        let top = offset + cy as usize * HARVEST_COLUMNS;
+        let bottom = top + HARVEST_COLUMNS;
+        (1.0 - dx) * (1.0 - dy) * self.harvest_grids[top + cx0]
+            + dx * (1.0 - dy) * self.harvest_grids[top + cx1]
+            + (1.0 - dx) * dy * self.harvest_grids[bottom + cx0]
+            + dx * dy * self.harvest_grids[bottom + cx1]
+    }
+
+    /// The harvest pass (W29): the firing's years applied in place to the
+    /// authoritative farmers, totals and people — the oracle's `stepHarvest`,
+    /// the same expression in the same order. Writes farmers, farmer_total,
+    /// people, famine_years and year_mul.
+    pub fn harvest_band(&mut self, raw_lo: usize, raw_hi: usize, band_index: usize) {
+        let hi = raw_hi.min(self.land_cells.len());
+        let land_count = self.land_cells.len();
+        let years = self.harvest_years;
+        let mut deaths = 0.0;
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            let y = cell / self.width;
+            let x = cell - y * self.width;
+            let total = self.farmer_total[packed];
+            // Nobody farms here: the years pass over unread, so the pass costs
+            // the farmed world and not the whole land (the multiple is a harvest's).
+            if total <= 0.0 {
+                continue;
+            }
+            let cv = self.yield_cv[cell];
+            let foragers = (self.people[cell] - total).max(0.0);
+            let mut cell_deaths = 0.0;
+            for index in 0..years {
+                let anomaly = self.harvest_anomaly(index * HARVEST_CELLS, x, y);
+                let multiplier = (1.0 + anomaly * cv)
+                    .min(HARVEST_MULTIPLIER_CEILING)
+                    .max(HARVEST_MULTIPLIER_FLOOR);
+                self.year_mul[packed] = multiplier;
+                if anomaly < HARVEST_LEAN_Z && multiplier < HARVEST_FAMINE_LOSS {
+                    self.famine_years[cell] += 1.0;
+                }
+                let mut year_deaths = 0.0;
+                for package_index in 0..self.package_count {
+                    if self.active_package[package_index] == 0 {
+                        continue;
+                    }
+                    let farmer_index = package_index * land_count + packed;
+                    let farmer = self.farmers[farmer_index].max(0.0);
+                    if farmer <= 0.0 {
+                        continue;
+                    }
+                    let fed = self.package_capacity(cell, packed, package_index) * multiplier;
+                    let excess = farmer - fed;
+                    if excess <= 0.0 {
+                        continue;
+                    }
+                    let dead = farmer.min(PEOPLE_STARVATION_RATE_PER_YEAR * excess);
+                    self.farmers[farmer_index] = farmer - dead;
+                    year_deaths += dead;
+                }
+                cell_deaths += year_deaths;
+            }
+            if cell_deaths <= 0.0 {
+                continue;
+            }
+            let mut farmer_total = 0.0;
+            for package_index in 0..self.package_count {
+                if self.active_package[package_index] == 0 {
+                    continue;
+                }
+                farmer_total += self.farmers[package_index * land_count + packed].max(0.0);
+            }
+            self.farmer_total[packed] = farmer_total;
+            self.people[cell] = foragers + farmer_total;
+            deaths += cell_deaths * self.cell_area[cell];
+        }
+        let slot = band_index.min(PEOPLE_BAND_COUNT - 1);
+        self.harvest_deaths_by_band[slot] += deaths;
+    }
+
+    pub fn harvest_deaths(&self) -> f64 {
+        self.harvest_deaths_by_band.iter().fold(0.0, |total, value| total + value)
+    }
 }
 
 /// Free-function band dispatch. Workers must not go through wasm-bindgen's
@@ -1472,4 +1619,9 @@ pub fn people_dispatch_migration_target(
 #[wasm_bindgen]
 pub fn people_dispatch_works(pointer: usize, raw_lo: usize, raw_hi: usize) {
     unsafe { kernel_mut(pointer).works_band(raw_lo, raw_hi) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_harvest(pointer: usize, raw_lo: usize, raw_hi: usize, band_index: usize) {
+    unsafe { kernel_mut(pointer).harvest_band(raw_lo, raw_hi, band_index) }
 }

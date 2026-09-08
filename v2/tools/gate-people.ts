@@ -5,6 +5,7 @@ import farmingArrivals from "../data/reality/farming-arrivals.json";
 import neolithicArrivals from "../data/reality/neolithic-arrivals.json";
 import hearthCentres from "../data/reality/hearths.json";
 import stapleByRegion from "../data/reality/staple-by-region.json";
+import yieldVariance from "../data/reality/yield-variance.json";
 import { aquaticAccess } from "../src/sim/people/habitability";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { buildSubstrate } from "../src/sim/substrate";
@@ -35,7 +36,21 @@ interface GridResult {
   readonly emptyUnpeopledCells: number;
   readonly conservationError: number;
   readonly provenance: ReturnType<typeof provenance>;
+  readonly yieldVariance: Record<string, unknown>;
 }
+
+interface KnownPeopleMiss { readonly id: string; readonly reason: string; }
+let peopleMisses: readonly KnownPeopleMiss[] = [];
+try {
+  peopleMisses = (await import("../data/reality/known-misses-people.json", { with: { type: "json" } })).default.misses;
+} catch { peopleMisses = []; }
+const acknowledged = new Map(peopleMisses.map((miss) => [miss.id, miss.reason]));
+const failures: string[] = [];
+// Only checks the CURRENT arm actually concludes participate in the
+// stale-ratchet: the fast trajectory arm must not read the long-horizon
+// manifest rows as stale merely because it cannot measure them.
+const measured = new Set<string>();
+const findings: Record<string, unknown> = {};
 
 const FAST_STEPS = 12;
 
@@ -43,6 +58,45 @@ if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize
 
 function disposePeople(world: World): void {
   (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+}
+
+/**
+ * The yield-variance map against the literature bands (W29): per region the
+ * fertility-weighted median of the static yield CV over the box's land cells
+ * above the fertility floor, from the substrate alone — no history, so it
+ * runs at both grids on every commit. Rows `yield-cv:<region>:<grid>`.
+ */
+function judgeYieldVariance(world: World, grid: GridPreset): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const substrate = world.substrate!;
+  const result: Record<string, unknown> = {};
+  for (const region of yieldVariance.regions) {
+    const pairs: Array<[number, number]> = [];
+    for (const cell of people._landCells) {
+      const fertility = substrate.fertility[cell] ?? 0;
+      if (fertility <= yieldVariance.fertilityFloor) continue;
+      if (!insideBox(world, cell, region.box)) continue;
+      pairs.push([people._yieldCv[cell] ?? 0, fertility]);
+    }
+    pairs.sort((a, b) => a[0] - b[0]);
+    const total = pairs.reduce((sum, pair) => sum + pair[1], 0);
+    let median = 0;
+    let accumulated = 0;
+    for (const pair of pairs) {
+      accumulated += pair[1];
+      if (accumulated >= total / 2) { median = pair[0]; break; }
+    }
+    const pass = pairs.length > 0 && median >= region.minimum && median <= region.maximum;
+    result[region.id] = { cells: pairs.length, median, minimum: region.minimum, maximum: region.maximum, pass };
+    const id = `yield-cv:${region.id}:${grid}`;
+    measured.add(id);
+    if (!pass) failures.push(id);
+  }
+  // In the findings too, so an honest failure still prints what it measured.
+  const rows = (findings.yieldVariance ?? {}) as Record<string, unknown>;
+  rows[grid] = result;
+  findings.yieldVariance = rows;
+  return result;
 }
 
 function measure(grid: GridPreset): GridResult {
@@ -54,6 +108,7 @@ function measure(grid: GridPreset): GridResult {
     substrate,
   });
   const initialPeople = populationTotal(world);
+  const yieldRows = judgeYieldVariance(world, grid);
   runSteps(world, FAST_STEPS);
   const finalPeople = populationTotal(world);
   let land = 0;
@@ -80,6 +135,7 @@ function measure(grid: GridPreset): GridResult {
     emptyUnpeopledCells,
     conservationError: balance?.unexplained ?? Number.POSITIVE_INFINITY,
     provenance: provenance(world),
+    yieldVariance: yieldRows,
   };
   disposePeople(world);
   return result;
@@ -112,18 +168,6 @@ const longArm = process.env.GATE_PEOPLE_LONG === "1";
 const horizonYears = longArm ? HORIZON_END_YEAR - HORIZON_OPENING_YEAR : 3000;
 const fullHorizonStep = stepFromYear(HORIZON_END_YEAR);
 
-interface KnownPeopleMiss { readonly id: string; readonly reason: string; }
-let peopleMisses: readonly KnownPeopleMiss[] = [];
-try {
-  peopleMisses = (await import("../data/reality/known-misses-people.json", { with: { type: "json" } })).default.misses;
-} catch { peopleMisses = []; }
-const acknowledged = new Map(peopleMisses.map((miss) => [miss.id, miss.reason]));
-const failures: string[] = [];
-// Only checks the CURRENT arm actually concludes participate in the
-// stale-ratchet: the fast trajectory arm must not read the long-horizon
-// manifest rows as stale merely because it cannot measure them.
-const measured = new Set<string>();
-const findings: Record<string, unknown> = {};
 
 interface RegionRow {
   readonly id: string;

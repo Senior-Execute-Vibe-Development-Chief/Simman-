@@ -27,6 +27,7 @@ import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
 import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
 import { stepWorks } from "./works";
+import { seedHarvestYears, stepHarvest } from "./harvest";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
@@ -44,6 +45,7 @@ export const peoplePhaseMilliseconds: Record<string, number> = {
   migration: 0,
   cohorts: 0,
   works: 0,
+  harvest: 0,
   ledger: 0,
 };
 
@@ -144,6 +146,9 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._surfaceAccess = new Float64Array(length);
   world._reliefMult = new Float64Array(length);
   world._irrigable = new Float64Array(length);
+  world._yieldCv = new Float64Array(length);
+  world._yearMul = new Float64Array(landCount);
+  world._harvestDeathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
   world._foragerCapacity = new Float64Array(length);
   world._foragerTerrestrial = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
@@ -190,6 +195,7 @@ export function initializePeople(worldInput: World): PeopleWorld {
   const world = asPeopleWorld(worldInput);
   if (world.peopleInitialized) return world;
   allocatePeopleScratch(world);
+  seedHarvestYears(world);
   annualClimateFromSubstrate(world);
   fillStaticHabitability(world);
   fillMigrationShareRows(world);
@@ -298,6 +304,7 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   const migrationSchedule = world.schedule.find(({ name }) => name === "people.migration");
   const cohortsSchedule = world.schedule.find(({ name }) => name === "people.cohorts");
   const worksSchedule = world.schedule.find(({ name }) => name === "people.works");
+  const harvestSchedule = world.schedule.find(({ name }) => name === "people.harvest");
   const techniqueDue = fires(techniqueSchedule);
   const conversionDue = fires(conversionSchedule);
   const capacityDue = fires(capacitySchedule);
@@ -305,7 +312,8 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   const migrationDue = fires(migrationSchedule);
   const cohortsDue = fires(cohortsSchedule);
   const worksDue = fires(worksSchedule);
-  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue && !worksDue) return false;
+  const harvestDue = fires(harvestSchedule);
+  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue && !worksDue && !harvestDue) return false;
 
   world.ledger.beginPass(
     "people",
@@ -330,6 +338,17 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
     deriveCapacity(world);
     addPhaseTime("capacity", started);
   }
+  // The harvest years (W29): the firing's years applied to the authoritative
+  // fields in place, before growth reads them — the year's dead do not
+  // bear the year's children.
+  const famineDeaths = harvestDue
+    ? (() => {
+      const started = performance.now();
+      const result = stepHarvest(world, dtOf(harvestSchedule!));
+      addPhaseTime("harvest", started);
+      return result;
+    })()
+    : 0;
   const growth = growthDue
     ? (() => {
       const started = performance.now();
@@ -389,6 +408,7 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   }
   const ledgerStarted = performance.now();
   if (migrationDue) world.ledger.recordChannel("people", "migration", migration, migration);
+  if (harvestDue) world.ledger.recordChannel("people", "famine", 0, famineDeaths);
   world.ledger.endPass("people", world.people, growth.births, growth.deaths, world._landCells);
   world.ledger.assertAll();
   addPhaseTime("ledger", ledgerStarted);
@@ -400,7 +420,8 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   world.debug.peopleBirths = growth.births;
   world.debug.peopleDeaths = growth.deaths;
   world.debug.peopleMigration = migration;
-  return growthDue || migrationDue;
+  world.debug.peopleFamineDeaths = famineDeaths;
+  return growthDue || migrationDue || famineDeaths > 0;
 }
 
 export function populationTotal(worldInput: World): number {

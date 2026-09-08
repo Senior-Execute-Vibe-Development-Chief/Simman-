@@ -1,0 +1,103 @@
+{
+ "source": "The year-to-year coefficient of variation of the harvest by region (W29): v1's twelve-region referee table (tools/probe_yieldcv.mjs, docs/harvest-years-2026-08-25.md), the approximate pre-modern bands drawn from FAO yield-variability studies and the historical famine literature named per region. A region is the land inside its box [lonMin, lonMax, latMin, latMax]; the check is the fertility-weighted median of the static yield CV over the box's land cells with fertility above fertilityFloor, at both grids, from the substrate alone (no history is simulated).",
+ "statistic": "fertility-weighted median over land cells with fertility > fertilityFloor",
+ "fertilityFloor": 0.15,
+ "regions": [
+  {
+   "id": "england",
+   "name": "England and northern France",
+   "box": [-5, 5, 46, 55],
+   "minimum": 0.08,
+   "maximum": 0.16,
+   "source": "Maritime temperate rain-fed grain: Hoskins 1964/1968 (harvest fluctuations, England 1480-1759), Campbell 2007 (medieval demesne yields); the reliably-watered floor"
+  },
+  {
+   "id": "mediterranean-spain",
+   "name": "Mediterranean Spain",
+   "box": [-6, 2, 37, 42],
+   "minimum": 0.18,
+   "maximum": 0.3,
+   "source": "Winter-rain dry farming, the summer-dry season on a thin margin"
+  },
+  {
+   "id": "aegean",
+   "name": "Greece and the Aegean",
+   "box": [20, 27, 36, 41],
+   "minimum": 0.18,
+   "maximum": 0.3,
+   "source": "Gallant 1991 (Risk and Survival in Ancient Greece: interannual wheat and barley variability); Garnsey 1988"
+  },
+  {
+   "id": "sahel",
+   "name": "The Sahel",
+   "box": [-15, 30, 13, 17.5],
+   "minimum": 0.3,
+   "maximum": 0.48,
+   "source": "Rain-fed millet at the desert margin on one short season: Sivakumar 1988 (Sahelian rainfall and crop variability); chronic famine (Watts 1983)"
+  },
+  {
+   "id": "nile",
+   "name": "The Nile valley",
+   "box": [30, 33, 22, 31],
+   "minimum": 0.14,
+   "maximum": 0.26,
+   "source": "The flood regime: Hassan 1981 (historical Nile floods), Butzer 1976 (Early Hydraulic Civilization in Egypt); the pre-dam bad-flood years"
+  },
+  {
+   "id": "mesopotamia",
+   "name": "Mesopotamia",
+   "box": [44, 48, 30, 34],
+   "minimum": 0.15,
+   "maximum": 0.3,
+   "source": "Irrigated alluvium under a desert sky: Adams 1981 (Heartland of Cities); the Tigris-Euphrates flood and salt variability"
+  },
+  {
+   "id": "ganges",
+   "name": "The Ganges plain",
+   "box": [77, 88, 22, 28],
+   "minimum": 0.14,
+   "maximum": 0.26,
+   "source": "Monsoon rice and wheat on a wet plain with a river: Parthasarathy et al. 1988 (monsoon rainfall and grain), the Bengal famine literature"
+  },
+  {
+   "id": "north-china-plain",
+   "name": "The North China plain",
+   "box": [110, 118, 33, 39],
+   "minimum": 0.18,
+   "maximum": 0.32,
+   "source": "A monsoon that stacks the rain in the warm half over a cold winter, with the Yellow River's floods: Will 1990 (Bureaucracy and Famine in Eighteenth-Century China), Elvin 2004"
+  },
+  {
+   "id": "pontic-steppe",
+   "name": "The Pontic steppe",
+   "box": [30, 48, 45, 49],
+   "minimum": 0.25,
+   "maximum": 0.42,
+   "source": "Continental dryland wheat: Wheatcroft 1977 (Russian grain yields), the Don and Kuban dryland bands; the box is the steppe belt, not the forest-steppe north of it"
+  },
+  {
+   "id": "kazakh-steppe",
+   "name": "The Kazakh steppe",
+   "box": [55, 75, 48, 54],
+   "minimum": 0.25,
+   "maximum": 0.42,
+   "source": "The Virgin Lands' recorded yield swings (McCauley 1976); a −8 °C cool half over a thin margin"
+  },
+  {
+   "id": "java",
+   "name": "Java and the wet tropics",
+   "box": [105, 115, -9, -5],
+   "minimum": 0.06,
+   "maximum": 0.15,
+   "source": "Wet-tropical rice with rain in every month: the lowest interannual variability of any staple region (Boomgaard 1989)"
+  },
+  {
+   "id": "south-india-interior",
+   "name": "The south Indian interior",
+   "box": [74, 80, 12, 18],
+   "minimum": 0.2,
+   "maximum": 0.35,
+   "source": "The semi-arid Deccan on a short monsoon: Guhathakurta & Rajeevan 2008 (rainfall variability), the Deccan famine record (Bhatia 1967)"
+  }
+ ]
+}
