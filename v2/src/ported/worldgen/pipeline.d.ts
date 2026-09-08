@@ -21,6 +21,8 @@ export interface PortedWorld {
    * 1-arc-minute grid (W19). The land/sea bit says WHETHER there is ground
    * here; this says HOW MUCH. Null on presets that carry no cover plane. */
   readonly landFraction: Float32Array | null;
+  /** W27: each land cell's observed annual precipitation in mm (with the W14 orographic share), or null where the preset has none. */
+  readonly rainMm: Float32Array | null;
   /** WHERE that ground is: one byte per cell, 1 = land, on a fixed grid finer
    * than any the sim steps (W20). Read-only geometry — the coastline the world
    * is drawn from and measured against, never a field that is stepped — so it

@@ -4260,3 +4260,47 @@ Review corrections to the M1 build (all validated before merge):
     corridor is still chosen at cell scale; 11.3 MB of data; the shipped
     grid's history is `v2-long`. Handoff
     `spec/handoffs/W26-the-walk-between-two-cells.md`.
+
+81. **W27 built the snowpack** (2026-09-08, owner on the terrain lens: *"Our
+    snow coverage per season seems a bit strong? In winter, snow reaching
+    down across to the base of the Persian gulf? And the large portion of
+    North America getting covered? Is it realistic? Do we need different
+    levels of snow?"* — *"Do it"*).
+
+    **(a) What the white was.** The month's mean temperature below
+    freezing: real cold, not real snow. It whitened the Zagros and the Gobi
+    in a dry January and left a snowy mild coast bare, and it could not lie
+    deeper or thinner. The Persian Gulf shore itself was never white; the
+    white beside it was the Zagros at 2,000 m. North America's cover in
+    January is right: the record has 46.7 Mkm² of the hemisphere under
+    snow that month and the Canadian Shield and the prairies are in it.
+
+    **(b) The rule.** Snow is a state: what fell as snow and has not
+    melted. From one statement about days — a month's daily means spread
+    5°C about its mean — the snow share of the month's rain and the melt
+    its warmth can take both follow; the melt factor follows the sun
+    between the solstices (SNOW-17); the month is walked in weekly steps
+    with the air read between the monthly means; a cell melts out in
+    patches along the depletion curve of its own spread of depths. Cycled
+    until it repeats, or perennial. Every constant is a published value
+    with its own meaning; none was moved to fit.
+
+    **(c) Read back**, winter is within 3% of the satellite record at both
+    grids (January 45.2 against 46.7 Mkm²). The season lags it: April +17%,
+    May +23%, October −18% at the shipped grid, recorded as misses against
+    a band set before the first measurement. Measured, the cause is the
+    input: the reanalysis is 2–3.5× too wet over the boreal interior and
+    3–7°C too cold in April across the continental interior, so its pack
+    is deeper and its spring later than the ground the charts see; the
+    land below freezing in its April mean is larger than the charts' whole
+    April extent. Stations where the input is right read right (Moscow
+    34 cm in February, Chicago 13, Winnipeg 27); the Sea-of-Japan snow
+    belt and the Alpine valleys are not in a 1.9° field.
+
+    **(d) What it moved.** A land step through snow costs the
+    footprint-depth term of the walking-energy coefficient (1.82× at 10 cm,
+    3.87× at the cap). June routes are bit-identical; the December
+    Rome–Alexandria loop pays 2% at the shipped grid and 11% at dev, whose
+    165 km cells average a plateau's snow over its coast. The front walks
+    the year's snow: every people-gate figure moved by one 84-month stride
+    or none, every window held. Handoff `spec/handoffs/W27-the-snowpack.md`.

@@ -37,8 +37,16 @@ import {
   MATH_LN_LAST_ODD,
   MATH_LN_STEP,
   MATH_NEGATIVE_ONE,
+  MATH_ERF_A1,
+  MATH_ERF_A2,
+  MATH_ERF_A3,
+  MATH_ERF_A4,
+  MATH_ERF_A5,
+  MATH_ERF_P,
+  MATH_INV_SQRT_2PI,
   MATH_PI,
   MATH_SIN_C11,
+  MATH_SQRT_HALF,
   MATH_SIN_C13,
   MATH_SIN_C15,
   MATH_SIN_C17,
@@ -246,4 +254,25 @@ export function dpow(base: number, exponent: number): number {
     return Math.trunc(exponent) % 2 === 0 ? magnitude : -magnitude;
   }
   return dexp(exponent * dln(base));
+}
+
+/** The error function by Abramowitz & Stegun 7.1.26 (|error| ≤ 1.5e-7) on
+ * the deterministic exponential, so a snow share is the same on every
+ * platform (W27). */
+export function derf(value: number): number {
+  const sign = value < 0 ? MATH_NEGATIVE_ONE : 1;
+  const x = Math.abs(value);
+  const t = 1 / (1 + MATH_ERF_P * x);
+  const polynomial = ((((MATH_ERF_A5 * t + MATH_ERF_A4) * t + MATH_ERF_A3) * t + MATH_ERF_A2) * t + MATH_ERF_A1) * t;
+  return sign * (1 - polynomial * dexp(-x * x));
+}
+
+/** Standard normal distribution function Φ(z). */
+export function dnormalCdf(z: number): number {
+  return MATH_HALF * (1 + derf(z * MATH_SQRT_HALF));
+}
+
+/** Standard normal density φ(z). */
+export function dnormalPdf(z: number): number {
+  return MATH_INV_SQRT_2PI * dexp(-MATH_HALF * z * z);
 }

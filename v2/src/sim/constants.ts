@@ -55,6 +55,14 @@ export const MATH_HALF = 0.5; // spec/09-constants-ledger.md §Units — M0 dete
 export const MATH_THREE = 3; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_FOUR = 4; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_NEGATIVE_ONE = -1; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_SQRT_HALF = 0.7071067811865476; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (1/√2, the normal CDF through erf)
+export const MATH_INV_SQRT_2PI = 0.3989422804014327; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (the standard normal density at 0)
+export const MATH_ERF_P = 0.3275911; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26, |error| ≤ 1.5e-7)
+export const MATH_ERF_A1 = 0.254829592; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A2 = -0.284496736; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A3 = 1.421413741; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A4 = -1.453152027; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A5 = 1.061405429; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
 export const MATH_NEGATIVE_TWO = -2; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 
 export const CONSERVATION_EPSILON = 1e-10; // spec/09-constants-ledger.md §Units — M0 conservation assertion
@@ -157,6 +165,28 @@ export const CROSSING_ROSE_DY = [0, 1, 1, 1, 0, -1, -1, -1] as const; // spec/09
 export const TRAVEL_COLD_THRESHOLD = 0.35; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_COLD_COST_FACTOR = 2; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_MUD_COST_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
+// W27 — the snowpack. A month's daily means spread about the monthly mean,
+// which is what lets a −3°C month thaw on some days and a +2°C month snow on
+// others; one spread gives both the snow share of the month's precipitation
+// and its positive degree-days.
+export const SNOW_DAILY_TEMPERATURE_SPREAD_C = 5; // spec/09-constants-ledger.md §W27 — σ of daily mean temperature about the monthly mean, the positive-degree-day model's (Reeh 1991; Braithwaite 1995)
+export const SNOW_RAIN_THRESHOLD_C = 1; // spec/09-constants-ledger.md §W27 — daily mean air temperature at which precipitation is as likely snow as rain (Jennings et al. 2018)
+export const SNOW_MELT_FACTOR_MAX_MM = 4; // spec/09-constants-ledger.md §W27 — mm of water melted from snow per positive degree-day at the summer solstice: the NWS SNOW-17 melt factor's maximum (Anderson 2006), inside Hock 2003's range for snow
+export const SNOW_MELT_FACTOR_MIN_MM = 1.2; // spec/09-constants-ledger.md §W27 — the same at the winter solstice, SNOW-17's minimum: a warm winter day melts by the air's heat alone, the sun being low
+export const SUMMER_SOLSTICE_MONTH = 5.69; // spec/09-constants-ledger.md §W27 — June 21 in month-index units (5 + 21/30.44), where the northern sun peaks; the southern peak is six months on
+export const SNOW_STEPS_PER_MONTH = 4; // spec/09-constants-ledger.md §W27 — the pack is walked through each month in weekly steps, the temperature read between the neighbouring monthly means (a discretisation; the charts it is measured against are weekly, and 8 steps move no monthly extent by more than the table's unit)
+export const SNOW_SPINUP_MAX_YEARS = 10; // spec/09-constants-ledger.md §W27 — the years a pack is cycled before one still growing is called perennial (a cadence)
+export const SNOW_PERIODIC_MM = 1; // spec/09-constants-ledger.md §W27 — the year-on-year change under which a pack is periodic (the table's own unit)
+export const SNOW_PACK_MAX_MM = 65535; // spec/09-constants-ledger.md §W27 — the table's range (uint16 mm of water)
+export const SNOW_SUBGRID_CV = 0.4; // spec/09-constants-ledger.md §W27 — coefficient of variation of the peak pack within a cell, Liston 2004's arctic tundra class (the nine-class table by landscape is the follow-up)
+export const SNOW_DEPLETION_STEPS = 1000; // spec/09-constants-ledger.md §W27 — the depletion table's resolution in remaining-share (a cadence)
+export const SNOW_DEPLETION_BISECTIONS = 50; // spec/09-constants-ledger.md §W27 — bisections per table entry, to double precision over the quantile span (a cadence)
+export const SNOW_DEPLETION_QUANTILE_SPAN = 8; // spec/09-constants-ledger.md §W27 — standard-normal quantiles beyond ±8 are 0 and 1 to double precision
+export const SNOW_PACK_DENSITY_KG_M3 = 300; // spec/09-constants-ledger.md §W27 — settled seasonal snow (Sturm, Taras, Liston et al. 2010)
+export const WATER_DENSITY_KG_M3 = 1000; // spec/09-constants-ledger.md §W27 — water
+export const MM_PER_CM = 10; // spec/09-constants-ledger.md §W27 — units
+export const SNOW_STEP_COST_PER_CM = 0.082; // spec/09-constants-ledger.md §W27 — Pandolf, Givoni & Goldman 1977: the terrain coefficient for snow rises 0.082 per cm of footprint depression
+export const SNOW_FOOTPRINT_MAX_CM = 35; // spec/09-constants-ledger.md §W27 — the deepest footprint the coefficient was measured over (Soule & Goldman 1972)
 export const TRAVEL_WATERLOG_THRESHOLD = 0.7; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
 export const TRAVEL_MOISTURE_FLOOR = 0.4; // spec/09-constants-ledger.md §M1 proposed — aridity cost (baseEdgeCost terrain seed)
 export const TRAVEL_LAND_MIN_FACTOR = 0.5; // spec/09-constants-ledger.md §M1 proposed — terrain factor floor

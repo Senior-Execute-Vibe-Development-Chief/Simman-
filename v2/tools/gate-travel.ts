@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { emptySnowpack, snowCoverShare } from "../src/sim/snow";
 import {
   CONSERVATION_EPSILON,
   EARTH_MERIDIONAL_KM,
@@ -108,6 +109,14 @@ interface RiverSeasonFixture {
   readonly source: string;
 }
 
+interface SnowCoverFixture {
+  readonly source: string;
+  readonly coverBarMm: number;
+  readonly monthsMkm2: readonly number[];
+  readonly relativeTolerance: number;
+  readonly absoluteToleranceMkm2: number;
+}
+
 interface RouteMeasurement {
   readonly id: string;
   readonly grid: GridPreset;
@@ -138,6 +147,9 @@ const floodplainFixture = JSON.parse(
 const riverSeasonFixtures = JSON.parse(
   readFileSync(new URL("../data/reality/river-seasons.json", import.meta.url), "utf8"),
 ) as readonly RiverSeasonFixture[];
+const snowCoverFixture = JSON.parse(
+  readFileSync(new URL("../data/reality/snow-cover.json", import.meta.url), "utf8"),
+) as SnowCoverFixture;
 
 function missKey(check: string, id: string, grid?: string): string {
   return grid ? `${check}:${id}:${grid}` : `${check}:${id}`;
@@ -456,6 +468,41 @@ function riverSeasonChecks(grid: GridPreset): readonly WaterMeasurement[] {
   return rows;
 }
 
+/**
+ * W27: the Northern Hemisphere's snow-covered land each month, by area,
+ * against the satellite climatology — the pack the sim carries measured
+ * where a chart would count it, at both grids.
+ */
+function snowCoverChecks(grid: GridPreset): readonly WaterMeasurement[] {
+  const substrate = gateSubstrate(grid);
+  const northSouthKm = EARTH_MERIDIONAL_KM / substrate.height;
+  const eastWest = rowEastWestKm(substrate);
+  const covered = new Float64Array(MONTHS_PER_YEAR);
+  for (let y = 0; y < substrate.height / 2; y++) {
+    const area = northSouthKm * (eastWest[y] ?? 0);
+    for (let x = 0; x < substrate.width; x++) {
+      const cell = y * substrate.width + x;
+      if (!substrate.landMask[cell]) continue;
+      for (let month = 0; month < MONTHS_PER_YEAR; month++) {
+        covered[month] += area * snowCoverShare(substrate.snow, cell, month, snowCoverFixture.coverBarMm);
+      }
+    }
+  }
+  const rows: WaterMeasurement[] = [];
+  for (let month = 0; month < MONTHS_PER_YEAR; month++) {
+    const expected = snowCoverFixture.monthsMkm2[month] ?? 0;
+    const actual = (covered[month] ?? 0) / 1e6;
+    const allowed = Math.max(expected * snowCoverFixture.relativeTolerance, snowCoverFixture.absoluteToleranceMkm2);
+    rows.push({
+      id: `nh-extent-${String(month + 1).padStart(2, "0")}`,
+      grid,
+      status: Math.abs(actual - expected) <= allowed ? "pass" : "fail",
+      detail: `${actual.toFixed(1)} Mkm² snow-covered against ${expected.toFixed(1)} (${((actual / expected - 1) * 100).toFixed(0)}%, ±${allowed.toFixed(1)} allowed)`,
+    });
+  }
+  return rows;
+}
+
 // Tools may cache the substrate per (seed, preset, grid) within a process
 // (M2 handoff ruling 11) — the route arm and the river arm share one build.
 const substrateCache = new Map<GridPreset, Substrate>();
@@ -591,6 +638,7 @@ function referenceSubstrate(): Substrate {
     landShapeHeight: REF_HEIGHT,
     landShapeBlock: 1,
     walkKm: new Float32Array(N * 4),
+    snow: emptySnowpack(N),
     walkAscent: new Float32Array(N * 4),
     walkDescent: new Float32Array(N * 4),
     elevation,
@@ -758,6 +806,7 @@ async function main(): Promise<void> {
   const lakes = lakeChecks("target");
   const floodplain = floodplainChecks("target");
   const seasons = riverSeasonChecks("target");
+  const snow = [...snowCoverChecks("dev"), ...snowCoverChecks("target")];
 
   const failureKeys = new Set<string>();
   for (const row of measurements) {
@@ -781,6 +830,9 @@ async function main(): Promise<void> {
   for (const row of seasons) {
     if (row.status === "fail") failureKeys.add(missKey("season", row.id, row.grid));
   }
+  for (const row of snow) {
+    if (row.status === "fail") failureKeys.add(missKey("snow", row.id, row.grid));
+  }
   const manifestKeys = new Map(knownMisses.map((miss) => [missKey(miss.check, miss.id, miss.grid), miss.reason]));
   const unexpected = [...failureKeys].filter((key) => !manifestKeys.has(key));
   const stale = [...manifestKeys.keys()].filter((key) => !failureKeys.has(key));
@@ -798,6 +850,7 @@ async function main(): Promise<void> {
     lakes,
     floodplain,
     seasons,
+    snow,
     routes: measurements,
     knownMisses: acknowledged,
     unexpectedFailures: unexpected,

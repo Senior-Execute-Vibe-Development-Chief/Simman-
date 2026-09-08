@@ -21,13 +21,13 @@
     "check": "route",
     "id": "rome-alexandria-winter",
     "grid": "dev",
-    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (208.8 vs 214.0 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells)."
+    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (208.8 vs 214.0 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells). Re-measured after W27 (the snowpack: a land step through a month's snow is charged the footprint-depth term of the walking-energy coefficient over the month's mean pack): 268.2 d (from 241.3): the December loop over the Balkans and Anatolia now walks December's pack, deep on dev's 165 km cells that average a plateau's snow over its coast."
   },
   {
     "check": "route",
     "id": "rome-alexandria-winter",
     "grid": "target",
-    "reason": "Same no-infrastructure miss as the summer row at the shipped grid."
+    "reason": "Same no-infrastructure miss as the summer row at the shipped grid. Re-measured after W27 (the snowpack: a land step through a month's snow is charged the footprint-depth term of the walking-energy coefficient over the month's mean pack): 203.2 d (from 198.5): the shipped grid's route keeps to lower ground and pays 2%."
   },
   {
     "check": "route",
@@ -105,7 +105,7 @@
   {
     "check": "crossGrid",
     "id": "rome-alexandria-winter",
-    "reason": "Same dev-raster re-wetting as the summer row (32%); the shipped grid holds ~142 d."
+    "reason": "Same dev-raster re-wetting as the summer row (32%); the shipped grid holds ~142 d. Re-measured after W27 (the snowpack: a land step through a month's snow is charged the footprint-depth term of the walking-energy coefficient over the month's mean pack): 268.2 vs 203.2 d, 24.2% (from 17.7%): the same December pack, deeper on the coarse cells."
   },
   {
     "check": "route",
@@ -150,5 +150,35 @@
     "check": "crossGrid",
     "id": "rome-paris",
     "reason": "16.5% (dev 54.0 vs target 45.1 d). Dev crosses the Alps in one coarse cell; target resolves the Rhone corridor. Dev-raster geometry over honest ETOPO relief. Re-measured after W23 (the mask reads the cover and the ground bit): both rows still the M7 no-roads miss, the cross-grid spread still the Alps at 165 km."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-04",
+    "grid": "dev",
+    "reason": "+18%: 35.1 Mkm\u00b2 against 29.9 (\u00b14.5 allowed). The field it is built from is the miss, not the pack law: the reanalysis' April runs 3\u20137\u00b0C colder than the 1991\u20132020 station normals across the continental interior at 55\u201365\u00b0N (raw 1.9\u00b0 cells: Yakutsk \u22127.6 vs ~\u22124, Tomsk \u22121.4 vs ~2.1, Moscow 3.4 vs ~6.6, Fairbanks \u22126.4 vs ~0.4, Winnipeg 0.8 vs ~4.4) and 2\u20133.5\u00d7 wetter over the boreal interior (Fairbanks 971 vs ~275 mm a year, Norilsk 981 vs ~500, Anadyr 762 vs ~350, Verkhoyansk 384 vs ~180), so the pack the field builds is deeper and its April colder than the ground the charts see \u2014 the land below 0\u00b0C in the field's April mean is 31.5 Mkm\u00b2, more than the charts' whole April extent. The model's own convention (fractional cover against the charts' half-cell binary rule) accounts for at most exp(\u2212\u03c3\u00b2/2) \u2248 7% of the melt season's area-time, inside the band. Weekly stepping within the month took the row from +22% to +18% (dev) and +21% to +17% (target); the band was set before the first measurement and is not widened."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-05",
+    "grid": "dev",
+    "reason": "+24%: 22.6 Mkm\u00b2 against 18.2 (\u00b13.0 allowed). The same input as nh-extent-04: the interior's April cold bias and the boreal wet bias carry a deeper pack into a colder spring, so the field melts out two to three weeks late where the charts go bare. Weekly stepping within the month took the row from +32% to +24% (dev) and +31% to +23% (target); June is inside the band at both grids. Not tuned; the band stands."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-04",
+    "grid": "target",
+    "reason": "+17%: 35.0 Mkm\u00b2 against 29.9 (\u00b14.5 allowed). The field it is built from is the miss, not the pack law: the reanalysis' April runs 3\u20137\u00b0C colder than the 1991\u20132020 station normals across the continental interior at 55\u201365\u00b0N (raw 1.9\u00b0 cells: Yakutsk \u22127.6 vs ~\u22124, Tomsk \u22121.4 vs ~2.1, Moscow 3.4 vs ~6.6, Fairbanks \u22126.4 vs ~0.4, Winnipeg 0.8 vs ~4.4) and 2\u20133.5\u00d7 wetter over the boreal interior (Fairbanks 971 vs ~275 mm a year, Norilsk 981 vs ~500, Anadyr 762 vs ~350, Verkhoyansk 384 vs ~180), so the pack the field builds is deeper and its April colder than the ground the charts see \u2014 the land below 0\u00b0C in the field's April mean is 31.5 Mkm\u00b2, more than the charts' whole April extent. The model's own convention (fractional cover against the charts' half-cell binary rule) accounts for at most exp(\u2212\u03c3\u00b2/2) \u2248 7% of the melt season's area-time, inside the band. Weekly stepping within the month took the row from +22% to +18% (dev) and +21% to +17% (target); the band was set before the first measurement and is not widened."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-05",
+    "grid": "target",
+    "reason": "+23%: 22.4 Mkm\u00b2 against 18.2 (\u00b13.0 allowed). The same input as nh-extent-04: the interior's April cold bias and the boreal wet bias carry a deeper pack into a colder spring, so the field melts out two to three weeks late where the charts go bare. Weekly stepping within the month took the row from +32% to +24% (dev) and +31% to +23% (target); June is inside the band at both grids. Not tuned; the band stands."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-10",
+    "grid": "target",
+    "reason": "\u221218%: 15.5 Mkm\u00b2 against 19.0 (\u00b13.0 allowed); the dev row passes on the absolute floor (16.0, 2.96 short). Read at a 1 mm bar the same month is 22.2 Mkm\u00b2: the pack is there but thin at the month's end across the 50\u201360\u00b0N belt, and a cell counts for the share of the month its pack stands above the 5 mm bar. It is not a warm bias \u2014 the field's October runs 1\u20133\u00b0C COLD of the stations there (Yakutsk \u22129.5 vs ~\u22127.5, Yellowknife \u22124.1 vs ~\u22121) \u2014 but the season's onset: the first snow lies at the bar for most of the month in the model, while the charts count a cell from its first white week. Weekly stepping within the month took the row from \u221229% to \u221216% (dev) and \u221231% to \u221218% (target). The bar and the band were set before the measurement; the onset (a fresh-snow depth of its own, the charts' half-cell rule) is the open mechanism, \u00a78 of the W27 handoff."
   }
 ]

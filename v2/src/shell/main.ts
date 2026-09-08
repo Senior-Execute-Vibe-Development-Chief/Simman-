@@ -9,6 +9,7 @@ import {
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
 } from "../sim/constants";
+import { snowCoveredAreaMid, snowDepthCm, snowMeanMm } from "../sim/snow";
 import { buildSubstrate, type Substrate } from "../sim/substrate";
 import { crossingHasGround, crossingIsOpenWater, crossingWaterWidth } from "../sim/crossings";
 import { yearFromStep } from "../sim/horizon";
@@ -531,21 +532,38 @@ const BIOME_COLORS: ReadonlyMap<number, readonly [number, number, number]> = new
   [B_MEDITERRANEAN, [132, 152, 72]],
 ]);
 const SNOW_COLOR: readonly [number, number, number] = [240, 244, 248];
+const ICE_COLOR: readonly [number, number, number] = [214, 230, 246];
+// Drawing scale (W27): ten centimetres of settled snow hides grass and
+// furrow; the ground shows through anything thinner.
+const SNOW_HIDES_GROUND_CM = 10;
 
-/** Terrain (W24): the cell's biome in its colour, and white where the month's
- * mean temperature is below freezing — the same bar the river lens freezes
- * at, since lying snow and river ice are the one monthly-mean condition.
- * Lakes and large rivers keep their water tones. */
+/** Terrain (W24, W27): the cell's biome in its colour, whitened by the snow
+ * that lies on it this month — the ground showing through a thin pack,
+ * white under a deep one, patchy as a melting cell goes bare in its thin
+ * places first, and the ice tone where the pack never melts out. Lakes and
+ * large rivers keep their water tones. */
 function terrainColor(cell: number, selectedMonth: number): [number, number, number] {
   if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [55, 135, 165];
   const river = substrate.rivers.magnitude[cell];
   if (river >= 2) return [45, 125, 155];
-  const temperature = substrate.temperature[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
-  if (temperature < RIVER_FREEZING_TEMPERATURE) return [SNOW_COLOR[0], SNOW_COLOR[1], SNOW_COLOR[2]];
+  if (substrate.snow.perennial[cell]) return [ICE_COLOR[0], ICE_COLOR[1], ICE_COLOR[2]];
+  const ground = groundColor(cell, selectedMonth);
+  const pack = snowMeanMm(substrate.snow, cell, selectedMonth);
+  if (pack <= 0) return ground;
+  const cover = snowCoveredAreaMid(substrate.snow, cell, selectedMonth) * Math.min(1, snowDepthCm(pack) / SNOW_HIDES_GROUND_CM);
+  return [
+    Math.round(ground[0] + (SNOW_COLOR[0] - ground[0]) * cover),
+    Math.round(ground[1] + (SNOW_COLOR[1] - ground[1]) * cover),
+    Math.round(ground[2] + (SNOW_COLOR[2] - ground[2]) * cover),
+  ];
+}
+
+/** The biome's colour, or the height-and-moisture tone for a land cell the
+ * classifier did not place (it returns -1 at or below the datum), so nothing
+ * is left unpainted. */
+function groundColor(cell: number, selectedMonth: number): [number, number, number] {
   const biome = BIOME_COLORS.get(substrate.biome[cell] ?? -1);
   if (biome) return [biome[0], biome[1], biome[2]];
-  // A land cell the classifier did not place (it returns -1 at or below the
-  // datum): the old height-and-moisture tone, so nothing is left unpainted.
   const elevation = substrate.elevation[cell];
   const moisture = substrate.moisture[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
   const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);

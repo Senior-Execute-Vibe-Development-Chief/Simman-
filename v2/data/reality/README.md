@@ -101,3 +101,12 @@ carry its own radius where the source describes a belt) and
 `staple-by-region.json` (the dominant staple by region at 1 CE) are W8's
 reality tables; `crop-ranges.json` carries polygons from W8.
 
+`snow-cover.json` is the W27 reality fixture: the northern hemisphere's
+snow-cover extent by calendar month, the 1991–2020 mean of the Rutgers
+Global Snow Lab's monthly area table (NH SCE CDR v01r01; snow on land,
+Greenland included, sea ice not), with the cover bar the sim is read at (5 mm
+of water) and a tolerance set before the first measurement and never
+widened. The gate reads the sim's own pack (`substrate.snow`) at both grids
+and sums each cell's share of the month above the bar; rows outside the band
+are in `known-misses.json` under check `snow` with the measured cause. The
+file holds twelve numbers and their provenance, no runtime state.

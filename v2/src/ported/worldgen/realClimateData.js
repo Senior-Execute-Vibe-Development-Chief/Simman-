@@ -456,10 +456,10 @@ export function sampleMonthlyClimate(W, H, elevation, { orographicRain = true } 
  * @param {Float32Array} temperature out
  * @param {Float32Array} [dryFrac]  out, fraction of the year that is arid
  * @param {Float32Array} [summerDry] out, phase of the drought (>0 = summer-dry)
- * @param {{ orographicRain?: boolean }} [options] `orographicRain` (default true) applies the W14 sub-grid orographic share to the sampled rain before the ranking
+ * @param {{ orographicRain?: boolean, rainMm?: Float32Array|null }} [options] `orographicRain` (default true) applies the W14 sub-grid orographic share to the sampled rain before the ranking; `rainMm` (W27), when given, receives each land cell's observed annual precipitation in mm (with that share) — the quantity the ranking consumed, kept for the snowpack
  * @returns {boolean} false if the data is not loaded
  */
-export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac, { orographicRain = true } = {}) {
+export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac, { orographicRain = true, rainMm = null } = {}) {
   if (!isRealClimateAvailable()) return false;
   const { P, T, D, S, A, WF, NLON } = deriveGrids();
   // W14 (P18): the coarse rain placed on the slope it fell on, inside the
@@ -533,6 +533,7 @@ export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac,
       }
     }
   }
+  if (rainMm) rainMm.set(obsP);
   if (!nLand) return true;
 
   // ── Pass 2: quantile-map observed rainfall onto the solver's own moisture

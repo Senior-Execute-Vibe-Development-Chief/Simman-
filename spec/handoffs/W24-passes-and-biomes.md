@@ -160,8 +160,11 @@ walks the v1 world, which holds no people table; the pre-W22
 
 1. **The mountain term at the shipped grid** is a `v2-long` measurement
    (§4): the same climb is three times the share of a step there.
-2. **Snow is a monthly mean, not a pack** (§6). A snowpack would be its own
-   state and its own wave, and would feed habitability before it fed a lens.
+2. ~~**Snow is a monthly mean, not a pack** (§6). A snowpack would be its own
+   state and its own wave, and would feed habitability before it fed a lens.~~
+   Closed by W27 (`spec/handoffs/W27-the-snowpack.md`): the pack is its own
+   state, built from the monthly climate; it feeds the land step and the
+   lens, and habitability is W27 §8.
 3. **Passes are drawn only on the crossings lens.** A faint overlay on the
    terrain lens was not asked for and would compete with the biome colours.
 4. ~~**A pass is marked where the cells meet, not where the saddle lies.**~~

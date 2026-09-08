@@ -24,6 +24,7 @@ import { classifyBiome } from "../ported/worldgen/biomeClass.js";
 import { WALK_DETOUR_UNIT, WALK_VERTICAL_UNIT_M } from "../ported/worldgen/walkData.js";
 import { northSouthKm, rowEastWestKm } from "./travel/cost";
 import { fallbackCrossings } from "./crossings";
+import { buildSnowpack, emptySnowpack, type Snowpack } from "./snow";
 import {
   fillRealClimate,
   isRealClimateAvailable,
@@ -172,6 +173,10 @@ export interface Substrate {
   readonly walkKm: Float32Array;
   readonly walkAscent: Float32Array;
   readonly walkDescent: Float32Array;
+  /** The snowpack (W27): water held as snow at each month's end and the
+   * cells whose pack never melts out. Empty where the preset has no rain in
+   * mm to build it from. */
+  readonly snow: Snowpack;
 }
 
 // The monthly contract (M1 review ruling): where the observed NCEP monthly
@@ -181,7 +186,7 @@ export interface Substrate {
 // month's share of the cell's annual rain (mean-preserving ratio). This is
 // what carries the real monsoon and the real pass-closure winters; a
 // hemisphere sine cannot. Data in, mechanism out (R7).
-function observedMonthlyClimate(world: PortedWorld, N: number, orographicRain: boolean): MonthlyClimate | null {
+function observedMonthlyClimate(world: PortedWorld, N: number, orographicRain: boolean): (MonthlyClimate & { rainMm: Float32Array | null }) | null {
   // The monthly ratios carry the W14 orographic share the annual fill used —
   // each month lifted by its own wind — so the seasonal cycle and the annual
   // total agree about which slope the rain fell on.
@@ -189,6 +194,12 @@ function observedMonthlyClimate(world: PortedWorld, N: number, orographicRain: b
   if (!observed) return null;
   const temperature = new Float32Array(N * MONTHS_PER_YEAR);
   const moisture = new Float32Array(N * MONTHS_PER_YEAR);
+  // W27: the month's rain in mm — the observed annual mm the fill measured
+  // (with its orographic share) times the month's own unclamped share, so
+  // the twelve sum to the year. The snowpack is built from this; the
+  // moisture scale above is the crop side's and keeps its clamp.
+  const annualRain = world.rainMm;
+  const rainMm = annualRain ? new Float32Array(N * MONTHS_PER_YEAR) : null;
   for (let cell = 0; cell < N; cell++) {
     const baseTemperature = world.temperature[cell];
     const baseMoisture = world.moisture[cell];
@@ -206,9 +217,12 @@ function observedMonthlyClimate(world: PortedWorld, N: number, orographicRain: b
         Math.min(CLIMATE_MONTHLY_RATIO_MAX, observed.precipRatio[index]),
       );
       moisture[index] = Math.max(0, Math.min(1, baseMoisture * ratio));
+      if (rainMm && annualRain) {
+        rainMm[index] = ((annualRain[cell] ?? 0) / MONTHS_PER_YEAR) * (observed.precipRatio[index] ?? 1);
+      }
     }
   }
-  return { temperature, moisture };
+  return { temperature, moisture, rainMm };
 }
 
 /** Monthly wind from observation; calm placeholder on procedural worlds. */
@@ -345,8 +359,8 @@ function makeBiomes(world: PortedWorld, territory: PortedTerritory): Uint8Array 
  */
 function observedClimateFill(config: SubstrateConfig): typeof fillRealClimate {
   const orographicRain = !(config.rawRain ?? false);
-  return (width, height, elevation, moisture, temperature, dryFraction, summerDry, temperatureAmplitude, warmRainFraction) =>
-    fillRealClimate(width, height, elevation, moisture, temperature, dryFraction, summerDry, temperatureAmplitude, warmRainFraction, { orographicRain });
+  return (width, height, elevation, moisture, temperature, dryFraction, summerDry, temperatureAmplitude, warmRainFraction, options) =>
+    fillRealClimate(width, height, elevation, moisture, temperature, dryFraction, summerDry, temperatureAmplitude, warmRainFraction, { ...(options ?? {}), orographicRain });
 }
 
 export function buildSubstrate(
@@ -379,8 +393,10 @@ export function buildSubstrate(
   const world = generated.w;
   const territory = generated.ter;
   const cells = territory.tElev.length;
-  const climate = (observedClimate ? observedMonthlyClimate(world, cells, !(config.rawRain ?? false)) : null)
-    ?? monthlyClimate(world, cells);
+  const observedMonths = observedClimate ? observedMonthlyClimate(world, cells, !(config.rawRain ?? false)) : null;
+  const climate: MonthlyClimate = observedMonths
+    ? { temperature: observedMonths.temperature, moisture: observedMonths.moisture }
+    : monthlyClimate(world, cells);
   const wind = monthlyWind(world, cells, observedClimate);
   const annualTemperature = new Float32Array(cells);
   const annualMoisture = new Float32Array(cells);
@@ -410,6 +426,11 @@ export function buildSubstrate(
   });
   const elevation = territory.tElev;
   const landMask = makeLandMask(elevation);
+  // W27: the pack cycled over the climate's year, from the monthly
+  // temperature and the observed rain; empty where there is no rain in mm.
+  const snow = observedMonths?.rainMm
+    ? buildSnowpack(climate.temperature, observedMonths.rainMm, landMask, width, height)
+    : emptySnowpack(cells);
   const shapeBlock = world.landShapeWidth / width;
   if (!Number.isInteger(shapeBlock) || world.landShapeHeight / height !== shapeBlock) {
     throw new Error(
@@ -471,6 +492,7 @@ export function buildSubstrate(
     landShapeHeight: world.landShapeHeight,
     landShapeBlock: shapeBlock,
     ...walksOf(world, cells),
+    snow,
   };
   return Object.freeze(substrate);
 }

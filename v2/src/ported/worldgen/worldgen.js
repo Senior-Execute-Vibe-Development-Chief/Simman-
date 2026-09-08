@@ -89,6 +89,7 @@ const tAmp=new Float32Array(W*H),warmRainFrac=new Float32Array(W*H);
 let realClimateUsed=false;
 let tecPlates=null,tecWindX=null,tecWindY=null;
 let crossings=null;   // W22: one byte per edge from the 1-arc-minute grid — the ground between two cells, and the water between them; null on presets with no real bathymetry
+let rainMm=null;         // W27: each land cell's observed annual precipitation, mm, as the real-climate fill measured it; null on presets without observed rain
 let landFraction=null;    // W19: the share of each cell standing above sea level, from the 1-arc-minute grid; null on presets with no real bathymetry
 // W20: WHERE that ground is, on a fixed grid finer than any the sim steps —
 // read-only geometry the world is drawn from and measured against, never a
@@ -658,7 +659,8 @@ moisture[i]=mo;}
 // Everything after this line — rivers, fertility, settlement, the whole of history —
 // still emerges; it just emerges on a given climate instead of a predicted one.
 if(realWind&&realWindFns&&realWindFns.fillRealClimate&&realWindFns.isRealClimateAvailable&&realWindFns.isRealClimateAvailable()){
-realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac);
+rainMm=new Float32Array(W*H);
+realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,{rainMm});
 realClimateUsed=true;
 console.log("Earth (Sim): using real NCEP/NCAR precipitation + air temperature");}
 }else if(preset==="pangaea"){
@@ -873,4 +875,4 @@ const em=elevation[i]>0?moisture[i]/demand(temperature[i]):1;
 const aridBoost=3.9*Math.max(0,Math.min(1,1-em))*Math.min(1,lat/0.22);   // °C
 tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
-return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,crossings,landFraction,landShape,landShapeWidth:LAND_SHAPE_W,landShapeHeight:LAND_SHAPE_H,walks,_seed:seed};}
+return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,crossings,landFraction,landShape,landShapeWidth:LAND_SHAPE_W,landShapeHeight:LAND_SHAPE_H,walks,rainMm,_seed:seed};}

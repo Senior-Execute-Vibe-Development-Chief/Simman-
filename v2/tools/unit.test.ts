@@ -1,5 +1,20 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import {
+  buildSnowpack,
+  emptySnowpack,
+  meltFactorMm,
+  monthMeltPotentialMm,
+  monthSnowfallMm,
+  snowCoverShare,
+  snowCoveredArea,
+  snowDepthCm,
+  snowMeanMm,
+  snowStepFactor,
+  temperatureC,
+  temperatureWithinMonthC,
+} from "../src/sim/snow";
+import { dnormalCdf, dnormalPdf } from "../src/sim/dmath";
 import { fileURLToPath } from "node:url";
 import { checkDmathGoldens } from "./lib/dmath-check";
 import { collect } from "./lib/collect";
@@ -134,6 +149,7 @@ function peopleFixture(): Substrate {
     landShapeHeight: height,
     landShapeBlock: 1,
     walkKm: new Float32Array(cells * 4),
+    snow: emptySnowpack(cells),
     walkAscent: new Float32Array(cells * 4),
     walkDescent: new Float32Array(cells * 4),
     elevation: new Float32Array(cells),
@@ -1204,6 +1220,142 @@ async function main(): Promise<void> {
       assert.ok((walks.detour[edge] ?? 0) > 0, "waypoints belong to a walked edge");
       assert.ok(points.length >= 2 && points.length <= 12 && points.length % 2 === 0);
     }
+  }
+
+  {
+    // W27: the snowpack. (a) The two month laws follow from one daily
+    // spread: the snow share of a month's rain is the share of its days
+    // under the rain–snow threshold, the melt its positive degree-days.
+    const sigma = 5;
+    assert.ok(Math.abs(monthSnowfallMm(-10, 50) - 50 * dnormalCdf(11 / sigma)) < 1e-9);
+    const warmSnow = monthSnowfallMm(15, 50);
+    assert.ok(warmSnow > 0 && warmSnow < 0.2, `a +15°C month still snows on ${warmSnow} mm`);
+    // The melt factor follows the sun: the summer-solstice value in June
+    // in the north and in December in the south, the winter one opposite.
+    assert.ok(Math.abs(meltFactorMm(5, false) - 4) < 0.02 && Math.abs(meltFactorMm(11, false) - 1.2) < 0.02);
+    assert.ok(Math.abs(meltFactorMm(11, true) - 4) < 0.02 && Math.abs(meltFactorMm(5, true) - 1.2) < 0.02);
+    assert.ok(Math.abs(meltFactorMm(5, false, 0.69) - 4) < 1e-6, "exactly the maximum at the solstice itself");
+    // Within a month the air moves from the middle of its mean straight
+    // toward the neighbouring means: half-way to each at the month's ends.
+    assert.equal(temperatureWithinMonthC(-10, 0, 10, 0.5), 0);
+    assert.ok(Math.abs(temperatureWithinMonthC(-10, 0, 10, 0) + 5) < 1e-9);
+    assert.ok(Math.abs(temperatureWithinMonthC(-10, 0, 10, 1) - 5) < 1e-9);
+    assert.ok(Math.abs(temperatureWithinMonthC(-10, 0, 6, 0.75) - 1.5) < 1e-9);
+    const coldMelt = monthMeltPotentialMm(-10, 0, false);
+    assert.ok(coldMelt > 1 && coldMelt < 2.5, `a −10°C January can melt ${coldMelt} mm`);
+    const expectedWarmMelt = meltFactorMm(6, false) * 30.436875 * (sigma * dnormalPdf(2) + 10 * dnormalCdf(2));
+    assert.ok(Math.abs(monthMeltPotentialMm(10, 6, false) - expectedWarmMelt) < 1e-9);
+    assert.ok(monthMeltPotentialMm(10, 6, false) > 1000, "a +10°C July melts a metre of water");
+    assert.equal(temperatureC(0.6), 0);
+    assert.ok(Math.abs(temperatureC(0.5) + 10) < 1e-9);
+    // (b) Four columns on a 2×2 grid (two north, two south), 50 mm a month:
+    // cold all year is perennial; warm all year holds nothing; a southern
+    // seasonal column builds a pack in its winter (July), melts out in its
+    // summer (January) and repeats; a water cell holds nothing however cold.
+    const cells = 4;
+    const temperature = new Float32Array(cells * 12);
+    const rain = new Float32Array(cells * 12).fill(50);
+    const land = new Uint8Array([1, 1, 1, 0]);
+    const sim = (celsius: number) => 0.6 + celsius / 100;
+    for (let month = 0; month < 12; month++) {
+      temperature[0 * 12 + month] = sim(-5);
+      temperature[1 * 12 + month] = sim(15);
+      temperature[2 * 12 + month] = sim(7 + 15 * Math.cos((2 * Math.PI * month) / 12));
+      temperature[3 * 12 + month] = sim(-5);
+    }
+    const pack = buildSnowpack(temperature, rain, land, 2, 2);
+    assert.equal(pack.perennial[0], 1, "a column colder than freezing all year is perennial");
+    assert.ok(pack.endMm[11]! > pack.endMm[0]!, "and its pack grows through the year");
+    assert.equal(pack.perennial[1], 0);
+    for (let month = 0; month < 12; month++) assert.equal(pack.endMm[1 * 12 + month], 0, "a warm column holds no snow");
+    assert.equal(pack.perennial[2], 0, "a seasonal column is not perennial");
+    assert.ok(pack.endMm[2 * 12 + 6]! > 0, "a southern July holds a pack");
+    assert.equal(pack.endMm[2 * 12 + 0], 0, "a southern January has melted out");
+    // The stored year repeats: walking it once more from December's pack,
+    // week by week with the air read between the monthly means,
+    // reproduces every month to the table's unit.
+    let replay = pack.endMm[2 * 12 + 11]!;
+    for (let month = 0; month < 12; month++) {
+      const before = temperatureC(temperature[2 * 12 + ((month + 11) % 12)]!);
+      const mean = temperatureC(temperature[2 * 12 + month]!);
+      const after = temperatureC(temperature[2 * 12 + ((month + 1) % 12)]!);
+      for (let week = 0; week < 4; week++) {
+        const fraction = (week + 0.5) / 4;
+        const celsius = temperatureWithinMonthC(before, mean, after, fraction);
+        replay = Math.max(0, replay + monthSnowfallMm(celsius, 50 / 4) - monthMeltPotentialMm(celsius, month, true, fraction) / 4);
+      }
+      assert.ok(Math.abs(replay - pack.endMm[2 * 12 + month]!) <= 1, `month ${month + 1}: replay ${replay} against ${pack.endMm[2 * 12 + month]}`);
+    }
+    for (let month = 0; month < 12; month++) assert.equal(pack.endMm[3 * 12 + month], 0, "water holds no pack");
+    assert.equal(pack.perennial[3], 0);
+    // (c) The readings: a month's mean pack is the mean of its two ends;
+    // 30 mm of water is 10 cm of settled snow; the step factor is the
+    // footprint term of the walking-energy coefficient, capped at the
+    // deepest footprint measured.
+    assert.equal(snowMeanMm(pack, 2, 0), (pack.endMm[2 * 12 + 11]! + pack.endMm[2 * 12 + 0]!) / 2);
+    assert.ok(Math.abs(snowDepthCm(30) - 10) < 1e-9);
+    const shallow = emptySnowpack(1);
+    shallow.endMm.fill(30);
+    assert.ok(Math.abs(snowStepFactor(shallow, 0, 3) - 1.82) < 1e-9);
+    const deep = emptySnowpack(1);
+    deep.endMm.fill(3000);
+    assert.ok(Math.abs(snowStepFactor(deep, 0, 3) - (1 + 0.082 * 35)) < 1e-9);
+    assert.equal(snowStepFactor(emptySnowpack(1), 0, 0), 1);
+    // The depletion curve: all covered at the peak, bare at nothing, and
+    // falling between — slowly at first (the drifts outlast the melt of the
+    // mean), then steeply.
+    assert.equal(snowCoveredArea(100, 100, 5), 1);
+    assert.equal(snowCoveredArea(100, 0, 5), 0);
+    assert.equal(snowCoveredArea(100, 4, 5), 0);
+    const half = snowCoveredArea(100, 50, 5);
+    const tenth = snowCoveredArea(100, 10, 5);
+    assert.ok(half > 0.8 && half < 1, `half the peak left: ${half} covered`);
+    assert.ok(tenth > 0.2 && tenth < half, `a tenth left: ${tenth} covered`);
+    // A chart's month: whitening, the share of the month the pack stood
+    // above the bar; melting, the depletion curve integrated over the month.
+    const whitening = emptySnowpack(1);
+    whitening.endMm[11] = 0;
+    whitening.endMm[0] = 25;
+    whitening.peakMm[0] = 25;
+    assert.ok(Math.abs(snowCoverShare(whitening, 0, 0, 5) - 20 / 25) < 1e-9);
+    const melting = emptySnowpack(1);
+    melting.endMm[2] = 100;
+    melting.endMm[3] = 0;
+    melting.peakMm[0] = 100;
+    const april = snowCoverShare(melting, 0, 3, 5);
+    assert.ok(april > 0.4 && april < 0.8, `a month that melts a whole pack is ${april} covered`);
+    assert.equal(snowCoverShare(melting, 0, 5, 5), 0);
+    deep.peakMm[0] = 3000;
+    assert.equal(snowCoverShare(deep, 0, 4, 5), 1);
+    // (d) The dev grid's own pack: nothing on water, a perennial pack
+    // somewhere, more of the northern hemisphere covered in January than in
+    // July, and no pack in a cell no month of which can snow.
+    const substrate = buildSubstrate(42042, {}, "dev");
+    let perennial = 0;
+    let januaryCovered = 0;
+    let julyCovered = 0;
+    for (let cell = 0; cell < substrate.N; cell++) {
+      const y = Math.floor(cell / substrate.width);
+      let coldest = Number.POSITIVE_INFINITY;
+      let any = 0;
+      for (let month = 0; month < 12; month++) {
+        coldest = Math.min(coldest, temperatureC(substrate.climate.temperature[cell * 12 + month]!));
+        any += substrate.snow.endMm[cell * 12 + month]!;
+      }
+      if (!substrate.landMask[cell]) {
+        assert.equal(any, 0, "no pack on water");
+        assert.equal(substrate.snow.perennial[cell], 0);
+        continue;
+      }
+      if (any > 0) assert.ok(coldest < 1 + 4 * sigma, `a pack where no month is within 4σ of snowing (coldest ${coldest}°C)`);
+      if (substrate.snow.perennial[cell]) perennial++;
+      if (y < substrate.height / 2) {
+        januaryCovered += snowCoverShare(substrate.snow, cell, 0, 5);
+        julyCovered += snowCoverShare(substrate.snow, cell, 6, 5);
+      }
+    }
+    assert.ok(perennial > 0, "the dev grid holds a pack that never melts out");
+    assert.ok(januaryCovered > julyCovered, `January covers ${januaryCovered} cells, July ${julyCovered}`);
   }
 
   {

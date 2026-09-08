@@ -17,6 +17,7 @@ import {
   UINT8_SENTINEL,
 } from "../constants";
 import { hash32 } from "../../ported/rng";
+import { emptySnowpack } from "../snow";
 import type { GridPreset } from "../world";
 import type { Substrate } from "../substrate";
 import { fallbackCrossings } from "../crossings";
@@ -83,6 +84,7 @@ export function routingFixtureSubstrate(grid: GridPreset): Substrate {
     landShapeHeight: height,
     landShapeBlock: 1,
     walkKm: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
+    snow: emptySnowpack(N),
     walkAscent: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
     walkDescent: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
     elevation,

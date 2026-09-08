@@ -48,6 +48,7 @@ import {
   TRAVEL_RELIEF_THRESHOLD,
   TRAVEL_HALF,
 } from "../constants";
+import { snowStepFactor } from "../snow";
 import { dcos } from "../dmath";
 import { monthIndex } from "../scheduler";
 import { D8_DX, D8_DY } from "../../ported/worldgen/riverGen.js";
@@ -151,11 +152,14 @@ function terrainFactor(substrate: Substrate, cell: number): number {
   return Math.max(TRAVEL_LAND_MIN_FACTOR, factor);
 }
 
-// Land months slow for real reasons (cold: snow and pass closure; waterlogged
-// ground: the mud season). At sea the weather physics are the wind DIRECTION
-// effect (per-edge in the engine, from the observed monthly wind) and ICE
-// (blocking, below). A previous cold-storm term here only fired below −30°C
-// air — dead in practice — and was retired when ice blocking landed.
+// Land months slow for real reasons: the SNOW that lies this month (W27,
+// the pack the substrate carries, charged as the footprint-depth term of
+// the walking-energy coefficient), the extreme cold beyond it, and
+// waterlogged ground (the mud season). At sea the weather physics are the
+// wind DIRECTION effect (per-edge in the engine, from the observed monthly
+// wind) and ICE (blocking, below). A previous cold-storm term here only
+// fired below −30°C air — dead in practice — and was retired when ice
+// blocking landed.
 function seasonalFactor(substrate: Substrate, cell: number, month: number, water: boolean): number {
   const index = climateIndex(cell, month);
   const temperature = substrate.climate.temperature[index];
@@ -163,7 +167,7 @@ function seasonalFactor(substrate: Substrate, cell: number, month: number, water
   const moisture = substrate.climate.moisture[index];
   const cold = Math.max(0, TRAVEL_COLD_THRESHOLD - temperature) * TRAVEL_COLD_COST_FACTOR;
   const mud = Math.max(0, moisture - TRAVEL_WATERLOG_THRESHOLD) * TRAVEL_MUD_COST_FACTOR;
-  return 1 + (cold + mud) * TRAVEL_SEASONAL_AMPLITUDE;
+  return (1 + (cold + mud) * TRAVEL_SEASONAL_AMPLITUDE) * snowStepFactor(substrate.snow, cell, monthAt(month));
 }
 
 /**

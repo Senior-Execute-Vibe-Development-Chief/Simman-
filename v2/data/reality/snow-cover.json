@@ -1,0 +1,22 @@
+{
+  "source": "Rutgers University Global Snow Lab, Northern Hemisphere snow cover extent (NH SCE CDR v01r01): monthly areas 1991–2020 from climate.rutgers.edu/snowcover/table_area.php (monthly table), the thirty-year mean per calendar month computed from that table and read 2026-09-08. The areas are snow on land, Greenland included; sea ice is not counted.",
+  "coverBarMm": 5,
+  "coverBarSource": "5 mm of water, about 1.5 cm of settled snow: the least pack that whitens the ground to a satellite chart, the presence bar model evaluations commonly use. The charts are weekly and the reference is their monthly mean, so a cell counts for the share of the month it stands white. Whitening, that is the share of the month its pack stands above the bar, the pack moving linearly between the month's two ends (fresh snow lies on the whole cell). Melting, the cell goes bare in patches — the peak pack within a cell is a spread of depths (lognormal, CV 0.4) and melt takes the same depth off all of them — so the month's share is the depletion curve's covered area integrated over the month (Simpson on the two ends and the middle). The charts flag a cell snow-covered at half or more of its area; the fractional share here differs from that binary rule by exp(-σ²/2) ≈ 7% of the melt season's area-time, recorded, not corrected.",
+  "monthsMkm2": [
+    46.66,
+    45.25,
+    39.6,
+    29.88,
+    18.23,
+    7.64,
+    3.21,
+    2.62,
+    5.42,
+    18.96,
+    34.76,
+    43.95
+  ],
+  "relativeTolerance": 0.15,
+  "absoluteToleranceMkm2": 3,
+  "toleranceReason": "Set before the first measurement. A pack cycled on a monthly-mean climatology against weekly satellite charts: the reanalysis runs 1–6°C cold over winter continents, one month's mean pack stands for a month of daily cover, and the summer extent is the ice sheet and the Arctic islands read at 22 km cells, which is what the absolute floor is for. The band is never widened; a row outside it is a known miss with its reason."
+}
