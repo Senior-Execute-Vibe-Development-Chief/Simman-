@@ -1634,22 +1634,28 @@ lawyered.
   6/6, so v1's label is kept as a definition that now also holds against
   the chronologies at the coarse grid; the shipped grid is `v2-long`. The
   spec's "England ~2/millennium" was v1's own output (research/03) and 04
-  §4.4 now carries the chronologies instead. (i), (ii) — the store, W31 —
-  and (iii) remain proposed and unbuilt; the ruling on the label is no
-  longer needed to make the row honest, only to change it.
-  **W31 specified (2026-09-08): the store** —
-  `spec/handoffs/W31-the-store.md`, a pre-build handoff in W5's form: a
-  conserved `store` field (tonnes per km²) on every farmed cell, filled by
-  the good years' surplus at the catalogue's storability, drawn by the bad
-  years' shortfall, spoiling at a Q10-and-moisture law, the deaths law
-  unchanged and acting on the uncovered excess only; a `food` balance sheet
-  beside `people`; severity, run and margin rows with windows set before
-  measuring; five physical constants. It proposes **P23**, an R4 ruling for
-  ratification: the store is the FIELD, and a community's granary (M4's
-  opening) is a query over its cells, never a second stock — amending 02
-  box 2's "food stocks enter through community books, not a parallel
-  field", because 18.3's invariance under the community bar is only
-  possible if the book lives below the bar. The flight is W32.
+  §4.4 now carries the chronologies instead. (i) remains proposed (the
+  flight, W32); (ii) — the store — is **built (W31, 2026-09-08)**; (iii)
+  remains proposed. The ruling on the label is no longer needed to make
+  the frequency row honest, only to change it.
+  **W31 built (2026-09-08): the store** —
+  `spec/handoffs/W31-the-store.md`. Conserved `store` field (tonnes/km²),
+  Q10×moisture spoilage, fill at catalogue storability, pooled draw,
+  deaths on the uncovered excess only; `food` sheet; save v12. At the
+  dev solve arm: frequency 6/6 unchanged; run share 0.82 ≥ 0.5; severity
+  0 % in the four judged regions (store covers labelled years —
+  manifested); margin inverted (manifested); curve −5000 95.9 → 114.1M,
+  1 CE 1,491 → 2,077M (up, as expected — not tuned). **P23** proposed
+  for ratification: the store is the FIELD; a community's granary is a
+  query over its cells (18.3), amending 02 box 2. The flight is W32.
+- **P23. The food book lives below the community bar** (proposed for
+  ratification, 2026-09-08, W31). Amends 02 box 2's "food stocks and
+  flows enter through community books, not a parallel field": the stock
+  is the `store` field; a community's granary (M4's opening) is the SUM
+  of its cells' store — a query, never a second stock, never copied,
+  never authored. Required by 18.3: macro-history must be invariant under
+  the community bar, which is only possible if the food book lives below
+  it. Built in W31 as the field; the community view waits on M4.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in

@@ -19,7 +19,7 @@ surplus × storability × legibility) and M5's legitimacy will open (05 §5.1
 (5), "granary opened"). **Do not build the flight** (P22 (i), the next wave),
 **communities** (18.3 — bookkeeping, folded into M4's opening), **trade or
 haul of grain between cells** (06), or **storability technique** (11, M8).
-**Status: SPEC — not built.**
+**Status: BUILT (2026-09-08).**
 
 ---
 
@@ -530,5 +530,23 @@ expression.
 
 ## Status
 
-**SPEC — not built** (2026-09-08). Fill this section with the measured
-numbers beside §0's baseline when the wave lands.
+**BUILT (2026-09-08)** on `cursor/v2-w31-the-store-7c38`. Beside §0's
+baseline:
+
+| | W30 baseline | W31 measured |
+|---|---:|---:|
+| −8000 | 13.16M | 13.16M (in band) |
+| −5000 | 95.9M | **114.1M** (×1.19) |
+| −3000 | 640.1M | **895.7M** (×1.40) |
+| −1000 | 1,307.6M | **1,827.5M** (×1.40) |
+| 1 CE | 1,491.3M | **2,076.8M** (×1.39; ×0.99 vs W28's 2,108M) |
+| river / rain-fed density | 27.6 / 14.1 | **34.2 / 19.9** |
+| frequency England…NCP | 4.3…72.4 (6/6) | **unchanged 6/6** |
+| severity England / Deccan / NCP / Sahel | — | **0 % / 0 % / 0 % / 0 %** (windows 1–6 / 1–8; manifested) |
+| run share | — | **0.823 ≥ 0.5 pass** |
+| margin low-CV / high-CV fill | — | **0.77 / 0.98** (inverted; manifested) |
+| first caged basin | −2644 | **−2763** (same cell) |
+
+The curve went up: the store buffers deaths. Severity at 0 % and the
+inverted margin are the handoff's recorded failure modes when the store
+covers labelled years — manifested, not tuned. Flight is W32.

@@ -4693,3 +4693,35 @@ Review corrections to the M1 build (all validated before merge):
     one year are a coincidence and never a teleconnection — a datum for
     cross-regional failure correlation would be a data wave's; the store
     is W31's; the flight and the cohorts as at #86.
+
+88. **What the store did at dev (W31, 2026-09-08).** The first food book:
+    a conserved `store` field on every farmed cell, filled at storability,
+    drawn by shortfalls, spoiling at the climate Q10×moisture rate; deaths
+    only on the uncovered excess. Windows in `famine-severity.json` were
+    set before measuring.
+
+    (a) **The curve went up**, as the handoff expected and forbade tuning
+    against: −5000 95.9 → 114.1M (×1.19), −3000 640 → 896M (×1.40), −1000
+    1,308 → 1,828M (×1.40), 1 CE 1,491 → **2,077M (×1.39; ×0.99 against
+    W28's harvest-less 2,108M)**. River cells 27.6 → 34.2 persons/km²,
+    rain-fed 14.1 → 19.9, foragers unchanged. The granary buffers the
+    harvest years' deaths; the world rises back toward the ceiling P21
+    already names as wrong. That is the mechanism telling the truth —
+    not a reason to dial the store (R2).
+
+    (b) **Severity is 0 %** in England, the Deccan, the North China Plain
+    and the Sahel (windows 1–6 / 1–8 %): a labelled famine year is now a
+    dear year paid from the store. The run share is **0.82 ≥ 0.5** — the
+    chronologies' mortality famines were runs, and the deaths that remain
+    cluster there. The handoff recorded both ways the severity row can
+    fail; this is the "store too large" side, manifested.
+
+    (c) **The margin is inverted**: low-CV median fill 0.77, high-CV 0.98
+    (judged high below low). With labelled-year deaths gone, the
+    CV-dependent gap under the ceiling is gone with them.
+
+    (d) **Frequency 6/6 unchanged** (the label and `farmedYears` are the
+    yield's). Food sheet closes both kernels. Save v12.
+
+    Open: the flight (W32) so a starving cell walks; the preventive check
+    (M3b); storability technique (M8); shipped-grid severity (`v2-long`).

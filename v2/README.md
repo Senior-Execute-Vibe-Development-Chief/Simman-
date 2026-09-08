@@ -111,14 +111,17 @@ fudge factors.
   the land a farming source can enter opens in proportion to the farmers it
   sends; a hearth ignites where a native range has been a peopled basin for
   the package's domestication lag (the M2 law).
-- Save format v11 persists people, farmer masses, derived technique, cohorts,
+- Save format v12 persists people, farmer masses, derived technique, cohorts,
   the works (the built land capital, W28), the harvest anomaly state and the
-  famine-years field (W29), the farmed-years field (W30),
+  famine-years field (W29), the farmed-years field (W30), the store (W31 —
+  tonnes of storable food per km²),
   peopled arrivals, hearth progress, the resolved pass schedules, the regime
   (phase, wake and caged steps) and the event log; terrain remains immutable
   substrate rebuilt from its identity.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
-  technique coverage, weighted cohort shares, and per-pass firing counts.
+  technique coverage, weighted cohort shares, per-pass firing counts, and
+  `food.storeMonths.{median,p10,p90}` plus the last firing's food-sheet
+  channel totals (`food.harvest` / `eaten` / `spoiled` / `unstorable`).
 - Every people field pass uses aggregated named source/sink accounting.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
   fire annually, and the works build and rot on the growth stride after the
@@ -145,6 +148,16 @@ fudge factors.
   overlays paint the last year's multiple and the famine years over the
   farmed years (W30's `farmedYears`, the tally's own denominator, counted
   on the same cells and years).
+- **The store (W31).** Every farmed cell keeps a granary — a conserved
+  `store` field in tonnes/km². Each harvest year: spoil the opening stock
+  at the climate's Q10×moisture rate, fill from surplus at the package's
+  storability, draw the year's shortfall pooled across packages, and apply
+  the starvation rate only to the uncovered excess. Foragers neither sow
+  nor store; an abandoned store spoils alone. A `food` conservation sheet
+  (harvest / eaten / spoiled / unstorable) asserts zero unexplained flux
+  beside `people`. The "Granary" overlay paints months of food in store
+  (saturating at 24). Severity, run and margin reality rows live in
+  `data/reality/famine-severity.json`.
 - **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
   pass fires at one stride derived from the bounds the passes already carry
   (each group's hops on the rows it can be a source from, farmer growth,

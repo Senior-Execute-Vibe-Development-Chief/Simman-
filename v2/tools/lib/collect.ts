@@ -1,5 +1,5 @@
 import { FIELD_LIST } from "../../src/sim/fields";
-import { FOOD_RATION_TONNES_PER_PERSON_YEAR } from "../../src/sim/constants";
+import { FOOD_RATION_TONNES_PER_PERSON_YEAR, MONTHS_PER_YEAR } from "../../src/sim/constants";
 import { populationDensityMean, populationTotal } from "../../src/sim/people";
 import type { PeopleWorld } from "../../src/sim/people/types";
 import type { World } from "../../src/sim/world";
@@ -223,7 +223,7 @@ export function collect(world: World): Record<string, number> {
       let farmers = 0;
       for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
       if (farmers <= 0) continue;
-      months.push((world.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * 12);
+      months.push((world.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * MONTHS_PER_YEAR);
     }
     months.sort((a, b) => a - b);
     const n = months.length;

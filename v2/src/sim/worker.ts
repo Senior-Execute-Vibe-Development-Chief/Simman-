@@ -160,7 +160,7 @@ function liveSnapshot(target: World): Record<string, unknown> {
       let farmers = 0;
       for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
       planes.granary[cell] = farmers > 0
-        ? (target.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * 12
+        ? (target.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * MONTHS_PER_YEAR
         : 0;
     }
   }

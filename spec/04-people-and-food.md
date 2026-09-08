@@ -43,8 +43,10 @@ census copy, no bridge scalar, no second food book (R4).
   pastoral calories flow through herd stocks per 15 (grass seasonal and
   locally depletable; fodder and grain as the other feeding strategies).
   Sinks: eating (ration 3 kg/person/day-equivalent — v1's 0.003/tick per
-  sim-person, re-derived in real units at v2's tick), spoilage
-  (climate-scaled: hot-wet ~2.5×, hot-dry ~0.5×), seed corn, and losses in
+  sim-person, re-derived in real units at v2's tick = 1.095 t/person/year),
+  spoilage (W31: temperate humid base 8 %/yr × Q10^((T−10)/10) ×
+  (0.25 + 0.75·wetness); at 25 °C humid ~2.8×, arid ~0.7× — 04's earlier
+  "~2.5× / ~0.5×" illustration), seed corn, and losses in
   transit (the travel field's freight decay). Balance sheet asserted (R5).
 - **Harvest**: per worked tile — fertility × technique × works × labor
   (only rural working-age people farm; city dwellers don't) × the year.
@@ -52,10 +54,16 @@ census copy, no bridge scalar, no second food book (R4).
   annual anomalies (AR(1), ρ=0.30, ~12° weather cells), famine *derived*
   from the tail (a p10 year on thin margins), yield-variance geography
   matching 11/12 literature regions. Volcanic forcings (03) enter here.
-- **Storage**: granaries as community/center stocks with capacity from
-  storability tech and construction; the lean-year law (a settlement is
-  only viable where its basin survives its own once-a-century year —
-  margin 1/(1−2.33·cv)) ports as the founding-viability rule.
+- **Storage** (W31): every farmed cell keeps a conserved `store` field
+  (tonnes/km²) — spoil the opening stock, fill at the package's
+  storability, draw the year's shortfall pooled across packages; deaths
+  fall only on the uncovered excess. A community's granary (M4) is the
+  sum of its cells' store (P23). The lean-year law (a settlement viable
+  only where its basin survives its once-a-century year — margin
+  1/(1−2.33·cv)) is **withdrawn as a founding rule**: in v2 the stationary
+  fill gap is a *result* of the store's inflow against the run's draw,
+  not a viability gate. Storability technique and granary construction
+  remain M8 / 11.
 - **Storability is political** (05's hinge): only storable, visible,
   concentrated surplus is appropriable. The crop packages carry
   storability; the fields above tag surplus with it.
@@ -92,5 +100,5 @@ density cross further bars — labels derived, never capability-granting
 | Yield anchors | Neolithic→classical 3–6× per-area | research/01 §3 |
 | Famine frequency by region | famine years per millennium of farmed years: England 3–30 (a national harvest a third short one year in thirty to three hundred), the Aegean 30–150, the Nile 20–80, the Deccan interior 20–100, the North China Plain 40–150, the Sahel 50–200 | the regional famine chronologies (Campbell & Ó Gráda 2011, Hoskins 1964/1968; Gallant 1991, Garnsey 1988; Hassan 1981, Allouche 1994; Famine Commission 1880, Bhatia 1967; Deng 1937, Yao 1942, Will 1990; Cissoko 1968, Watts 1983) — `v2/data/reality/famine-frequency.json`, W30. The earlier "England ~2/millennium" was v1's own output (research/03), not a datum, and is withdrawn |
 | Urban share (once towns exist) | 3–8% pre-industrial band | standard estimates |
-| Granary practice | cities hold 2–4× subsistence minimum | granary literature |
-| Conservation | zero unexplained flux, every audit tick | R5 |
+| Granary practice | cities hold 2–4× subsistence minimum; severity per labelled famine year England 1–6 %, Deccan / North China 1–8 %, Sahel 0.5–8 %; run share of famine deaths ≥ 0.5; fill-by-CV quartile ordered high below low | granary literature; chronologies' mortality estimates (`v2/data/reality/famine-severity.json`, W31) |
+| Conservation | zero unexplained flux, every audit tick (`people` and `food` sheets) | R5 |

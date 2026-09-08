@@ -60,8 +60,12 @@
 2. **Fields** (typed arrays, the authoritative dynamic state):
    - `people` — persons per tile (one population scale, real units ×
      POP_SCALE; there is no census copy and no bridge scalar).
-   - `food` stocks and flows enter through community books (see 4), not a
-     parallel field; land productivity is derived each pass.
+   - `food` — the `store` field (tonnes/km² of storable food per cell;
+     W31). Flows post to a `food` conservation sheet beside `people`.
+     When communities condense (M4), a community's granary is the SUM of
+     its cells' store — a query, never a second stock (DECISIONS P23,
+     amending the earlier "community books only" line; required by 18.3).
+     Land productivity is derived each pass.
    - `technique` — what farming/craft knowledge has reached each tile
      (wave-of-advance ratchet; v1's devField, ported).
    - `works` — built land capital (irrigation, clearing; decays unfed).
