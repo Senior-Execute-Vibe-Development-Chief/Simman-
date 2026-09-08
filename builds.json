@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "cursor/v2-w31-the-store-7c38",
-      "sha": "c0cc6b04889298a551158de8afabb9f2432bfcff",
+      "sha": "7d6358ced910e4fb4c04221d96fea50536f75026",
       "slug": "cursor-v2-w31-the-store-7c38",
-      "builtAt": "2026-09-08T14:16:25.269Z",
+      "builtAt": "2026-09-08T14:21:28.002Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-v2-w31-the-store-7c38/"
