@@ -144,6 +144,8 @@ export interface PeopleWorld extends World {
   _irrigable: Float64Array;
   /** The yield-variance map (W29, static): the coefficient of variation of each cell's annual harvest, from the rain margin, the season's shape, the winter and the surface-water share. */
   _yieldCv: Float64Array;
+  /** The spoilage rate map (W31, static): the share of stored grain lost per year from temperature and wetness. */
+  _spoilage: Float64Array;
   /** The last harvest year's yield multiple per land cell (W29, packed scratch for the lens): 0 where nobody farms, the years passing over an unfarmed cell unread. */
   _yearMul: Float64Array;
   /** The harvest rows (W30, static): each land cell's read of the year as weights over the weather grid, CSR by packed index (`_harvestRowStart` holds land + 1 offsets) — its own sky and its catchment's, blended by the harvest's exposure to each and normalised to unit variance under the smoothing, so the CV map keeps its meaning at every cell. Built once from the substrate; both kernels sum the same row in the same order. */
@@ -152,6 +154,17 @@ export interface PeopleWorld extends World {
   _harvestRowWeight: Float64Array;
   /** Per-band famine deaths of the last harvest firing (W29, oracle scratch), persons. */
   _harvestDeathsByBand: Float64Array;
+  /** Per-band food-sheet channel totals of the last harvest firing (W31, tonnes): harvest, eaten, spoiled, unstorable. */
+  _harvestBookHarvestByBand: Float64Array;
+  _harvestBookEatenByBand: Float64Array;
+  _harvestBookSpoiledByBand: Float64Array;
+  _harvestBookUnstorableByBand: Float64Array;
+  /** Cumulative persons of famine deaths / farmers at risk in famine-labelled years (W31 severity gate), full grid. */
+  _severityDeathPersons: Float64Array;
+  _severityAtRiskPersons: Float64Array;
+  /** Cumulative famine deaths in years with a predecessor inside the firing, and those whose predecessor also fell short (W31 run gate). */
+  _harvestRunDeaths: number;
+  _harvestRunDenom: number;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;
   /** The terrestrial part of the forager capacity (W8): the living a stand's gatherers weigh their stand against. */

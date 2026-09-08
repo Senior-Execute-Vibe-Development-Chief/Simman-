@@ -83,6 +83,12 @@ import {
   HARVEST_WEATHER_CELL_DEGREES,
   HARVEST_YEAR_PERSISTENCE,
   PEOPLE_STARVATION_RATE_PER_YEAR,
+  FOOD_RATION_TONNES_PER_PERSON_YEAR,
+  FOOD_SPOILAGE_PER_YEAR,
+  FOOD_SPOILAGE_Q10,
+  FOOD_SPOILAGE_ARID_FACTOR,
+  CONSERVATION_EPSILON,
+  SAVE_VERSION_W31,
   MATH_HALF,
   PEOPLE_WORKS_DECAY_PER_YEAR,
   PEOPLE_WORKS_GAIN,
@@ -103,7 +109,7 @@ import { northSouthKm, rowEastWestKm } from "../src/sim/travel/cost";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
-import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare, yieldVariance, yieldVarianceParts } from "../src/sim/people/habitability";
+import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare, spoilageRate, yieldVariance, yieldVarianceParts } from "../src/sim/people/habitability";
 import { stepWorks } from "../src/sim/people/works";
 import {
   HARVEST_CELLS,
@@ -111,6 +117,7 @@ import {
   HARVEST_LOCAL_CORNERS,
   HARVEST_ROWS,
   advanceHarvestYear,
+  harvestBooks,
   harvestGridsOf,
   harvestLocalWeights,
   harvestMultiplier,
@@ -122,6 +129,7 @@ import {
   smoothHarvestYear,
   stepHarvest,
 } from "../src/sim/people/harvest";
+import { SAVE_VERSION } from "../src/sim/persist";
 import { mixtureCapacity } from "../src/sim/people/capacity";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../src/ported/worldgen/cropPackages.js";
 import { demand } from "../src/ported/worldgen/biomeClass.js";
@@ -1837,6 +1845,8 @@ async function main(): Promise<void> {
     const capacity = packageCapacity(a, cell, wheat);
     assert.ok(capacity > 0);
     a._yieldCv[cell] = 0;
+    a.store[cell] = 0;
+    a._spoilage[cell] = 0;
     const foragersHere = 3;
     a.people[cell] = 2 * capacity + foragersHere;
     a.farmers[wheatId]![packed] = 2 * capacity;
@@ -1866,16 +1876,26 @@ async function main(): Promise<void> {
     for (let year = 3; year < 400; year++) {
       a.farmers[wheatId]![packed] = capacity;
       a.people[cell] = capacity + foragersHere;
+      a.store[cell] = 0;
+      a._spoilage[cell] = 0;
+      a._farmerTotal[packed] = capacity;
       deriveTechniqueFromFarmers(a);
       a.step = year * MONTHS_PER_YEAR;
       const before = a.famineYears[cell] ?? 0;
       const ceilingNow = packageCapacity(a, cell, wheat);
       stepHarvest(a, MONTHS_PER_YEAR);
       const multiple: number = a._yearMul[packed] ?? 0;
-      const expected = capacity - ceilingNow * multiple > 0
-        ? Math.min(capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (capacity - ceilingNow * multiple))
+      // Empty store: the uncovered excess is the shortfall in tonnes over the
+      // ration — the same persons as farmer − fed, via the book's units.
+      const fed = ceilingNow * multiple;
+      const shortfall = Math.max(0, capacity * FOOD_RATION_TONNES_PER_PERSON_YEAR - fed * FOOD_RATION_TONNES_PER_PERSON_YEAR);
+      const expected = shortfall > 0
+        ? Math.min(capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (shortfall / FOOD_RATION_TONNES_PER_PERSON_YEAR))
         : 0;
-      assert.equal(a.farmers[wheatId]![packed], capacity - expected, "the year's shortfall is the year's dead");
+      assert.ok(
+        Math.abs((a.farmers[wheatId]![packed] ?? 0) - (capacity - expected)) < 1e-9,
+        `the year's shortfall is the year's dead: ${a.farmers[wheatId]![packed]} vs ${capacity - expected} (multiple ${multiple})`,
+      );
       if (multiple < 1) hungryYears++;
       const famine: boolean = multiple < 1 + MATH_HALF * HARVEST_LEAN_Z;
       if (famine) famines++;
@@ -1954,7 +1974,320 @@ async function main(): Promise<void> {
     same(oracle._farmerTotal, kernel._farmerTotal, "the farmer totals");
     same(oracle.famineYears, kernel.famineYears, "the famine years");
     same(oracle.farmedYears, kernel.farmedYears, "the farmed years");
+    same(oracle.store, kernel.store, "the store");
     same(oracle._yearMul, kernel._yearMul, "the year's multiple");
+    assert.deepEqual(harvestBooks(oracle), harvestBooks(kernel), "the food-sheet channel totals");
+    kernel._wasmPeopleKernel?.dispose();
+  }
+
+  // W31: the store. Spoilage order, fill at storability, draw pooled across
+  // packages, deaths on the uncovered excess; empty store reproduces W30;
+  // a tuber stores a third of its surplus; the food sheet closes; save v12.
+  {
+    assert.equal(SAVE_VERSION, SAVE_VERSION_W31, "the envelope is v12");
+    assert.ok(Math.abs(spoilageRate(10, 1) - FOOD_SPOILAGE_PER_YEAR) < 1e-12, "8 % at 10 °C humid");
+    assert.ok(Math.abs(spoilageRate(25, 1) - FOOD_SPOILAGE_PER_YEAR * (FOOD_SPOILAGE_Q10 ** 1.5)) < 1e-12, "Q10 at 25 °C humid");
+    assert.ok(Math.abs(spoilageRate(25, 0) - FOOD_SPOILAGE_PER_YEAR * (FOOD_SPOILAGE_Q10 ** 1.5) * FOOD_SPOILAGE_ARID_FACTOR) < 1e-12, "a quarter of that arid");
+    assert.ok(Math.abs(spoilageRate(0, 1) - FOOD_SPOILAGE_PER_YEAR * (FOOD_SPOILAGE_Q10 ** -1)) < 1e-12, "4 % at 0 °C");
+    assert.equal(spoilageRate(100, 1), 1, "clamped to one");
+    assert.equal(spoilageRate(-50, 1) >= 0, true, "clamped to zero from below");
+
+    const earth = buildSubstrate(42042, {}, "dev");
+    const world = new World({ seed: 31, grid: "dev", config: { peopleKernel: "ts" }, substrate: earth }) as PeopleWorld;
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    const tuber = CROP_PACKAGES.findIndex((pkg) => (pkg.storability ?? 1) < 0.5);
+    assert.ok(tuber >= 0, "the catalogue holds a tuber");
+    let cell = -1;
+    for (const candidate of world._landCells) {
+      const packed = world._packedOf[candidate] ?? -1;
+      if ((world._canGrow[wheat]?.[packed] ?? 0) === 0) continue;
+      cell = candidate;
+      break;
+    }
+    assert.ok(cell >= 0);
+    const packed = world._packedOf[cell] ?? -1;
+    markPackageActive(world, wheat);
+    world.people[cell] = 1;
+    world.farmers[wheatId]![packed] = 1;
+    deriveTechniqueFromFarmers(world);
+    deriveCapacity(world);
+    const capacity = packageCapacity(world, cell, wheat);
+    assert.ok(capacity > 0);
+    world._yieldCv[cell] = 0;
+    world._spoilage[cell] = 0;
+    const ration = FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    const storability = CROP_PACKAGES[wheat]!.storability;
+
+    // A year that feeds a fifth more than the farmers need fills by exactly
+    // 0.2 × capacity × storability × ration (the handoff's multiple-1.2-at-
+    // ceiling case, reached here with multiple 1 and farmers at 0.8× capacity).
+    const farmersGood = capacity * 0.8;
+    world.people[cell] = farmersGood;
+    world.farmers[wheatId]![packed] = farmersGood;
+    world._farmerTotal[packed] = farmersGood;
+    world.store[cell] = 0;
+    world.step = MONTHS_PER_YEAR;
+    assert.equal(stepHarvest(world, MONTHS_PER_YEAR), 0, "a good year kills nobody");
+    const expectedFill = 0.2 * capacity * storability * ration;
+    assert.ok(Math.abs((world.store[cell] ?? 0) - expectedFill) < 1e-9, `good year fills the store: ${world.store[cell]} vs ${expectedFill}`);
+    const booksGood = harvestBooks(world);
+    assert.ok(Math.abs(booksGood.unstorable - 0.2 * capacity * (1 - storability) * ration * (world.cellAreaKm2[cell] ?? 0)) < 1e-6);
+    world.store[cell] = 0;
+    world.people[cell] = 2 * capacity;
+    world.farmers[wheatId]![packed] = 2 * capacity;
+    world._farmerTotal[packed] = 2 * capacity;
+    world.famineYears[cell] = 0;
+    world.farmedYears[cell] = 0;
+    world.step = 2 * MONTHS_PER_YEAR;
+    const emptyDeaths = stepHarvest(world, MONTHS_PER_YEAR);
+    const emptyDead = Math.min(2 * capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (2 * capacity - capacity));
+    assert.ok(Math.abs(emptyDeaths - emptyDead * (world.cellAreaKm2[cell] ?? 0)) < 1e-9, "empty store reproduces W30");
+    assert.equal(world.farmers[wheatId]![packed], 2 * capacity - emptyDead);
+
+    // Half the shortfall covered: half the W30 deaths.
+    world.people[cell] = 2 * capacity;
+    world.farmers[wheatId]![packed] = 2 * capacity;
+    world._farmerTotal[packed] = 2 * capacity;
+    world.store[cell] = (2 * capacity - capacity) * ration * 0.5;
+    world.step = 3 * MONTHS_PER_YEAR;
+    const halfDeaths = stepHarvest(world, MONTHS_PER_YEAR);
+    const halfDead = PEOPLE_STARVATION_RATE_PER_YEAR * (2 * capacity - capacity) * 0.5;
+    assert.ok(Math.abs(halfDeaths - halfDead * (world.cellAreaKm2[cell] ?? 0)) < 1e-9, "half store covers half the excess");
+    assert.ok(Math.abs(world.store[cell] ?? 0) < 1e-9, "the half store is drawn dry");
+
+    // Full shortfall covered: nobody dies, store emptied.
+    world.people[cell] = 2 * capacity;
+    world.farmers[wheatId]![packed] = 2 * capacity;
+    world._farmerTotal[packed] = 2 * capacity;
+    world.store[cell] = (2 * capacity - capacity) * ration;
+    world.step = 4 * MONTHS_PER_YEAR;
+    assert.equal(stepHarvest(world, MONTHS_PER_YEAR), 0, "a store holding the shortfall kills nobody");
+    assert.ok(Math.abs(world.store[cell] ?? 0) < 1e-9, "and is drawn dry");
+    assert.equal(world.farmers[wheatId]![packed], 2 * capacity, "farmers untouched");
+
+    // Two lean years in a row on a store of one year's shortfall: no deaths
+    // in the first, W29's deaths in the second — the run.
+    world.people[cell] = 2 * capacity;
+    world.farmers[wheatId]![packed] = 2 * capacity;
+    world._farmerTotal[packed] = 2 * capacity;
+    world.store[cell] = (2 * capacity - capacity) * ration;
+    world.step = 5 * MONTHS_PER_YEAR;
+    assert.equal(stepHarvest(world, MONTHS_PER_YEAR), 0, "the first lean year lives off the store");
+    assert.ok(Math.abs(world.store[cell] ?? 0) < 1e-9, "and empties it");
+    world.people[cell] = 2 * capacity;
+    world.farmers[wheatId]![packed] = 2 * capacity;
+    world._farmerTotal[packed] = 2 * capacity;
+    world.step = 6 * MONTHS_PER_YEAR;
+    const runDeaths = stepHarvest(world, MONTHS_PER_YEAR);
+    const runDead = PEOPLE_STARVATION_RATE_PER_YEAR * (2 * capacity - capacity);
+    assert.ok(Math.abs(runDeaths - runDead * (world.cellAreaKm2[cell] ?? 0)) < 1e-9, "the second lean year pays W29's deaths");
+
+    // Spoilage precedes the harvest: opening store loses its share first.
+    world._spoilage[cell] = 0.1;
+    world.store[cell] = 10;
+    world.people[cell] = capacity;
+    world.farmers[wheatId]![packed] = capacity;
+    world._farmerTotal[packed] = capacity;
+    world.step = 7 * MONTHS_PER_YEAR;
+    stepHarvest(world, MONTHS_PER_YEAR);
+    // mean year at ceiling: no surplus, no shortfall; store = 10 * 0.9
+    assert.ok(Math.abs((world.store[cell] ?? 0) - 9) < 1e-9, "spoilage applies to the opening store before the harvest");
+
+    // Tuber storability.
+    const tuberId = CROP_PACKAGES[tuber]!.id;
+    const tuberStor = CROP_PACKAGES[tuber]!.storability;
+    if ((world._canGrow[tuber]?.[packed] ?? 0) !== 0) {
+      for (const pkg of CROP_PACKAGES) {
+        if (world.farmers[pkg.id]) world.farmers[pkg.id]![packed] = 0;
+      }
+      markPackageActive(world, tuber);
+      world.people[cell] = 1;
+      world.farmers[tuberId]![packed] = 1;
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      const tuberCap = packageCapacity(world, cell, tuber);
+      if (tuberCap > 0) {
+        world._spoilage[cell] = 0;
+        world._yieldCv[cell] = 0;
+        const tuberFarmers = tuberCap * 0.8;
+        world.people[cell] = tuberFarmers;
+        world.farmers[tuberId]![packed] = tuberFarmers;
+        world._farmerTotal[packed] = tuberFarmers;
+        world.store[cell] = 0;
+        world.step = 8 * MONTHS_PER_YEAR;
+        stepHarvest(world, MONTHS_PER_YEAR);
+        const tuberFill = 0.2 * tuberCap * tuberStor * ration;
+        assert.ok(Math.abs((world.store[cell] ?? 0) - tuberFill) < 1e-9, `a tuber stores ${tuberStor} of its surplus`);
+      }
+    }
+
+    // Two packages on one cell: the draw is pooled pro rata to each
+    // package's shortfall, and deaths follow.
+    {
+      let second = -1;
+      for (let i = 0; i < CROP_PACKAGES.length; i++) {
+        if (i === wheat) continue;
+        if ((world._canGrow[i]?.[packed] ?? 0) === 0) continue;
+        if ((CROP_PACKAGES[i]?.storability ?? 1) < 0.9) continue;
+        second = i;
+        break;
+      }
+      if (second >= 0) {
+        const secondId = CROP_PACKAGES[second]!.id;
+        for (const pkg of CROP_PACKAGES) {
+          if (world.farmers[pkg.id]) world.farmers[pkg.id]![packed] = 0;
+        }
+        markPackageActive(world, wheat);
+        markPackageActive(world, second);
+        world.people[cell] = 1;
+        world.farmers[wheatId]![packed] = 1;
+        world.farmers[secondId]![packed] = 1;
+        deriveTechniqueFromFarmers(world);
+        deriveCapacity(world);
+        const capA = packageCapacity(world, cell, wheat);
+        const capB = packageCapacity(world, cell, second);
+        if (capA > 0 && capB > 0) {
+          world._spoilage[cell] = 0;
+          world._yieldCv[cell] = 0;
+          // Each package farms twice its mean-year feed; the store covers
+          // half the pooled shortfall, shared pro rata.
+          world.farmers[wheatId]![packed] = 2 * capA;
+          world.farmers[secondId]![packed] = 2 * capB;
+          world._farmerTotal[packed] = 2 * capA + 2 * capB;
+          world.people[cell] = 2 * capA + 2 * capB;
+          const shortA = capA * ration;
+          const shortB = capB * ration;
+          world.store[cell] = 0.5 * (shortA + shortB);
+          world.step = 9 * MONTHS_PER_YEAR;
+          const beforeA = 2 * capA;
+          const beforeB = 2 * capB;
+          stepHarvest(world, MONTHS_PER_YEAR);
+          const uncoveredShare = 0.5;
+          const deadA = PEOPLE_STARVATION_RATE_PER_YEAR * (shortA / ration) * uncoveredShare;
+          const deadB = PEOPLE_STARVATION_RATE_PER_YEAR * (shortB / ration) * uncoveredShare;
+          assert.ok(Math.abs((world.farmers[wheatId]![packed] ?? 0) - (beforeA - deadA)) < 1e-9, "wheat deaths follow its pro-rata shortfall");
+          assert.ok(Math.abs((world.farmers[secondId]![packed] ?? 0) - (beforeB - deadB)) < 1e-9, "second package deaths follow its pro-rata shortfall");
+          assert.ok(Math.abs(world.store[cell] ?? 0) < 1e-9, "the pooled store is drawn dry");
+        }
+      }
+    }
+
+    // Foragers untouched; no store on a cell without farmers; abandoned store spoils.
+    world._spoilage[cell] = 0.25;
+    world.store[cell] = 8;
+    world.people[cell] = 3;
+    world.farmers[wheatId]![packed] = 0;
+    if (world.farmers[tuberId]) world.farmers[tuberId]![packed] = 0;
+    for (const pkg of CROP_PACKAGES) {
+      if (world.farmers[pkg.id]) world.farmers[pkg.id]![packed] = 0;
+    }
+    world._farmerTotal[packed] = 0;
+    world.step = 10 * MONTHS_PER_YEAR;
+    assert.equal(stepHarvest(world, MONTHS_PER_YEAR), 0);
+    assert.equal(world.people[cell], 3, "foragers untouched");
+    assert.ok(Math.abs((world.store[cell] ?? 0) - 6) < 1e-9, "an abandoned store spoils alone");
+
+    // Save / load / hash carry the store; v11 refused.
+    // (The pass leaves the technique share to the firing's commit: refresh
+    // it as the commit would before comparing identities — same as W30.)
+    world.store[cell] = 12.5;
+    deriveTechniqueFromFarmers(world);
+    deriveCapacity(world);
+    const loaded = loadWorld(serializeWorld(world), earth) as PeopleWorld;
+    assert.equal(loaded.store[cell], 12.5, "the store survives a save");
+    assert.equal(hashWorld(loaded), hashWorld(world));
+    loaded.store[cell] = 13;
+    assert.notEqual(hashWorld(loaded), hashWorld(world), "the store is in the world hash");
+    const v11 = JSON.parse(serializeWorld(world));
+    v11.version = 11;
+    assert.throws(() => loadWorld(JSON.stringify(v11), earth), /version/, "a v11 save is refused");
+
+    // Food sheet closes over one 84-month firing on the dev world, both kernels.
+    const sheetEarth = buildSubstrate(42042, {}, "dev");
+    for (const kernelName of ["ts", "wasm"] as const) {
+      const sheet = new World({
+        seed: 31,
+        grid: "dev",
+        config: { peopleKernel: kernelName, peopleWorkers: 1, wake: "never" },
+        substrate: sheetEarth,
+      }) as PeopleWorld;
+      if (kernelName === "wasm") assert.ok(sheet._wasmPeopleKernel);
+      // Seed a farmed cell above capacity so the store and deaths move.
+      for (const land of sheet._landCells) {
+        const at = sheet._packedOf[land] ?? -1;
+        if ((sheet._canGrow[wheat]?.[at] ?? 0) === 0) continue;
+        sheet.people[land] = 1;
+        sheet.farmers[wheatId]![at] = 1;
+      }
+      markPackageActive(sheet, wheat);
+      deriveTechniqueFromFarmers(sheet);
+      deriveCapacity(sheet);
+      for (const land of sheet._landCells) {
+        const at = sheet._packedOf[land] ?? -1;
+        if ((sheet.farmers[wheatId]?.[at] ?? 0) <= 0) continue;
+        const ceiling = packageCapacity(sheet, land, wheat);
+        sheet.farmers[wheatId]![at] = ceiling * 1.5;
+        sheet.people[land] = ceiling * 1.5;
+        sheet.store[land] = ceiling * ration;
+      }
+      deriveTechniqueFromFarmers(sheet);
+      sheet.step = 84;
+      const opening = (() => {
+        let total = 0;
+        for (const land of sheet._landCells) total += (sheet.store[land] ?? 0) * (sheet.cellAreaKm2[land] ?? 0);
+        return total;
+      })();
+      stepHarvest(sheet, 84);
+      const books = harvestBooks(sheet);
+      const closing = (() => {
+        let total = 0;
+        for (const land of sheet._landCells) total += (sheet.store[land] ?? 0) * (sheet.cellAreaKm2[land] ?? 0);
+        return total;
+      })();
+      const accounted = books.harvest - books.eaten - books.spoiled - books.unstorable;
+      assert.ok(Math.abs((closing - opening) - accounted) < CONSERVATION_EPSILON * Math.max(1, opening, sheet._landCells.length),
+        `food sheet closes on ${kernelName}: Δ=${closing - opening} accounted=${accounted}`);
+      sheet._wasmPeopleKernel?.dispose();
+    }
+
+    // Both kernels byte-identical on store and books after one firing.
+    const parityEarth = buildSubstrate(42042, {}, "dev");
+    const oracle = new World({ seed: 31, grid: "dev", config: { peopleKernel: "ts" }, substrate: parityEarth }) as PeopleWorld;
+    const kernel = new World({ seed: 31, grid: "dev", config: { peopleKernel: "wasm", peopleWorkers: 1 }, substrate: parityEarth }) as PeopleWorld;
+    for (const w of [oracle, kernel]) {
+      for (const land of w._landCells) {
+        const at = w._packedOf[land] ?? -1;
+        if ((w._canGrow[wheat]?.[at] ?? 0) === 0) continue;
+        w.people[land] = 1;
+        w.farmers[wheatId]![at] = 1;
+      }
+      markPackageActive(w, wheat);
+      deriveTechniqueFromFarmers(w);
+      deriveCapacity(w);
+      for (const land of w._landCells) {
+        const at = w._packedOf[land] ?? -1;
+        if ((w.farmers[wheatId]?.[at] ?? 0) <= 0) continue;
+        const ceiling = packageCapacity(w, land, wheat);
+        w.farmers[wheatId]![at] = ceiling * 1.25;
+        w.people[land] = ceiling * 1.25;
+        w.store[land] = ceiling * ration * 0.5;
+      }
+      deriveTechniqueFromFarmers(w);
+      w.step = 84;
+      stepHarvest(w, resolveSolveStrides(w).reaction);
+    }
+    const same = (left: Float64Array, right: Float64Array, what: string): void => assert.ok(
+      Buffer.from(left.buffer, left.byteOffset, left.byteLength).equals(Buffer.from(right.buffer, right.byteOffset, right.byteLength)),
+      `W31 kernels agree on ${what}`,
+    );
+    same(oracle.store, kernel.store, "store");
+    same(oracle.people, kernel.people, "people");
+    same(oracle.farmers[wheatId]!, kernel.farmers[wheatId]!, "farmers");
+    same(oracle.famineYears, kernel.famineYears, "famineYears");
+    same(oracle.farmedYears, kernel.farmedYears, "farmedYears");
+    same(oracle._yearMul, kernel._yearMul, "yearMul");
+    assert.deepEqual(harvestBooks(oracle), harvestBooks(kernel), "channel totals");
     kernel._wasmPeopleKernel?.dispose();
   }
 
@@ -2080,6 +2413,7 @@ async function main(): Promise<void> {
     works: "ok",
     yieldVariance: "ok",
     harvest: "ok",
+    store: "ok",
     rng: "v1-byte-compatible",
     dmath: "golden",
     saveLoad: "byte-identical",

@@ -61,6 +61,14 @@ export const FIELD_LIST: readonly FieldDefinition[] = [
     defaultValue: 0,
     allocate: (length) => new Float64Array(length),
   },
+  {
+    // The store (W31): tonnes of storable food per km² held in the cell's
+    // granaries. A stock, not a count — filled by surplus, drawn by shortfall,
+    // spoiled by climate; no monotone claim.
+    name: "store",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
 ];
 
 export type FieldHost = Record<string, unknown>;

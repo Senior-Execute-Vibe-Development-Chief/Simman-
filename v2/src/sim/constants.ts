@@ -310,7 +310,7 @@ export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed
 export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_DY = [-1, 1, 0, 0, -1, -1, 1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_OPPOSITE = [1, 0, 3, 2, 7, 6, 5, 4] as const; // spec/09-constants-ledger.md §M3a proposed — reverse stencil directions
-export const PEOPLE_SNAPSHOT_FIELD_COUNT = 8; // spec/09-constants-ledger.md §W29 — population, technique, package, can-grow, native, works, harvest year, famine years overlays (6 through W28)
+export const PEOPLE_SNAPSHOT_FIELD_COUNT = 9; // spec/09-constants-ledger.md §W31 — population, technique, package, can-grow, native, works, harvest year, famine frequency, granary months overlays (8 through W30)
 
 // W5: the peopling solve and the wake. No physical constant is added; the
 // knee is the Power row CAGE_KNEE made concrete, the marker is the gate's
@@ -389,3 +389,11 @@ export const HARVEST_MULTIPLIER_CEILING = 1.6; // spec/09-constants-ledger.md §
 export const PEOPLE_STARVATION_RATE_PER_YEAR = 0.3; // spec/09-constants-ledger.md §W29 — the share of the farmers above what the year's harvest feeds who die in that year: Finland 1695–97 lost a quarter to a third of its people over two failed harvests (Ó Gráda 2009), a half-shortfall year at this rate killing 15 % a year. The same law as P21 (iii)'s mean-year balance: a cell above its ceiling falls back toward it at this rate
 export const SAVE_VERSION_W29 = 10; // spec/09-constants-ledger.md §W29 — the harvest anomaly state and the famine-years field in the envelope; the harvest pass on the schedule
 export const SAVE_VERSION_W30 = 11; // spec/09-constants-ledger.md §W30 — the farmed-years field in the envelope; the harvest rows are derived from the substrate and not saved
+export const FOOD_RATION_TONNES_PER_PERSON_YEAR = 1.095; // spec/09-constants-ledger.md §W31 — 04 §4.2's 3 kg per person per day-equivalent (grain eaten ~0.55 kg/day plus seed, fodder and waste — v1's 0.003 per tick re-derived in real units) × 365. The bridge between the harvest law's persons and the book's tonnes; cancels in every W31 dynamic
+export const FOOD_SPOILAGE_PER_YEAR = 0.08; // spec/09-constants-ledger.md §W31 — the share of stored cereal lost in a year in traditional storage at the temperate humid reference: 5–10 % (Hodges, Buzby & Bennett 2011, J. Agric. Sci. 149; Boxall 2002). v1's 1 % base (GRANARY_SPOIL) is not adopted: it was set to make granaries fill
+export const FOOD_SPOILAGE_REFERENCE_C = 10; // spec/09-constants-ledger.md §W31 — the annual mean temperature, °C, of the store the base is measured in (the English and North European granary)
+export const FOOD_SPOILAGE_Q10 = 2; // spec/09-constants-ledger.md §W31 — the factor by which insect and mould development in stored grain multiplies per FOOD_SPOILAGE_Q10_STEP_C (Howe 1965, J. Stored Prod. Res. 1; the biological Q10, 2–3)
+export const FOOD_SPOILAGE_Q10_STEP_C = 10; // spec/09-constants-ledger.md §W31 — §Units. The temperature step of a Q10, by definition
+export const FOOD_SPOILAGE_ARID_FACTOR = 0.25; // spec/09-constants-ledger.md §W31 — the loss in a fully arid store relative to a humid one at the same temperature: APHLIS's arid-zone cereal storage losses run about a quarter of the humid zone's; "dry heat preserves — Egypt's central stores" (v1's CLIMATE_SPOIL grounding). The least-grounded row; flagged; the sensitivity probe is required
+export const SAVE_VERSION_W31 = 12; // spec/09-constants-ledger.md §W31 — the store field in the envelope; a v11 save is refused
+export const FOOD_GRANARY_MONTHS_SATURATION = 24; // spec/09-constants-ledger.md §W31 — the Granary lens ramp saturates at two harvests in hand (Will & Wong 1991 on the Qing target of a year's reserve as the state's ambition, rarely met)

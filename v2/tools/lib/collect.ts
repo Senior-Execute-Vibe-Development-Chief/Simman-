@@ -1,6 +1,9 @@
 import { FIELD_LIST } from "../../src/sim/fields";
+import { FOOD_RATION_TONNES_PER_PERSON_YEAR } from "../../src/sim/constants";
 import { populationDensityMean, populationTotal } from "../../src/sim/people";
+import type { PeopleWorld } from "../../src/sim/people/types";
 import type { World } from "../../src/sim/world";
+import { CROP_PACKAGES } from "../../src/ported/worldgen/cropPackages.js";
 
 /**
  * Only instrumentation machinery is excluded. This list intentionally fails
@@ -48,11 +51,18 @@ export const WORLD_SCRATCH = new Set<string>([
   "_reliefMult",
   "_irrigable",
   "_yieldCv",
+  "_spoilage",
   "_yearMul",
   "_harvestRowStart",
   "_harvestRowCell",
   "_harvestRowWeight",
   "_harvestDeathsByBand",
+  "_harvestBookHarvestByBand",
+  "_harvestBookEatenByBand",
+  "_harvestBookSpoiledByBand",
+  "_harvestBookUnstorableByBand",
+  "_severityDeathPersons",
+  "_severityAtRiskPersons",
   "_foragerCapacity",
   "_diseaseBurden",
   "_migrationShareRow",
@@ -204,6 +214,26 @@ export function collect(world: World): Record<string, number> {
     output["cohort.children"] = totalPeople > 0 ? children / totalPeople : 0;
     output["cohort.working"] = totalPeople > 0 ? working / totalPeople : 0;
     output["cohort.elders"] = totalPeople > 0 ? elders / totalPeople : 0;
+    // The granary (W31): months of food in store over farmed cells, and the
+    // food sheet's last-firing channel totals (flows, not cumulative).
+    const people = world as PeopleWorld;
+    const months: number[] = [];
+    for (let packed = 0; packed < people._landCells.length; packed++) {
+      const cell = people._landCells[packed] ?? 0;
+      let farmers = 0;
+      for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
+      if (farmers <= 0) continue;
+      months.push((world.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * 12);
+    }
+    months.sort((a, b) => a - b);
+    const n = months.length;
+    output["food.storeMonths.median"] = n > 0 ? (months[Math.floor(0.5 * (n - 1))] ?? 0) : 0;
+    output["food.storeMonths.p10"] = n > 0 ? (months[Math.floor(0.1 * (n - 1))] ?? 0) : 0;
+    output["food.storeMonths.p90"] = n > 0 ? (months[Math.floor(0.9 * (n - 1))] ?? 0) : 0;
+    output["food.harvest"] = world.debug.foodHarvest;
+    output["food.eaten"] = world.debug.foodEaten;
+    output["food.spoiled"] = world.debug.foodSpoiled;
+    output["food.unstorable"] = world.debug.foodUnstorable;
   }
   return output;
 }

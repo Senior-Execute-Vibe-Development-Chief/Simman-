@@ -2,6 +2,7 @@ import {
   CROSSING_ROSE_DX,
   CROSSING_ROSE_DY,
   CROSSING_SAMPLE_KM,
+  FOOD_GRANARY_MONTHS_SATURATION,
   M0_DEFAULT_SEED,
   MONTHS_PER_YEAR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
@@ -228,6 +229,7 @@ let overlayNative: Float32Array | undefined;
 let overlayWorks: Float32Array | undefined;
 let overlayHarvest: Float32Array | undefined;
 let overlayFamine: Float32Array | undefined;
+let overlayGranary: Float32Array | undefined;
 function displayDate(step: number): string {
   const year = yearFromStep(step);
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
@@ -291,6 +293,7 @@ worker.addEventListener("message", (event) => {
     const worksView = new Float32Array(buffer, 8 + count * 20, count);
     const harvestView = new Float32Array(buffer, 8 + count * 24, count);
     const famineView = new Float32Array(buffer, 8 + count * 28, count);
+    const granaryView = new Float32Array(buffer, 8 + count * 32, count);
     overlayPopulation = new Float32Array(count);
     overlayTechnique = new Float32Array(count);
     overlayPackage = new Float32Array(count);
@@ -299,6 +302,7 @@ worker.addEventListener("message", (event) => {
     overlayWorks = new Float32Array(count);
     overlayHarvest = new Float32Array(count);
     overlayFamine = new Float32Array(count);
+    overlayGranary = new Float32Array(count);
     overlayPopulation.set(populationView);
     overlayTechnique.set(techniqueView);
     overlayPackage.set(packageView);
@@ -307,6 +311,7 @@ worker.addEventListener("message", (event) => {
     overlayWorks.set(worksView);
     overlayHarvest.set(harvestView);
     overlayFamine.set(famineView);
+    overlayGranary.set(granaryView);
     const reconstructed = event.data.reconstructed === true;
     if (!reconstructed) {
       const wokeNow = phase === "solve" && event.data.phase === "awake";
@@ -684,6 +689,14 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     if (frequency <= 0) return [40, 36, 30];
     const share = Math.min(1, frequency / 0.1);
     return [Math.round(90 + 165 * share), Math.round(50 - 30 * share), Math.round(40 - 20 * share)];
+  }
+  if (lens.value === "granary") {
+    // Months of food in store (W31): dark where nobody farms, a warm amber
+    // ramp saturating at two harvests in hand.
+    const months = overlayGranary?.[cell] ?? 0;
+    if (months <= 0) return [40, 36, 30];
+    const share = Math.min(1, months / FOOD_GRANARY_MONTHS_SATURATION);
+    return [Math.round(70 + 150 * share), Math.round(55 + 110 * share), Math.round(30 + 20 * share)];
   }
   if (lens.value === "package") {
     const index = Math.floor(overlayPackage?.[cell] ?? 0);

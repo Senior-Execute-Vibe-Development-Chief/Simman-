@@ -27,7 +27,7 @@ import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
 import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
 import { stepWorks } from "./works";
-import { buildHarvestRows, seedHarvestYears, stepHarvest } from "./harvest";
+import { buildHarvestRows, harvestBooks, seedHarvestYears, stepHarvest } from "./harvest";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
@@ -147,11 +147,20 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._reliefMult = new Float64Array(length);
   world._irrigable = new Float64Array(length);
   world._yieldCv = new Float64Array(length);
+  world._spoilage = new Float64Array(length);
   world._yearMul = new Float64Array(landCount);
   world._harvestRowStart = new Int32Array(landCount + 1);
   world._harvestRowCell = new Int32Array(0);
   world._harvestRowWeight = new Float64Array(0);
   world._harvestDeathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookHarvestByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookEatenByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookSpoiledByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookUnstorableByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._severityDeathPersons = new Float64Array(length);
+  world._severityAtRiskPersons = new Float64Array(length);
+  world._harvestRunDeaths = 0;
+  world._harvestRunDenom = 0;
   world._foragerCapacity = new Float64Array(length);
   world._foragerTerrestrial = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
@@ -343,13 +352,30 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
     deriveCapacity(world);
     addPhaseTime("capacity", started);
   }
-  // The harvest years (W29): the firing's years applied to the authoritative
-  // fields in place, before growth reads them — the year's dead do not
-  // bear the year's children.
+  // The harvest years (W29) and the store (W31): the firing's years applied
+  // to the authoritative fields in place, before growth reads them — the
+  // year's dead do not bear the year's children. The food sheet opens only
+  // when the harvest fires; between firings the store does not move.
   const famineDeaths = harvestDue
     ? (() => {
+      world.ledger.beginPass(
+        "food",
+        world.store,
+        "harvest",
+        "eaten",
+        world.cellAreaKm2,
+        world._landCells,
+      );
       const started = performance.now();
       const result = stepHarvest(world, dtOf(harvestSchedule!));
+      const books = harvestBooks(world);
+      world.ledger.recordChannel("food", "spoiled", 0, books.spoiled);
+      world.ledger.recordChannel("food", "unstorable", 0, books.unstorable);
+      world.ledger.endPass("food", world.store, books.harvest, books.eaten, world._landCells);
+      world.debug.foodHarvest = books.harvest;
+      world.debug.foodEaten = books.eaten;
+      world.debug.foodSpoiled = books.spoiled;
+      world.debug.foodUnstorable = books.unstorable;
       addPhaseTime("harvest", started);
       return result;
     })()

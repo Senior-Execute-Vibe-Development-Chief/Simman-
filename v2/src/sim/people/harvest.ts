@@ -1,6 +1,7 @@
 import {
   EARTH_DEGREES,
   EARTH_HALF_DEGREES,
+  FOOD_RATION_TONNES_PER_PERSON_YEAR,
   HARVEST_DRAW_CLAMP,
   HARVEST_FAMINE_LOSS,
   HARVEST_LEAN_Z,
@@ -54,13 +55,18 @@ import type { PeopleWorld } from "./types";
  *   ceiling: a cell on the desert edge swings by half, a river valley or a
  *   reliably watered temperate plain by a tenth.
  * - THE DEATHS: the farmers of a package above what the year's harvest of
- *   that package feeds die back at the starvation rate, in proportion to
- *   the excess; foragers are exempt (their living is not the harvest — the
- *   wild year is an open item). A bottom-decile year (z under HARVEST_LEAN_Z)
- *   that also fails by more than a third is counted in `famineYears`, the
- *   cell's tally of harvest failures its farmers lived through, and every
- *   year a cell has farmers is counted in `farmedYears` (W30), the tally's
- *   denominator.
+ *   that package feeds die back at the starvation rate, on the excess the
+ *   granary does not cover (W31); foragers are exempt (their living is not
+ *   the harvest — the wild year is an open item). A bottom-decile year (z
+ *   under HARVEST_LEAN_Z) that also fails by more than a third is counted
+ *   in `famineYears`, the cell's tally of harvest failures its farmers lived
+ *   through, and every year a cell has farmers is counted in `farmedYears`
+ *   (W30), the tally's denominator.
+ * - THE STORE (W31): tonnes per km² of storable food. Spoilage of what stood
+ *   through the year comes first; a surplus fills the granary at the package's
+ *   storability; a shortfall draws from it, pooled across packages; deaths
+ *   fall only on the uncovered excess. A food balance sheet posts harvest,
+ *   eaten, spoiled and unstorable.
  *
  * Runs after the firing's capacity and before its growth, on the
  * authoritative fields in place, so the growth that follows starts from
@@ -447,9 +453,11 @@ export function harvestGridsOf(world: PeopleWorld, dtMonths: number): Float64Arr
 }
 
 /**
- * The harvest pass: the firing's years applied to every land cell, the
- * farmers above what each year feeds dying back at the starvation rate.
- * Returns the deaths, persons (density × area), for the ledger.
+ * The harvest pass: the firing's years applied to every land cell. Spoilage,
+ * fill and draw of the store (W31); the farmers above what each year and the
+ * granary feed dying back at the starvation rate. Returns the deaths, persons
+ * (density × area), for the people ledger; the food-sheet channel totals are
+ * left on the band scratch for `harvestBooks`.
  */
 export function stepHarvest(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): number {
   const grids = harvestGridsOf(world, dtMonths);
@@ -457,57 +465,179 @@ export function stepHarvest(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): num
   if (years <= 0) return 0;
   if (world._wasmPeopleKernel) {
     world._wasmPeopleKernel.harvest(grids, years);
+    const books = world._wasmPeopleKernel.harvestBooks();
+    world._harvestBookHarvestByBand.fill(0);
+    world._harvestBookEatenByBand.fill(0);
+    world._harvestBookSpoiledByBand.fill(0);
+    world._harvestBookUnstorableByBand.fill(0);
+    world._harvestBookHarvestByBand[0] = books.harvest;
+    world._harvestBookEatenByBand[0] = books.eaten;
+    world._harvestBookSpoiledByBand[0] = books.spoiled;
+    world._harvestBookUnstorableByBand[0] = books.unstorable;
+    world._harvestRunDeaths += books.runDeaths;
+    world._harvestRunDenom += books.runDenom;
     return world._wasmPeopleKernel.harvestDeaths();
   }
   world._harvestDeathsByBand.fill(0);
+  world._harvestBookHarvestByBand.fill(0);
+  world._harvestBookEatenByBand.fill(0);
+  world._harvestBookSpoiledByBand.fill(0);
+  world._harvestBookUnstorableByBand.fill(0);
   const active = activePackageIndices(world);
+  const ration = FOOD_RATION_TONNES_PER_PERSON_YEAR;
   for (const band of world._peopleBands) {
     let deaths = 0;
+    let harvestTonnes = 0;
+    let eatenTonnes = 0;
+    let spoiledTonnes = 0;
+    let unstorableTonnes = 0;
     for (let packed = band.rawLo; packed < band.rawHi; packed++) {
       const cell = world._landCells[packed] ?? 0;
-      const total = world._farmerTotal[packed] ?? 0;
-      // Nobody farms here: the years pass over unread, so the pass costs the
-      // farmed world and not the whole land (the multiple is a harvest's).
-      if (total <= 0) continue;
+      const area = world.cellAreaKm2[cell] ?? 0;
+      let total = world._farmerTotal[packed] ?? 0;
+      let store = world.store[cell] ?? 0;
+      // Nobody farms and nothing is stored: the years pass unread.
+      if (total <= 0 && store <= 0) continue;
+      const spoilage = world._spoilage[cell] ?? 0;
+      // A granary with no farmers only spoils (W31): the store stays on its
+      // land and decays by the climate's rate alone.
+      if (total <= 0) {
+        for (let index = 0; index < years; index++) {
+          const spoiled = store * spoilage;
+          store -= spoiled;
+          spoiledTonnes += spoiled * area;
+        }
+        world.store[cell] = store;
+        continue;
+      }
       // The years the cell's farmers stand through (W30): the famine tally's
       // denominator, counted on the same cells and years.
       world.farmedYears[cell] = (world.farmedYears[cell] ?? 0) + years;
       const cv = world._yieldCv[cell] ?? 0;
       const foragers = Math.max(0, (world.people[cell] ?? 0) - total);
       let cellDeaths = 0;
+      let previousShort = false;
       for (let index = 0; index < years; index++) {
+        const spoiled = store * spoilage;
+        store -= spoiled;
+        spoiledTonnes += spoiled * area;
+
         const anomaly = readHarvestRow(world, grids, index * HARVEST_CELLS, packed);
         const multiplier = harvestMultiplier(anomaly, cv);
         world._yearMul[packed] = multiplier;
-        if (isFamineYear(anomaly, multiplier)) world.famineYears[cell] = (world.famineYears[cell] ?? 0) + 1;
-        let yearDeaths = 0;
+        const famine = isFamineYear(anomaly, multiplier);
+        if (famine) world.famineYears[cell] = (world.famineYears[cell] ?? 0) + 1;
+
+        let shortfallTotal = 0;
+        const shortfalls: number[] = [];
+        let yearHarvest = 0;
+        let yearEaten = 0;
+        let yearUnstorable = 0;
+        let farmersAtRisk = 0;
         for (const packageIndex of active) {
-          const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+          const pkg = CROP_PACKAGES[packageIndex];
+          const id = pkg?.id ?? "";
           const farmer = Math.max(0, world.farmers[id]?.[packed] ?? 0);
+          shortfalls[packageIndex] = 0;
           if (farmer <= 0) continue;
+          farmersAtRisk += farmer;
           const fed = packageCapacity(world, cell, packageIndex) * multiplier;
-          const excess = farmer - fed;
-          if (excess <= 0) continue;
-          const dead = Math.min(farmer, PEOPLE_STARVATION_RATE_PER_YEAR * excess);
-          world.farmers[id]![packed] = farmer - dead;
-          yearDeaths += dead;
+          const harvestMass = fed * ration;
+          const need = farmer * ration;
+          yearHarvest += harvestMass;
+          if (harvestMass >= need) {
+            yearEaten += need;
+            const surplus = harvestMass - need;
+            const storability = pkg?.storability ?? 0;
+            store += storability * surplus;
+            yearUnstorable += (1 - storability) * surplus;
+          } else {
+            yearEaten += harvestMass;
+            const shortfall = need - harvestMass;
+            shortfalls[packageIndex] = shortfall;
+            shortfallTotal += shortfall;
+          }
         }
+
+        const draw = Math.min(store, shortfallTotal);
+        store -= draw;
+        yearEaten += draw;
+        harvestTonnes += yearHarvest * area;
+        eatenTonnes += yearEaten * area;
+        unstorableTonnes += yearUnstorable * area;
+
+        let yearDeaths = 0;
+        if (shortfallTotal > 0) {
+          const uncoveredShare = 1 - draw / shortfallTotal;
+          for (const packageIndex of active) {
+            const shortfall = shortfalls[packageIndex] ?? 0;
+            if (shortfall <= 0) continue;
+            const id = CROP_PACKAGES[packageIndex]?.id ?? "";
+            const farmer = Math.max(0, world.farmers[id]?.[packed] ?? 0);
+            if (farmer <= 0) continue;
+            const excess = shortfall * uncoveredShare / ration;
+            const dead = Math.min(farmer, PEOPLE_STARVATION_RATE_PER_YEAR * excess);
+            world.farmers[id]![packed] = farmer - dead;
+            yearDeaths += dead;
+          }
+        }
+
+        if (famine && farmersAtRisk > 0) {
+          world._severityAtRiskPersons[cell] =
+            (world._severityAtRiskPersons[cell] ?? 0) + farmersAtRisk * area;
+          world._severityDeathPersons[cell] =
+            (world._severityDeathPersons[cell] ?? 0) + yearDeaths * area;
+        }
+        if (index > 0 && yearDeaths > 0) {
+          const persons = yearDeaths * area;
+          world._harvestRunDenom += persons;
+          if (previousShort) world._harvestRunDeaths += persons;
+        }
+        previousShort = shortfallTotal > 0;
         cellDeaths += yearDeaths;
       }
-      if (cellDeaths <= 0) continue;
+      world.store[cell] = store;
       let farmerTotal = 0;
       for (const packageIndex of active) {
         farmerTotal += Math.max(0, world.farmers[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0);
       }
       world._farmerTotal[packed] = farmerTotal;
       world.people[cell] = foragers + farmerTotal;
-      deaths += cellDeaths * (world.cellAreaKm2[cell] ?? 0);
+      if (cellDeaths > 0) deaths += cellDeaths * area;
     }
     world._harvestDeathsByBand[band.index] = (world._harvestDeathsByBand[band.index] ?? 0) + deaths;
+    world._harvestBookHarvestByBand[band.index] =
+      (world._harvestBookHarvestByBand[band.index] ?? 0) + harvestTonnes;
+    world._harvestBookEatenByBand[band.index] =
+      (world._harvestBookEatenByBand[band.index] ?? 0) + eatenTonnes;
+    world._harvestBookSpoiledByBand[band.index] =
+      (world._harvestBookSpoiledByBand[band.index] ?? 0) + spoiledTonnes;
+    world._harvestBookUnstorableByBand[band.index] =
+      (world._harvestBookUnstorableByBand[band.index] ?? 0) + unstorableTonnes;
   }
   let total = 0;
   for (let index = 0; index < world._harvestDeathsByBand.length; index++) {
     total += world._harvestDeathsByBand[index] ?? 0;
   }
   return total;
+}
+
+/** The food-sheet channel totals of the last harvest firing (W31), tonnes. */
+export function harvestBooks(world: PeopleWorld): {
+  readonly harvest: number;
+  readonly eaten: number;
+  readonly spoiled: number;
+  readonly unstorable: number;
+} {
+  let harvest = 0;
+  let eaten = 0;
+  let spoiled = 0;
+  let unstorable = 0;
+  for (let index = 0; index < world._harvestBookHarvestByBand.length; index++) {
+    harvest += world._harvestBookHarvestByBand[index] ?? 0;
+    eaten += world._harvestBookEatenByBand[index] ?? 0;
+    spoiled += world._harvestBookSpoiledByBand[index] ?? 0;
+    unstorable += world._harvestBookUnstorableByBand[index] ?? 0;
+  }
+  return { harvest, eaten, spoiled, unstorable };
 }

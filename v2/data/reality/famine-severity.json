@@ -1,0 +1,51 @@
+{
+  "source": "W31 severity windows, set BEFORE the first measurement (spec/handoffs/W31-the-store.md §6). Order-of-magnitude bands from the chronologies' mortality estimates per famine-labelled year. A miss is manifested with a physical reason; windows are not moved after measuring. Boxes match the famine-frequency / yield-variance table where the region is shared.",
+  "statistic": "pooled sum of famine deaths in famine-labelled years over the sum of farmers at risk in those years (persons, area-weighted), over the box's land cells",
+  "severity": [
+    {
+      "id": "england",
+      "name": "England and northern France",
+      "box": [-5, 5, 46, 55],
+      "minimum": 0.01,
+      "maximum": 0.06,
+      "citation": "1315–17 ~10–15 % over three years (Jordan 1996, Kershaw 1973); 1438–39 a few per cent (Hatcher); 1596–98 2–3 % in the north (Appleby 1978); other labelled failures under 1 %"
+    },
+    {
+      "id": "south-india-interior",
+      "name": "The Deccan interior",
+      "box": [74, 80, 12, 18],
+      "minimum": 0.01,
+      "maximum": 0.08,
+      "citation": "1876–78: 5.5–8M of ~58M in the affected presidencies over two years (Maharatna 1996); 1896–97 and 1899–1900 lower"
+    },
+    {
+      "id": "north-china-plain",
+      "name": "The North China Plain",
+      "box": [110, 118, 33, 39],
+      "minimum": 0.01,
+      "maximum": 0.08,
+      "citation": "1876–79: 9–13M of ~108M over three years (Edgerton-Tarpley 2008); 1920–21 a fraction of that"
+    },
+    {
+      "id": "sahel",
+      "name": "The Sahel",
+      "box": [-15, 30, 13, 17.5],
+      "minimum": 0.005,
+      "maximum": 0.08,
+      "citation": "1913–14 severe locally; 1968–74 ~0.5–1 % of the region; 1983–85 ~1 % (Watts 1983, Cissoko 1968)"
+    }
+  ],
+  "reported": [
+    { "id": "nile", "name": "The Nile valley", "box": [30, 33, 22, 31] },
+    { "id": "aegean", "name": "Greece and the Aegean", "box": [20, 27, 36, 41] },
+    { "id": "mesopotamia", "name": "Mesopotamia", "box": [42, 50, 30, 37] },
+    { "id": "spain", "name": "Mediterranean Spain", "box": [-8, 0, 36, 42] },
+    { "id": "ganges", "name": "Ganges", "box": [80, 90, 22, 28] },
+    { "id": "pontic", "name": "Pontic steppe", "box": [30, 50, 44, 52] },
+    { "id": "java", "name": "Java", "box": [105, 115, -9, -5] }
+  ],
+  "run": {
+    "minimum": 0.5,
+    "note": "Share of famine deaths that fall in a year whose predecessor at the same cell also fell short (harvest < need). Measured over years 2–7 of a solve firing (years with a predecessor); solve-only."
+  }
+}

@@ -7,6 +7,7 @@ import hearthCentres from "../data/reality/hearths.json";
 import stapleByRegion from "../data/reality/staple-by-region.json";
 import yieldVariance from "../data/reality/yield-variance.json";
 import famineFrequency from "../data/reality/famine-frequency.json";
+import famineSeverity from "../data/reality/famine-severity.json";
 import { aquaticAccess } from "../src/sim/people/habitability";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { buildSubstrate } from "../src/sim/substrate";
@@ -596,6 +597,106 @@ function judgeFamineFrequency(world: World, scope: string): Record<string, unkno
 }
 
 /**
+ * Famine severity, the run, and the margin (W31): what the store does to a
+ * labelled year's mortality, whether deaths cluster in runs, and whether
+ * high-CV cells sit further below their mean-year ceiling.
+ * Rows `famine-severity:<region>:<scope>`, `famine-run:<scope>`,
+ * `famine-margin:<scope>`.
+ */
+function judgeFamineSeverity(world: World, scope: string): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const severity: Record<string, unknown> = {};
+  const judgeRegion = (
+    region: { readonly id: string; readonly box: readonly number[]; readonly minimum?: number; readonly maximum?: number },
+    judged: boolean,
+  ): void => {
+    let deaths = 0;
+    let atRisk = 0;
+    let cells = 0;
+    for (const cell of people._landCells) {
+      if (!insideBox(world, cell, region.box)) continue;
+      const risk = people._severityAtRiskPersons[cell] ?? 0;
+      if (risk <= 0) continue;
+      cells++;
+      atRisk += risk;
+      deaths += people._severityDeathPersons[cell] ?? 0;
+    }
+    const share = atRisk > 0 ? deaths / atRisk : 0;
+    const pass = judged
+      && cells > 0
+      && share >= (region.minimum ?? 0)
+      && share <= (region.maximum ?? 1);
+    severity[region.id] = {
+      cells,
+      deaths,
+      atRisk,
+      share,
+      minimum: region.minimum ?? null,
+      maximum: region.maximum ?? null,
+      pass: judged ? pass : null,
+    };
+    if (judged) {
+      const id = `famine-severity:${region.id}:${scope}`;
+      measured.add(id);
+      if (!pass) failures.push(id);
+    }
+  };
+  for (const region of famineSeverity.severity) judgeRegion(region, true);
+  for (const region of famineSeverity.reported) judgeRegion(region, false);
+
+  const runShare = people._harvestRunDenom > 0
+    ? people._harvestRunDeaths / people._harvestRunDenom
+    : 0;
+  const runPass = people._harvestRunDenom > 0 && runShare >= famineSeverity.run.minimum;
+  const run = {
+    deaths: people._harvestRunDeaths,
+    denom: people._harvestRunDenom,
+    share: runShare,
+    minimum: famineSeverity.run.minimum,
+    pass: runPass,
+  };
+  const runId = `famine-run:${scope}`;
+  measured.add(runId);
+  if (!runPass) failures.push(runId);
+
+  // The margin: median fill of farmed cells at 1 CE by yield-CV quartile.
+  const fills: Array<{ cv: number; fill: number }> = [];
+  for (let packed = 0; packed < people._landCells.length; packed++) {
+    const cell = people._landCells[packed] ?? 0;
+    let farmers = 0;
+    for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
+    if (farmers <= 0) continue;
+    const capacity = people.capField[cell] ?? 0;
+    if (capacity <= 0) continue;
+    fills.push({
+      cv: people._yieldCv[cell] ?? 0,
+      fill: (people.people[cell] ?? 0) / capacity,
+    });
+  }
+  fills.sort((a, b) => a.cv - b.cv);
+  const quartile = (lo: number, hi: number): number => {
+    const slice = fills.slice(Math.floor(lo * fills.length), Math.floor(hi * fills.length));
+    if (slice.length === 0) return 0;
+    const values = slice.map((row) => row.fill).sort((a, b) => a - b);
+    return values[Math.floor(0.5 * (values.length - 1))] ?? 0;
+  };
+  const lowCv = quartile(0, 0.25);
+  const highCv = quartile(0.75, 1);
+  const marginPass = fills.length > 0 && highCv < lowCv;
+  const margin = {
+    cells: fills.length,
+    lowCvMedianFill: lowCv,
+    highCvMedianFill: highCv,
+    pass: marginPass,
+  };
+  const marginId = `famine-margin:${scope}`;
+  measured.add(marginId);
+  if (!marginPass) failures.push(marginId);
+
+  return { severity, run, margin };
+}
+
+/**
  * Forager density by habitat at the opening (W8, Binford): shores and stands
  * hold denser foragers than fertile interior land, which holds denser than
  * desert and boreal land. Measured on the static forager capacity.
@@ -650,6 +751,7 @@ function runSolveArm(grid: GridPreset): TrajectorySample {
     staples: judgeStaples(world, scope),
     foragerOrdering: judgeForagerOrdering(world, scope),
     famineFrequency: judgeFamineFrequency(world, scope),
+    famineSeverity: judgeFamineSeverity(world, scope),
   };
   findings.solve = solve;
   return sample;

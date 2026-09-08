@@ -14,6 +14,7 @@ import {
   PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_SNAPSHOT_FIELD_COUNT,
   PEOPLE_WATER_ACCESS_GAIN,
+  FOOD_RATION_TONNES_PER_PERSON_YEAR,
 } from "./constants";
 import { dexp } from "./dmath";
 import { ensurePeopleWasm } from "./peopleKernel";
@@ -105,6 +106,7 @@ interface SnapshotPlanes {
   readonly works: Float32Array;
   readonly harvest: Float32Array;
   readonly famine: Float32Array;
+  readonly granary: Float32Array;
 }
 
 function snapshotPlanes(target: World): SnapshotPlanes {
@@ -124,12 +126,13 @@ function snapshotPlanes(target: World): SnapshotPlanes {
   const works = plane(2 + 2 + 1);
   const harvest = plane(2 + 2 + 2);
   const famine = plane(2 + 2 + 2 + 1);
+  const granary = plane(2 + 2 + 2 + 2);
   if (target.substrate) {
     const overlays = staticOverlays(target as PeopleWorld);
     canGrowView.set(overlays.canGrow);
     nativeView.set(overlays.native);
   }
-  return { buffer, people, technique, packageView, works, harvest, famine };
+  return { buffer, people, technique, packageView, works, harvest, famine, granary };
 }
 
 function liveSnapshot(target: World): Record<string, unknown> {
@@ -145,12 +148,20 @@ function liveSnapshot(target: World): Record<string, unknown> {
     planes.famine[cell] = farmed > 0 ? (target.famineYears[cell] ?? 0) / farmed : 0;
   }
   planes.harvest.fill(0);
+  planes.granary.fill(0);
   if (target.substrate) {
     const people = target as PeopleWorld;
     planes.packageView.set(people._dominantPackage);
     // The last harvest year's yield multiple is land-packed scratch (W29).
+    // The granary (W31): months of food in store for the cell's farmers.
     for (let packed = 0; packed < people._landCells.length; packed++) {
-      planes.harvest[people._landCells[packed] ?? 0] = people._yearMul[packed] ?? 0;
+      const cell = people._landCells[packed] ?? 0;
+      planes.harvest[cell] = people._yearMul[packed] ?? 0;
+      let farmers = 0;
+      for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
+      planes.granary[cell] = farmers > 0
+        ? (target.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * 12
+        : 0;
     }
   }
   // No world hash per snapshot: hashWorld walks every field with BigInt
@@ -188,9 +199,11 @@ function reconstructedSnapshot(target: World, step: number): Record<string, unkn
   // The reconstruction carries no works: a condensation of the arrival
   // record, it shows unimproved land before the wake (W28, recorded).
   planes.works.fill(0);
-  // Nor a harvest year or a famine tally (W29): the record holds neither.
+  // Nor a harvest year, a famine tally (W29) or a granary (W31): the record
+  // holds none of them.
   planes.harvest.fill(0);
   planes.famine.fill(0);
+  planes.granary.fill(0);
   const years = step / MONTHS_PER_YEAR;
   let total = 0;
   for (let packed = 0; packed < people._landCells.length; packed++) {

@@ -22,6 +22,11 @@ import {
   PEOPLE_WORKS_RAIN_FLOOR,
   PEOPLE_WORKS_RAIN_SHARE,
   PEOPLE_RELIEF_PENALTY,
+  FOOD_SPOILAGE_ARID_FACTOR,
+  FOOD_SPOILAGE_PER_YEAR,
+  FOOD_SPOILAGE_Q10,
+  FOOD_SPOILAGE_Q10_STEP_C,
+  FOOD_SPOILAGE_REFERENCE_C,
   HARVEST_COOL_ONSET_C,
   HARVEST_COOL_RAMP_C,
   HARVEST_CV_BASE,
@@ -345,6 +350,30 @@ export function yieldVariance(world: PeopleWorld, cell: number): number {
   return yieldVarianceParts(world, cell).cv;
 }
 
+/**
+ * The share of stored grain lost in a year (W31): the temperate humid base
+ * scaled by a biological Q10 in temperature and by wetness against the arid
+ * floor. Clamped to [0, 1].
+ */
+export function spoilageRate(temperatureCelsius: number, wetness: number): number {
+  const thermal = FOOD_SPOILAGE_Q10 ** (
+    (temperatureCelsius - FOOD_SPOILAGE_REFERENCE_C) / FOOD_SPOILAGE_Q10_STEP_C
+  );
+  const moisture = FOOD_SPOILAGE_ARID_FACTOR
+    + (1 - FOOD_SPOILAGE_ARID_FACTOR) * clamp01(wetness);
+  return Math.max(0, Math.min(1, FOOD_SPOILAGE_PER_YEAR * thermal * moisture));
+}
+
+/** The cell's static spoilage rate from its annual climate (W31). */
+export function cellSpoilage(world: PeopleWorld, cell: number): number {
+  if (!world.substrate.landMask[cell]) return 0;
+  const temperature = world._annualTemperature[cell] ?? 0;
+  const moisture = world._annualMoisture[cell] ?? 0;
+  const effectiveMoisture = moisture / demand(temperature);
+  const wetness = clamp01(effectiveMoisture / HARVEST_MOISTURE_ONSET);
+  return spoilageRate(temperatureC(temperature), wetness);
+}
+
 /** Water access: the year's rain and the land's own water together. */
 export function waterAccess(world: PeopleWorld, cell: number): number {
   return clamp01((world._annualMoisture[cell] ?? 0) + surfaceWaterAccess(world, cell));
@@ -425,6 +454,7 @@ export function fillStaticHabitability(world: PeopleWorld): void {
     world._waterAccess[cell] = waterAccess(world, cell);
     world._irrigable[cell] = irrigableShare(world, cell);
     world._yieldCv[cell] = yieldVariance(world, cell);
+    world._spoilage[cell] = cellSpoilage(world, cell);
     world._reliefMult[cell] = reliefMultiplier(world, cell);
     world._foragerCapacity[cell] = world.substrate.landMask[cell]
       ? foragerCapacity(world, cell)

@@ -110,10 +110,19 @@ interface PeopleKernelLike {
   works_band(rawLo: number, rawHi: number): void;
   famine_years_ptr(): number;
   farmed_years_ptr(): number;
+  store_ptr(): number;
+  severity_death_persons_ptr(): number;
+  severity_at_risk_persons_ptr(): number;
   year_mul_ptr(): number;
   begin_harvest(grids: Float64Array, years: number): void;
   harvest_band(rawLo: number, rawHi: number, bandIndex: number): void;
   harvest_deaths(): number;
+  harvest_book_harvest(): number;
+  harvest_book_eaten(): number;
+  harvest_book_spoiled(): number;
+  harvest_book_unstorable(): number;
+  harvest_run_deaths_total(): number;
+  harvest_run_denom_total(): number;
 }
 
 type BandOperation =
@@ -345,6 +354,7 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
   const landShareField = new Float64Array(world.N);
   for (let cell = 0; cell < world.N; cell++) landShareField[cell] = landShare(world, cell);
   const yields = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.yield ?? 1);
+  const storability = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.storability ?? 0);
   const cropFit = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
   const standingGain = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
   for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
@@ -373,11 +383,13 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     world._migrationShareRow,
     CROP_PACKAGES.length,
     yields,
+    storability,
     canGrow,
     cropFit,
     standingGain,
     world._irrigable,
     world._yieldCv,
+    world._spoilage,
     world._harvestRowStart,
     world._harvestRowCell,
     world._harvestRowWeight,
@@ -524,9 +536,17 @@ export interface PeopleKernelRuntime {
   normalizeCohorts(): void;
   /** The works pass (W28) over the bands, at the firing's stride. */
   buildWorks(dtMonths?: number): void;
-  /** The harvest pass (W29) over the bands: the firing's smoothed year grids, `years` of HARVEST_CELLS each. */
+  /** The harvest pass (W29/W31) over the bands: the firing's smoothed year grids, `years` of HARVEST_CELLS each. */
   harvest(grids: Float64Array, years: number): void;
   harvestDeaths(): number;
+  harvestBooks(): {
+    readonly harvest: number;
+    readonly eaten: number;
+    readonly spoiled: number;
+    readonly unstorable: number;
+    readonly runDeaths: number;
+    readonly runDenom: number;
+  };
   dispose(): void;
   births(): number;
   deaths(): number;
@@ -540,6 +560,9 @@ type KernelFieldName =
   | "works"
   | "famineYears"
   | "farmedYears"
+  | "store"
+  | "_severityDeathPersons"
+  | "_severityAtRiskPersons"
   | "children"
   | "working"
   | "elders"
@@ -626,6 +649,9 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       works: this.kernel.works_ptr(),
       famineYears: this.kernel.famine_years_ptr(),
       farmedYears: this.kernel.farmed_years_ptr(),
+      store: this.kernel.store_ptr(),
+      _severityDeathPersons: this.kernel.severity_death_persons_ptr(),
+      _severityAtRiskPersons: this.kernel.severity_at_risk_persons_ptr(),
       children: this.kernel.children_ptr(),
       working: this.kernel.working_ptr(),
       elders: this.kernel.elders_ptr(),
@@ -650,6 +676,9 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
       "works",
       "famineYears",
       "farmedYears",
+      "store",
+      "_severityDeathPersons",
+      "_severityAtRiskPersons",
       "children",
       "working",
       "elders",
@@ -802,6 +831,24 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
 
   harvestDeaths(): number {
     return this.kernel.harvest_deaths();
+  }
+
+  harvestBooks(): {
+    readonly harvest: number;
+    readonly eaten: number;
+    readonly spoiled: number;
+    readonly unstorable: number;
+    readonly runDeaths: number;
+    readonly runDenom: number;
+  } {
+    return {
+      harvest: this.kernel.harvest_book_harvest(),
+      eaten: this.kernel.harvest_book_eaten(),
+      spoiled: this.kernel.harvest_book_spoiled(),
+      unstorable: this.kernel.harvest_book_unstorable(),
+      runDeaths: this.kernel.harvest_run_deaths_total(),
+      runDenom: this.kernel.harvest_run_denom_total(),
+    };
   }
 
   births(): number {

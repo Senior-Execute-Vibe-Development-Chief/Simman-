@@ -15,6 +15,7 @@ const PEOPLE_FIELDS = [
   "works",
   "famineYears",
   "farmedYears",
+  "store",
   "children",
   "working",
   "elders",

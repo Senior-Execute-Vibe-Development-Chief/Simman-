@@ -61,6 +61,11 @@ export interface WorldDebug {
   peopleMigration: number;
   /** Famine deaths of the last people firing (W29), persons. */
   peopleFamineDeaths: number;
+  /** Food-sheet channel totals of the last harvest firing (W31), tonnes. */
+  foodHarvest: number;
+  foodEaten: number;
+  foodSpoiled: number;
+  foodUnstorable: number;
   /** Neighbour pairs priced by the last movement firing (W6: a full region prices none). */
   pricedPairs: number;
 }
@@ -96,6 +101,8 @@ export class World {
   works!: Float64Array;
   famineYears!: Float64Array;
   farmedYears!: Float64Array;
+  /** Tonnes of storable food per km² in the cell's granaries (W31). */
+  store!: Float64Array;
   /** The harvest anomaly's raw AR(1) state on the weather grid (W29): the last year read, persisted and hashed. */
   harvestZ: Float64Array;
   /** Authoritative per-package farmer masses; allocated by the people layer. */
@@ -143,6 +150,10 @@ export class World {
       peopleDeaths: 0,
       peopleMigration: 0,
       peopleFamineDeaths: 0,
+      foodHarvest: 0,
+      foodEaten: 0,
+      foodSpoiled: 0,
+      foodUnstorable: 0,
       pricedPairs: 0,
     };
     this.cellAreaKm2 = new Float64Array(this.N);

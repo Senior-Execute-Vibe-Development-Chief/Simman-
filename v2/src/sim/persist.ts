@@ -1,6 +1,6 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W30 } from "./constants";
+import { SAVE_VERSION_W31 } from "./constants";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World, type WorldEvent } from "./world";
 import type { HearthState } from "./people/types";
@@ -9,7 +9,7 @@ import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
 import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W30;
+export const SAVE_VERSION = SAVE_VERSION_W31;
 
 export interface SerializedField {
   readonly length: number;
