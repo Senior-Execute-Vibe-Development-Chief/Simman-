@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/v2-w31-the-store-7c38",
+      "sha": "22f084abc70a903f5bb804d29d56147183b60846",
+      "slug": "cursor-v2-w31-the-store-7c38",
+      "builtAt": "2026-09-08T13:58:09.944Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-v2-w31-the-store-7c38/"
+    },
+    {
       "branch": "claude/world-sim-rebuild-decision-1umpax",
       "sha": "2f871273101cbc0bb3da187b463bc256283ad02c",
       "slug": "claude-world-sim-rebuild-decision-1umpax",
