@@ -1613,6 +1613,18 @@ lawyered.
   below it; the p90 farmed cell sits at 1.9 × capacity). Each term is a
   sourced datum or a mechanism, none a fitted answer; the order and the
   sources are the owner's ruling. M3b follows on the map this produces.
+  **Sharpened by the factor split (QUESTIONS #84, 2026-09-08):** the
+  4.7 × "technique regime" (0.45 → 2.10) is keyed to the cell's FARMED
+  SHARE, which is 1.00 in every region by 1 CE — the sim has no slow state
+  for agricultural development, so every farmed cell sits at its mature
+  pre-industrial ceiling ~1,600 years after the front arrives, and 97 % of
+  the farmed world had farmers before −1600. The fix under (i) is a
+  per-cell husbandry state that rises only under pressure at the ceiling
+  (Boserup: fallow shortening and clearance forced by people on land) and
+  spreads only by contact, read by the technique regime and by W15's
+  paddy in place of the farmed share; the ceiling then also carries soil
+  (`tileFert` is a climate bell) and the disease burden, which today
+  divides the growth rate and the forager ceiling but not the farmed one.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

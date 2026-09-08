@@ -4400,3 +4400,78 @@ Review corrections to the M1 build (all validated before merge):
     soil, forest). Those are the next probes, each seconds at dev. The
     probe is `probe-1ce.mts` in the session scratchpad; it is the
     existing solve arm read at 1 CE.
+
+84. **The lever is the technique regime, and it is keyed to the wrong state
+    (2026-09-08, the factor split #83(d) asked for; `probe-factors.mts`
+    in the session scratchpad, the dev solve arm read at 1 CE).** A farmed
+    cell's capacity is fertility × 12 × yield × fit × paddy(t) ×
+    (0.45 + 1.65·t) × (1 + 1.4·access) × relief × landShare, and `t`, the
+    "technique regime", is the FARMED SHARE of the cell's people. Area-
+    weighted over farmed cells at 1 CE, dev grid:
+
+    | region | /km² | t | fert | fit | yield | (0.45+1.65t) | access | cap at t=0 | cap at t=1 | arrival (median) | farmed before −1600 |
+    |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+    | China proper | 27.3 | 1.00 | 0.65 | 0.65 | 1.02 | 2.10 | 1.89 | 4.0 | 19.6 | −6039 | 100% |
+    | Indian subcontinent | 20.1 | 1.00 | 0.79 | 0.59 | 1.10 | 2.10 | 1.76 | 4.1 | 20.5 | −4478 | 97% |
+    | Europe | 15.5 | 1.00 | 0.67 | 0.67 | 1.00 | 2.10 | 1.70 | 3.4 | 16.0 | −5031 | 100% |
+    | Sub-Saharan Africa | 20.8 | 1.00 | 0.71 | 0.69 | 0.86 | 2.10 | 1.79 | 3.6 | 17.0 | −4716 | 97% |
+    | Southeast Asia | 30.8 | 1.00 | 0.53 | 0.84 | 1.12 | 2.10 | 2.18 | 4.4 | 21.7 | −4541 | 100% |
+    | Siberia, Central Asia | 7.9 | 1.00 | 0.28 | 0.56 | 0.96 | 2.10 | 1.62 | 1.2 | 5.6 | −4443 | 95% |
+    | North America | 12.4 | 1.00 | 0.48 | 0.68 | 0.81 | 2.10 | 1.81 | 2.4 | 11.2 | −4072 | 97% |
+    | Mesoamerica | 26.8 | 1.00 | 0.71 | 0.69 | 0.96 | 2.10 | 1.91 | 3.9 | 18.1 | −4142 | 100% |
+    | South America | 19.0 | 1.00 | 0.62 | 0.80 | 1.00 | 2.10 | 2.11 | 4.6 | 21.4 | −3596 | 99% |
+    | world | 15.0 | 1.00 | 0.53 | 0.62 | 0.93 | 2.10 | 1.72 | 2.8 | 13.3 | −4485 | 97% |
+
+    Three things are measured here, in order of size.
+
+    **(a) The 4.7× technique term is fully paid everywhere.** `t` is 1.00
+    in every region: foragers convert within a few centuries of the
+    front's arrival (the adoption law, 1 %/yr × contact × advantage), so
+    the (0.45 → 2.10) regime that the M2 ledger calls "first-tech to
+    advanced-farming" is at its ceiling in Ohio and the Congo exactly as
+    in the Yellow River valley. There is no slow state for agricultural
+    development in the sim at all: clearance, fallow shortening, the
+    plough, manuring, irrigation, variety selection — the things that took
+    Europe from ~4/km² at 1 CE to ~24 by 1800 on the same crops — are
+    represented by the share of a cell's people who farm, which saturates
+    in centuries. With the farmers' growth regime at 0.0028 × 1.65 per
+    year the logistic fills a cell from forager density to 95 % of its
+    ceiling in ~1,600 years, and 97 % of the farmed world had farmers
+    before −1600. So the 1 CE map is "every farmed cell at its mature
+    pre-industrial ceiling", and the cores are right at the shipped grid
+    (#83) because THEY were at that ceiling in 1 CE and the rest of the
+    world was not. Capped at the first cultivator's regime (t = 0) the
+    same map holds 278M (real ~230M) — but with China 17M and India 16M
+    (real 60 each), Africa 71M and South America 70M (real 15 and 6): the
+    intensification belongs in the cores and not in the peripheries, which
+    is what a state driven by pressure and spread by contact would produce
+    and a share of farmers cannot.
+
+    **(b) The land is rated the same everywhere.** Fertility and fit on
+    farmed ground are 0.71/0.69 in sub-Saharan Africa against 0.65/0.65
+    in China and 0.67/0.67 in Europe; `tileFert` is a climate bell
+    (warmth × moisture, an elevation penalty, a laterite correction above
+    m 0.5) — greenness, not soil. The access lift is a near-uniform 1.6–2.2
+    ×. The disease burden divides the GROWTH RATE (1 + 0.35 × burden) and
+    the forager ceiling, but `packageCapacityAt` carries no disease term:
+    farmers in the malaria and tsetse belt have the ceiling of farmers
+    outside it. And eastern seeds — goosefoot, sumpweed, sunflower, never
+    a staple — feed 96 % of farmed North America at 0.81 of wheat.
+
+    **(c) The front is early**, but that is the smaller term: arrival
+    medians of −4072 (North America), −3596 (South America), −4716
+    (Africa) are 1,500–4,000 years before maize, manioc and the Bantu, yet
+    with (a) fixed an early front at first-cultivator density is a
+    3–4/km² error, not a 15/km² one.
+
+    So the answer to "what is the issue" is (a): capacity is keyed to WHO
+    farms rather than to HOW the land has come to be farmed, and the fix
+    that follows the cardinal rules is a per-cell husbandry state that
+    rises only under pressure (P/K at the ceiling: Boserup's mechanism,
+    fallow shortening and clearance forced by people on land) and spreads
+    only by contact, with the technique regime — and W15's paddy — reading
+    it instead of the farmed share; then (b), the ceiling carrying the
+    land's soil and disease as the forager ceiling already does. P21 is
+    amended to say so. Not measured: the intensification rate's grounding
+    (the Boserup stage lags are the candidate datum) and what the
+    shipped grid says about (b) — the substrate probe is minutes there.
