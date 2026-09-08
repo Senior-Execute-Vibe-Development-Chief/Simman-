@@ -90,6 +90,7 @@ export class World {
   children!: Float64Array;
   working!: Float64Array;
   elders!: Float64Array;
+  works!: Float64Array;
   /** Authoritative per-package farmer masses; allocated by the people layer. */
   farmers: Record<string, Float64Array> = {};
   peopleInitialized = false;

@@ -63,6 +63,12 @@ import {
   PEOPLE_NEIGHBOR_DY,
   PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
+  PEOPLE_WORKS_BUILD_PER_YEAR,
+  PEOPLE_WORKS_DECAY_PER_YEAR,
+  PEOPLE_WORKS_GAIN,
+  PEOPLE_WORKS_PRESSURE_FLOOR,
+  PEOPLE_WORKS_RAIN_FLOOR,
+  PEOPLE_WORKS_RAIN_SHARE,
   TRAVEL_PASS_DIRECTIONS,
   TRAVEL_SLOPE_COST_FACTOR,
 } from "../src/sim/constants";
@@ -77,7 +83,8 @@ import { northSouthKm, rowEastWestKm } from "../src/sim/travel/cost";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
-import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity } from "../src/sim/people/habitability";
+import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare } from "../src/sim/people/habitability";
+import { stepWorks } from "../src/sim/people/works";
 import { mixtureCapacity } from "../src/sim/people/capacity";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../src/ported/worldgen/cropPackages.js";
 import { orographicFootprintRadius, orographicShare } from "../src/ported/worldgen/realClimateData.js";
@@ -1405,8 +1412,143 @@ async function main(): Promise<void> {
     assert.equal(coverMoved, 1, "charging the ground moves only the cell whose cover changed");
   }
 
+  // W28: the works slot. The improvable share is the surface water plus
+  // what a wet climate improves alone; the built land builds where people
+  // press their ceiling at the farmed share's skill, rots unstaffed, is
+  // clamped to the cell, multiplies the crop ×(1 + gain·w) and nothing a
+  // first cultivator or a stand sees, fires on the growth stride in both
+  // regimes, survives a save, and comes out bit-identical from both kernels.
+  {
+    const substrate = peopleFixture();
+    const ts = new World({ seed: 11, grid: "dev", config: { peopleKernel: "ts" }, substrate }) as PeopleWorld;
+    const worksClamp = (value: number): number => Math.max(0, Math.min(1, value));
+    for (let cell = 0; cell < ts.N; cell++) {
+      const share = ts._irrigable[cell] ?? 0;
+      if (!substrate.landMask[cell]) {
+        assert.equal(share, 0, "water improves nothing");
+        continue;
+      }
+      assert.equal(share, irrigableShare(ts, cell));
+      assert.ok(share >= 0 && share <= 1, "the improvable share is a share of the cell");
+      assert.ok(share >= (ts._surfaceAccess[cell] ?? 0), "the surface water can be led onto fields");
+    }
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    let cell = -1;
+    for (const candidate of ts._landCells) {
+      const packed = ts._packedOf[candidate] ?? -1;
+      if ((ts._canGrow[wheat]?.[packed] ?? 0) === 0) continue;
+      cell = candidate;
+      break;
+    }
+    assert.ok(cell >= 0, "the fixture holds wheat ground");
+    {
+      // The wet term alone: at the wettest climate the rain share, at the
+      // floor nothing, and the surface access on its own where it is dry.
+      const savedMoisture = ts._annualMoisture[cell] ?? 0;
+      const savedSurface = ts._surfaceAccess[cell] ?? 0;
+      ts._annualMoisture[cell] = 1;
+      ts._surfaceAccess[cell] = 0;
+      assert.equal(irrigableShare(ts, cell), PEOPLE_WORKS_RAIN_SHARE, "the wettest climate improves the rain share");
+      ts._annualMoisture[cell] = PEOPLE_WORKS_RAIN_FLOOR;
+      assert.equal(irrigableShare(ts, cell), 0, "at the floor rain improves nothing");
+      ts._annualMoisture[cell] = 0;
+      ts._surfaceAccess[cell] = 0.3;
+      assert.equal(irrigableShare(ts, cell), 0.3, "dry ground is improvable by its surface water alone");
+      ts._annualMoisture[cell] = savedMoisture;
+      ts._surfaceAccess[cell] = savedSurface;
+    }
+    // The fixture is a dry plain (uniform moisture under the rain floor, no
+    // river): a stated improvable share stands in for the field here, the
+    // derivation having been checked above.
+    ts._irrigable[cell] = 0.5;
+    const packed = ts._packedOf[cell] ?? -1;
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    ts.people[cell] = 1;
+    ts.farmers[wheatId]![packed] = 1;
+    markPackageActive(ts, wheat);
+    deriveTechniqueFromFarmers(ts);
+    deriveCapacity(ts);
+    const capacity = ts.capField[cell] ?? 0;
+    assert.ok(capacity > 0, "the farmed cell has a capacity");
+    // Full to the ceiling, all of them farmers: fill 1, skill 1.
+    ts.people[cell] = capacity;
+    ts.farmers[wheatId]![packed] = capacity;
+    deriveTechniqueFromFarmers(ts);
+    deriveCapacity(ts);
+    assert.equal(ts.technique[cell], 1);
+    const before = ts.capField[cell] ?? 0;
+    const unimproved = packageCapacityAt(ts, cell, wheat, 1);
+    assert.equal(before, unimproved, "unimproved land is the first cultivator's capacity");
+    stepWorks(ts, MONTHS_PER_YEAR);
+    const build = PEOPLE_WORKS_BUILD_PER_YEAR * MONTHS_PER_YEAR / MONTHS_PER_YEAR;
+    const built = build * (1 - PEOPLE_WORKS_PRESSURE_FLOOR) * 1 * (ts._irrigable[cell] ?? 0);
+    assert.equal(ts.works[cell], built, "a year at the ceiling builds the pressure's share of the improvable ground");
+    assert.ok(built > 0);
+    deriveCapacity(ts);
+    assert.equal(ts.capField[cell], before * (1 + PEOPLE_WORKS_GAIN * built), "the works multiply the crop");
+    assert.equal(packageCapacityAt(ts, cell, wheat, 1), unimproved, "a first cultivator's question sees unimproved land");
+    // Empty: the works rot at the full decay.
+    const worked = ts.works[cell] ?? 0;
+    ts.people[cell] = 0;
+    stepWorks(ts, MONTHS_PER_YEAR);
+    const decay = PEOPLE_WORKS_DECAY_PER_YEAR * MONTHS_PER_YEAR / MONTHS_PER_YEAR;
+    assert.equal(ts.works[cell], worksClamp(worked - decay * (1 - 0) * worked), "unstaffed works rot");
+    // Clamped to the cell, and nothing on ground that cannot be improved.
+    ts.works[cell] = 1;
+    ts.people[cell] = capacity;
+    stepWorks(ts, MONTHS_PER_YEAR);
+    assert.equal(ts.works[cell], 1, "the works are a share of the cell");
+    ts.works[cell] = 0;
+    ts._irrigable[cell] = 0;
+    stepWorks(ts, MONTHS_PER_YEAR);
+    assert.equal(ts.works[cell], 0, "dry rain-fed ground builds nothing");
+    // The pass is scheduled with growth in both regimes.
+    const awakeWorks = resolveSchedule(ts).find((row) => row.name === "people.works");
+    const awakeGrowth = resolveSchedule(ts).find((row) => row.name === "people.growth");
+    assert.ok(awakeWorks && awakeGrowth && awakeWorks.stride === awakeGrowth.stride, "the works fire on the growth stride");
+    assert.equal(ts.solveSchedule.find((row) => row.name === "people.works")?.stride, resolveSolveStrides(ts).reaction);
+    // Saved and hashed with the rest of the state.
+    ts.works[cell] = 0.25;
+    const loaded = loadWorld(serializeWorld(ts), substrate) as PeopleWorld;
+    assert.equal(loaded.works[cell], 0.25, "the works survive a save");
+    assert.equal(hashWorld(loaded), hashWorld(ts));
+    ts.works[cell] = 0.5;
+    assert.notEqual(hashWorld(loaded), hashWorld(ts), "the works are in the world hash");
+    // Both kernels: the same field, byte for byte, after one solve firing
+    // over a world filled to its ceiling.
+    const earth = buildSubstrate(42042, {}, "dev");
+    const oracle = new World({ seed: 12, grid: "dev", config: { peopleKernel: "ts" }, substrate: earth }) as PeopleWorld;
+    const kernel = new World({ seed: 12, grid: "dev", config: { peopleKernel: "wasm", peopleWorkers: 1 }, substrate: earth }) as PeopleWorld;
+    assert.ok(kernel._wasmPeopleKernel, "the wasm kernel is up for the works parity check");
+    for (const world of [oracle, kernel]) {
+      for (const land of world._landCells) {
+        const at = world._packedOf[land] ?? -1;
+        if ((world._canGrow[wheat]?.[at] ?? 0) === 0) continue;
+        world.people[land] = 1;
+        world.farmers[wheatId]![at] = 1;
+      }
+      markPackageActive(world, wheat);
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      for (const land of world._landCells) world.people[land] = world.capField[land] ?? 0;
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      stepWorks(world, resolveSolveStrides(world).reaction);
+    }
+    let builtCells = 0;
+    for (const land of oracle._landCells) if ((oracle.works[land] ?? 0) > 0) builtCells++;
+    assert.ok(builtCells > 0, "a full world builds somewhere");
+    assert.ok(
+      Buffer.from(oracle.works.buffer, oracle.works.byteOffset, oracle.works.byteLength)
+        .equals(Buffer.from(kernel.works.buffer, kernel.works.byteOffset, kernel.works.byteLength)),
+      "the two kernels build the same works, bit for bit",
+    );
+    kernel._wasmPeopleKernel?.dispose();
+  }
+
   console.log(JSON.stringify({
     tests: "ok",
+    works: "ok",
     rng: "v1-byte-compatible",
     dmath: "golden",
     saveLoad: "byte-identical",

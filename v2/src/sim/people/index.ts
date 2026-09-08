@@ -26,6 +26,7 @@ import {
 import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
 import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
+import { stepWorks } from "./works";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
@@ -42,6 +43,7 @@ export const peoplePhaseMilliseconds: Record<string, number> = {
   growth: 0,
   migration: 0,
   cohorts: 0,
+  works: 0,
   ledger: 0,
 };
 
@@ -141,6 +143,7 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._runoffInflow = new Float64Array(length);
   world._surfaceAccess = new Float64Array(length);
   world._reliefMult = new Float64Array(length);
+  world._irrigable = new Float64Array(length);
   world._foragerCapacity = new Float64Array(length);
   world._foragerTerrestrial = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
@@ -294,13 +297,15 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   const growthSchedule = world.schedule.find(({ name }) => name === "people.growth");
   const migrationSchedule = world.schedule.find(({ name }) => name === "people.migration");
   const cohortsSchedule = world.schedule.find(({ name }) => name === "people.cohorts");
+  const worksSchedule = world.schedule.find(({ name }) => name === "people.works");
   const techniqueDue = fires(techniqueSchedule);
   const conversionDue = fires(conversionSchedule);
   const capacityDue = fires(capacitySchedule);
   const growthDue = fires(growthSchedule);
   const migrationDue = fires(migrationSchedule);
   const cohortsDue = fires(cohortsSchedule);
-  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return false;
+  const worksDue = fires(worksSchedule);
+  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue && !worksDue) return false;
 
   world.ledger.beginPass(
     "people",
@@ -370,6 +375,17 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
     const started = performance.now();
     normalizeCohorts(world);
     addPhaseTime("cohorts", started);
+  }
+  // The works build and rot on the firing's FINAL people and capacity (W28,
+  // v1's order), and the capacity is derived again at once: it is a present
+  // consequence of the state, re-derived on load (capacity.ts), so it must
+  // never lag the works — v1's one-firing lag put a loaded world a firing
+  // ahead of the one it was saved from (the smoke's continuation check).
+  if (worksDue) {
+    const started = performance.now();
+    stepWorks(world, dtOf(worksSchedule!));
+    deriveCapacity(world);
+    addPhaseTime("works", started);
   }
   const ledgerStarted = performance.now();
   if (migrationDue) world.ledger.recordChannel("people", "migration", migration, migration);

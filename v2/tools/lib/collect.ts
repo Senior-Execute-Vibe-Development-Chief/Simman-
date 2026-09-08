@@ -46,6 +46,7 @@ export const WORLD_SCRATCH = new Set<string>([
   "_runoffInflow",
   "_surfaceAccess",
   "_reliefMult",
+  "_irrigable",
   "_foragerCapacity",
   "_diseaseBurden",
   "_migrationShareRow",

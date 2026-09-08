@@ -111,7 +111,8 @@ fudge factors.
   the land a farming source can enter opens in proportion to the farmers it
   sends; a hearth ignites where a native range has been a peopled basin for
   the package's domestication lag (the M2 law).
-- Save format v6 persists people, farmer masses, derived technique, cohorts,
+- Save format v9 persists people, farmer masses, derived technique, cohorts,
+  the works (the built land capital, W28),
   peopled arrivals, hearth progress, the resolved pass schedules, the regime
   (phase, wake and caged steps) and the event log; terrain remains immutable
   substrate rebuilt from its identity.
@@ -119,7 +120,8 @@ fudge factors.
   technique coverage, weighted cohort shares, and per-pass firing counts.
 - Every people field pass uses aggregated named source/sink accounting.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
-  fire annually; migration's stride is the largest divisor of 12 whose
+  fire annually, and the works build and rot on the growth stride after the
+  commit, the capacity derived again at once; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
 - **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
   pass fires at one stride derived from the bounds the passes already carry

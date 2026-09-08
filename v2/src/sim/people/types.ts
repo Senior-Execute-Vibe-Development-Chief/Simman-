@@ -24,6 +24,8 @@ export interface PeopleWorld extends World {
   /** Authoritative per-package farmer masses, in persons/km² over land order. */
   farmers: Record<string, Float64Array>;
   capField: Float64Array;
+  /** The built land capital (W28), full grid, 0..1: the share of a cell's improvable ground improved. Authoritative state (saved, hashed); the wasm kernel owns it. */
+  works: Float64Array;
   cellAreaKm2: Float64Array;
   _peopleNext: Float64Array;
   _techniqueNext: Float64Array;
@@ -138,6 +140,8 @@ export interface PeopleWorld extends World {
   /** The land's own water, rain aside (W13): the routed stream, floodplain, river and lake terms of water access — what waters a month it does not rain. */
   _surfaceAccess: Float64Array;
   _reliefMult: Float64Array;
+  /** The improvable share of each cell (W28, static): the ground water can be led onto — the surface access — plus what a wet climate improves by drainage and levelling alone. */
+  _irrigable: Float64Array;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;
   /** The terrestrial part of the forager capacity (W8): the living a stand's gatherers weigh their stand against. */

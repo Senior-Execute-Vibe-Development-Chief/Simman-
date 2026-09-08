@@ -4511,3 +4511,50 @@ Review corrections to the M1 build (all validated before merge):
     America is a catalogue datum to check against the archaeobotany.
     Not measured: what the shipped grid says about (b) — the substrate
     probe is minutes there.
+
+85. **The works build where the rain is, and take back none of the excess
+    (2026-09-08, W28 — the works slot armed; `probe-factors2.mts` in the
+    session scratchpad, the dev solve arm read at 1 CE; handoff
+    `spec/handoffs/W28-the-works.md`).** v1's LAND_WORKS ported: on a
+    cell's improvable ground the works build where the fill presses past
+    0.5 at the skill of the farmed share, rot below a quarter staffed, and
+    multiply the crop ×(1 + 2·works). Two things fell out at dev.
+
+    (a) The improvable share is W13's surface access plus a wet climate's
+    own term (moisture above 0.55 → up to 0.6 of the cell), v1's two terms
+    with v1's great-river 1.0 replaced by what W13 measures. At 165 km
+    cells that is almost all rain: 85 % of land is improvable, the routed
+    strip is one cell wide and a river gives 0.35 × magnitude on its own
+    cell. So the works stand fullest in Southeast Asia (mean 0.83 over
+    farmed cells, capacity ×2.66), China (0.73, ×2.46), Siberia and Central
+    Asia (0.53), sub-Saharan Africa, North America and Mesoamerica (0.50),
+    Europe (0.47), and least in the valleys the mechanism was written for:
+    the Nile box 0.31 on an improvable share of 0.08 (×1.62), Mesopotamia
+    and Iran 0.23 on 0.06 (×1.47). A finding about the water term at this
+    grid, not a rate to raise; whether the shipped grid's valley strips
+    carry the share is `v2-long` (`GATE_PEOPLE_SOLVE_TARGET=1`), recorded
+    as needing that arm.
+
+    (b) The ceiling is ×1.96 over the farmed world (13.3 → 26.1 persons/km²
+    live against unimproved at technique 1) and the dev 1 CE checkpoint
+    1,487 → 2,108M, −1000 1,376 → 1,850M, −3000 799 → 897M, −5000 111 →
+    114M (the works build only after the fill crosses the floor, which the
+    front's fresh ground has not by then); the density ordering's river
+    cells 24.0 → 34.4, rain-fed 14.3 → 20.3. Fuller exactly where #83 and
+    P21 put the capacity in the wrong places: sub-Saharan Africa 567M,
+    South America 377M, North America 212M, Siberia and Central Asia 158M.
+    The slow state #84 asked for does not take the excess back: a
+    multiplier on the ceiling cannot, at a skill that is the farmed share
+    (P21's technique ruling, open), with no deaths in the curve (W29). The
+    first caged basin moves −3071 → −2763 in the same Chao Phraya–Mekong
+    window, a cell over, because the built basin has more room; every
+    hearth, every staple verdict and farmed-cell count is the same; four
+    arrivals move by one 84-month stride.
+
+    Found in passing, not fixed: the caging room (`wake.ts` `farmerRoom`)
+    reads the cell's capacity at the best package's YIELD with no crop fit
+    (W8, W17), no standing gain (W15) and no land share (W19a) — its comment
+    ("the only per-package factor of `packageCapacity`") predates them. It
+    overstates the free room wherever the fit is below one, so the wake
+    comes later than the capacity says. A wave of its own: moving the wake
+    moves every awake-regime measurement.

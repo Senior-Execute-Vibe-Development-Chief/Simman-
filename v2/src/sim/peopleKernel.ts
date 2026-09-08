@@ -67,6 +67,7 @@ interface PeopleKernelLike {
   people_ptr(): number;
   peopled_ptr(): number;
   technique_ptr(): number;
+  works_ptr(): number;
   children_ptr(): number;
   working_ptr(): number;
   elders_ptr(): number;
@@ -105,6 +106,8 @@ interface PeopleKernelLike {
   commit_population(): void;
   commit_farmers(): void;
   normalize_cohorts(): void;
+  begin_works(dtMonths: number): void;
+  works_band(rawLo: number, rawHi: number): void;
 }
 
 type BandOperation =
@@ -113,7 +116,8 @@ type BandOperation =
   | "migration-prepare"
   | "migration-source"
   | "migration-debit"
-  | "migration-target";
+  | "migration-target"
+  | "works";
 
 /** Operation codes written into the control plane; the worker script mirrors this order. */
 const BAND_OPERATIONS: readonly BandOperation[] = [
@@ -123,6 +127,7 @@ const BAND_OPERATIONS: readonly BandOperation[] = [
   "migration-source",
   "migration-debit",
   "migration-target",
+  "works",
 ];
 
 // The worker script is plain JS outside the constants ledger; it receives
@@ -363,6 +368,7 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     canGrow,
     cropFit,
     standingGain,
+    world._irrigable,
     world._neighborTargets,
     world._neighborDistanceKm,
     world._neighborMode,
@@ -504,6 +510,8 @@ export interface PeopleKernelRuntime {
   commitPopulation(): void;
   commitFarmers(): void;
   normalizeCohorts(): void;
+  /** The works pass (W28) over the bands, at the firing's stride. */
+  buildWorks(dtMonths?: number): void;
   dispose(): void;
   births(): number;
   deaths(): number;
@@ -514,6 +522,7 @@ export interface PeopleKernelRuntime {
 type KernelFieldName =
   | "people"
   | "technique"
+  | "works"
   | "children"
   | "working"
   | "elders"
@@ -596,6 +605,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     const pointers: Record<KernelFieldName, number> = {
       people: this.kernel.people_ptr(),
       technique: this.kernel.technique_ptr(),
+      works: this.kernel.works_ptr(),
       children: this.kernel.children_ptr(),
       working: this.kernel.working_ptr(),
       elders: this.kernel.elders_ptr(),
@@ -616,6 +626,7 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     const fullGrid = new Set<KernelFieldName>([
       "people",
       "technique",
+      "works",
       "children",
       "working",
       "elders",
@@ -668,6 +679,8 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
         this.kernel.migration_source_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-debit") {
         this.kernel.migration_debit_band(band.rawLo, band.rawHi);
+      } else if (operation === "works") {
+        this.kernel.works_band(band.rawLo, band.rawHi);
       } else {
         this.kernel.migration_target_band(band.rawLo, band.rawHi, band.index);
       }
@@ -741,6 +754,12 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   normalizeCohorts(): void {
     this.assertMemoryStable();
     this.kernel.normalize_cohorts();
+  }
+
+  buildWorks(dtMonths = MONTHS_PER_YEAR): void {
+    this.assertMemoryStable();
+    this.kernel.begin_works(dtMonths);
+    this.dispatchBands("works", dtMonths);
   }
 
   births(): number {

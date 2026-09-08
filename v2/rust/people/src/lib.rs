@@ -39,6 +39,13 @@ const TRAVEL_COASTAL_KM_PER_DAY: f64 = 80.0;
 // The router's Naismith rate, days per elevation unit climbed (TRAVEL_SLOPE_COST_FACTOR).
 const TRAVEL_SLOPE_COST_FACTOR: f64 = 3.0;
 const PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR: f64 = 15.0;
+// W28: the works slot, v1's LAND_WORKS ported (constants.ts §W28).
+const PEOPLE_WORKS_GAIN: f64 = 2.0;
+const PEOPLE_WORKS_PRESSURE_FLOOR: f64 = 0.5;
+const PEOPLE_WORKS_STAFF_FLOOR: f64 = 0.25;
+const PEOPLE_WORKS_BUILD_PER_YEAR: f64 = 0.0024;
+const PEOPLE_WORKS_DECAY_PER_YEAR: f64 = 0.0018;
+const PEOPLE_WORKS_SKILL_FLOOR: f64 = 0.05;
 /// Two weights per neighbour pair: the forager weight, then the farmer weight (W6).
 const PAIR_GROUPS: usize = 2;
 
@@ -305,6 +312,8 @@ pub struct PeopleKernel {
     /// Per-package paddy gain relative to that fit, packed to land (W15): the standing
     /// water a wetland crop gains by is impounded, so it is paid out with technique.
     standing_gain: Vec<f64>,
+    /// The improvable share of each cell (W28, static): the ground works can be built on.
+    irrigable: Vec<f64>,
     neighbor_targets: Vec<i32>,
     neighbor_distance: Vec<f64>,
     neighbor_mode: Vec<u8>,
@@ -317,6 +326,8 @@ pub struct PeopleKernel {
     packed_of: Vec<i32>,
     people: Vec<f64>,
     technique: Vec<f64>,
+    /// The built land capital (W28), full grid, 0..1: authoritative state.
+    works: Vec<f64>,
     children: Vec<f64>,
     working: Vec<f64>,
     elders: Vec<f64>,
@@ -373,6 +384,7 @@ pub struct PeopleKernel {
     /// Per-row farmer hop share for the firing (the forager share is migration_share_row).
     migration_farmer_share_row: Vec<f64>,
     growth_dt_months: f64,
+    works_dt_months: f64,
     births_by_band: [f64; PEOPLE_BAND_COUNT],
     deaths_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_by_band: [f64; PEOPLE_BAND_COUNT],
@@ -403,6 +415,7 @@ impl PeopleKernel {
         can_grow: &[u8],
         crop_fit: &[f64],
         standing_gain: &[f64],
+        irrigable: &[f64],
         neighbor_targets: &[i32],
         neighbor_distance: &[f64],
         neighbor_mode: &[u8],
@@ -440,6 +453,7 @@ impl PeopleKernel {
             can_grow: copy_u8(can_grow, package_count.saturating_mul(land_count), 0),
             crop_fit: copy_f64(crop_fit, package_count.saturating_mul(land_count)),
             standing_gain: copy_f64(standing_gain, package_count.saturating_mul(land_count)),
+            irrigable: copy_f64(irrigable, cells),
             neighbor_targets: neighbor_targets.to_vec(),
             neighbor_distance: copy_f64(
                 neighbor_distance,
@@ -458,6 +472,7 @@ impl PeopleKernel {
             packed_of,
             people: vec![0.0; cells],
             technique: vec![0.0; cells],
+            works: vec![0.0; cells],
             children: vec![0.0; cells],
             working: vec![0.0; cells],
             elders: vec![0.0; cells],
@@ -505,6 +520,7 @@ impl PeopleKernel {
             migration_growth_prepared: false,
             migration_farmer_share_row: vec![0.0; height],
             growth_dt_months: 1.0,
+            works_dt_months: 1.0,
             births_by_band: [0.0; PEOPLE_BAND_COUNT],
             deaths_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_by_band: [0.0; PEOPLE_BAND_COUNT],
@@ -527,6 +543,10 @@ impl PeopleKernel {
 
     pub fn technique_ptr(&self) -> usize {
         self.technique.as_ptr() as usize
+    }
+
+    pub fn works_ptr(&self) -> usize {
+        self.works.as_ptr() as usize
     }
 
     pub fn children_ptr(&self) -> usize {
@@ -704,6 +724,9 @@ impl PeopleKernel {
             // grows half the crop. The forager side arrives already scaled,
             // as a data array.
             * self.land_share[cell]
+            // The built land (W28): the crop the ground grows ×(1 + gain × works),
+            // last in the chain as the oracle applies it.
+            * (1.0 + PEOPLE_WORKS_GAIN * clamp01(self.works[cell]))
     }
 
     pub fn begin_growth(&mut self, dt_months: f64) {
@@ -1354,6 +1377,45 @@ impl PeopleKernel {
             self.elders[cell] = (1.0 - child - working).max(0.0);
         }
     }
+
+    pub fn begin_works(&mut self, dt_months: f64) {
+        self.works_dt_months = dt_months;
+    }
+
+    /// The works pass (W28): v1's LAND_WORKS build/rot on the firing's committed
+    /// people and derived capacity — the oracle's `stepWorks`, the same
+    /// expression in the same order. Writes `works` only.
+    pub fn works_band(&mut self, raw_lo: usize, raw_hi: usize) {
+        let build = PEOPLE_WORKS_BUILD_PER_YEAR * self.works_dt_months / MONTHS_PER_YEAR as f64;
+        let decay = PEOPLE_WORKS_DECAY_PER_YEAR * self.works_dt_months / MONTHS_PER_YEAR as f64;
+        let hi = raw_hi.min(self.land_cells.len());
+        for packed in raw_lo.min(hi)..hi {
+            let cell = self.land_cells[packed] as usize;
+            let improvable = self.irrigable[cell];
+            let mut works = self.works[cell];
+            // Dry, unimproved ground: nothing to build or to rot.
+            if improvable <= 0.0 && works <= 0.0 {
+                continue;
+            }
+            let capacity = self.capacity[cell];
+            let fill = if capacity > 0.0 { self.people[cell] / capacity } else { 0.0 };
+            if improvable > 0.0 && fill > PEOPLE_WORKS_PRESSURE_FLOOR {
+                let skill = self.technique[cell];
+                if skill > PEOPLE_WORKS_SKILL_FLOOR {
+                    works += build * (fill - PEOPLE_WORKS_PRESSURE_FLOOR) * skill * improvable;
+                }
+            }
+            let staffed = if fill > PEOPLE_WORKS_STAFF_FLOOR {
+                1.0
+            } else {
+                fill / PEOPLE_WORKS_STAFF_FLOOR
+            };
+            if staffed < 1.0 {
+                works -= decay * (1.0 - staffed) * works;
+            }
+            self.works[cell] = clamp01(works);
+        }
+    }
 }
 
 /// Free-function band dispatch. Workers must not go through wasm-bindgen's
@@ -1405,4 +1467,9 @@ pub fn people_dispatch_migration_target(
     band_index: usize,
 ) {
     unsafe { kernel_mut(pointer).migration_target_band(raw_lo, raw_hi, band_index) }
+}
+
+#[wasm_bindgen]
+pub fn people_dispatch_works(pointer: usize, raw_lo: usize, raw_hi: usize) {
+    unsafe { kernel_mut(pointer).works_band(raw_lo, raw_hi) }
 }

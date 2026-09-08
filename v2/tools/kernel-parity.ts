@@ -12,6 +12,7 @@ import { passFires } from "../src/sim/scheduler";
 const PEOPLE_FIELDS = [
   "people",
   "technique",
+  "works",
   "children",
   "working",
   "elders",

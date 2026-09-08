@@ -37,6 +37,13 @@ export const FIELD_LIST: readonly FieldDefinition[] = [
     defaultValue: 0,
     allocate: (length) => new Float64Array(length),
   },
+  {
+    // The built land capital (W28): the share of a cell's improvable ground
+    // improved, 0..1. State — built by pressure, rotting unstaffed.
+    name: "works",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
 ];
 
 export type FieldHost = Record<string, unknown>;

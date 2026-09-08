@@ -102,6 +102,7 @@ interface SnapshotPlanes {
   readonly people: Float32Array;
   readonly technique: Float32Array;
   readonly packageView: Float32Array;
+  readonly works: Float32Array;
 }
 
 function snapshotPlanes(target: World): SnapshotPlanes {
@@ -118,12 +119,13 @@ function snapshotPlanes(target: World): SnapshotPlanes {
   const packageView = plane(2);
   const canGrowView = plane(2 + 1);
   const nativeView = plane(2 + 2);
+  const works = plane(2 + 2 + 1);
   if (target.substrate) {
     const overlays = staticOverlays(target as PeopleWorld);
     canGrowView.set(overlays.canGrow);
     nativeView.set(overlays.native);
   }
-  return { buffer, people, technique, packageView };
+  return { buffer, people, technique, packageView, works };
 }
 
 function liveSnapshot(target: World): Record<string, unknown> {
@@ -131,6 +133,7 @@ function liveSnapshot(target: World): Record<string, unknown> {
   new Float64Array(planes.buffer, 0, 1)[0] = target.step;
   planes.people.set(target.people);
   planes.technique.set(target.technique);
+  planes.works.set(target.works);
   if (target.substrate) planes.packageView.set((target as PeopleWorld)._dominantPackage);
   // No world hash per snapshot: hashWorld walks every field with BigInt
   // arithmetic (5.3 s at the target grid — measured, review W3), which
@@ -164,6 +167,9 @@ function reconstructedSnapshot(target: World, step: number): Record<string, unkn
   planes.people.fill(0);
   planes.technique.fill(0);
   planes.packageView.fill(0);
+  // The reconstruction carries no works: a condensation of the arrival
+  // record, it shows unimproved land before the wake (W28, recorded).
+  planes.works.fill(0);
   const years = step / MONTHS_PER_YEAR;
   let total = 0;
   for (let packed = 0; packed < people._landCells.length; packed++) {

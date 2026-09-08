@@ -6,6 +6,7 @@ import {
   PEOPLE_FARM_TECHNIQUE_GAIN,
   PEOPLE_FARMED_MARKER_SHARE,
   PEOPLE_WATER_ACCESS_GAIN,
+  PEOPLE_WORKS_GAIN,
 } from "../constants";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { wakeTargetStep } from "../horizon";
@@ -67,7 +68,9 @@ function farmerRoom(world: PeopleWorld, cell: number, packed: number): number {
     * best
     * (PEOPLE_FARM_TECHNIQUE_BASE + PEOPLE_FARM_TECHNIQUE_GAIN * technique)
     * (1 + access * PEOPLE_WATER_ACCESS_GAIN)
-    * (world._reliefMult[cell] ?? 0);
+    * (world._reliefMult[cell] ?? 0)
+    // The built land (W28), as `packageCapacity` charges it.
+    * (1 + PEOPLE_WORKS_GAIN * clamp01(world.works[cell] ?? 0));
 }
 
 export interface CagedBasin {

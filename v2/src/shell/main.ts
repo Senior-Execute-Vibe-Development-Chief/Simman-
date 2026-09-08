@@ -225,6 +225,7 @@ let overlayTechnique: Float32Array | undefined;
 let overlayPackage: Float32Array | undefined;
 let overlayCanGrow: Float32Array | undefined;
 let overlayNative: Float32Array | undefined;
+let overlayWorks: Float32Array | undefined;
 function displayDate(step: number): string {
   const year = yearFromStep(step);
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
@@ -285,16 +286,19 @@ worker.addEventListener("message", (event) => {
     const packageView = new Float32Array(buffer, 8 + count * 8, count);
     const canGrowView = new Float32Array(buffer, 8 + count * 12, count);
     const nativeView = new Float32Array(buffer, 8 + count * 16, count);
+    const worksView = new Float32Array(buffer, 8 + count * 20, count);
     overlayPopulation = new Float32Array(count);
     overlayTechnique = new Float32Array(count);
     overlayPackage = new Float32Array(count);
     overlayCanGrow = new Float32Array(count);
     overlayNative = new Float32Array(count);
+    overlayWorks = new Float32Array(count);
     overlayPopulation.set(populationView);
     overlayTechnique.set(techniqueView);
     overlayPackage.set(packageView);
     overlayCanGrow.set(canGrowView);
     overlayNative.set(nativeView);
+    overlayWorks.set(worksView);
     const reconstructed = event.data.reconstructed === true;
     if (!reconstructed) {
       const wokeNow = phase === "solve" && event.data.phase === "awake";
@@ -646,6 +650,13 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   if (lens.value === "technique") {
     const value = Math.max(0, Math.min(1, overlayTechnique?.[cell] ?? 0));
     return [Math.round(45 + 190 * value), Math.round(70 + 140 * value), Math.round(105 - 70 * value)];
+  }
+  if (lens.value === "works") {
+    // The built land (W28): unimproved ground dark earth, fully worked land
+    // the blue-green of a watered field.
+    const value = Math.max(0, Math.min(1, overlayWorks?.[cell] ?? 0));
+    if (value <= 0) return [40, 36, 30];
+    return [Math.round(40 + 20 * value), Math.round(36 + 150 * value), Math.round(30 + 170 * value)];
   }
   if (lens.value === "package") {
     const index = Math.floor(overlayPackage?.[cell] ?? 0);

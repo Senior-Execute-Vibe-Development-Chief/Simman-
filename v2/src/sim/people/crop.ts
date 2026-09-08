@@ -8,6 +8,7 @@ import {
   PEOPLE_TECHNIQUE_CLIMATE_FLOOR,
   PEOPLE_WATER_ACCESS_GAIN,
   PEOPLE_WILD_STAND_SHARE,
+  PEOPLE_WORKS_GAIN,
 } from "../constants";
 import { CROP_PACKAGES, pkgMoistureBell, pkgTemperatureBell } from "../../ported/worldgen/cropPackages.js";
 import type { CropPackage } from "../../ported/worldgen/cropPackages.js";
@@ -105,7 +106,11 @@ function bestCycleWindow(
  * carried: a cell where most people farm has cleared, worked land.
  */
 export function packageCapacity(world: PeopleWorld, cell: number, packageIndex: number): number {
-  return packageCapacityAt(world, cell, packageIndex, clamp01(world.technique[cell] ?? 0));
+  // The works (W28): the built land capital multiplies the crop the ground
+  // grows, ×(1 + gain × works) — v1's LAND_WORKS effect. A stand, a site and
+  // a first cultivator's question (`packageCapacityAt`) see unimproved land.
+  return packageCapacityAt(world, cell, packageIndex, clamp01(world.technique[cell] ?? 0))
+    * (1 + PEOPLE_WORKS_GAIN * clamp01(world.works[cell] ?? 0));
 }
 
 /**

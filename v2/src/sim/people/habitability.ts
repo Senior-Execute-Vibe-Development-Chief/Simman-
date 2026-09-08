@@ -19,6 +19,8 @@ import {
   PEOPLE_LAKE_ACCESS_WEIGHT,
   PEOPLE_RIVER_ACCESS_DIVISOR,
   PEOPLE_RIVER_ACCESS_WEIGHT,
+  PEOPLE_WORKS_RAIN_FLOOR,
+  PEOPLE_WORKS_RAIN_SHARE,
   PEOPLE_RELIEF_PENALTY,
   MONTHS_PER_YEAR,
   MATH_NEGATIVE_ONE,
@@ -176,6 +178,25 @@ export function surfaceWaterAccess(world: PeopleWorld, cell: number): number {
   );
 }
 
+/**
+ * The improvable share of a cell (W28, static): the ground works can be
+ * built on. Two sources, as v1's `_ensureIrr` had them. Water that can be
+ * LED onto fields — the routed stream, the floodplain, the river and the
+ * lake, which is the surface access W13 already states — and a climate wet
+ * enough that its works are drainage, terracing and levelling, needing no
+ * water brought: the share rises from nothing at the woodland moisture band
+ * to `PEOPLE_WORKS_RAIN_SHARE` of the cell at the wettest climate. Rain-fed
+ * dry farming on a plain improves nothing, which is what keeps the steppe
+ * at its rain-fed ceiling while the valley beside it densifies.
+ */
+export function irrigableShare(world: PeopleWorld, cell: number): number {
+  if (!world.substrate.landMask[cell]) return 0;
+  const moisture = world._annualMoisture[cell] ?? 0;
+  const wet = Math.max(0, (moisture - PEOPLE_WORKS_RAIN_FLOOR) / (1 - PEOPLE_WORKS_RAIN_FLOOR))
+    * PEOPLE_WORKS_RAIN_SHARE;
+  return clamp01((world._surfaceAccess[cell] ?? 0) + wet);
+}
+
 /** Water access: the year's rain and the land's own water together. */
 export function waterAccess(world: PeopleWorld, cell: number): number {
   return clamp01((world._annualMoisture[cell] ?? 0) + surfaceWaterAccess(world, cell));
@@ -254,6 +275,7 @@ export function fillStaticHabitability(world: PeopleWorld): void {
     world._diseaseBurden[cell] = diseaseBurden(world, cell);
     world._surfaceAccess[cell] = surfaceWaterAccess(world, cell);
     world._waterAccess[cell] = waterAccess(world, cell);
+    world._irrigable[cell] = irrigableShare(world, cell);
     world._reliefMult[cell] = reliefMultiplier(world, cell);
     world._foragerCapacity[cell] = world.substrate.landMask[cell]
       ? foragerCapacity(world, cell)

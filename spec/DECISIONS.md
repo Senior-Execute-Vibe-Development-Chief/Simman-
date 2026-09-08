@@ -1636,6 +1636,23 @@ lawyered.
   disease burden divides the growth rate and the forager ceiling but not
   the farmed one; eastern seeds at 0.81 of wheat is a catalogue datum to
   check.
+  **W28 (2026-09-08): the ruling-10 works slot is ARMED** as a wave of its
+  own before the food books (`spec/handoffs/W28-the-works.md`): v1's
+  validated LAND_WORKS ported to both kernels — built where the fill presses
+  past 0.5 on improvable ground at the skill of the farmed share, rotting
+  below a quarter staffed, ×(1 + 2·works) on the crop; the improvable share
+  is W13's surface access plus the wet climate's own term. Measured at dev
+  (QUESTIONS #85): it raises the ceiling ×1.96 over the farmed world and the
+  1 CE checkpoint 1,487 → 2,108M, and at 165 km cells it raises it where the
+  RAIN is, not where the water can be led — so it takes back none of the
+  excess and adds to it in the regions (i) names. Still open, unchanged by
+  the arming: (i) the land's own productivity, (ii) the front's reach, (iii)
+  the balance law, the technique-term ruling (the works' skill is that same
+  farmed share, so it builds at full rate from the front's arrival), and now
+  (iv) whether the shipped grid's valley strips carry the improvable share
+  the dev cells cannot — `v2-long`. The other ruling-10 slots (the
+  environmental stocks: soil fatigue, deforestation) stay inert until the
+  food economy.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures

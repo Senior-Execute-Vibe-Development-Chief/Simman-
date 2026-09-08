@@ -310,7 +310,7 @@ export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed
 export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_DY = [-1, 1, 0, 0, -1, -1, 1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_OPPOSITE = [1, 0, 3, 2, 7, 6, 5, 4] as const; // spec/09-constants-ledger.md §M3a proposed — reverse stencil directions
-export const PEOPLE_SNAPSHOT_FIELD_COUNT = 5; // spec/09-constants-ledger.md §M3a proposed — population, technique, package, can-grow, native overlays
+export const PEOPLE_SNAPSHOT_FIELD_COUNT = 6; // spec/09-constants-ledger.md §W28 — population, technique, package, can-grow, native, works overlays (5 through W27)
 
 // W5: the peopling solve and the wake. No physical constant is added; the
 // knee is the Power row CAGE_KNEE made concrete, the marker is the gate's
@@ -341,3 +341,18 @@ export const NORMAL_MAD_TO_SIGMA = 1.4826; // spec/09-constants-ledger.md §W9 �
 export const WILD_ENVELOPE_SIGMA = 1.5; // spec/09-constants-ledger.md §W9 — the envelope's edge in robust standard deviations of the weighted occurrence spread; a stated statistical convention, so the range's extent is a prediction
 export const WILD_ENVELOPE_TOLERANCE_FLOOR = 0.02; // spec/09-constants-ledger.md §W9 — the narrowest spread the climate table can resolve (~1.9-degree cells), so a lineage known from one valley gets no envelope narrower than the data can see
 
+
+// W28: the works slot (02 box 2 `works`; 04 §4.1's capacity factor; M2
+// ruling 10's inert slot) armed as v1's validated LAND_WORKS — the built land
+// capital of canals, terraces, drainage and levelling: built where people
+// press their ceiling and water can be led onto the fields, rotting where
+// nobody keeps it. Ported constants; a v1 tick was half a year.
+export const PEOPLE_WORKS_GAIN = 2; // spec/09-constants-ledger.md §W28 — yield multiple of fully-improved over rain-fed land, the historical basin-irrigation premium (v1 LAND_WORKS = 2; research/03 row 91)
+export const PEOPLE_WORKS_PRESSURE_FLOOR = 0.5; // spec/09-constants-ledger.md §W28 — the fill (people ÷ capacity) above which land is improved: intensification once extensification is exhausted (Boserup 1965; v1 WORKS_PRESS)
+export const PEOPLE_WORKS_STAFF_FLOOR = 0.25; // spec/09-constants-ledger.md §W28 — the fill below which works go unmaintained and rot in proportion to the missing hands (v1 WORKS_STAFF)
+export const PEOPLE_WORKS_BUILD_PER_YEAR = 0.0024; // spec/09-constants-ledger.md §W28 — share of a cell's improvable ground built per year per unit of excess fill at full skill (v1 WORKS_RATE 0.0012 per half-year tick)
+export const PEOPLE_WORKS_DECAY_PER_YEAR = 0.0018; // spec/09-constants-ledger.md §W28 — share of the works lost per year when wholly unstaffed, a 385-year half-life (v1 WORKS_DECAY 0.0009 per half-year tick)
+export const PEOPLE_WORKS_SKILL_FLOOR = 0.05; // spec/09-constants-ledger.md §W28 — the farmed share below which nobody builds: a presence floor, v1's own
+export const PEOPLE_WORKS_RAIN_FLOOR = 0.55; // spec/09-constants-ledger.md §W28 — annual moisture above which a climate is wet enough that its works are drainage and levelling, needing no water led on (v1 _ensureIrr; the worldgen's woodland moisture band)
+export const PEOPLE_WORKS_RAIN_SHARE = 0.6; // spec/09-constants-ledger.md §W28 — the improvable share of a cell at the wettest climate from rain alone (v1 _ensureIrr)
+export const SAVE_VERSION_W28 = 9; // spec/09-constants-ledger.md §W28 — the works field and pass in the envelope
