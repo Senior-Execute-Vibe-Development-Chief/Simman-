@@ -1637,6 +1637,19 @@ lawyered.
   §4.4 now carries the chronologies instead. (i), (ii) — the store, W31 —
   and (iii) remain proposed and unbuilt; the ruling on the label is no
   longer needed to make the row honest, only to change it.
+  **W31 specified (2026-09-08): the store** —
+  `spec/handoffs/W31-the-store.md`, a pre-build handoff in W5's form: a
+  conserved `store` field (tonnes per km²) on every farmed cell, filled by
+  the good years' surplus at the catalogue's storability, drawn by the bad
+  years' shortfall, spoiling at a Q10-and-moisture law, the deaths law
+  unchanged and acting on the uncovered excess only; a `food` balance sheet
+  beside `people`; severity, run and margin rows with windows set before
+  measuring; five physical constants. It proposes **P23**, an R4 ruling for
+  ratification: the store is the FIELD, and a community's granary (M4's
+  opening) is a query over its cells, never a second stock — amending 02
+  box 2's "food stocks enter through community books, not a parallel
+  field", because 18.3's invariance under the community bar is only
+  possible if the book lives below the bar. The flight is W32.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in
