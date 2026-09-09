@@ -102,3 +102,11 @@ shipped-grid arm finishes.
 Next toward M4: measure flight on the awake trajectory; then M4 the first
 taking (communities as query). M3b (preventive check, cohorts) remains open
 beside the ladder.
+
+**Long arm (`GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1`, 2026-09-09).**
+Solve findings unchanged (awake-only): cage −5857 / −5383, 1 CE 1,768M /
+1,021M. **Agreement arm:** median arrival |Δ| **154 yr** (p90 216; was 13.9 /
+19.9 before flight), 49 cells farmed by both, 35 by solve only — the solve
+regime's mean-year room against the awake year's food. Manifest row
+`solve-agreement-arrival:dev` acknowledged; tolerance unmoved (R2).
+

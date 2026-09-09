@@ -832,5 +832,6 @@ granary is a query.
 | Constant | Value | Unit / grounding |
 |---|---:|---|
 | (flight room, awake) | derived: `packageCapacity × yearMul + store / FOOD_RATION` | P22 (i). `yearMul` 0 (unread) → mean-year land term. Store as persons/km². Solve regime: mean-year `packageCapacity` only. No new constant |
-| (next) | — | M3b (preventive check, cohort weighting); M4 the first taking; arid spoilage datum (#89); shipped-grid arms for W32/W33 |
+| (measured, long arm, 2026-09-09) | — | Solve unchanged (awake-only flight). Agreement arm median arrival \|Δ\| **154 yr** (p90 216; was 13.9 / 19.9 before W33), 49 cells farmed by both, 35 by solve only. `solve-agreement-arrival:dev` acknowledged; `SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS` (100) unmoved |
+| (next) | — | M4 the first taking; M3b (preventive check, cohort weighting); arid spoilage datum (#89) |
 
