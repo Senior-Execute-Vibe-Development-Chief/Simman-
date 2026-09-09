@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/v2-w33-the-flight-4b2d",
+      "sha": "dc18c37ce38371864a2de60e949a3cbc2f4f82ce",
+      "slug": "cursor-v2-w33-the-flight-4b2d",
+      "builtAt": "2026-09-09T11:55:26.664Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-v2-w33-the-flight-4b2d/"
+    },
+    {
       "branch": "cursor/v2-w32-wake-room-4b2d",
       "sha": "a68882d2ba93782b3d028438e178952a35642671",
       "slug": "cursor-v2-w32-wake-room-4b2d",
