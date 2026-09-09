@@ -99,7 +99,7 @@ import {
   TRAVEL_PASS_DIRECTIONS,
   TRAVEL_SLOPE_COST_FACTOR,
 } from "../src/sim/constants";
-import { migrationShareForArea } from "../src/sim/people/migration";
+import { migrationShareForArea, migrate } from "../src/sim/people/migration";
 import { landStepCost } from "../src/sim/people/neighbors";
 import {
   decodePasses, PASS_COUNT, PASS_MIN_CLIMB_M, PASS_MIN_PROMINENCE_M, PASS_SOURCE_COLS, PASS_SOURCE_ROWS,
@@ -518,6 +518,130 @@ async function main(): Promise<void> {
     );
     for (const cell of world._landCells) world.people[cell] = 0;
     assert.equal(cagedBasin(world), undefined, "an empty world is not caged");
+  }
+  // W33 / P22 (i): awake farmer room is this year's food. A bad-year cell
+  // next to a good-year cell loses farmers; the store alone opens room; the
+  // solve regime ignores yearMul and store in the room.
+  {
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(wheat >= 0);
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    const setupPair = (phase: "awake" | "solve"): {
+      world: PeopleWorld;
+      a: number;
+      b: number;
+      aPacked: number;
+      bPacked: number;
+    } => {
+      const world = new World({
+        seed: 5,
+        grid: "dev",
+        config: {
+          peopleKernel: "ts",
+          wake: phase === "awake" ? HORIZON_OPENING_YEAR : "never",
+        },
+        substrate,
+      }) as PeopleWorld;
+      assert.equal(world.phase, phase);
+      const a = Math.floor(world.height / 2) * world.width + Math.floor(world.width / 2);
+      let b = -1;
+      for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
+        const aPacked = world._packedOf[a] ?? -1;
+        const target = world._neighborTargets[aPacked * PEOPLE_CROP_NEIGHBOR_COUNT + direction] ?? -1;
+        if (target < 0) continue;
+        const tPacked = world._packedOf[target] ?? -1;
+        if ((world._canGrow[wheat]?.[aPacked] ?? 0) === 0) continue;
+        if ((world._canGrow[wheat]?.[tPacked] ?? 0) === 0) continue;
+        b = target;
+        break;
+      }
+      assert.ok(b >= 0, "the fixture centre has no wheat neighbour");
+      const aPacked = world._packedOf[a] ?? -1;
+      const bPacked = world._packedOf[b] ?? -1;
+      for (const cell of [a, b]) {
+        const packed = world._packedOf[cell] ?? -1;
+        world.people[cell] = 4;
+        world.farmers[wheatId]![packed] = 4;
+        world.store[cell] = 0;
+      }
+      markPackageActive(world, wheat);
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      // Pin equal mean capacity and equal fill so only the year / store differ.
+      const mean = Math.min(packageCapacity(world, a, wheat), packageCapacity(world, b, wheat));
+      assert.ok(mean > 1, "the pair has no farmed capacity");
+      for (const cell of [a, b]) {
+        const packed = world._packedOf[cell] ?? -1;
+        world.people[cell] = mean * 0.5;
+        world.farmers[wheatId]![packed] = mean * 0.5;
+        world._dominantPackage[cell] = wheat;
+      }
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      return { world, a, b, aPacked, bPacked };
+    };
+
+    {
+      const { world, a, b, aPacked, bPacked } = setupPair("awake");
+      world._yearMul[aPacked] = 0.4;
+      world._yearMul[bPacked] = 1.2;
+      migrate(world, 0, MONTHS_PER_YEAR, false);
+      assert.equal(world._roomFarmers[aPacked], 0, "the bad-year cell still has farmer room");
+      assert.equal(world._roomFarmers[bPacked], 1, "the good-year cell has no farmer room");
+      assert.ok(
+        (world._migrationReceived[bPacked] ?? 0) > (world._migrationReceived[aPacked] ?? 0),
+        "the good-year cell did not receive the flight",
+      );
+      for (const packed of [aPacked, bPacked]) {
+        const cell = world._landCells[packed] ?? 0;
+        world.people[cell] = world._peopleNext[packed] ?? 0;
+      }
+      assert.ok((world.people[a] ?? 0) < (world.people[b] ?? 0), "the bad-year cell is not emptier");
+    }
+    {
+      const { world, a, b, aPacked, bPacked } = setupPair("awake");
+      world._yearMul[aPacked] = 1;
+      world._yearMul[bPacked] = 1;
+      // Fill both to the mean ceiling so only the store opens room on A.
+      const mean = packageCapacity(world, a, wheat);
+      for (const cell of [a, b]) {
+        const packed = world._packedOf[cell] ?? -1;
+        world.people[cell] = mean;
+        world.farmers[wheatId]![packed] = mean;
+      }
+      deriveTechniqueFromFarmers(world);
+      world.store[a] = mean * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+      world.store[b] = 0;
+      migrate(world, 0, MONTHS_PER_YEAR, false);
+      assert.equal(world._roomFarmers[aPacked], 1, "the store did not open room");
+      assert.equal(world._roomFarmers[bPacked], 0, "a full mean-year cell still has room");
+      assert.ok((world._migrationReceived[aPacked] ?? 0) > 0, "the stored cell received no flight");
+    }
+    {
+      const run = (mulA: number, mulB: number): number => {
+        const { world, aPacked, bPacked } = setupPair("solve");
+        world._yearMul[aPacked] = mulA;
+        world._yearMul[bPacked] = mulB;
+        world.store[world._landCells[aPacked] ?? 0] = 100;
+        migrate(world, MONTHS_PER_YEAR, resolveSolveStrides(world).migration, false);
+        return world._migrationOutFarmers[aPacked] ?? 0;
+      };
+      assert.equal(
+        run(0.4, 1.2),
+        run(1.2, 0.4),
+        "solve migration answered the year's multiple",
+      );
+    }
+    {
+      // Awake: the bad-year source still hops its share, but the good-year
+      // neighbour is the one that receives. Solve (above) is blind to the year.
+      const { world, aPacked, bPacked } = setupPair("awake");
+      world._yearMul[aPacked] = 0.4;
+      world._yearMul[bPacked] = 1.2;
+      migrate(world, 0, MONTHS_PER_YEAR, false);
+      assert.ok((world._migrationReceived[bPacked] ?? 0) > 0, "awake flight delivered no one to the good year");
+      assert.equal(world._migrationReceived[aPacked] ?? 0, 0, "awake flight filled the bad year");
+    }
   }
   // The two hop invariants (W6): in one firing a cell's farmers hop
   // PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR × dt / area of themselves (after
