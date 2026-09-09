@@ -1635,7 +1635,7 @@ lawyered.
   the chronologies at the coarse grid; the shipped grid is `v2-long`. The
   spec's "England ~2/millennium" was v1's own output (research/03) and 04
   §4.4 now carries the chronologies instead. (i) remains proposed (the
-  flight, W32); (ii) — the store — is **built (W31, 2026-09-08)**; (iii)
+  flight, W33); (ii) — the store — is **built (W31, 2026-09-08)**; (iii)
   remains proposed. The ruling on the label is no longer needed to make
   the frequency row honest, only to change it.
   **W31 built (2026-09-08): the store** —
@@ -1647,7 +1647,7 @@ lawyered.
   manifested); margin inverted (manifested); curve −5000 95.9 → 114.1M,
   1 CE 1,491 → 2,077M (up, as expected — not tuned). **P23** proposed
   for ratification: the store is the FIELD; a community's granary is a
-  query over its cells (18.3), amending 02 box 2. The flight is W32.
+  query over its cells (18.3), amending 02 box 2. The flight is W33.
   **W31 reviewed and merged (2026-09-09)** with one correction to the
   law: the harvest fed every package the whole cell's capacity (W29's
   line), which a pooled granary turns into grain no land grew — the trace
@@ -1674,29 +1674,24 @@ lawyered.
   the community bar, which is only possible if the food book lives below
   it. Built in W31 as the field; the community view waits on M4.
 - **P24. The room the wake reads is the room the years sustain**
-  (proposed, 2026-09-09, the W31 review; QUESTIONS #89). W5's caging
-  knee measures a basin's free share against the pair-spare room at best
-  yield with a farmer share of one and no crop fit — the room a first
-  farmer sees on an empty map, written before W8's fit, W29's mean-year
-  deaths and W31's store bounded what a full cell holds. Under the merged
-  harvest law a full basin stands at 0.78–0.88 of the capacity the growth
-  pass reads, the stationary gap the granary sustains against the years,
-  and that capacity is 0.79–0.81 of W5's room; the product leaves a free
-  share that bottoms at 0.277 against the 0.2 knee, and the dev world
-  never cages inside the horizon where W30 (0.165) and the built W31
-  (0.143) did on harvests the land did not grow. Proposed, not built: the
-  room `cagedBasin` reads is `capField` — fit, technique, works, water,
-  the land a cell has — and free is capacity minus people, so
-  circumscription is measured against the land people can actually farm;
-  the knee stays at Carneiro's 0.2 and the window at the hearth law's.
-  Whether "free" should also net out the margin the years demand (the
-  lean-year gap 04 §4.2 withdrew as a founding rule and W31 made a
-  result) is the ruling. Moves the wake, which is M4's opening, so it is
-  its own wave with both grids measured. **Measured at the shipped grid
-  (2026-09-09, the `v2-long` arm on `64dd4510`)**: no basin cages inside
-  the horizon there either, where b4d49aff's arm caged at −2111 (54.9°N
-  59.7°E) — the stale room is the shipped behaviour under `wake: auto`,
-  and this ruling is the next wave's opening, not a dev curiosity.
+  (built, 2026-09-09, W32; proposed from the W31 review; QUESTIONS #89).
+  W5's caging knee measured a basin's free share against the pair-spare
+  room at best yield with a farmer share of one and no crop fit — the room
+  a first farmer sees on an empty map, written before W8's fit, W29's
+  mean-year deaths and W31's store bounded what a full cell holds. Under
+  the merged harvest law a full basin stood at 0.78–0.88 of the capacity
+  the growth pass reads, and that capacity is 0.79–0.81 of W5's room; the
+  product left a free share that bottoms at 0.277 against the 0.2 knee, and
+  no basin caged inside the horizon at either grid (the `v2-long` arm of
+  2026-09-09 on `64dd4510`). **Built (W32):** the room `cagedBasin` reads
+  is `capField` — fit, technique, works, water, the land a cell has — and
+  free is capacity minus people, so circumscription is measured against the
+  land people can actually farm; the knee stays at Carneiro's 0.2 and the
+  window at the hearth law's. The `_bestYield` scratch W5 kept for the
+  stale room is gone. Whether "free" should also net out the margin the
+  years demand (the lean-year gap 04 §4.2 withdrew as a founding rule and
+  W31 made a result) remains the open ruling — not built here. The flight
+  is W33.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in
