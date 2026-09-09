@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/v2-w32-wake-room-4b2d",
+      "sha": "74e5e1c0ec03d86a1faebe1fa0e557629f2fc75c",
+      "slug": "cursor-v2-w32-wake-room-4b2d",
+      "builtAt": "2026-09-09T11:24:33.122Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-v2-w32-wake-room-4b2d/"
+    },
+    {
       "branch": "claude/world-sim-rebuild-decision-1umpax",
       "sha": "38bfe825335c8d77e99f3ddab820bf6d376d17eb",
       "slug": "claude-world-sim-rebuild-decision-1umpax",

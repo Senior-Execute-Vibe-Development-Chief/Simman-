@@ -1,0 +1,1 @@
+import{n as e,r as t,t as n}from"./global_wind-DDgQwDPT.js";export{n as default,e as lat,t as lon};
