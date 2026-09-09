@@ -10,6 +10,15 @@
   },
   "previews": [
     {
+      "branch": "cursor/v2-m4-the-first-taking-4b2d",
+      "sha": "6772137e8deb7ae41fde7faded7be53c7794761a",
+      "slug": "cursor-v2-m4-the-first-taking-4b2d",
+      "builtAt": "2026-09-09T13:45:47.701Z",
+      "channel": "preview",
+      "saveVersion": 67,
+      "path": "/b/cursor-v2-m4-the-first-taking-4b2d/"
+    },
+    {
       "branch": "cursor/v2-w33-the-flight-4b2d",
       "sha": "ee165d063b8ab02b7b2dce3188c2eaecb7bc8a26",
       "slug": "cursor-v2-w33-the-flight-4b2d",
