@@ -462,7 +462,20 @@ export function harvestGridsOf(world: PeopleWorld, dtMonths: number): Float64Arr
 export function stepHarvest(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): number {
   const grids = harvestGridsOf(world, dtMonths);
   const years = grids.length / HARVEST_CELLS;
-  if (years <= 0) return 0;
+  if (years <= 0) {
+    // A firing carrying no harvest month (a stride shorter than the year:
+    // eleven of a monthly stride's twelve) moves nothing, and its books say
+    // so. They are scratch from the last firing that did carry a year, and
+    // left standing they post that year's flows again against a store that
+    // did not move — the food sheet the caller opened then fails to close
+    // (found by the cadence arm's monthly reference run, 2026-09-09).
+    world._harvestDeathsByBand.fill(0);
+    world._harvestBookHarvestByBand.fill(0);
+    world._harvestBookEatenByBand.fill(0);
+    world._harvestBookSpoiledByBand.fill(0);
+    world._harvestBookUnstorableByBand.fill(0);
+    return 0;
+  }
   if (world._wasmPeopleKernel) {
     world._wasmPeopleKernel.harvest(grids, years);
     const books = world._wasmPeopleKernel.harvestBooks();

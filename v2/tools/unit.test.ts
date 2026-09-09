@@ -20,7 +20,7 @@ import { checkDmathGoldens } from "./lib/dmath-check";
 import { collect } from "./lib/collect";
 import { entityRng, hash32, mkRng, passRng } from "../src/ported/rng";
 import { loadWorld, serializeWorld } from "../src/sim/persist";
-import { populationTotal } from "../src/sim/people";
+import { populationTotal, stepPeople } from "../src/sim/people";
 import { routingFixtureSubstrate, runRoutingBatteries } from "../src/sim/travel/battery";
 import { TravelEngine } from "../src/sim/travel/engine";
 import type { Substrate } from "../src/sim/substrate";
@@ -2297,6 +2297,59 @@ async function main(): Promise<void> {
     same(oracle.farmedYears, kernel.farmedYears, "farmedYears");
     same(oracle._yearMul, kernel._yearMul, "yearMul");
     assert.deepEqual(harvestBooks(oracle), harvestBooks(kernel), "channel totals");
+
+    // A firing carrying no harvest month (a monthly stride's eleven of
+    // twelve) moves nothing and posts empty books — not the last firing's.
+    // The cadence arm's monthly reference run (v2-long, 2026-09-09) found
+    // the food sheet re-posting a year's flows against an unmoved store.
+    for (const w of [oracle, kernel]) {
+      const before = Float64Array.from(w.store);
+      assert.notDeepEqual(harvestBooks(w), { harvest: 0, eaten: 0, spoiled: 0, unstorable: 0 }, "the year's firing posted books");
+      w.step = 85;
+      assert.equal(stepHarvest(w, 1), 0, "a firing carrying no year kills nobody");
+      assert.deepEqual(harvestBooks(w), { harvest: 0, eaten: 0, spoiled: 0, unstorable: 0 }, "a firing carrying no year posts empty books");
+      same(before, w.store, "the store through a firing carrying no year");
+    }
+    // The same through the scheduler's food sheet at a monthly stride, the
+    // cadence arm's own path: a harvest month, then a month without one.
+    {
+      const monthly = new World({
+        seed: 31,
+        grid: "dev",
+        config: { peopleKernel: "ts", wake: HORIZON_OPENING_YEAR, peopleGrowthStride: 1, peopleMigrationStride: 1 },
+        substrate: parityEarth,
+      }) as PeopleWorld;
+      assert.equal(monthly.schedule.find(({ name }) => name === "people.harvest")?.stride, 1, "the harvest rides the monthly growth stride");
+      for (const land of monthly._landCells) {
+        const at = monthly._packedOf[land] ?? -1;
+        if ((monthly._canGrow[wheat]?.[at] ?? 0) === 0) continue;
+        monthly.people[land] = 1;
+        monthly.farmers[wheatId]![at] = 1;
+      }
+      markPackageActive(monthly, wheat);
+      deriveTechniqueFromFarmers(monthly);
+      deriveCapacity(monthly);
+      for (const land of monthly._landCells) {
+        const at = monthly._packedOf[land] ?? -1;
+        if ((monthly.farmers[wheatId]?.[at] ?? 0) <= 0) continue;
+        const ceiling = packageCapacity(monthly, land, wheat);
+        monthly.farmers[wheatId]![at] = ceiling * 1.25;
+        monthly.people[land] = ceiling * 1.25;
+        monthly.store[land] = ceiling * ration * 0.5;
+      }
+      deriveTechniqueFromFarmers(monthly);
+      monthly.step = 12;
+      stepPeople(monthly);
+      assert.ok(harvestBooks(monthly).harvest > 0, "the harvest month's firing reaps");
+      const storeAfterYear = Float64Array.from(monthly.store);
+      monthly.step = 13;
+      stepPeople(monthly);
+      const food = monthly.ledger.snapshot().food;
+      assert.ok(food !== undefined, "the food sheet opened on the firing carrying no year");
+      assert.equal(food.observedDelta, 0, "the store did not move through a firing carrying no year");
+      assert.equal(food.unexplained, 0, "the food sheet closes on a firing carrying no year");
+      same(storeAfterYear, monthly.store, "the store through the scheduler's no-year firing");
+    }
     kernel._wasmPeopleKernel?.dispose();
   }
 

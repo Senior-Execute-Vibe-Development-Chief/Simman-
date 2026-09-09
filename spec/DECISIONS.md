@@ -1662,7 +1662,8 @@ lawyered.
   (below their windows, manifested; the Sahel row crosses into its window
   at an arid factor of 0.5, a grounding finding, not a dial); run 0.956;
   margin still inverted, and shown to be confounded by the graveyard
-  density; **no basin cages inside the horizon** — P24. Handoff status;
+  density; **no basin cages inside the horizon** — P24, at either grid
+  (the shipped-grid `v2-long` arm of 2026-09-09; handoff status).
   QUESTIONS #89.
 - **P23. The food book lives below the community bar** (proposed for
   ratification, 2026-09-08, W31). Amends 02 box 2's "food stocks and
@@ -1691,8 +1692,11 @@ lawyered.
   Whether "free" should also net out the margin the years demand (the
   lean-year gap 04 §4.2 withdrew as a founding rule and W31 made a
   result) is the ruling. Moves the wake, which is M4's opening, so it is
-  its own wave with both grids measured; the shipped grid's caging under
-  the merged law is `v2-long` first.
+  its own wave with both grids measured. **Measured at the shipped grid
+  (2026-09-09, the `v2-long` arm on `64dd4510`)**: no basin cages inside
+  the horizon there either, where b4d49aff's arm caged at −2111 (54.9°N
+  59.7°E) — the stale room is the shipped behaviour under `wake: auto`,
+  and this ruling is the next wave's opening, not a dev curiosity.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in

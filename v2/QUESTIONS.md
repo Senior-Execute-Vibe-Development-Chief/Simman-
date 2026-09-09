@@ -4797,6 +4797,49 @@ Review corrections to the M1 build (all validated before merge):
     cleared on this arm (wheat, 15 cells) — the trajectory moved with the
     law, nothing was dialed; the row is removed. Bench A/B: medians of five alternating rounds against W30, dev tick ×1.02 and solve-year ×1.03, target tick ×1.04 (18.18 → 18.94 ms) and solve-year ×1.02, substrate ×0.98 at both grids; `--check` passes on the standing rows with no cap raised.
 
+    (g) **The shipped grid (the `v2-long` arm of 2026-09-09 on
+    `64dd4510`, the owner's request).** It does not cage either: no basin
+    reaches the knee inside the horizon, where b4d49aff's arm caged at
+    −2111 (54.9°N 59.7°E) — P24 is the shipped behaviour, and under
+    `wake: auto` the app solves to the horizon's end at both grids. The
+    curve −8000 9.1M, −5000 42.6M (in band), −3000 398.1M, −1000 843.3M,
+    1 CE **1,021.0M**: b4d49aff's arm read 9.1 / 42.1 / 398 / 845 /
+    1,010M, so W28–W31 together move the shipped curve by at most 1 %
+    where they moved the dev curve 1,486.7 → 1,767.9M at 1 CE, nearly all
+    of it at W31 — the store's lift is not the same size at the two grids
+    (Cardinal rule 3; which wave does what there is a bisection, recorded
+    as needing one). Front 0.898 km/yr, unchanged. **Frequency 6/6 at the
+    shipped grid** (first measured there): England 12.4 per millennium
+    (dev 4.3), the Aegean 73.8, the Sahel 73.2, the Nile 59.3, the Deccan
+    74.5, the North China Plain 78.3. **Severity further below its windows
+    than at dev**: England 0.0000017 % (2.7 persons of 155.6M farmer-years
+    at risk), the Deccan 0.0013 %, the NCP 0.013 %, the Sahel 0.30 % (dev
+    0.09 / 0.25 / 0.061 / 0.38 %); run share 0.964; margin 0.641 / 0.813,
+    inverted as at dev (0.757 / 0.822). The granary pays every labelled
+    year at 22-km cells; consistent with the lower fill (the surplus per
+    farmer is the multiple over the fill), not isolated by the row. Five
+    new manifest rows, no window moved. **One row returns**: the lower
+    Yangtze farms millet at 1 CE (822 cells; rice on 811 on b4d49aff's
+    arm, which cleared it) — the race of `hearth:yangtze`, the switch
+    undone by one of the four waves, unisolated; the dev arm farms rice
+    there. Every other hearth on b4d49aff's year within a decade or two;
+    the Kura millet hearth (−327) does not light; Indus millet (646
+    cells), Nile sorghum (809). **The arm found a bug**: its first run
+    died in the cadence arm's monthly reference run on an unexplained
+    food flux of −8,488 t — a harvest firing that carries no harvest
+    month (eleven of a monthly stride's twelve) returned early with the
+    last firing's books still on the band scratch, so the food sheet
+    posted a year's net fill again against a store that had not moved.
+    Invisible per commit (the shipped strides carry exactly one year per
+    awake firing, seven per solve firing). Fixed at the no-year return,
+    reproduced on both kernels (+367 M t, exactly the previous firing's
+    net), covered in unit through the scheduler's own food sheet; no
+    physics changed. The arm re-run on the fixed tree passes end to end
+    (cadence −8000 13.158 against 13.151M; agreement median 13.9 yr,
+    p90 19.9, 84 cells farmed by both; the target arm byte-identical).
+
     Open: the labor term (04 §4.2's "× labor"; surplus per farmer bounded
-    only by the fill), P24, the flight (W32), the preventive check (M3b),
-    storability technique (M8), the arid datum, shipped-grid rows.
+    only by the fill), P24 (now the shipped behaviour), the flight (W32),
+    the preventive check (M3b), storability technique (M8), the arid
+    datum, the shipped-grid bisection (which of W28–W31 moved the lower
+    Yangtze and the store's lift there).

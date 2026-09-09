@@ -661,7 +661,11 @@ knee is never reached at dev. A finding about the room the wake reads,
 recorded as DECISIONS P24 (proposed, not built): the room a basin offers
 is the capacity the growth pass reads, not the mean-year room at best
 yield. The knee (0.2, Carneiro) is unmoved. At dev the app now solves to
-the horizon's end under `wake: auto`; the shipped grid is `v2-long`.
+the horizon's end under `wake: auto`. **The shipped grid does not cage
+either** (the `v2-long` arm of 2026-09-09 on `64dd4510`; below): no
+basin reaches the knee inside the horizon where b4d49aff's arm caged at
+−2111 (54.9°N 59.7°E), so under `wake: auto` the app solves to the
+horizon's end at both grids and P24 is the shipped behaviour.
 
 **Sensitivity** (§8, the merged law, dev): spoilage × ½ → 1 CE 1,836.8M,
 famine deaths 989M, store 41.9 months, England 0 %, Sahel 0.16 %, run
@@ -696,3 +700,47 @@ monotone clean; oracle ok; Chromium smoke identical (Firefox absent on
 this runner, as W28–W30); gate:travel both grids pass; parity at 1, 2 and
 8 workers with the scalars. Ledger `## W31` carries the review rows;
 QUESTIONS #89; DECISIONS P22 status and P24.
+
+**The shipped grid (the `v2-long` arm, 2026-09-09).**
+`GATE_PEOPLE_TRAJECTORY=1 GATE_PEOPLE_SOLVE_TARGET=1` on `64dd4510`, the
+owner's request, the first target arm since b4d49aff (W28–W31 between).
+No basin cages inside the horizon (above). The curve −8000 9.1M, −5000
+42.6M (in band), −3000 398.1M, −1000 843.3M, 1 CE **1,021.0M** against
+b4d49aff's 9.1 / 42.1 / 398 / 845 / 1,010M: the four waves move the
+shipped curve by at most 1 % where they moved the dev curve 1,486.7 →
+1,767.9M at 1 CE, nearly all of it at W31 — the store's lift is not the
+same size at the two grids (Cardinal rule 3), and which wave does what
+there is a bisection, recorded as needing one. Front 0.898 km/yr,
+unchanged. **Frequency 6/6 at the shipped grid**, first measured there:
+England 12.4 per millennium (dev 4.3), the Aegean 73.8, the Sahel 73.2,
+the Nile 59.3, the Deccan 74.5, the North China Plain 78.3. **Severity
+further below its windows than at dev**: England 0.0000017 % (2.7
+persons of 155.6M farmer-years at risk), the Deccan 0.0013 %, the NCP
+0.013 %, the Sahel 0.30 % (dev 0.09 / 0.25 / 0.061 / 0.38 %); run share
+0.964; the margin 0.641 / 0.813, inverted as at dev (0.757 / 0.822). The
+granary pays every labelled year at 22-km cells — consistent with the
+lower fill (the surplus per farmer is the multiple over the fill), not
+isolated by the row; five manifest rows with that reason, no window
+moved. **One row returns**: the lower Yangtze farms millet at 1 CE (822
+cells; rice on 811 on b4d49aff's arm, which cleared it) — the race of
+`hearth:yangtze`, the switch undone by one of the four waves,
+unisolated; the dev arm farms rice there. Every other hearth on
+b4d49aff's year within a decade or two; the Kura millet hearth (−327)
+does not light; Indus millet (646 cells), Nile sorghum (809).
+
+**The arm found a bug.** Its first run died in the cadence arm's monthly
+reference run on an unexplained food flux of −8,488 t: a harvest firing
+that carries no harvest month (eleven of a monthly stride's twelve)
+returned early with the last firing's books still on the band scratch,
+so the food sheet posted a year's net fill again against a store that
+had not moved. Invisible per commit — the shipped strides carry exactly
+one year per awake firing and seven per solve firing. Fixed at the
+no-year return (both kernels take the same path), reproduced on the
+fixture (+367 M t, exactly the previous firing's net), covered in unit
+through the scheduler's own food sheet at a monthly stride; no physics
+changed. The arm re-run on the fixed tree passes end to end: the cadence
+arm's monthly reference against the shipped strides reads −8000 13.158
+against 13.151M and the Fertile Crescent one year apart; the agreement
+arm median 13.9 yr, p90 19.9, 84 cells farmed by both regimes; the
+target solve arm byte-identical to the first run. Ledger `## W31`
+carries the arm row, the bug row and the verification row.
