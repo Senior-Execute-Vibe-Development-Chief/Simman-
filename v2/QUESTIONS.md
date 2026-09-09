@@ -4839,8 +4839,10 @@ Review corrections to the M1 build (all validated before merge):
     p90 19.9, 84 cells farmed by both; the target arm byte-identical).
 
     Open: the labor term (04 §4.2's "× labor"; surplus per farmer bounded
-    only by the fill), P24 **built as W32** (wake room = `capField`; lean-year
-    margin still the open ruling), the flight (W33), the preventive check
-    (M3b), storability technique (M8), the arid datum, the shipped-grid
-    bisection (which of W28–W31 moved the lower Yangtze and the store's lift
-    there).
+    only by the fill), P24 **built as W32**, the flight **built as W33**
+    (awake room = year × store; solve unchanged), the preventive check (M3b),
+    storability technique (M8), the arid datum, the shipped-grid bisection
+    (which of W28–W31 moved the lower Yangtze and the store's lift there).
+    **Next BIG thing: M4** (the first taking) once the W32/W33 long arms
+    are recorded.
+

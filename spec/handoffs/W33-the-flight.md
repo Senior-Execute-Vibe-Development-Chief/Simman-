@@ -12,7 +12,7 @@ this year's food, not a new rate. **Do not** build cohort weighting (M3b),
 the preventive check (M3b), storability technique (M8), grain trade (06),
 or change the wake, harvest deaths, growth, or any constant. No place name
 in code; no year in any expression.
-**Status: BUILDING.**
+**Status: BUILT (2026-09-09).**
 
 ---
 
@@ -81,3 +81,24 @@ store's own law.
 No new diffusivity or flight rate. No reorder of harvest before migration.
 No solve-regime year room. No cohort weighting. No label change. No
 constant chosen against a severity row. No place name in code.
+
+
+---
+
+## Status
+
+**BUILT (2026-09-09)** on `cursor/v2-w33-the-flight-4b2d` (stacks W32).
+
+Dev solve arm unchanged by flight (awake-only): cage **−5857**, 1 CE
+**1,767.9M**, severity England / Deccan / NCP / Sahel 0.09 / 0.25 / 0.06 /
+0.38 %, run 0.956 — byte-identical to W32's solve findings. Unit: bad-year
+cell has no farmer room, good-year receives the flight; store opens room on
+a full mean-year cell; solve ignores yearMul and store.
+
+Verification: lint, tsc, unit, smoke, kernel parity, `gate:people` (dev).
+Long arms (trajectory + shipped) authorised and queued after the W32
+shipped-grid arm finishes.
+
+Next toward M4: measure flight on the awake trajectory; then M4 the first
+taking (communities as query). M3b (preventive check, cohorts) remains open
+beside the ladder.

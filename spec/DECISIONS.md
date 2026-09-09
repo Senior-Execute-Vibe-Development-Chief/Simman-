@@ -1634,10 +1634,13 @@ lawyered.
   6/6, so v1's label is kept as a definition that now also holds against
   the chronologies at the coarse grid; the shipped grid is `v2-long`. The
   spec's "England ~2/millennium" was v1's own output (research/03) and 04
-  §4.4 now carries the chronologies instead. (i) remains proposed (the
-  flight, W33); (ii) — the store — is **built (W31, 2026-09-08)**; (iii)
-  remains proposed. The ruling on the label is no longer needed to make
-  the frequency row honest, only to change it.
+  §4.4 now carries the chronologies instead. (i) — the flight — is **built
+  (W33, 2026-09-09)** (`spec/handoffs/W33-the-flight.md`): awake farmer
+  room is `packageCapacity × yearMul` (mean when unread) plus
+  `store / ration`; solve keeps the mean-year room; (ii) — the store — is
+  **built (W31, 2026-09-08)**; (iii) remains proposed (M3b). The ruling on
+  the label is no longer needed to make the frequency row honest, only to
+  change it.
   **W31 built (2026-09-08): the store** —
   `spec/handoffs/W31-the-store.md`. Conserved `store` field (tonnes/km²),
   Q10×moisture spoilage, fill at catalogue storability, pooled draw,
@@ -1647,7 +1650,7 @@ lawyered.
   manifested); margin inverted (manifested); curve −5000 95.9 → 114.1M,
   1 CE 1,491 → 2,077M (up, as expected — not tuned). **P23** proposed
   for ratification: the store is the FIELD; a community's granary is a
-  query over its cells (18.3), amending 02 box 2. The flight is W33.
+  query over its cells (18.3), amending 02 box 2. The flight is **built (W33)**.
   **W31 reviewed and merged (2026-09-09)** with one correction to the
   law: the harvest fed every package the whole cell's capacity (W29's
   line), which a pooled granary turns into grain no land grew — the trace
@@ -1690,8 +1693,7 @@ lawyered.
   window at the hearth law's. The `_bestYield` scratch W5 kept for the
   stale room is gone. Whether "free" should also net out the margin the
   years demand (the lean-year gap 04 §4.2 withdrew as a founding rule and
-  W31 made a result) remains the open ruling — not built here. The flight
-  is W33.
+  W31 made a result) remains the open ruling — not built here. The flight is **built (W33)**.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in
