@@ -90,8 +90,6 @@ export const WORLD_SCRATCH = new Set<string>([
   "_basinFree",
   "_basinRoomSum",
   "_basinFreeSum",
-  "_bestYield",
-  "_bestYieldDigest",
   "_arrivalStep",
   "_arrivalPackage",
   "_nativeCells",

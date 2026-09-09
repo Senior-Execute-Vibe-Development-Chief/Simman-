@@ -117,8 +117,6 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._basinFree = new Float64Array(length);
   world._basinRoomSum = new Float64Array((world.width + 1) * (world.height + 1));
   world._basinFreeSum = new Float64Array((world.width + 1) * (world.height + 1));
-  world._bestYield = new Float64Array(landCount);
-  world._bestYieldDigest = "";
   world._arrivalStep = new Int32Array(landCount);
   world._arrivalStep.fill(MATH_NEGATIVE_ONE);
   world._arrivalPackage = new Uint8Array(landCount);

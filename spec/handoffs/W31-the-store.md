@@ -506,7 +506,7 @@ this document.
 ## What NOT to do (recap)
 
 No grain moves between cells. No community, centre or store object. No
-flight (W32 reads the store as room; it is not built here). No cohort
+flight (W33 reads the store as room; it is not built here). No cohort
 weighting. No granary capacity, construction or works term. No storability
 technique. No seasonality proxy. No change to the famine label, the
 starvation rate, the yield map, the weather grid or rows, the growth law,
@@ -519,7 +519,7 @@ expression.
 
 ## What this wave leaves open (to be carried into the ledger's gaps row)
 
-1. **The flight** (W32, P22 (i)): the year's multiple and the store as
+1. **The flight** (W33, P22 (i)): the year's multiple and the store as
    the room the awake movement reads, so a starving cell walks to the
    neighbour whose granary is full instead of dying where it stands.
 2. **The preventive check**: births still read the mean-year capacity; a

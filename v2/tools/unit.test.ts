@@ -95,6 +95,7 @@ import {
   PEOPLE_WORKS_PRESSURE_FLOOR,
   PEOPLE_WORKS_RAIN_FLOOR,
   PEOPLE_WORKS_RAIN_SHARE,
+  CAGE_KNEE_FREE_SHARE,
   TRAVEL_PASS_DIRECTIONS,
   TRAVEL_SLOPE_COST_FACTOR,
 } from "../src/sim/constants";
@@ -109,6 +110,7 @@ import { northSouthKm, rowEastWestKm } from "../src/sim/travel/cost";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
+import { cagedBasin } from "../src/sim/people/wake";
 import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare, spoilageRate, yieldVariance, yieldVarianceParts } from "../src/sim/people/habitability";
 import { stepWorks } from "../src/sim/people/works";
 import {
@@ -481,6 +483,41 @@ async function main(): Promise<void> {
     const awake = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", wake: HORIZON_OPENING_YEAR }, substrate });
     assert.equal(awake.phase, "awake", "a world whose epoch is the opening must open awake");
     assert.equal(awake.wakeStep, 0);
+  }
+  // W32 / P24: the wake's room is `capField`. A basin filled to 0.85 of the
+  // capacity the growth pass reads has free share 0.15 and cages; the same
+  // fill against W5's inflated best-yield room sat above the knee (~0.32) and
+  // never did. Free is capacity minus people — the lean-year margin is not
+  // netted here (the open ruling on P24).
+  {
+    const world = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", wake: "never" }, substrate }) as PeopleWorld;
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(wheat >= 0);
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    let farmed = 0;
+    for (const cell of world._landCells) {
+      const packed = world._packedOf[cell] ?? -1;
+      if ((world._canGrow[wheat]?.[packed] ?? 0) === 0) continue;
+      world.people[cell] = 1;
+      world.farmers[wheatId]![packed] = 1;
+      farmed++;
+    }
+    assert.ok(farmed > 0, "the fixture has no wheat land");
+    markPackageActive(world, wheat);
+    deriveTechniqueFromFarmers(world);
+    deriveCapacity(world);
+    for (const cell of world._landCells) {
+      world.people[cell] = 0.85 * (world.capField[cell] ?? 0);
+    }
+    const caged = cagedBasin(world);
+    assert.ok(caged, "a basin at 0.85 of capField must cage under P24");
+    assert.ok(caged!.freeShare < CAGE_KNEE_FREE_SHARE, `free share ${caged!.freeShare} is not below the knee`);
+    assert.ok(
+      Math.abs(caged!.freeShare - 0.15) < 0.01,
+      `free share ${caged!.freeShare} is not the uniform 0.15 fill gap`,
+    );
+    for (const cell of world._landCells) world.people[cell] = 0;
+    assert.equal(cagedBasin(world), undefined, "an empty world is not caged");
   }
   // The two hop invariants (W6): in one firing a cell's farmers hop
   // PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR × dt / area of themselves (after
