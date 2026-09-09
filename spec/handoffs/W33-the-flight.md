@@ -110,3 +110,8 @@ Solve findings unchanged (awake-only): cage −5857 / −5383, 1 CE 1,768M /
 regime's mean-year room against the awake year's food. Manifest row
 `solve-agreement-arrival:dev` acknowledged; tolerance unmoved (R2).
 
+**Confirming re-run (post-acknowledgment, same flags, EXIT 0):** `gate: pass`,
+`unacknowledged: []`. Cages −5857 (dev) / −5383 (shipped); agreement median
+154.08 yr, p90 216.08 — byte-stable with the first arm. W33 verification
+closed. Ready for M4 when the owner says go.
+

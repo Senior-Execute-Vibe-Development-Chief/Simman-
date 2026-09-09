@@ -19,7 +19,7 @@ and fails in open country, from the exit term, not from placement.
 | Harvest years + famine label | W29–W30 | built; frequency 6/6 both grids |
 | The store (appropriable surplus object) | W31 | built; food sheet; P23 field |
 | Wake room = `capField` | W32 / P24 | built; cages at −5857 (dev) and **−5383** (shipped) |
-| Flight (awake room = year × store) | W33 / P22 (i) | built; solve unchanged; long arm running |
+| Flight (awake room = year × store) | W33 / P22 (i) | built; solve unchanged; long arm confirmed (`gate: pass`) |
 | Communities as query | P23 | field exists; condensation is M4's opening days |
 
 Open beside the ladder (do **not** block M4): M3b preventive check and
