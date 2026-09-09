@@ -824,7 +824,8 @@ granary is a query.
 | (wake room) | derived: `capField` | P24. The room `cagedBasin` reads is the capacity the growth pass already reads — fit, technique, works, water, the land a cell has — not W5's pair-spare expression at best yield with a farmer share of one. Free is capacity minus people. Knee and window unchanged (`CAGE_KNEE_FREE_SHARE` 0.2, hearth-law basin). No new constant. The `_bestYield` scratch is deleted |
 | (open ruling) | — | whether free should also net the lean-year margin the store sustains (04 §4.2 withdrew as a founding rule; W31 made it a result) — not built |
 | (measured, dev solve arm, `gate:people`, 2026-09-09) | — | first caged basin **−5857** at 33.8°N 36.8°E (`cagedStep` 46116); W31 merged recorded none (min free share 0.277). Curve unchanged (wake is not a people law): −8000 13.16M, 1 CE 1,767.9M. Smoke records the same `cagedStep`. Unit: 0.85 × `capField` cages at ≈0.15 free share |
-| (next) | — | the flight (W33, P22 (i)); shipped-grid cage under the new room is `v2-long` / `GATE_PEOPLE_SOLVE_TARGET=1` |
+| (measured, shipped-grid solve arm, `v2-long`, 2026-09-09 on `a68882d2`) | — | first caged basin **−5383** (`cagedStep` 51804). W31 merged: none. Curve −8000 9.1M, −5000 42.6M (in band), −3000 398.1M, −1000 843.3M, 1 CE **1,021M** (unchanged within 1 % of the W31 arm). P24 confirmed at both grids |
+| (next) | — | the flight (W33, P22 (i)) — **built**; M4 |
 
 ## W33 — implemented (2026-09-09)
 

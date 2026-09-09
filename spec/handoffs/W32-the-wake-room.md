@@ -85,3 +85,11 @@ Shipped-grid cage under the new room is `GATE_PEOPLE_SOLVE_TARGET=1` /
 
 Verification: lint, `tsc`, unit, smoke both grids, kernel parity,
 `gate:people` (dev). No constant added or moved. Flight remains W33.
+
+**Shipped grid (`v2-long`, 2026-09-09 on `a68882d2`).** First caged basin at
+**−5383** (`cagedStep` 51804). Under the merged W31 law the same arm recorded
+none inside the horizon (b4d49aff had caged at −2111). Curve unchanged from
+the W31 arm within 1 %: −8000 9.1M, −5000 42.6M, −3000 398.1M, −1000 843.3M,
+1 CE **1,021M**. P24 is confirmed at both grids: `wake: auto` now wakes on
+the caged-basin trigger before the horizon's end at 22 km cells too.
+
