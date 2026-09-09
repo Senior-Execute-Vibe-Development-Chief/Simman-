@@ -11,7 +11,7 @@ Carneiro's 0.2; the window stays the hearth law's. **Do not** net the
 lean-year margin out of free (open ruling on P24). **Do not** build the
 flight (P22 (i), next as W33), change growth, harvest, store, movement, or
 any constant. No place name in code; no year in any expression.
-**Status: BUILDING.**
+**Status: BUILT (2026-09-09).**
 
 ---
 
@@ -65,3 +65,23 @@ wave does not.
 
 No constant chosen by looking at a cage year. No window moved. No physics
 outside the wake room.
+
+
+---
+
+## Status
+
+**BUILT (2026-09-09)** on `cursor/v2-w32-wake-room-4b2d`.
+
+Dev solve arm (`gate:people`): first caged basin at **−5857** (33.8°N 36.8°E),
+`cagedStep` 46116 — under the merged W31 law the same arm recorded none
+inside the horizon (min free share 0.277). Population curve unchanged
+(wake room is not a people law): −8000 13.16M, 1 CE **1,767.9M**. Smoke's
+solve run records the same `cagedStep`. Unit: 0.85 fill of `capField`
+cages at free share ≈ 0.15; empty world does not.
+
+Shipped-grid cage under the new room is `GATE_PEOPLE_SOLVE_TARGET=1` /
+`v2-long` — recorded as needing one, not run in the development loop.
+
+Verification: lint, `tsc`, unit, smoke both grids, kernel parity,
+`gate:people` (dev). No constant added or moved. Flight remains W33.
