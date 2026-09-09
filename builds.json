@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "cursor/v2-w33-the-flight-4b2d",
-      "sha": "e23857f34698263186855565f4b6af6be702225c",
+      "sha": "cbb0cc16fff4e9327a60a28ef8da529032f8b775",
       "slug": "cursor-v2-w33-the-flight-4b2d",
-      "builtAt": "2026-09-09T12:13:07.015Z",
+      "builtAt": "2026-09-09T12:28:46.057Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-v2-w33-the-flight-4b2d/"
