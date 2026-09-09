@@ -426,6 +426,8 @@ pub struct PeopleKernel {
     migration_month: usize,
     migration_dt_months: f64,
     migration_growth_prepared: bool,
+    /// W33: awake-regime flight — yearMul and store scale the farmer room.
+    migration_flight: bool,
     /// Per-row farmer hop share for the firing (the forager share is migration_share_row).
     migration_farmer_share_row: Vec<f64>,
     growth_dt_months: f64,
@@ -612,6 +614,7 @@ impl PeopleKernel {
             migration_month: 0,
             migration_dt_months: 1.0,
             migration_growth_prepared: false,
+            migration_flight: false,
             migration_farmer_share_row: vec![0.0; height],
             growth_dt_months: 1.0,
             works_dt_months: 1.0,
@@ -980,11 +983,12 @@ impl PeopleKernel {
         self.deaths_by_band.iter().fold(0.0, |total, value| total + value)
     }
 
-    pub fn begin_migration(&mut self, month: usize, dt_months: f64, growth_prepared: bool) {
+    pub fn begin_migration(&mut self, month: usize, dt_months: f64, growth_prepared: bool, flight: bool) {
         // Month MONTHS_PER_YEAR selects the annual-mean table.
         self.migration_month = month.min(MONTHS_PER_YEAR);
         self.migration_dt_months = dt_months;
         self.migration_growth_prepared = growth_prepared;
+        self.migration_flight = flight;
         self.migration_by_band.fill(0.0);
         self.migration_farmer_by_band.fill(0.0);
         self.migration_received_by_band.fill(0.0);
@@ -1001,6 +1005,10 @@ impl PeopleKernel {
     /// the farmed capacity of the package they carry; both see everyone
     /// already there as occupying it, and room below the numerical floor is
     /// no room. The oracle's `foragerRoom` / `farmerRoom`.
+    ///
+    /// W33 / P22 (i): when `migration_flight` the farmer room is this year's
+    /// food — packageCapacity × yearMul (mean when unread) plus the store as
+    /// persons/km².
     fn forager_room(&self, target: usize, target_packed: usize) -> f64 {
         let room = self.forager_capacity[target] - self.migration_population[target_packed];
         if room > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
@@ -1010,10 +1018,30 @@ impl PeopleKernel {
         }
     }
 
+    fn farmer_land_capacity(&self, target: usize, target_packed: usize, package_index: usize) -> f64 {
+        let mean = self.package_capacity(target, target_packed, package_index);
+        if !self.migration_flight {
+            return mean;
+        }
+        let mul = self.year_mul[target_packed];
+        mean * if mul > 0.0 { mul } else { 1.0 }
+    }
+
+    fn store_capacity_persons(&self, target: usize) -> f64 {
+        if !self.migration_flight {
+            return 0.0;
+        }
+        self.store[target].max(0.0) / FOOD_RATION_TONNES_PER_PERSON_YEAR
+    }
+
     fn farmer_room(&self, source_packed: usize, target: usize, target_packed: usize) -> f64 {
         let source_cell = self.land_cells[source_packed] as usize;
-        let farmed = self.package_capacity(target, target_packed, self.dominant[source_cell] as usize);
-        let room = farmed - self.migration_population[target_packed];
+        let land = self.farmer_land_capacity(
+            target,
+            target_packed,
+            self.dominant[source_cell] as usize,
+        );
+        let room = land + self.store_capacity_persons(target) - self.migration_population[target_packed];
         if room > PEOPLE_CAPACITY_FLOOR_PER_KM2 {
             room * self.cell_area[target]
         } else {
@@ -1159,11 +1187,12 @@ impl PeopleKernel {
                     0
                 };
             let mut farmer_room_flag = 0;
+            let store = self.store_capacity_persons(cell);
             for package_index in 0..self.package_count {
                 if self.active_package[package_index] == 0 {
                     continue;
                 }
-                if self.package_capacity(cell, packed, package_index) - population
+                if self.farmer_land_capacity(cell, packed, package_index) + store - population
                     > PEOPLE_CAPACITY_FLOOR_PER_KM2
                 {
                     farmer_room_flag = 1;

@@ -88,8 +88,6 @@ export interface PeopleWorld extends World {
   _basinFree: Float64Array;
   _basinRoomSum: Float64Array;
   _basinFreeSum: Float64Array;
-  _bestYield: Float64Array;
-  _bestYieldDigest: string;
   /** Rendering state for the timeline (never saved or hashed): first farmed step and package per land cell. */
   _arrivalStep: Int32Array;
   _arrivalPackage: Uint8Array;

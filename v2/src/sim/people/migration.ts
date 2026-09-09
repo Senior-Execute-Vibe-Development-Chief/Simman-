@@ -1,5 +1,6 @@
 import {
   DIFFUSION_MSD_PER_DIFFUSIVITY,
+  FOOD_RATION_TONNES_PER_PERSON_YEAR,
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_CAPACITY_FLOOR_PER_KM2,
@@ -102,16 +103,53 @@ function conductance(world: PeopleWorld, target: number, slot: number): number {
  * drew the foragers of all eight neighbours in as foragers: the flood the
  * W5 flat-field check measured at 58 %, QUESTIONS #40.) Room below the
  * numerical floor is no room, so a full region prices as exactly nothing.
+ *
+ * W33 / P22 (i): in the awake regime the farmer room is this year's food —
+ * `packageCapacity × yearMul` (mean when the year is unread) plus the
+ * store as persons/km² — so a failed harvest and an empty granary push
+ * people toward the neighbour whose year or store is better. The solve
+ * regime keeps the mean-year room: it has no monthly year to answer.
  */
 function foragerRoom(world: PeopleWorld, target: number, targetPacked: number): number {
   const room = (world._foragerCapacity[target] ?? 0) - (world._migrationPopulation[targetPacked] ?? 0);
   return room > PEOPLE_CAPACITY_FLOOR_PER_KM2 ? room * (world.cellAreaKm2[target] ?? 0) : 0;
 }
 
-function farmerRoom(world: PeopleWorld, sourcePacked: number, target: number, targetPacked: number): number {
+/** The land a farmer package holds at a target, before the store and the people. */
+function farmerLandCapacity(
+  world: PeopleWorld,
+  target: number,
+  targetPacked: number,
+  packageIndex: number,
+  flight: boolean,
+): number {
+  const mean = packageCapacity(world, target, packageIndex);
+  if (!flight) return mean;
+  const mul = world._yearMul[targetPacked] ?? 0;
+  return mean * (mul > 0 ? mul : 1);
+}
+
+function storeCapacityPersons(world: PeopleWorld, target: number, flight: boolean): number {
+  if (!flight) return 0;
+  return Math.max(0, world.store[target] ?? 0) / FOOD_RATION_TONNES_PER_PERSON_YEAR;
+}
+
+function farmerRoom(
+  world: PeopleWorld,
+  sourcePacked: number,
+  target: number,
+  targetPacked: number,
+  flight: boolean,
+): number {
   const sourceCell = world._landCells[sourcePacked] ?? 0;
-  const farmed = packageCapacity(world, target, world._dominantPackage[sourceCell] ?? 0);
-  const room = farmed - (world._migrationPopulation[targetPacked] ?? 0);
+  const land = farmerLandCapacity(
+    world,
+    target,
+    targetPacked,
+    world._dominantPackage[sourceCell] ?? 0,
+    flight,
+  );
+  const room = land + storeCapacityPersons(world, target, flight) - (world._migrationPopulation[targetPacked] ?? 0);
   return room > PEOPLE_CAPACITY_FLOOR_PER_KM2 ? room * (world.cellAreaKm2[target] ?? 0) : 0;
 }
 
@@ -126,6 +164,7 @@ function prepareCell(
   packed: number,
   growthPrepared: boolean,
   active: readonly number[],
+  flight: boolean,
 ): void {
   const cell = world._landCells[packed] ?? 0;
   const total = growthPrepared
@@ -154,9 +193,10 @@ function prepareCell(
     (packed + 1) * PEOPLE_CROP_NEIGHBOR_COUNT * PAIR_GROUPS,
   );
   world._roomForagers[packed] = (world._foragerCapacity[cell] ?? 0) - population > PEOPLE_CAPACITY_FLOOR_PER_KM2 ? 1 : 0;
+  const store = storeCapacityPersons(world, cell, flight);
   let farmerRoomFlag = 0;
   for (const packageIndex of active) {
-    if (packageCapacity(world, cell, packageIndex) - population > PEOPLE_CAPACITY_FLOOR_PER_KM2) {
+    if (farmerLandCapacity(world, cell, packed, packageIndex, flight) + store - population > PEOPLE_CAPACITY_FLOOR_PER_KM2) {
       farmerRoomFlag = 1;
       break;
     }
@@ -218,9 +258,12 @@ export function migrate(
   dtMonths = 1,
   growthPrepared = true,
 ): number {
+  // W33: flight is awake-only — the year's multiple and the store scale the
+  // farmer room the hotspot reads. The solve regime keeps the mean-year room.
+  const flight = world.phase === "awake";
   const wasm = world._wasmPeopleKernel;
   if (wasm) {
-    wasm.beginMigration(month, dtMonths, growthPrepared);
+    wasm.beginMigration(month, dtMonths, growthPrepared, flight);
     wasm.prepareMigration();
     wasm.migrateSources();
     wasm.debitMigration();
@@ -280,7 +323,7 @@ export function migrate(
         world._workingMass[packed] = workingNext[packed] ?? 0;
         world._eldersMass[packed] = elderNext[packed] ?? 0;
       }
-      prepareCell(world, packed, growthPrepared, active);
+      prepareCell(world, packed, growthPrepared, active, flight);
     }
   }
 
@@ -315,7 +358,7 @@ export function migrate(
           }
         }
         if (priceFarmers) {
-          const room = farmerRoom(world, packed, target, targetPacked);
+          const room = farmerRoom(world, packed, target, targetPacked, flight);
           if (room > 0) {
             const weight = ease * room;
             world._pairWeight[slot * PAIR_GROUPS + 1] = weight;
