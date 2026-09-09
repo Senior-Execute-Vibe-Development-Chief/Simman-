@@ -1675,7 +1675,8 @@ lawyered.
   of its cells' store — a query, never a second stock, never copied,
   never authored. Required by 18.3: macro-history must be invariant under
   the community bar, which is only possible if the food book lives below
-  it. Built in W31 as the field; the community view waits on M4.
+  it. Built in W31 as the field; **community view built in M4** (condensation
+  + granary query; tribute edges).
 - **P24. The room the wake reads is the room the years sustain**
   (built, 2026-09-09, W32; proposed from the W31 review; QUESTIONS #89).
   W5's caging knee measured a basin's free share against the pair-spare

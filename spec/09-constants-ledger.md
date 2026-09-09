@@ -835,3 +835,17 @@ granary is a query.
 | (measured, long arm, 2026-09-09) | — | Solve unchanged (awake-only flight). Agreement arm median arrival \|Δ\| **154 yr** (p90 216; was 13.9 / 19.9 before W33), 49 cells farmed by both, 35 by solve only. `solve-agreement-arrival:dev` acknowledged; `SOLVE_AGREEMENT_ARRIVAL_TOLERANCE_YEARS` (100) unmoved. Confirming re-run after the ack: `gate: pass`, empty unacknowledged, cages −5857 / −5383 |
 | (next) | — | M4 the first taking; M3b (preventive check, cohort weighting); arid spoilage datum (#89) |
 
+## M4 — implemented (2026-09-09)
+
+| Constant | Value | Unit / grounding |
+|---|---:|---|
+| `COMMUNITY_BAR_PERSONS` | 2000 | settlement-size literature / v1 village core; representation threshold (18.3) |
+| `COMMUNITY_RADIUS_KM` | 50 | day's-walk catchment |
+| `EXTRACT_FLOOR` | 0.10 | harvest-tax literature floor (`EXTRACT_BAND`) |
+| `TAKING_RAID_RATE_PER_YEAR` | 0.05 | pre-state raiding as war's ground state; gate-measured, not cradle-fitted |
+| `PLUNDER_SHARE` | 0.25 | movable share of a raided granary when exit is cheap |
+| `CAGE_KNEE_FREE_SHARE` | 0.2 | **existing** — exit shares the wake's knee |
+| `SAVE_VERSION_M4` | 13 | communities, obligation edges, unrest in the envelope |
+| (mechanism) | — | condense communities from people; exit = basin free share at seat; appropriable = Σ store×area × farmed legibility; caged loser → tribute edge + EXTRACT_FLOOR remit; open loser → plunder only. Awake annual `politics.taking`. No centers, no map colour |
+| (next) | — | geography acceptance on long arms; M5 chiefs; M3b beside the ladder |
+

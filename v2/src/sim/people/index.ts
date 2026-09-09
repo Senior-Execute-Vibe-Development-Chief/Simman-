@@ -444,6 +444,8 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   world.debug.conservationChecks++;
   for (const schedule of world.schedule) {
     if (!fires(schedule)) continue;
+    // politics.taking is counted in maybeStepTaking; it is not a people pass.
+    if (schedule.name.startsWith("politics.")) continue;
     world.debug.peoplePasses[schedule.name] = (world.debug.peoplePasses[schedule.name] ?? 0) + 1;
   }
   world.debug.peopleBirths = growth.births;

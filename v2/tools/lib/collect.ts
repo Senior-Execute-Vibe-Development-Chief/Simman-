@@ -108,6 +108,10 @@ export const WORLD_SCRATCH = new Set<string>([
   "_eldersFraction",
   "_techniqueEdgeH",
   "_techniqueEdgeV",
+  // M4: owner scratch is derived each taking; register measured explicitly below.
+  "_communityOwner",
+  "communities",
+  "obligationEdges",
 ]);
 
 const isNumeric = (value: unknown): value is number =>
@@ -232,6 +236,23 @@ export function collect(world: World): Record<string, number> {
     output["food.eaten"] = world.debug.foodEaten;
     output["food.spoiled"] = world.debug.foodSpoiled;
     output["food.unstorable"] = world.debug.foodUnstorable;
+    // M4 politics register (representation + edges). Counts can fall on
+    // dissolution — names claim a present count, not a cumulative history.
+    output["politics.communities"] = world.communities.length;
+    output["politics.tributeEdges"] = world.obligationEdges
+      .filter((edge) => edge.kind === "tribute").length;
+    let unrestSum = 0;
+    let blocked = 0;
+    let appropriable = 0;
+    for (const community of world.communities) {
+      unrestSum += community.unrest;
+      if (community.exitBlocked) blocked++;
+      appropriable += community.appropriable;
+    }
+    const nComm = world.communities.length;
+    output["politics.unrest.mean"] = nComm > 0 ? unrestSum / nComm : 0;
+    output["politics.exitBlocked"] = blocked;
+    output["politics.appropriableTonnes"] = appropriable;
   }
   return output;
 }

@@ -1,15 +1,16 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W31 } from "./constants";
+import { SAVE_VERSION_M4 } from "./constants";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World, type WorldEvent } from "./world";
 import type { HearthState } from "./people/types";
+import type { Community, ObligationEdge } from "./politics/types";
 import { sameSchedule, type PassSchedule, type WorldPhase } from "./scheduler";
 import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
 import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W31;
+export const SAVE_VERSION = SAVE_VERSION_M4;
 
 export interface SerializedField {
   readonly length: number;
@@ -46,6 +47,15 @@ export interface SaveEnvelope {
     /** The harvest anomaly's raw AR(1) state on the weather grid (W29). */
     readonly harvestZ: SerializedField;
   };
+  /** M4: condensed communities (seat, unrest, members); empty before the first taking. */
+  readonly communities: readonly {
+    readonly id: number;
+    readonly seat: number;
+    readonly members: readonly number[];
+    readonly unrest: number;
+  }[];
+  /** M4: obligation edges (tribute). */
+  readonly obligationEdges: readonly ObligationEdge[];
 }
 
 function base64FromField(field: NumericField): string {
@@ -159,6 +169,13 @@ export function saveWorld(world: World): SaveEnvelope {
         data: base64FromField(world.harvestZ),
       },
     },
+    communities: world.communities.map((community) => ({
+      id: community.id,
+      seat: community.seat,
+      members: [...community.members],
+      unrest: community.unrest,
+    })),
+    obligationEdges: world.obligationEdges.map((edge) => ({ ...edge })),
   };
 }
 
@@ -269,6 +286,19 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   // run many migration-only months before the next capacity firing, so
   // re-derive from the restored technique rather than keeping the seed.
   if (world.substrate && world.peopleInitialized) deriveCapacity(asPeopleWorld(world));
+  // M4 register: seats + unrest and edges. Membership is rebuilt on the
+  // next taking firing from the field; carry unrest by seat until then.
+  world.communities = (data.communities ?? []).map((row) => ({
+    id: row.id,
+    seat: row.seat,
+    members: [...row.members],
+    people: 0,
+    exit: 1,
+    exitBlocked: false,
+    appropriable: 0,
+    unrest: Math.max(0, Math.min(1, row.unrest)),
+  }));
+  world.obligationEdges = (data.obligationEdges ?? []).map((edge) => ({ ...edge }));
   return world;
 }
 
