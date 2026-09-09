@@ -11,9 +11,9 @@
   "previews": [
     {
       "branch": "cursor/v2-w32-wake-room-4b2d",
-      "sha": "74e5e1c0ec03d86a1faebe1fa0e557629f2fc75c",
+      "sha": "a68882d2ba93782b3d028438e178952a35642671",
       "slug": "cursor-v2-w32-wake-room-4b2d",
-      "builtAt": "2026-09-09T11:24:33.122Z",
+      "builtAt": "2026-09-09T11:35:49.265Z",
       "channel": "preview",
       "saveVersion": 67,
       "path": "/b/cursor-v2-w32-wake-room-4b2d/"
