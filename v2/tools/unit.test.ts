@@ -1856,10 +1856,13 @@ async function main(): Promise<void> {
     const ceiling = packageCapacity(a, cell, wheat);
     a.step = MONTHS_PER_YEAR;
     const deaths = stepHarvest(a, MONTHS_PER_YEAR);
-    const dead = Math.min(2 * capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (2 * capacity - ceiling));
-    assert.equal(a.farmers[wheatId]![packed], 2 * capacity - dead, "the excess over the ceiling dies back at the rate");
-    assert.equal(a._farmerTotal[packed], 2 * capacity - dead, "the total follows");
-    assert.equal(a.people[cell], foragersHere + (2 * capacity - dead), "the foragers are untouched");
+    // The farmers work their share of the cell's people; the foragers hold
+    // the rest of the land (the mixture capacity's shares).
+    const fedAtCeiling = Math.min(1, 2 * capacity / (2 * capacity + foragersHere)) * ceiling;
+    const dead = Math.min(2 * capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (2 * capacity - fedAtCeiling));
+    assert.ok(Math.abs((a.farmers[wheatId]![packed] ?? 0) - (2 * capacity - dead)) < 1e-9, "the excess over the ceiling dies back at the rate");
+    assert.ok(Math.abs((a._farmerTotal[packed] ?? 0) - (2 * capacity - dead)) < 1e-9, "the total follows");
+    assert.ok(Math.abs((a.people[cell] ?? 0) - (foragersHere + (2 * capacity - dead))) < 1e-9, "the foragers are untouched");
     assert.equal(a._yearMul[packed], 1, "at no variance every year is the mean year");
     assert.equal(a.famineYears[cell], 0, "and none is a famine");
     assert.equal(a.farmedYears[cell], 1, "the farmed years count the year the farmers stood through (W30)");
@@ -1887,7 +1890,9 @@ async function main(): Promise<void> {
       const multiple: number = a._yearMul[packed] ?? 0;
       // Empty store: the uncovered excess is the shortfall in tonnes over the
       // ration — the same persons as farmer − fed, via the book's units.
-      const fed = ceilingNow * multiple;
+      // The farmers work their share of the cell's people (the foragers hold
+      // the rest of the land), so the year feeds share × ceiling × multiple.
+      const fed = Math.min(1, capacity / (capacity + foragersHere)) * ceilingNow * multiple;
       const shortfall = Math.max(0, capacity * FOOD_RATION_TONNES_PER_PERSON_YEAR - fed * FOOD_RATION_TONNES_PER_PERSON_YEAR);
       const expected = shortfall > 0
         ? Math.min(capacity, PEOPLE_STARVATION_RATE_PER_YEAR * (shortfall / FOOD_RATION_TONNES_PER_PERSON_YEAR))
@@ -2156,8 +2161,12 @@ async function main(): Promise<void> {
           world.farmers[secondId]![packed] = 2 * capB;
           world._farmerTotal[packed] = 2 * capA + 2 * capB;
           world.people[cell] = 2 * capA + 2 * capB;
-          const shortA = capA * ration;
-          const shortB = capB * ration;
+          // Each package works its share of the cell's people: wheat's
+          // farmers reap shareA × capA, the second package's shareB × capB.
+          const shareA = capA / (capA + capB);
+          const shareB = capB / (capA + capB);
+          const shortA = (2 * capA - shareA * capA) * ration;
+          const shortB = (2 * capB - shareB * capB) * ration;
           world.store[cell] = 0.5 * (shortA + shortB);
           world.step = 9 * MONTHS_PER_YEAR;
           const beforeA = 2 * capA;

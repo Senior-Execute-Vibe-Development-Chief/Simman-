@@ -89,6 +89,13 @@ if anomaly < −1.28 and multiple < 0.65: famineYears[cell] += 1
 A cell with no farmers is skipped before the read, so the pass costs the
 farmed world and not the whole land (§7, the bench finding).
 
+*(W31 review, 2026-09-09: `fed` is now `share × packageCapacity(package) ×
+multiple` with `share = farmers ÷ (foragers + Σ farmers)`, the mixture
+capacity's share. As written above every package was fed the whole cell —
+harmless while a surplus went nowhere, and a mixed cell's farmers fed on
+the foragers' land as well — which W31's pooled store turned into grain no
+land grew. `spec/handoffs/W31-the-store.md`, status.)*
+
 The farmers above what the year's harvest feeds die at the starvation rate:
 Finland 1695–97 lost a quarter to a third of its people over two failed
 harvests, which a half-shortfall year at 0.3 reproduces. In a mean year

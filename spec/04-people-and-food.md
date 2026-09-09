@@ -50,6 +50,11 @@ census copy, no bridge scalar, no second food book (R4).
   transit (the travel field's freight decay). Balance sheet asserted (R5).
 - **Harvest**: per worked tile — fertility × technique × works × labor
   (only rural working-age people farm; city dwellers don't) × the year.
+  Each package's farmers reap their share of the cell's land — the mixture
+  capacity's share (W8; fixed at the W31 review, which found the W29 line
+  feeding every package the whole cell) — so a cell's harvest is the
+  farmed part of the capacity the growth pass reads. The labor term is
+  unbuilt (M3b's cohorts): surplus per farmer is bounded only by the fill.
 - **The year**: v1's validated harvest-year system ports whole — regional
   annual anomalies (AR(1), ρ=0.30, ~12° weather cells), famine *derived*
   from the tail (a p10 year on thin margins), yield-variance geography

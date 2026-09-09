@@ -9,13 +9,24 @@ import { hashWorld, runSteps, stepWorld, type GridPreset, World } from "../src/s
 import { ensurePeopleWasm } from "../src/sim/peopleKernel";
 import { buildSubstrate } from "../src/sim/substrate";
 import { stepFromYear } from "../src/sim/horizon";
-import { HORIZON_END_YEAR } from "../src/sim/constants";
+import { HORIZON_END_YEAR, HORIZON_OPENING_YEAR } from "../src/sim/constants";
 import type { PeopleWorld } from "../src/sim/people/types";
 
 const SEED = M0_DEFAULT_SEED;
 const TICKS = M0_DETERMINISM_TICKS;
 const SAVE_TICKS = 250;
 const CONTINUE_TICKS = 100;
+/**
+ * The solve run's wake is the chosen-epoch path (`wake: <year>`, W5), at the
+ * horizon's midpoint. The trigger's own search (the first caged basin) runs
+ * on every committed solve step either way and the step it first fires at
+ * is reported below, but whether the dev world cages inside the horizon is
+ * a finding of the people gate (`findings.solve.dev.cagedStep`), not a
+ * property a mechanical test may assert: under the W31 review's harvest law
+ * it does not (spec/handoffs/W31-the-store.md, review status), where W30's
+ * law caged a front transient at −2644.
+ */
+const SOLVE_WAKE_YEAR = Math.round((HORIZON_OPENING_YEAR + HORIZON_END_YEAR) / 2);
 
 interface GridSmokeResult {
   readonly grid: GridPreset;
@@ -47,14 +58,14 @@ function saveLoadRun(grid: GridPreset): void {
 }
 
 /**
- * The solve regime (W5) at dev: two worlds solve to the wake and hash
- * identically; a save taken while solving and one taken after the wake
- * both reload byte-identically and continue identically; the ledger
- * asserts every solve step as it does every tick.
+ * The solve regime (W5) at dev: two worlds solve to the wake (the chosen
+ * epoch, `SOLVE_WAKE_YEAR`) and hash identically; a save taken while solving
+ * and one taken after the wake both reload byte-identically and continue
+ * identically; the ledger asserts every solve step as it does every tick.
  */
 function solveRegimeRun(): Record<string, unknown> {
   const substrate = buildSubstrate(SEED, { preset: "earth_sim" }, "dev");
-  const config = { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1 };
+  const config = { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1, wake: SOLVE_WAKE_YEAR };
   const first = new World({ seed: SEED, grid: "dev", config, substrate });
   const second = new World({ seed: SEED, grid: "dev", config, substrate });
   assert.equal(first.phase, "solve");
@@ -72,7 +83,8 @@ function solveRegimeRun(): Record<string, unknown> {
   while (solvingLoaded.phase === "solve" && solvingLoaded.step < horizon) stepWorld(solvingLoaded);
   assert.equal(hashWorld(first), hashWorld(second), "solve regime determinism failed");
   assert.equal(hashWorld(solvingLoaded), hashWorld(first), "a loaded solve-phase world diverged");
-  assert.equal(first.phase, "awake", "the dev world did not wake inside the horizon");
+  assert.equal(first.phase, "awake", "the dev world did not wake at the chosen epoch");
+  assert.ok(first.wakeStep >= stepFromYear(SOLVE_WAKE_YEAR), "the dev world woke before the chosen epoch");
   const awakeSave = serializeWorld(first);
   const awakeLoaded = loadWorld(awakeSave, substrate);
   assert.equal(awakeLoaded.phase, "awake");
@@ -81,6 +93,7 @@ function solveRegimeRun(): Record<string, unknown> {
   runSteps(awakeLoaded, CONTINUE_TICKS);
   assert.equal(hashWorld(awakeLoaded), hashWorld(first), "continuation across the wake diverged");
   const result = {
+    wakeYear: SOLVE_WAKE_YEAR,
     wakeStep: first.wakeStep,
     cagedStep: first.cagedStep,
     solveClock: first.solveClock,

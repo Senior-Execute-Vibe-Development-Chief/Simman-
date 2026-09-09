@@ -528,6 +528,15 @@ export function stepHarvest(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): num
         const famine = isFamineYear(anomaly, multiplier);
         if (famine) world.famineYears[cell] = (world.famineYears[cell] ?? 0) + 1;
 
+        // The land each package's farmers work is their share of the cell's
+        // people — the mixture capacity's shares (W8) — so the cell's harvest
+        // is the farmed part of the capacity the growth pass reads, and a
+        // trace package left by a conversion does not reap the whole cell.
+        let farmersNow = 0;
+        for (const packageIndex of active) {
+          farmersNow += Math.max(0, world.farmers[CROP_PACKAGES[packageIndex]?.id ?? ""]?.[packed] ?? 0);
+        }
+        const population = foragers + farmersNow;
         let shortfallTotal = 0;
         const shortfalls: number[] = [];
         let yearHarvest = 0;
@@ -541,7 +550,8 @@ export function stepHarvest(world: PeopleWorld, dtMonths = MONTHS_PER_YEAR): num
           shortfalls[packageIndex] = 0;
           if (farmer <= 0) continue;
           farmersAtRisk += farmer;
-          const fed = packageCapacity(world, cell, packageIndex) * multiplier;
+          const share = population > 0 ? Math.min(1, farmer / population) : 0;
+          const fed = share * packageCapacity(world, cell, packageIndex) * multiplier;
           const harvestMass = fed * ration;
           const need = farmer * ration;
           yearHarvest += harvestMass;

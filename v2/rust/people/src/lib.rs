@@ -33,6 +33,9 @@ const DIFFUSION_MSD_PER_DIFFUSIVITY: f64 = 4.0;
 const MIGRATION_HOP_MEAN_SQUARE_WEIGHT: f64 = 0.75;
 const PEOPLE_MIGRATION_MAX_SUBSTEPS: usize = 16;
 const PEOPLE_BAND_COUNT: usize = 16;
+// One shortfall slot per catalogue package on the harvest year's stack (W31);
+// the constructor refuses a catalogue larger than this.
+const PEOPLE_PACKAGE_SLOTS: usize = 16;
 const PEOPLE_CROP_NEIGHBOR_COUNT: usize = 8;
 const PEOPLE_NEIGHBOR_OPPOSITE: [usize; PEOPLE_CROP_NEIGHBOR_COUNT] = [1, 0, 3, 2, 7, 6, 5, 4];
 const TRAVEL_COASTAL_KM_PER_DAY: f64 = 80.0;
@@ -435,8 +438,8 @@ pub struct PeopleKernel {
     harvest_book_spoiled_by_band: [f64; PEOPLE_BAND_COUNT],
     harvest_book_unstorable_by_band: [f64; PEOPLE_BAND_COUNT],
     /// Firing totals for the run gate (W31): deaths in years with a predecessor, and those whose predecessor fell short.
-    harvest_run_deaths: f64,
-    harvest_run_denom: f64,
+    harvest_run_deaths_by_band: [f64; PEOPLE_BAND_COUNT],
+    harvest_run_denom_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_received_by_band: [f64; PEOPLE_BAND_COUNT],
     migration_total_value: f64,
@@ -505,6 +508,10 @@ impl PeopleKernel {
             })
             .collect();
         let row_weight = copy_f64(harvest_row_weight, row_length);
+        assert!(
+            package_count <= PEOPLE_PACKAGE_SLOTS,
+            "the crop catalogue holds more packages than the harvest year's shortfall slots"
+        );
         PeopleKernel {
             width,
             height,
@@ -615,8 +622,8 @@ impl PeopleKernel {
             harvest_book_eaten_by_band: [0.0; PEOPLE_BAND_COUNT],
             harvest_book_spoiled_by_band: [0.0; PEOPLE_BAND_COUNT],
             harvest_book_unstorable_by_band: [0.0; PEOPLE_BAND_COUNT],
-            harvest_run_deaths: 0.0,
-            harvest_run_denom: 0.0,
+            harvest_run_deaths_by_band: [0.0; PEOPLE_BAND_COUNT],
+            harvest_run_denom_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_received_by_band: [0.0; PEOPLE_BAND_COUNT],
             migration_total_value: 0.0,
@@ -1550,8 +1557,8 @@ impl PeopleKernel {
         self.harvest_book_eaten_by_band.fill(0.0);
         self.harvest_book_spoiled_by_band.fill(0.0);
         self.harvest_book_unstorable_by_band.fill(0.0);
-        self.harvest_run_deaths = 0.0;
-        self.harvest_run_denom = 0.0;
+        self.harvest_run_deaths_by_band.fill(0.0);
+        self.harvest_run_denom_by_band.fill(0.0);
     }
 
     /// The year's anomaly at a land cell (W30): its row over the weather grid
@@ -1626,8 +1633,18 @@ impl PeopleKernel {
                     self.famine_years[cell] += 1.0;
                 }
 
+                // The land each package's farmers work is their share of the
+                // cell's people (the mixture capacity's shares), as the oracle.
+                let mut farmers_now = 0.0;
+                for package_index in 0..self.package_count {
+                    if self.active_package[package_index] == 0 {
+                        continue;
+                    }
+                    farmers_now += self.farmers[package_index * land_count + packed].max(0.0);
+                }
+                let population = foragers + farmers_now;
                 let mut shortfall_total = 0.0;
-                let mut shortfalls = [0.0_f64; 32];
+                let mut shortfalls = [0.0_f64; PEOPLE_PACKAGE_SLOTS];
                 let mut year_harvest = 0.0;
                 let mut year_eaten = 0.0;
                 let mut year_unstorable = 0.0;
@@ -1642,7 +1659,8 @@ impl PeopleKernel {
                         continue;
                     }
                     farmers_at_risk += farmer;
-                    let fed = self.package_capacity(cell, packed, package_index) * multiplier;
+                    let share = if population > 0.0 { (farmer / population).min(1.0) } else { 0.0 };
+                    let fed = share * self.package_capacity(cell, packed, package_index) * multiplier;
                     let harvest_mass = fed * ration;
                     let need = farmer * ration;
                     year_harvest += harvest_mass;
@@ -1721,8 +1739,8 @@ impl PeopleKernel {
         self.harvest_book_eaten_by_band[slot] += eaten_tonnes;
         self.harvest_book_spoiled_by_band[slot] += spoiled_tonnes;
         self.harvest_book_unstorable_by_band[slot] += unstorable_tonnes;
-        self.harvest_run_deaths += run_deaths;
-        self.harvest_run_denom += run_denom;
+        self.harvest_run_deaths_by_band[slot] += run_deaths;
+        self.harvest_run_denom_by_band[slot] += run_denom;
     }
 
     pub fn harvest_deaths(&self) -> f64 {
@@ -1746,11 +1764,11 @@ impl PeopleKernel {
     }
 
     pub fn harvest_run_deaths_total(&self) -> f64 {
-        self.harvest_run_deaths
+        self.harvest_run_deaths_by_band.iter().fold(0.0, |total, value| total + value)
     }
 
     pub fn harvest_run_denom_total(&self) -> f64 {
-        self.harvest_run_denom
+        self.harvest_run_denom_by_band.iter().fold(0.0, |total, value| total + value)
     }
 }
 

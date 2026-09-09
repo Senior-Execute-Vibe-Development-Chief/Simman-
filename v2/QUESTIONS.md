@@ -4725,3 +4725,78 @@ Review corrections to the M1 build (all validated before merge):
 
     Open: the flight (W32) so a starving cell walks; the preventive check
     (M3b); storability technique (M8); shipped-grid severity (`v2-long`).
+
+89. **What the review of the store found (W31 review, 2026-09-09).** Line
+    by line against `spec/handoffs/W31-the-store.md`; merged with five
+    corrections, one to the law.
+
+    (a) **The harvest was grain no land grew.** §2's `fed_p =
+    packageCapacity(p) × multiple` — W29's line — fed each package's
+    farmers the capacity of the whole cell. Without a store that cost
+    nothing (a package's surplus went nowhere); with a pooled granary,
+    every trace package W8's conversion leaves (3,005 of 4,510 farmed
+    cells hold farmers of all five active packages, 1,202 a second package
+    above 1 %) reaped the entire cell into the shared store. Measured on
+    the built tree at the mean year: harvest ÷ need median **3.03** (p10
+    1.31, p90 6.46), granaries at a median **196 months**, and the p90
+    farmed cell at **1.28 × capacity** by 1 CE. That is where #88's
+    severity 0 % and the ×1.39 curve came from, not from the store. The
+    same line overfed a mixed cell's farmers by 1 ÷ farmed share — the
+    foragers' land counted twice — which is what W30's cage was. The
+    merged law feeds each package **its share of the cell's people**, the
+    share `mixtureCapacity` already uses, so the harvest is the farmed
+    part of the capacity the growth pass reads: harvest ÷ need median
+    **1.26** (1.11–1.75), the multiple over the fill. Nothing added.
+
+    (b) **Re-measured at dev**: 1 CE **1,767.9M** (W30 1,491M, built
+    2,077M; ×0.84 against W28's harvest-less ceiling); −5000 112.9M, −3000
+    846.8M, −1000 1,574.2M. River / rain-fed 31.6 / 16.8. Frequency 6/6.
+    Severity England / Deccan / NCP / Sahel **0.09 / 0.25 / 0.06 / 0.38 %**
+    — no longer zero, below their windows (1–6 / 1–8 / 1–8 / 0.5–8 %),
+    manifested. Run share **0.956**. Store **24.4 months** median (5.4–
+    81.9), 103 empty cells. Famine deaths over the arm 1,390M (W30
+    3,277M; built 162M). Fill median 0.80, p90 0.90.
+
+    (c) **The margin is still inverted (0.757 / 0.822) and it is
+    confounded.** The low-CV quartile is river ground (median capacity
+    42/km², 78 % above `PEOPLE_GRAVEYARD_DENSITY` = 30) where the graveyard
+    sets the fill; the high-CV quartile is thin ground (3.2/km², 4 %).
+    Within a capacity bin the ordering is the judged one or flat (30–60:
+    0.718, 0.703, 0.726, 0.814; 15–30: 0.813, 0.813, 0.820, 0.846). Two
+    mechanisms in one row; the row and window untouched.
+
+    (d) **No basin cages inside the horizon.** The dev world's free share
+    bottoms at **0.277** (−2497, 9.8°N 99.8°E) against the 0.2 knee. Both
+    earlier cagings were the Chao Phraya window at −2497: people ÷
+    capacity 0.963 on W30's law (the front's transient on doubled land),
+    1.003 as built (the phantom store), **0.827 merged**; capacity is
+    0.79–0.81 of W5's room on all three. A full basin under the merged law
+    stands at 0.78–0.88 of its capacity — the gap the store sustains — and
+    W5's room (best yield, farmer share one, no fit) is 1.2–1.3 × that.
+    The room the wake reads is stale relative to what now bounds a cell:
+    DECISIONS **P24**, proposed. The smoke's solve run now wakes on the
+    chosen-epoch path; the app at dev solves to the horizon's end under
+    `wake: auto`; the shipped grid is `v2-long`.
+
+    (e) **The sensitivity probe found a row on its least-grounded
+    constant.** Spoilage × ½ / × 2 move 1 CE to 1,837M / 1,663M, the store
+    to 41.9 / 14.6 months, the Sahel to 0.16 / 0.81 %, England to 0 /
+    0.36 %; arid 0.1 / 0.5 move the Sahel to 0.26 / **0.60 %** — inside
+    its window at 0.5. The Sahel severity row turns on
+    `FOOD_SPOILAGE_ARID_FACTOR`; the handoff said that would be a finding
+    and not a value: the next move is a per-climate storage-loss datum.
+
+    (f) **Mechanics.** The Rust run counters were two scalars written by
+    every band under the threaded dispatch (a race; now per band, folded
+    on read; parity asserts the seven kernel scalars across 1/2/8
+    workers). A bare `32` became `PEOPLE_PACKAGE_SLOTS`. The conservation
+    tolerance's flow scale was measured before being kept: one violation
+    of the stock-only rule on the built tree (ratio 1.58 on a sheet
+    opening at 0 t and closing at 10⁹ t), 1.2 × 10⁻⁴ of the flow rule at
+    worst, the `people` sheet ≤ 10⁻⁴ under both. `staple:indus:solve:dev`
+    cleared on this arm (wheat, 15 cells) — the trajectory moved with the
+    law, nothing was dialed; the row is removed. Bench A/B: medians of five alternating rounds against W30, dev tick ×1.02 and solve-year ×1.03, target tick ×1.04 (18.18 → 18.94 ms) and solve-year ×1.02, substrate ×0.98 at both grids; `--check` passes on the standing rows with no cap raised.
+
+    Open: the labor term (04 §4.2's "× labor"; surplus per farmer bounded
+    only by the fill), P24, the flight (W32), the preventive check (M3b),
+    storability technique (M8), the arid datum, shipped-grid rows.

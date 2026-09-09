@@ -40,6 +40,25 @@ const PEOPLE_SCRATCH = [
   "_farmerTotalNext",
 ] as const;
 
+/**
+ * The kernel's firing totals that are not fields (W31): the run counters and
+ * the food-sheet channels are folded from per-band slots in band order, so a
+ * threaded run must reproduce the serial run's values bit for bit — a shared
+ * scalar written from every band would not.
+ */
+function kernelScalars(world: World): Record<string, number> {
+  const people = world as PeopleWorld;
+  return {
+    runDeaths: people._harvestRunDeaths,
+    runDenom: people._harvestRunDenom,
+    famineDeaths: world.debug.peopleFamineDeaths,
+    foodHarvest: world.debug.foodHarvest,
+    foodEaten: world.debug.foodEaten,
+    foodSpoiled: world.debug.foodSpoiled,
+    foodUnstorable: world.debug.foodUnstorable,
+  };
+}
+
 function bytes(value: unknown): Buffer {
   if (!(value instanceof Float64Array)) throw new Error("Parity value is not a Float64Array.");
   return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
@@ -123,6 +142,7 @@ async function runParity(
     comparePeopleState(reference, wasm, grid, step);
   }
   const serialHash = hashWorld(wasm);
+  const serialScalars = kernelScalars(wasm);
   assert.equal(serialHash, hashWorld(reference), `${grid} ${label} serial hash diverged after ${steps} firings`);
   const result = {
     label,
@@ -156,6 +176,7 @@ async function runParity(
     hashWorld(threadedReference),
     `${grid} ${label} 1-worker hash diverged after ${steps} firings`,
   );
+  assert.deepEqual(kernelScalars(threadedOne), serialScalars, `${grid} ${label} 1-worker firing totals diverged`);
   (threadedOne as PeopleWorld)._wasmPeopleKernel?.dispose();
 
   const hashes: Record<number, string> = { 1: serialHash };
@@ -173,6 +194,11 @@ async function runParity(
     );
     runSteps(workerWorld, steps);
     hashes[workerCount] = hashWorld(workerWorld);
+    assert.deepEqual(
+      kernelScalars(workerWorld),
+      serialScalars,
+      `${grid} ${label} ${workerCount}-worker firing totals diverged`,
+    );
     (workerWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
   }
   assert.equal(hashes[2], hashes[1], `${grid} ${label} 2-worker hash changed`);

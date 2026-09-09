@@ -1648,6 +1648,22 @@ lawyered.
   1 CE 1,491 → 2,077M (up, as expected — not tuned). **P23** proposed
   for ratification: the store is the FIELD; a community's granary is a
   query over its cells (18.3), amending 02 box 2. The flight is W32.
+  **W31 reviewed and merged (2026-09-09)** with one correction to the
+  law: the harvest fed every package the whole cell's capacity (W29's
+  line), which a pooled granary turns into grain no land grew — the trace
+  packages W8's conversion leaves each reaped the entire cell into the
+  shared store (harvest ÷ need 3.0 at the mean year, sixteen-year
+  granaries, the p90 cell at 1.28 × capacity by 1 CE, and W30's cage a
+  front transient on foragers' land counted twice). Each package now reaps
+  its share of the cell's people, the mixture capacity's own share (W8),
+  so the harvest is the farmed part of the capacity the growth pass reads.
+  Re-measured at dev: 1 CE 1,768M (×1.19 over W30, ×0.84 against W28);
+  severity England / Deccan / NCP / Sahel 0.09 / 0.25 / 0.06 / 0.38 %
+  (below their windows, manifested; the Sahel row crosses into its window
+  at an arid factor of 0.5, a grounding finding, not a dial); run 0.956;
+  margin still inverted, and shown to be confounded by the graveyard
+  density; **no basin cages inside the horizon** — P24. Handoff status;
+  QUESTIONS #89.
 - **P23. The food book lives below the community bar** (proposed for
   ratification, 2026-09-08, W31). Amends 02 box 2's "food stocks and
   flows enter through community books, not a parallel field": the stock
@@ -1656,6 +1672,27 @@ lawyered.
   never authored. Required by 18.3: macro-history must be invariant under
   the community bar, which is only possible if the food book lives below
   it. Built in W31 as the field; the community view waits on M4.
+- **P24. The room the wake reads is the room the years sustain**
+  (proposed, 2026-09-09, the W31 review; QUESTIONS #89). W5's caging
+  knee measures a basin's free share against the pair-spare room at best
+  yield with a farmer share of one and no crop fit — the room a first
+  farmer sees on an empty map, written before W8's fit, W29's mean-year
+  deaths and W31's store bounded what a full cell holds. Under the merged
+  harvest law a full basin stands at 0.78–0.88 of the capacity the growth
+  pass reads, the stationary gap the granary sustains against the years,
+  and that capacity is 0.79–0.81 of W5's room; the product leaves a free
+  share that bottoms at 0.277 against the 0.2 knee, and the dev world
+  never cages inside the horizon where W30 (0.165) and the built W31
+  (0.143) did on harvests the land did not grow. Proposed, not built: the
+  room `cagedBasin` reads is `capField` — fit, technique, works, water,
+  the land a cell has — and free is capacity minus people, so
+  circumscription is measured against the land people can actually farm;
+  the knee stays at Carneiro's 0.2 and the window at the hearth law's.
+  Whether "free" should also net out the margin the years demand (the
+  lean-year gap 04 §4.2 withdrew as a founding rule and W31 made a
+  result) is the ruling. Moves the wake, which is M4's opening, so it is
+  its own wave with both grids measured; the shipped grid's caging under
+  the merged law is `v2-long` first.
 - **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
   QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
   puts China and India at their real populations and ~730M people in

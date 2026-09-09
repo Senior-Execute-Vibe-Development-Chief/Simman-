@@ -152,10 +152,12 @@ fudge factors.
   `store` field in tonnes/km². Each harvest year: spoil the opening stock
   at the climate's Q10×moisture rate, fill from surplus at the package's
   storability, draw the year's shortfall pooled across packages, and apply
-  the starvation rate only to the uncovered excess. Foragers neither sow
-  nor store; an abandoned store spoils alone. A `food` conservation sheet
-  (harvest / eaten / spoiled / unstorable) asserts zero unexplained flux
-  beside `people`. The "Granary" overlay paints months of food in store
+  the starvation rate only to the uncovered excess. Each package's farmers
+  reap their share of the cell's land (the mixture capacity's share), so
+  the harvest is the farmed part of the capacity the growth pass reads.
+  Foragers neither sow nor store; an abandoned store spoils alone. A
+  `food` conservation sheet (harvest / eaten / spoiled / unstorable)
+  asserts zero unexplained flux beside `people`. The "Granary" overlay paints months of food in store
   (saturating at 24). Severity, run and margin reality rows live in
   `data/reality/famine-severity.json`.
 - **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
