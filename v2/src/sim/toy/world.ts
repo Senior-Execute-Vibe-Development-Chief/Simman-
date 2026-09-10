@@ -169,6 +169,15 @@ export function createToyWorld(seed = 7): { world: World; info: ToySeedInfo } {
   const seatMass = COMMUNITY_BAR_PERSONS * 2.4;
   const hinterMass = COMMUNITY_BAR_PERSONS * 0.55;
   const hinterR2 = HINTER_CELLS * HINTER_CELLS;
+  // Caged seats: on the floodplain or beside the channel. Fringe seats stay
+  // open. Whole hinterland must match — community exit averages free-share.
+  const cagedSeatSet = new Set(
+    seats.filter((seat) => {
+      const flood = world.substrate?.floodplain[seat] ?? 0;
+      const flow = world.substrate?.rivers.flowAccum[seat] ?? 0;
+      return flood >= FARM_FLOODPLAIN || flow >= 12;
+    }),
+  );
 
   for (let packed = 0; packed < land.length; packed++) {
     const cell = land[packed] ?? 0;
@@ -190,9 +199,24 @@ export function createToyWorld(seed = 7): { world: World; info: ToySeedInfo } {
     const area = Math.max(1, world.cellAreaKm2[cell] ?? 1);
     const mass = isPeak ? seatMass : hinterMass;
     const density = mass / area;
-    const flood = world.substrate?.floodplain[cell] ?? 0;
-    // Dense floodplain → caged exit; desert fringe → open.
-    const caged = flood >= FARM_FLOODPLAIN || isPeak && farmScore(world, cell) > 0.55;
+    // Which seat owns this hinterland cell?
+    let ownerSeat = -1;
+    let bestD2 = Number.POSITIVE_INFINITY;
+    const width = world.width;
+    const x = cell % width;
+    const y = (cell / width) | 0;
+    for (const seat of seats) {
+      const sx = seat % width;
+      const sy = (seat / width) | 0;
+      const dx = x - sx;
+      const dy = y - sy;
+      const dd = dx * dx + dy * dy;
+      if (dd < bestD2) {
+        bestD2 = dd;
+        ownerSeat = seat;
+      }
+    }
+    const caged = ownerSeat >= 0 && cagedSeatSet.has(ownerSeat);
     if (caged) {
       world.capField[cell] = density / (1 - CAGE_KNEE_FREE_SHARE * 0.5);
       world.store[cell] = 24 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
