@@ -846,7 +846,7 @@ granary is a query.
 | `PLUNDER_SHARE` | 0.25 | movable share of a raided granary when exit is cheap |
 | `CAGE_KNEE_FREE_SHARE` | 0.2 | **existing** — exit shares the wake's knee |
 | `SAVE_VERSION_M4` | 13 | communities, obligation edges, unrest in the envelope |
-| `TOY_GRID_WIDTH` / `TOY_GRID_HEIGHT` | 100 / 100 | M4 playground shell only — fake landscape, not a shipped grid |
+| `TOY_GRID_WIDTH` / `TOY_GRID_HEIGHT` | 100 / 100 | M4 playground shell only — Nile-mouth Earth crop, not a shipped grid |
 | `TOY_CELL_EDGE_KM` | 12 | M4 playground only — square cell edge so a day's-walk community radius spans several cells |
 | (mechanism) | — | condense communities from people; exit = basin free share at seat; appropriable = Σ store×area × farmed legibility; caged loser → tribute edge + EXTRACT_FLOOR remit; open loser → plunder only. Awake annual `politics.taking`. No centers, no map colour |
 | (next) | — | geography acceptance on long arms; M5 chiefs; M3b beside the ladder |

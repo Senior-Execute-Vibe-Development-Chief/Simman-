@@ -33,8 +33,8 @@ function isArrayIndex(source: string, start: number, end: number): boolean {
 const failures: string[] = [];
 for (const path of sourceFiles(simRoot)) {
   if (path.endsWith("constants.ts")) continue;
-  // M4 toy playground under sim/toy/ is shell scenery (fake peaks, valleys,
-  // seed layout), not mechanism physics — its literals stay local.
+  // M4 toy playground under sim/toy/ is shell scenery (Nile crop bake,
+  // floodplain seed) — not a constants-ledger consumer.
   if (/[/\\]toy[/\\]/.test(path)) continue;
   const source = withoutCommentsAndStrings(readFileSync(path, "utf8"));
   if (!path.endsWith("scheduler.ts")

@@ -1,10 +1,7 @@
 /**
- * Seed the M4 toy world so politics is immediately visible:
- * dense farmed valleys (caged) and a lighter farmed plain (open exit).
- *
- * Peaks sit above COMMUNITY_BAR_PERSONS; hinterland is farmed but under the
- * bar so it joins the nearest seat — catchments span several cells at the
- * toy's 12 km edge.
+ * Seed the M4 toy world on a real Nile-mouth Earth crop:
+ * farm the floodplain (not the river channel, not the open desert),
+ * so caged delta seats and open-fringe seats show tribute vs plunder.
  */
 
 import {
@@ -18,58 +15,24 @@ import {
 import { stepTaking } from "../politics";
 import type { PeopleWorld } from "../people/types";
 import { World } from "../world";
-import { buildToySubstrate } from "./substrate";
+import { buildNileCropSubstrate } from "./nileCrop.generated";
 
 export interface ToySeedInfo {
-  readonly westValleyCells: number;
-  readonly eastValleyCells: number;
-  readonly plainCells: number;
+  readonly farmedCells: number;
+  readonly cagedCells: number;
+  readonly openCells: number;
+  readonly skippedRiverCells: number;
 }
 
-/**
- * Seat peaks — dense enough to mint communities; hinterland fills under them.
- * Spaced ~3–4 cells apart so catchments share borders (tribute needs adjacency).
- */
-const WEST_PEAKS: ReadonlyArray<readonly [number, number]> = [
-  [25, 52], [28, 55], [31, 58], [25, 58], [31, 52],
-];
-const EAST_PEAKS: ReadonlyArray<readonly [number, number]> = [
-  [69, 49], [72, 52], [75, 55], [69, 55], [75, 49],
-];
-const PLAIN_PEAKS: ReadonlyArray<readonly [number, number]> = [
-  [47, 52], [50, 55], [53, 58], [47, 58], [53, 52],
-];
-
-function inWestValley(x: number, y: number): boolean {
-  const dx = x - 28;
-  const dy = y - 55;
-  return dx * dx + dy * dy <= 14 * 14 && y >= 40 && y <= 78;
-}
-
-function inEastValley(x: number, y: number): boolean {
-  const dx = x - 72;
-  const dy = y - 52;
-  return dx * dx + dy * dy <= 12 * 12 && y >= 38 && y <= 75;
-}
-
-function inPlainBelt(x: number, y: number): boolean {
-  return y >= 42 && y <= 70 && x >= 42 && x <= 58;
-}
-
-function nearestPeakDist2(
-  x: number,
-  y: number,
-  peaks: ReadonlyArray<readonly [number, number]>,
-): number {
-  let best = Number.POSITIVE_INFINITY;
-  for (const [px, py] of peaks) {
-    const dx = x - px;
-    const dy = y - py;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < best) best = d2;
-  }
-  return best;
-}
+/** Cells with this much flow are the Nile channel — not farmed seats. */
+const RIVER_CHANNEL_FLOW = 40;
+/** Floodplain / fertility bar for farmable land on the crop. */
+const FARM_FLOODPLAIN = 0.08;
+const FARM_FERTILITY = 0.22;
+/** Hinterland radius (cells) around a seat on the toy grid. */
+const HINTER_CELLS = 3;
+/** How many local-max seats to mint along the floodplain. */
+const SEAT_COUNT = 14;
 
 function applyToyCellScale(world: World): void {
   const area = TOY_CELL_EDGE_KM * TOY_CELL_EDGE_KM;
@@ -78,25 +41,106 @@ function applyToyCellScale(world: World): void {
   }
 }
 
+function isRiverChannel(world: World, cell: number): boolean {
+  const rivers = world.substrate?.rivers;
+  if (!rivers) return false;
+  return (rivers.flowAccum[cell] ?? 0) > RIVER_CHANNEL_FLOW
+    || (rivers.magnitude[cell] ?? 0) >= 2;
+}
+
+function isFarmable(world: World, cell: number): boolean {
+  if (!(world.substrate?.landMask[cell])) return false;
+  if (isRiverChannel(world, cell)) return false;
+  const flood = world.substrate?.floodplain[cell] ?? 0;
+  const fert = world.substrate?.fertility[cell] ?? 0;
+  return flood >= FARM_FLOODPLAIN || fert >= FARM_FERTILITY;
+}
+
+function farmScore(world: World, cell: number): number {
+  const flood = world.substrate?.floodplain[cell] ?? 0;
+  const fert = world.substrate?.fertility[cell] ?? 0;
+  const moist = world.substrate?.moisture[cell * MONTHS_PER_YEAR] ?? 0;
+  return flood * 2 + fert + moist * 0.25;
+}
+
+/** Pick the strongest local floodplain maxima as community seats. */
+function pickSeats(world: World): number[] {
+  const width = world.width;
+  const candidates: { cell: number; score: number }[] = [];
+  for (let cell = 0; cell < world.N; cell++) {
+    if (!isFarmable(world, cell)) continue;
+    const score = farmScore(world, cell);
+    if (score <= 0) continue;
+    const x = cell % width;
+    const y = (cell / width) | 0;
+    let localMax = true;
+    for (let dy = -1; dy <= 1 && localMax; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= world.height) continue;
+        const other = ny * width + nx;
+        if (!isFarmable(world, other)) continue;
+        if (farmScore(world, other) > score) {
+          localMax = false;
+          break;
+        }
+      }
+    }
+    if (localMax) candidates.push({ cell, score });
+  }
+  candidates.sort((a, b) => b.score - a.score || a.cell - b.cell);
+  const seats: number[] = [];
+  for (const row of candidates) {
+    if (seats.length >= SEAT_COUNT) break;
+    const tooClose = seats.some((seat) => {
+      const ax = seat % width;
+      const ay = (seat / width) | 0;
+      const bx = row.cell % width;
+      const by = (row.cell / width) | 0;
+      const dx = ax - bx;
+      const dy = ay - by;
+      return dx * dx + dy * dy < 4 * 4;
+    });
+    if (tooClose) continue;
+    seats.push(row.cell);
+  }
+  return seats;
+}
+
+function nearestSeatDist2(cell: number, seats: readonly number[], width: number): number {
+  const x = cell % width;
+  const y = (cell / width) | 0;
+  let best = Number.POSITIVE_INFINITY;
+  for (const seat of seats) {
+    const sx = seat % width;
+    const sy = (seat / width) | 0;
+    const dx = x - sx;
+    const dy = y - sy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < best) best = d2;
+  }
+  return best;
+}
+
 function seedStores(world: PeopleWorld): void {
   const land = world._landCells;
   for (let packed = 0; packed < land.length; packed++) {
     const cell = land[packed] ?? 0;
     if ((world.technique[cell] ?? 0) < 1) continue;
-    const x = cell % world.width;
-    const y = Math.floor(cell / world.width);
-    const valley = inWestValley(x, y) || inEastValley(x, y);
-    const floor = (valley ? 24 : 8) * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    if (isRiverChannel(world, cell)) continue;
+    const flood = world.substrate?.floodplain[cell] ?? 0;
+    const floor = (flood >= FARM_FLOODPLAIN ? 24 : 8) * FOOD_RATION_TONNES_PER_PERSON_YEAR;
     if ((world.store[cell] ?? 0) < floor) world.store[cell] = floor;
   }
 }
 
 /**
- * Create an awake toy world with farmed people, stores, and capacities set
- * so the west/east valleys are caged and the central plain is not.
+ * Create an awake toy world on the Nile crop with farmed floodplain people.
  */
 export function createToyWorld(seed = 7): { world: World; info: ToySeedInfo } {
-  const substrate = buildToySubstrate(seed);
+  const substrate = buildNileCropSubstrate(seed);
   const world = new World({
     seed,
     grid: "toy",
@@ -112,63 +156,64 @@ export function createToyWorld(seed = 7): { world: World; info: ToySeedInfo } {
     world.wakeStep = 0;
   }
 
+  // Keep Earth fields for the map; square the cells so a day's-walk spans tiles.
   applyToyCellScale(world);
 
-  let westValleyCells = 0;
-  let eastValleyCells = 0;
-  let plainCells = 0;
+  let farmedCells = 0;
+  let cagedCells = 0;
+  let openCells = 0;
+  let skippedRiverCells = 0;
   const land = world._landCells;
-  // Mass targets: seats clear the bar; hinterland stays under it.
+  const seats = pickSeats(world);
+  const seatSet = new Set(seats);
   const seatMass = COMMUNITY_BAR_PERSONS * 2.4;
   const hinterMass = COMMUNITY_BAR_PERSONS * 0.55;
+  const hinterR2 = HINTER_CELLS * HINTER_CELLS;
 
   for (let packed = 0; packed < land.length; packed++) {
     const cell = land[packed] ?? 0;
-    const x = cell % world.width;
-    const y = Math.floor(cell / world.width);
     world.people[cell] = 0;
     world.technique[cell] = 0;
     world.store[cell] = 0;
     world.capField[cell] = 0;
 
-    const west = inWestValley(x, y);
-    const east = inEastValley(x, y);
-    const plain = inPlainBelt(x, y);
-    if (!west && !east && !plain) continue;
+    if (isRiverChannel(world, cell)) {
+      skippedRiverCells++;
+      continue;
+    }
+    if (!isFarmable(world, cell)) continue;
+
+    const d2 = nearestSeatDist2(cell, seats, world.width);
+    const isPeak = seatSet.has(cell);
+    if (!isPeak && d2 > hinterR2) continue;
 
     const area = Math.max(1, world.cellAreaKm2[cell] ?? 1);
-    const peaks = west ? WEST_PEAKS : east ? EAST_PEAKS : PLAIN_PEAKS;
-    const d2 = nearestPeakDist2(x, y, peaks);
-    const isPeak = d2 === 0;
-    const nearPeak = d2 <= 3 * 3; // hinterland within ~3 cells of a seat
-    if (!isPeak && !nearPeak) continue;
-
     const mass = isPeak ? seatMass : hinterMass;
     const density = mass / area;
-    // Capacity: valleys packed (caged exit); plain roomy (open exit).
-    if (west || east) {
+    const flood = world.substrate?.floodplain[cell] ?? 0;
+    // Dense floodplain → caged exit; desert fringe → open.
+    const caged = flood >= FARM_FLOODPLAIN || isPeak && farmScore(world, cell) > 0.55;
+    if (caged) {
       world.capField[cell] = density / (1 - CAGE_KNEE_FREE_SHARE * 0.5);
       world.store[cell] = 24 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
-      if (west) westValleyCells++;
-      else eastValleyCells++;
+      cagedCells++;
     } else {
       world.capField[cell] = density / 0.45;
       world.store[cell] = 8 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
-      plainCells++;
+      openCells++;
     }
     world.people[cell] = density;
     world.technique[cell] = 1;
+    farmedCells++;
   }
 
   world.step = 0;
   world.events = [];
-  // Playground cadence: a longer taking window so raids/tribute show up
-  // on the first paint without changing TAKING_RAID_RATE_PER_YEAR.
   stepTaking(world, MONTHS_PER_YEAR * 20);
 
   return {
     world,
-    info: { westValleyCells, eastValleyCells, plainCells },
+    info: { farmedCells, cagedCells, openCells, skippedRiverCells },
   };
 }
 
@@ -178,6 +223,5 @@ export function stepToyYear(world: World): void {
   world.calendarMonth = (world.calendarMonth + MONTHS_PER_YEAR) % MONTHS_PER_YEAR;
   seedStores(world as PeopleWorld);
   world.events = [];
-  // Same stretched window as create — one click should usually fire raids.
   stepTaking(world, MONTHS_PER_YEAR * 20);
 }

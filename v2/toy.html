@@ -64,10 +64,11 @@
   </head>
   <body>
     <main>
-      <h1>M4 toy grid · first taking</h1>
+      <h1>M4 toy grid · Nile mouth</h1>
       <p class="lede">
-        A fake 100×100 world (not Earth) so communities, caged exit, plunder, and tribute
-        edges are visible cell by cell.
+        A 100×100 crop of the real Earth map around the Nile delta — Mediterranean,
+        river, floodplain, and desert hills — so communities, caged exit, plunder, and
+        tribute are visible cell by cell.
         <a href="./">← Earth map</a>
       </p>
       <div class="row">
@@ -81,9 +82,9 @@
             <option value="exit">Exit / free share</option>
           </select>
         </label>
-        <button id="step" type="button" onclick="window.__toy && window.__toy.stepOnce()">Step 1 year</button>
-        <button id="play" class="primary" type="button" onclick="(function(){var t=window.__toy; if(!t)return; var on=document.getElementById('play').textContent!=='Pause'; t.setPlaying(on);})()">Play</button>
-        <button id="reset" type="button" onclick="window.__toy && (window.__toy.setPlaying(false), location.reload())">Reset</button>
+        <button id="step" type="button">Step 1 year</button>
+        <button id="play" class="primary" type="button">Play</button>
+        <button id="reset" type="button">Reset</button>
         <label>Speed
           <select id="speed">
             <option value="800">slow</option>

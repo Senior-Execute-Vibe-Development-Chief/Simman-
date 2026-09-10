@@ -1,5 +1,5 @@
 /**
- * M4 toy playground — Canvas2D, main thread, 100×100 fake landscape.
+ * M4 toy playground — Canvas2D, main thread, 100×100 Nile-mouth Earth crop.
  *
  * Lenses make communities, exit (cage), store, and tribute edges obvious at
  * cell scale. Not the Earth product surface.
@@ -78,12 +78,13 @@ function paint(): void {
   const sub = world.substrate!;
   const land = sub.landMask;
   const elev = sub.elevation;
-  const river = sub.rivers.magnitude;
+  const flow = sub.rivers.flowAccum;
   const lake = sub.rivers.lake;
   const owner = world._communityOwner;
   const N = GRID_W * GRID_H;
   const img = ctx.createImageData(canvas.width, canvas.height);
   const data = img.data;
+  const RIVER_FLOW = 40;
 
   let maxPeople = 1;
   let maxStore = 1;
@@ -97,14 +98,16 @@ function paint(): void {
     const y = (i / GRID_W) | 0;
     let r = 8, g = 10, b = 18;
     if (land[i]) {
+      const channel = (flow[i] ?? 0) > RIVER_FLOW;
       if (lens === "terrain") {
-        const t = (elev[i] + 0.05) / 1.1;
-        [r, g, b] = [40 + t * 120, 50 + t * 100, 40 + t * 60];
-        const water = Math.min(1, (river[i] ?? 0) / 200 + ((lake[i] ?? -1) >= 0 ? 0.55 : 0));
+        // Nile crop elev tops out ~0.35 — stretch for readable relief.
+        const t = Math.min(1, (elev[i] + 0.02) / 0.4);
+        [r, g, b] = [48 + t * 140, 52 + t * 90, 36 + t * 40];
+        const water = Math.min(1, (channel ? 0.85 : 0) + ((lake[i] ?? -1) >= 0 ? 0.55 : 0));
         if (water > 0) {
           r = Math.floor(r * (1 - water) + 20 * water);
-          g = Math.floor(g * (1 - water) + (60 + water * 100) * water);
-          b = Math.floor(b * (1 - water) + (90 + water * 140) * water);
+          g = Math.floor(g * (1 - water) + (70 + water * 90) * water);
+          b = Math.floor(b * (1 - water) + (110 + water * 120) * water);
         }
       } else if (lens === "climate") {
         const t = moistureAt(world, i);
@@ -123,10 +126,10 @@ function paint(): void {
         const who = owner[i] ?? -1;
         if (who >= 0) [r, g, b] = hsl((who * 47) % 360, 0.55, 0.42);
         else [r, g, b] = [28, 32, 40];
-        if ((river[i] ?? 0) > 40) {
-          r = Math.floor(r * 0.55 + 30);
-          g = Math.floor(g * 0.55 + 90);
-          b = Math.floor(b * 0.55 + 160);
+        if (channel) {
+          r = Math.floor(r * 0.45 + 24);
+          g = Math.floor(g * 0.45 + 95);
+          b = Math.floor(b * 0.45 + 170);
         }
       }
     } else {
