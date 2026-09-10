@@ -38,8 +38,14 @@ if (fs.existsSync(catalogPath)) {
 }
 if (!Array.isArray(catalog.previews)) catalog.previews = [];
 
+const channelRoot = channel === "live" ? site : path.join(site, "b", slug);
+const hasV2 = fs.existsSync(path.join(channelRoot, "v2", "index.html"));
+const hasToy = fs.existsSync(path.join(channelRoot, "v2", "toy.html"));
+
 const entry = { branch, sha, slug, builtAt, channel };
 if (Number.isFinite(saveVersion)) entry.saveVersion = saveVersion;
+if (hasV2) entry.hasV2 = true;
+if (hasToy) entry.hasToy = true;
 
 if (channel === "live") {
   catalog.live = { ...entry, path: "/" };
@@ -69,7 +75,7 @@ if (!catalog.live && !fs.existsSync(rootIndex)) {
 `);
 }
 
-console.log(`[pages-catalog] ${channel} · ${branch} @ ${sha.slice(0, 8)} · ${catalog.previews.length} preview(s)`);
+console.log(`[pages-catalog] ${channel} · ${branch} @ ${sha.slice(0, 8)} · ${catalog.previews.length} preview(s)${hasToy ? " · toy" : hasV2 ? " · v2" : ""}`);
 
 function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -120,6 +126,11 @@ function pickerHtml(cat) {
     padding: 14px 16px; color: inherit; text-decoration: none;
   }
   a.row:hover { background: rgba(196,163,90,0.08); }
+  .row {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px 16px;
+    padding: 14px 16px; color: inherit;
+  }
+  .row:hover { background: rgba(196,163,90,0.08); }
   .name { font-weight: 600; word-break: break-all; }
   .meta { color: var(--fade); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .tag {
@@ -127,6 +138,15 @@ function pickerHtml(cat) {
     color: var(--gold); border: 1px solid rgba(196,163,90,0.35); border-radius: 3px;
     padding: 3px 7px; white-space: nowrap;
   }
+  .links {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 12px;
+    margin-top: 2px; font-size: 12px;
+  }
+  .links a {
+    color: var(--gold); text-decoration: none;
+    border-bottom: 1px solid rgba(196,163,90,0.35);
+  }
+  .links a:hover { border-bottom-color: var(--gold); }
   .empty { color: var(--fade); padding: 14px 16px; border: 1px dashed var(--line); border-radius: 6px; }
   footer { margin-top: 36px; color: var(--fade); font-size: 12px; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
@@ -172,13 +192,18 @@ function esc(s){
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 }
 function row(p, tag){
-  var href = hrefFor(p);
+  var base = hrefFor(p);
   var ver = (p.saveVersion != null) ? ('v'+p.saveVersion+' · ') : '';
-  return '<li><a class="row" href="'+href+'">'
+  var links = [];
+  links.push('<a href="'+base+'">v1 app</a>');
+  if (p.hasV2) links.push('<a href="'+hrefFor({path: (p.path||'/') + 'v2/'})+'">v2 Earth</a>');
+  if (p.hasToy) links.push('<a href="'+hrefFor({path: (p.path||'/') + 'v2/toy.html'})+'"><strong>M4 toy grid</strong></a>');
+  return '<li><div class="row">'
     + '<div><div class="name">'+esc(p.branch||p.slug||"build")+'</div>'
-    + '<div class="meta">'+esc(ver)+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div></div>'
+    + '<div class="meta">'+esc(ver)+esc(shortSha(p.sha))+' · '+esc(when(p.builtAt))+'</div>'
+    + '<div class="links">'+links.join("")+'</div></div>'
     + (tag ? '<span class="tag">'+esc(tag)+'</span>' : '')
-    + '</a></li>';
+    + '</div></li>';
 }
 function render(cat) {
   var live = document.getElementById("live");
