@@ -10,6 +10,13 @@
       main { max-width: 980px; margin: auto; padding: 20px; }
       h1 { margin: 0 0 6px; font-size: 21px; }
       p { color: #adbaa9; }
+      .nav { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 0 0 14px; }
+      .nav-btn {
+        display: inline-block; padding: 7px 12px; border-radius: 6px;
+        background: #1f6feb; color: #fff; text-decoration: none; font-weight: 600;
+      }
+      .nav-btn:hover { background: #388bfd; }
+      .nav-note { color: #8a9a8a; font-size: 13px; }
       .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 14px 0; }
       label { color: #d4c8a9; }
       #map { width: 100%; max-width: 900px; aspect-ratio: 2 / 1; background: #0c1218; border: 1px solid #607467; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
@@ -17,7 +24,7 @@
       input[type="range"] { accent-color: #e5b65c; }
       #wake-year { width: 6em; }
     </style>
-    <script type="module" crossorigin src="./assets/main-BXwlBkfa.js"></script>
+    <script type="module" crossorigin src="./assets/main-BorWjf9D.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-CbXtAM7H.js">
     <link rel="modulepreload" crossorigin href="./assets/world-Oat72RaV.js">
     <link rel="modulepreload" crossorigin href="./assets/global_precip-CdgUZ06r.js">
@@ -27,7 +34,11 @@
   <body>
     <main>
       <h1>Simman v2 · land, movement and people</h1>
-      <p>Earth substrate, monthly climate, one layered travel-time field, and the peopling from the Younger Dryas. <a href="./toy.html">M4 toy grid</a> — 100×100 fake landscape to watch communities and tribute cell by cell.</p>
+      <p>Earth substrate, monthly climate, one layered travel-time field, and the peopling from the Younger Dryas.</p>
+      <p class="nav">
+        <a class="nav-btn" href="./toy.html">Open M4 toy grid</a>
+        <span class="nav-note">100×100 fake landscape — communities, caged exit, tribute arrows</span>
+      </p>
       <div class="controls">
         <label>Lens
           <select id="lens">

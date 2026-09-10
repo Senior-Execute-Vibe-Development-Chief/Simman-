@@ -11,11 +11,13 @@
   "previews": [
     {
       "branch": "cursor/v2-m4-the-first-taking-4b2d",
-      "sha": "8ec9cecc45023e13d54521ab36bffbc5c2047a8e",
+      "sha": "a93104328dbdc1000aaac9399493da5582f7a36e",
       "slug": "cursor-v2-m4-the-first-taking-4b2d",
-      "builtAt": "2026-09-10T02:01:34.159Z",
+      "builtAt": "2026-09-10T02:29:01.527Z",
       "channel": "preview",
       "saveVersion": 67,
+      "hasV2": true,
+      "hasToy": true,
       "path": "/b/cursor-v2-m4-the-first-taking-4b2d/"
     },
     {
