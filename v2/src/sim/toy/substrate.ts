@@ -6,6 +6,7 @@
 
 import {
   MATH_NEGATIVE_ONE,
+  MATH_PI,
   MONTHS_PER_YEAR,
   TOY_GRID_HEIGHT,
   TOY_GRID_WIDTH,
@@ -13,6 +14,7 @@ import {
   UINT8_SENTINEL,
 } from "../constants";
 import { fallbackCrossings } from "../crossings";
+import { dsin } from "../dmath";
 import { emptySnowpack } from "../snow";
 import type { Substrate } from "../substrate";
 import type { GridPreset } from "../world";
@@ -97,7 +99,7 @@ export function buildToySubstrate(seed = 1): Substrate {
       }
 
       for (let month = 0; month < MONTHS_PER_YEAR; month++) {
-        const season = Math.sin(((month + 3) / MONTHS_PER_YEAR) * Math.PI * 2);
+        const season = dsin(((month + 3) / MONTHS_PER_YEAR) * MATH_PI * 2);
         const climateIndex = cell * MONTHS_PER_YEAR + month;
         temperature[climateIndex] = clamp01(0.55 + season * 0.18 - mountain * 0.25 + (sea ? 0.05 : 0));
         moisture[climateIndex] = clamp01(0.35 + valley * 0.45 + season * 0.08 - mountain * 0.2 + (sea ? 0.1 : 0));
