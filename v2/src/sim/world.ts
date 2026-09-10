@@ -2,6 +2,8 @@ import {
   BYTE_MASK,
   DEV_GRID_HEIGHT,
   DEV_GRID_WIDTH,
+  TOY_GRID_HEIGHT,
+  TOY_GRID_WIDTH,
   HASH_HEX_WIDTH,
   HASH_LANE_SEED,
   HASH_NUMBER_BYTES,
@@ -33,7 +35,7 @@ import {
   type WorldPhase,
 } from "./scheduler";
 
-export type GridPreset = "dev" | "target";
+export type GridPreset = "dev" | "target" | "toy";
 
 export interface GridDimensions {
   readonly width: number;
@@ -197,6 +199,7 @@ export class World {
 
 export function dimensionsFor(grid: GridPreset): GridDimensions {
   if (grid === "dev") return { width: DEV_GRID_WIDTH, height: DEV_GRID_HEIGHT };
+  if (grid === "toy") return { width: TOY_GRID_WIDTH, height: TOY_GRID_HEIGHT };
   return { width: TARGET_GRID_WIDTH, height: TARGET_GRID_HEIGHT };
 }
 

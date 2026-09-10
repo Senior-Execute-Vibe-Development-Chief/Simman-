@@ -7,6 +7,10 @@
 // The exact height and preset naming remain logged in QUESTIONS.md.
 export const DEV_GRID_WIDTH = 240; // spec/09-constants-ledger.md §Units — M0 grid convention
 export const DEV_GRID_HEIGHT = 120; // spec/09-constants-ledger.md §Units — M0 grid convention
+export const TOY_GRID_WIDTH = 100; // spec/09-constants-ledger.md §M4 toy — 100×100 playground grid (shell only)
+export const TOY_GRID_HEIGHT = 100; // spec/09-constants-ledger.md §M4 toy — 100×100 playground grid (shell only)
+/** Square cell edge on the M4 toy map — sized so COMMUNITY_RADIUS_KM spans several cells. */
+export const TOY_CELL_EDGE_KM = 12; // spec/09-constants-ledger.md §M4 toy — playground cell edge (shell only)
 export const TARGET_GRID_WIDTH = 1800; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 export const TARGET_GRID_HEIGHT = 900; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 

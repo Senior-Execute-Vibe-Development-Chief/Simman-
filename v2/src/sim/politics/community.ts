@@ -47,6 +47,13 @@ export function distanceKm(world: World, a: number, b: number): number {
   const rawDx = Math.abs(ax - bx);
   const dx = Math.min(rawDx, width - rawDx);
   const dy = Math.abs(ay - by);
+  // Toy playground: square cells at TOY_CELL_EDGE_KM so the day's-walk
+  // community radius is several cells across (Earth spacing would be ~400 km).
+  if (world.grid === "toy") {
+    const edge = Math.sqrt(Math.max(0, world.cellAreaKm2[a] ?? 0))
+      || Math.sqrt(Math.max(0, world.cellAreaKm2[0] ?? 0));
+    return Math.sqrt(dx * dx + dy * dy) * edge;
+  }
   const northSouth = EARTH_MERIDIONAL_KM / world.height;
   const eastWest = (eastWestKm(world, ay) + eastWestKm(world, by)) * MATH_HALF;
   return Math.sqrt((dx * eastWest) * (dx * eastWest) + (dy * northSouth) * (dy * northSouth));
