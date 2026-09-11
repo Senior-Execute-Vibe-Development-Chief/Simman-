@@ -1,11 +1,13 @@
 {
   "live": {
     "branch": "main",
-    "sha": "82f2746a2ea5c7bb6c98af245caa0468819e8a8e",
+    "sha": "4eb838b619477bd436f64bbaf8da4d50f61e76cf",
     "slug": "main",
-    "builtAt": "2026-09-03T07:18:45.555Z",
+    "builtAt": "2026-09-11T08:49:38.627Z",
     "channel": "live",
     "saveVersion": 67,
+    "hasV2": true,
+    "hasToy": true,
     "path": "/"
   },
   "previews": [

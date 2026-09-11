@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simman · M4 toy grid</title>
+    <style>
+      :root { color-scheme: dark; font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; background: #0d1117; color: #e6edf3; }
+      main { max-width: 980px; margin: 0 auto; padding: 16px 18px 40px; }
+      h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.02em; }
+      .lede { color: #8b9bb4; margin: 0 0 14px; max-width: 62ch; }
+      a { color: #6cb6ff; }
+      .row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 8px 0; }
+      label { color: #c6d0dc; }
+      button, select {
+        background: #21262d; color: #e6edf3; border: 1px solid #3d444d;
+        border-radius: 6px; padding: 6px 10px; cursor: pointer;
+      }
+      button.primary { background: #1f6feb; border-color: #1f6feb; }
+      button:disabled { opacity: 0.45; cursor: default; }
+      #stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 240px;
+        gap: 14px;
+        align-items: start;
+        margin-top: 10px;
+      }
+      #map {
+        width: 100%;
+        max-width: 700px;
+        aspect-ratio: 1;
+        image-rendering: pixelated;
+        background: #010409;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        cursor: crosshair;
+      }
+      aside {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 10px 12px;
+        min-height: 280px;
+      }
+      aside h2 { margin: 0 0 8px; font-size: 13px; color: #8b9bb4; text-transform: uppercase; letter-spacing: 0.04em; }
+      #stats { font-variant-numeric: tabular-nums; color: #d0d7de; }
+      #stats div { margin: 3px 0; }
+      #log {
+        margin-top: 10px; max-height: 220px; overflow: auto;
+        font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #9ecbff;
+      }
+      #log .tribute { color: #ffd666; }
+      #log .plunder { color: #ff7b72; }
+      #hover { margin-top: 8px; color: #8b9bb4; font-size: 12px; min-height: 3.2em; }
+      .legend { margin-top: 10px; color: #8b9bb4; font-size: 12px; }
+      .legend span { margin-right: 10px; white-space: nowrap; }
+      .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+      @media (max-width: 720px) {
+        #stage { grid-template-columns: 1fr; }
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/toy-D1Dv_yTJ.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/world-Oat72RaV.js">
+  </head>
+  <body>
+    <main>
+      <h1>M4 toy grid · Nile mouth</h1>
+      <p class="lede">
+        A 100×100 crop of the real Earth map around the Nile delta — Mediterranean,
+        river, floodplain, and desert hills — so communities, caged exit, plunder, and
+        tribute are visible cell by cell.
+        <a href="./">← Earth map</a>
+      </p>
+      <div class="row">
+        <label>Lens
+          <select id="lens">
+            <option value="politics">Politics (communities + tribute)</option>
+            <option value="terrain">Terrain + water</option>
+            <option value="climate">Climate (moisture)</option>
+            <option value="people">People density</option>
+            <option value="store">Granary store</option>
+            <option value="exit">Exit / free share</option>
+          </select>
+        </label>
+        <button id="step" type="button">Step 1 year</button>
+        <button id="play" class="primary" type="button">Play</button>
+        <button id="reset" type="button">Reset</button>
+        <label>Speed
+          <select id="speed">
+            <option value="800">slow</option>
+            <option value="350" selected>normal</option>
+            <option value="120">fast</option>
+          </select>
+        </label>
+      </div>
+      <div id="stage">
+        <div>
+          <canvas id="map" width="100" height="100" aria-label="M4 toy grid"></canvas>
+          <div class="legend" id="legend"></div>
+          <div id="hover">Hover a cell…</div>
+        </div>
+        <aside>
+          <h2>Register</h2>
+          <div id="stats">Loading…</div>
+          <h2 style="margin-top:14px">Recent events</h2>
+          <div id="log"></div>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>
