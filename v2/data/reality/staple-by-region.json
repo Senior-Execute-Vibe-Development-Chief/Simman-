@@ -1,0 +1,76 @@
+{
+ "source": "The dominant staple of each region at 1 CE from archaeobotany (W8); a region is the land within radiusDegrees of the point, and the check is the majority dominant package of its farmed cells.",
+ "radiusDegrees": 3,
+ "regions": [
+  {
+   "id": "south-china",
+   "packageId": "rice",
+   "latitude": 24,
+   "longitude": 111,
+   "source": "Zhao 2011 (rice south of the Huai–Qinling line)"
+  },
+  {
+   "id": "lower-yangtze",
+   "packageId": "rice",
+   "latitude": 30.5,
+   "longitude": 119,
+   "source": "Fuller & Qin 2009"
+  },
+  {
+   "id": "loess",
+   "packageId": "millet",
+   "latitude": 36,
+   "longitude": 110,
+   "source": "Zhao 2011"
+  },
+  {
+   "id": "ganges",
+   "packageId": "rice",
+   "latitude": 25.5,
+   "longitude": 84,
+   "source": "Fuller 2011"
+  },
+  {
+   "id": "indus",
+   "packageId": "wheat",
+   "latitude": 29,
+   "longitude": 70,
+   "source": "Zohary, Hopf & Weiss 2012 (Mehrgarh: barley, wheat)"
+  },
+  {
+   "id": "nile",
+   "packageId": "wheat",
+   "latitude": 28,
+   "longitude": 31,
+   "source": "Zohary, Hopf & Weiss 2012 (Fayum, Merimde: emmer, barley)"
+  },
+  {
+   "id": "central-europe",
+   "packageId": "wheat",
+   "latitude": 49,
+   "longitude": 11,
+   "source": "Kreuz et al. 2005 (LBK: emmer, einkorn)"
+  },
+  {
+   "id": "sahel",
+   "packageId": "sorghum",
+   "latitude": 14,
+   "longitude": 5,
+   "source": "Manning et al. 2011; Winchell et al. 2017"
+  },
+  {
+   "id": "mesoamerica",
+   "packageId": "maize",
+   "latitude": 19,
+   "longitude": -98,
+   "source": "Piperno & Flannery 2001"
+  },
+  {
+   "id": "amazon-margin",
+   "packageId": "tubers",
+   "latitude": -11,
+   "longitude": -60,
+   "source": "Olsen & Schaal 1999 (manioc)"
+  }
+ ]
+}

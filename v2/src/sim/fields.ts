@@ -37,6 +37,38 @@ export const FIELD_LIST: readonly FieldDefinition[] = [
     defaultValue: 0,
     allocate: (length) => new Float64Array(length),
   },
+  {
+    // The built land capital (W28): the share of a cell's improvable ground
+    // improved, 0..1. State — built by pressure, rotting unstaffed.
+    name: "works",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    // The famine years (W29): the tally of bottom-decile harvests that
+    // failed by more than a third while the cell's farmers lived through
+    // them. A count of things that have happened: it never falls.
+    name: "famineYears",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    // The farmed years (W30): the years a cell's farmers have stood
+    // through, counted by the harvest pass on the same cells and years as
+    // the famine tally, so a famine frequency is the one over the other. A
+    // count of things that have happened: it never falls.
+    name: "farmedYears",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
+  {
+    // The store (W31): tonnes of storable food per km² held in the cell's
+    // granaries. A stock, not a count — filled by surplus, drawn by shortfall,
+    // spoiled by climate; no monotone claim.
+    name: "store",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  },
 ];
 
 export type FieldHost = Record<string, unknown>;

@@ -125,6 +125,23 @@ export class ConservationLedger {
     const accountedDelta = totalChannels(sheet.sources) - totalChannels(sheet.sinks);
     sheet.observedDelta = actualDelta;
     sheet.unexplained = actualDelta - accountedDelta;
+    // A sheet whose stock is small but whose flows are large (the food store:
+    // tonnes of harvest through a nearly empty granary) must scale the
+    // relative epsilon by the flow as well as the stock — otherwise early
+    // firings trip on double-rounding dust while the algebra closes.
+    const flowScale = Math.max(
+      Math.abs(sourceAmount),
+      Math.abs(sinkAmount),
+      Math.abs(totalChannels(sheet.sources)),
+      Math.abs(totalChannels(sheet.sinks)),
+    );
+    sheet.tolerance = CONSERVATION_EPSILON * Math.max(
+      1,
+      (indices ?? this.indices.get(quantity))?.length ?? field.length,
+      Math.abs(sheet.opening),
+      Math.abs(sheet.closing),
+      flowScale,
+    );
     if (Math.abs(sheet.unexplained) > sheet.tolerance) {
       throw new Error(`Unexplained ${quantity} flux: ${sheet.unexplained}.`);
     }

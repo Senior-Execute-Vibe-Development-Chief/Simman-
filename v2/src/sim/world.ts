@@ -2,6 +2,8 @@ import {
   BYTE_MASK,
   DEV_GRID_HEIGHT,
   DEV_GRID_WIDTH,
+  TOY_GRID_HEIGHT,
+  TOY_GRID_WIDTH,
   HASH_HEX_WIDTH,
   HASH_LANE_SEED,
   HASH_NUMBER_BYTES,
@@ -17,20 +19,23 @@ import { ConservationLedger } from "./conservation";
 import { allocateFields, fieldEntries, type NumericField } from "./fields";
 import type { Substrate } from "./substrate";
 import { initializePeople, stepPeople } from "./people/index";
+import { HARVEST_CELLS } from "./people/harvest";
 import { evaluateWake, recordArrivals } from "./people/wake";
 import type { HearthState } from "./people/types";
 import { wakeTargetStep } from "./horizon";
+import { maybeStepTaking } from "./politics";
+import type { Community, ObligationEdge } from "./politics/types";
 import {
   monthIndex,
   nextMonth,
   resolveSchedule,
   resolveSolveSchedule,
-  resolveSolveStride,
+  solveClockMonths,
   type PassSchedule,
   type WorldPhase,
 } from "./scheduler";
 
-export type GridPreset = "dev" | "target";
+export type GridPreset = "dev" | "target" | "toy";
 
 export interface GridDimensions {
   readonly width: number;
@@ -58,14 +63,23 @@ export interface WorldDebug {
   peopleBirths: number;
   peopleDeaths: number;
   peopleMigration: number;
+  /** Famine deaths of the last people firing (W29), persons. */
+  peopleFamineDeaths: number;
+  /** Food-sheet channel totals of the last harvest firing (W31), tonnes. */
+  foodHarvest: number;
+  foodEaten: number;
+  foodSpoiled: number;
+  foodUnstorable: number;
   /** Neighbour pairs priced by the last movement firing (W6: a full region prices none). */
   pricedPairs: number;
+  /** Wall time spent in the last politics.taking firings this session (M4). */
+  politicsTakingMs: number;
 }
 
-/** The append-only event log: hearth ignitions and the wake, the first world content it holds. */
+/** The append-only event log: hearth ignitions, the wake, and M4 taking events. */
 export interface WorldEvent {
   readonly step: number;
-  readonly kind: "hearth" | "wake";
+  readonly kind: "hearth" | "wake" | "tribute" | "plunder" | "community";
   readonly cell: number;
   readonly packageId?: string;
 }
@@ -77,10 +91,11 @@ export class World {
   readonly height: number;
   readonly N: number;
   readonly config: WorldConfig;
-  /** The monthly regime's schedule; the solve regime's is every pass at the solve stride. */
+  /** The monthly regime's schedule, and the multi-year regime's (W12: each pass on its own stride). */
   readonly awakeSchedule: readonly PassSchedule[];
-  readonly solveStride: number;
   readonly solveSchedule: readonly PassSchedule[];
+  /** Months one solve step advances: the largest that lands on every solve cadence. */
+  readonly solveClock: number;
   readonly ledger: ConservationLedger;
   readonly debug: WorldDebug;
   readonly substrate?: Substrate;
@@ -89,6 +104,13 @@ export class World {
   children!: Float64Array;
   working!: Float64Array;
   elders!: Float64Array;
+  works!: Float64Array;
+  famineYears!: Float64Array;
+  farmedYears!: Float64Array;
+  /** Tonnes of storable food per km² in the cell's granaries (W31). */
+  store!: Float64Array;
+  /** The harvest anomaly's raw AR(1) state on the weather grid (W29): the last year read, persisted and hashed. */
+  harvestZ: Float64Array;
   /** Authoritative per-package farmer masses; allocated by the people layer. */
   farmers: Record<string, Float64Array> = {};
   peopleInitialized = false;
@@ -105,6 +127,12 @@ export class World {
   cagedStep = MATH_NEGATIVE_ONE;
   cagedCell = MATH_NEGATIVE_ONE;
   events: WorldEvent[] = [];
+  /** Condensed communities (M4); rebuilt each taking firing, unrest carried by seat. */
+  communities: Community[] = [];
+  /** First obligation edges (M4); tribute subordination only in this cut. */
+  obligationEdges: ObligationEdge[] = [];
+  /** Scratch: cell → community seat id (−1 unclaimed); not hashed alone (derived). */
+  _communityOwner: Int32Array;
 
   constructor(options: WorldOptions) {
     const dimensions = dimensionsFor(options.grid);
@@ -133,15 +161,23 @@ export class World {
       peopleBirths: 0,
       peopleDeaths: 0,
       peopleMigration: 0,
+      peopleFamineDeaths: 0,
+      foodHarvest: 0,
+      foodEaten: 0,
+      foodSpoiled: 0,
+      foodUnstorable: 0,
       pricedPairs: 0,
+      politicsTakingMs: 0,
     };
     this.cellAreaKm2 = new Float64Array(this.N);
     this.capField = new Float64Array(this.N);
+    this.harvestZ = new Float64Array(HARVEST_CELLS);
+    this._communityOwner = new Int32Array(this.N).fill(MATH_NEGATIVE_ONE);
     if (this.substrate) initializePeople(this);
     else allocateFields(this as unknown as Record<string, unknown>, this.N);
     this.awakeSchedule = resolveSchedule(this);
-    this.solveStride = resolveSolveStride(this);
-    this.solveSchedule = resolveSolveSchedule(this, this.solveStride);
+    this.solveSchedule = resolveSolveSchedule(this);
+    this.solveClock = solveClockMonths(this.solveSchedule);
     // A world without a substrate has nothing to solve; a peopled world
     // opens in the solve regime unless its chosen epoch is the opening.
     if (this.substrate) {
@@ -163,40 +199,48 @@ export class World {
 
 export function dimensionsFor(grid: GridPreset): GridDimensions {
   if (grid === "dev") return { width: DEV_GRID_WIDTH, height: DEV_GRID_HEIGHT };
+  if (grid === "toy") return { width: TOY_GRID_WIDTH, height: TOY_GRID_HEIGHT };
   return { width: TARGET_GRID_WIDTH, height: TARGET_GRID_HEIGHT };
 }
 
 /**
- * The months one solve step advances: the solve stride, or the remainder
- * to a chosen epoch so the world wakes at exactly that year.
+ * The months one solve step advances: the solve clock, or the remainder to
+ * a chosen epoch so the world wakes at exactly that year.
  */
 export function solveStepMonths(world: World): number {
   const target = wakeTargetStep(world.config);
   if (target !== undefined && Number.isFinite(target)) {
-    return Math.max(1, Math.min(world.solveStride, target - world.step));
+    return Math.max(1, Math.min(world.solveClock, target - world.step));
   }
-  return world.solveStride;
+  return world.solveClock;
 }
 
 export function stepWorld(world: World): void {
   if (world.substrate && world.phase === "solve") {
     const dtMonths = solveStepMonths(world);
-    stepPeople(world, dtMonths);
+    // On the clock's own lattice each pass fires on its own stride, as in
+    // the awake regime. A step SHORTENED to land exactly on a chosen epoch
+    // is off that lattice, so it flushes every pass over the remainder
+    // instead: the epoch is an initial condition and must be exact.
+    const committed = stepPeople(world, dtMonths < world.solveClock ? dtMonths : undefined);
     world.step += dtMonths;
     world.calendarMonth = monthIndex(world.calendarMonth + dtMonths);
     world.debug.ticks++;
-    recordArrivals(world);
-    evaluateWake(world);
+    // A step on which nothing fired changed nothing either reads.
+    if (committed) recordArrivals(world);
+    evaluateWake(world, committed);
     return;
   }
   // The recorder reads committed state; a month in which nothing fired
   // (most months, once movement runs on its own multi-year stride — W6)
   // costs nothing.
   const committed = world.substrate ? stepPeople(world) : false;
+  if (committed) recordArrivals(world);
+  // M4 taking: same step as the people passes (after harvest/store commit).
+  maybeStepTaking(world);
   world.step++;
   world.calendarMonth = nextMonth(world.calendarMonth);
   world.debug.ticks++;
-  if (committed) recordArrivals(world);
 }
 
 export function runSteps(world: World, steps: number): void {
@@ -299,6 +343,17 @@ export function hashWorld(world: World): string {
     cagedStep: world.cagedStep,
     cagedCell: world.cagedCell,
     events: world.events,
+    communities: world.communities.map((community) => ({
+      id: community.id,
+      seat: community.seat,
+      members: community.members,
+      people: community.people,
+      exit: community.exit,
+      exitBlocked: community.exitBlocked,
+      appropriable: community.appropriable,
+      unrest: community.unrest,
+    })),
+    obligationEdges: world.obligationEdges,
   }));
   hashNumber(hash, world.step);
   hashNumber(hash, world.calendarMonth);
@@ -323,6 +378,9 @@ export function hashWorld(world: World): string {
     hashNumber(hash, years.length);
     hashField(hash, years);
   });
+  hashText(hash, "harvestZ");
+  hashNumber(hash, world.harvestZ.length);
+  hashField(hash, world.harvestZ);
   if (peopleState._peopledMask) {
     hashText(hash, "peopledMask");
     hashBytes(hash, peopleState._peopledMask);

@@ -48,6 +48,10 @@ export class TravelEngine {
       substrate.rivers.direction,
       northSouthKm(substrate),
       rowEastWestKm(substrate),
+      substrate.walkKm,
+      substrate.walkAscent,
+      substrate.walkDescent,
+      substrate.crossings,
     );
     router.preprocess();
     return new TravelEngine(substrate, router);

@@ -10,17 +10,30 @@ import {
 } from "../constants";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { deriveCapacity } from "./capacity";
-import { activePackageIndices, deriveTechniqueFromFarmers, initializeCropFields, refreshTechniqueShare } from "./crop";
-import { cellAreasKm2, annualClimateFromSubstrate, fillStaticHabitability } from "./habitability";
+import {
+  activePackageIndices,
+  deriveTechniqueFromFarmers,
+  initializeCropFields,
+  initializeHearthSiteQuality,
+  refreshTechniqueShare,
+} from "./crop";
+import {
+  annualClimateFromSubstrate,
+  applyWildStands,
+  cellAreasKm2,
+  fillStaticHabitability,
+} from "./habitability";
 import { grow } from "./growth";
 import { fillMigrationShareRows, migrate } from "./migration";
 import { convertFarmers, initializeTechnique, prepareTechnique, stepTechnique } from "./technique";
+import { stepWorks } from "./works";
+import { buildHarvestRows, harvestBooks, seedHarvestYears, stepHarvest } from "./harvest";
 import { asPeopleWorld, type PeopleWorld } from "./types";
 import { World } from "../world";
 import type { WorldOptions } from "../world";
 import { createPeopleKernel, defaultPeopleWorkers } from "../peopleKernel";
 import { allocateFields } from "../fields";
-import { passDtMonths, passFires } from "../scheduler";
+import { passDtMonths, passFires, type PassSchedule } from "../scheduler";
 import { fixedPeopleBands } from "./bands";
 import { buildPeopleNeighborTable } from "./neighbors";
 
@@ -31,6 +44,8 @@ export const peoplePhaseMilliseconds: Record<string, number> = {
   growth: 0,
   migration: 0,
   cohorts: 0,
+  works: 0,
+  harvest: 0,
   ledger: 0,
 };
 
@@ -102,8 +117,6 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._basinFree = new Float64Array(length);
   world._basinRoomSum = new Float64Array((world.width + 1) * (world.height + 1));
   world._basinFreeSum = new Float64Array((world.width + 1) * (world.height + 1));
-  world._bestYield = new Float64Array(landCount);
-  world._bestYieldDigest = "";
   world._arrivalStep = new Int32Array(landCount);
   world._arrivalStep.fill(MATH_NEGATIVE_ONE);
   world._arrivalPackage = new Uint8Array(landCount);
@@ -126,19 +139,49 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   // solve regime's conductance (a stride of a year or more sees every season).
   world._migrationDaysPerKmByMonth = new Array(MONTHS_PER_YEAR + 1).fill(undefined);
   world._waterAccess = new Float64Array(length);
+  world._runoffAccess = new Float64Array(length);
+  world._runoffInflow = new Float64Array(length);
+  world._surfaceAccess = new Float64Array(length);
   world._reliefMult = new Float64Array(length);
+  world._irrigable = new Float64Array(length);
+  world._yieldCv = new Float64Array(length);
+  world._spoilage = new Float64Array(length);
+  world._yearMul = new Float64Array(landCount);
+  world._harvestRowStart = new Int32Array(landCount + 1);
+  world._harvestRowCell = new Int32Array(0);
+  world._harvestRowWeight = new Float64Array(0);
+  world._harvestDeathsByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookHarvestByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookEatenByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookSpoiledByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._harvestBookUnstorableByBand = new Float64Array(PEOPLE_BAND_COUNT);
+  world._severityDeathPersons = new Float64Array(length);
+  world._severityAtRiskPersons = new Float64Array(length);
+  world._harvestRunDeaths = 0;
+  world._harvestRunDenom = 0;
   world._foragerCapacity = new Float64Array(length);
+  world._foragerTerrestrial = new Float64Array(length);
   world._diseaseBurden = new Float64Array(length);
   world._migrationShareRow = new Float64Array(world.height);
   world._canGrow = [];
   world._nativeRanges = [];
   world._nativeCells = [];
+  world._cropFit = [];
+  world._standingGain = [];
+  world._standRichness = [];
+  world._standCapacity = [];
+  world._hearthSiteQuality = [];
+  world._wildEnvelopes = [];
+  world._standBest = new Float64Array(length);
+  world._standCapacityBest = new Float64Array(length);
   world._hearthYears = [];
+  world._hearthDone = [];
   world._dominantPackage = new Uint8Array(length);
   const neighbors = buildPeopleNeighborTable(world);
   world._neighborTargets = neighbors.targets;
   world._neighborDistanceKm = neighbors.distanceKm;
   world._neighborMode = neighbors.mode;
+  world._neighborAscent = neighbors.ascent;
 }
 
 function seedPopulation(world: PeopleWorld): number {
@@ -162,10 +205,14 @@ export function initializePeople(worldInput: World): PeopleWorld {
   const world = asPeopleWorld(worldInput);
   if (world.peopleInitialized) return world;
   allocatePeopleScratch(world);
+  seedHarvestYears(world);
   annualClimateFromSubstrate(world);
   fillStaticHabitability(world);
+  // The rows read the routed water and the exposures the map just derived (W30).
+  buildHarvestRows(world);
   fillMigrationShareRows(world);
   initializeCropFields(world);
+  applyWildStands(world);
   prepareTechnique(world);
   const forceTypeScript = world.config.peopleKernel === "ts";
   if (!forceTypeScript) {
@@ -182,6 +229,10 @@ export function initializePeople(worldInput: World): PeopleWorld {
   if (!world._wasmPeopleKernel) {
     allocateFields(world as unknown as Record<string, unknown>, world.N);
   }
+  // Site quality reads the farmed capacity a FIRST cultivator would get, so
+  // it needs the technique field (all zeros here) — hence after the kernel
+  // or the oracle has allocated the authoritative fields.
+  initializeHearthSiteQuality(world);
   world.ledger.beginPass(
     "people",
     world.people,
@@ -238,16 +289,25 @@ function normalizeCohorts(world: PeopleWorld): void {
 }
 
 /**
- * One firing of the people passes. In the AWAKE regime each pass fires on
- * its own stride; in the SOLVE regime (`solveDtMonths` given) every pass
- * fires with that dt, foragers do not hop, and conductance is the annual
- * mean — the kernel's own passes on the clock the farmer bound permits (W5).
+ * One firing of the people passes. In BOTH regimes each pass fires on its
+ * own stride and integrates that stride (W12: the solve regime used to run
+ * every pass at one stride, which dragged growth, capacity, adoption and
+ * cohorts down to migration's bound). The solve regime still differs in
+ * what it runs — foragers do not hop, conductance is the annual mean — but
+ * no longer in how it is scheduled.
+ *
+ * `flushDtMonths` is the one exception, and it is a clock operation: a
+ * solve step shortened to land exactly on a chosen epoch is off the solve
+ * clock's lattice, so every pass fires once over the remainder.
  */
-export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
+export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   const world = initializePeople(worldInput);
-  const solve = solveDtMonths !== undefined;
-  const due = new Map(
-    world.schedule.map((schedule) => [schedule.name, solve || passFires(world, schedule)]),
+  const flush = flushDtMonths !== undefined;
+  const fires = (schedule: PassSchedule | undefined): boolean => (
+    schedule !== undefined && (flush || passFires(world, schedule))
+  );
+  const dtOf = (schedule: PassSchedule): number => (
+    flush ? flushDtMonths : passDtMonths(schedule)
   );
   const techniqueSchedule = world.schedule.find(({ name }) => name === "people.technique");
   const conversionSchedule = world.schedule.find(({ name }) => name === "people.conversion");
@@ -255,13 +315,17 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   const growthSchedule = world.schedule.find(({ name }) => name === "people.growth");
   const migrationSchedule = world.schedule.find(({ name }) => name === "people.migration");
   const cohortsSchedule = world.schedule.find(({ name }) => name === "people.cohorts");
-  const techniqueDue = due.get("people.technique") === true;
-  const conversionDue = due.get("people.conversion") === true;
-  const capacityDue = due.get("people.capacity") === true;
-  const growthDue = due.get("people.growth") === true;
-  const migrationDue = due.get("people.migration") === true;
-  const cohortsDue = due.get("people.cohorts") === true;
-  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue) return false;
+  const worksSchedule = world.schedule.find(({ name }) => name === "people.works");
+  const harvestSchedule = world.schedule.find(({ name }) => name === "people.harvest");
+  const techniqueDue = fires(techniqueSchedule);
+  const conversionDue = fires(conversionSchedule);
+  const capacityDue = fires(capacitySchedule);
+  const growthDue = fires(growthSchedule);
+  const migrationDue = fires(migrationSchedule);
+  const cohortsDue = fires(cohortsSchedule);
+  const worksDue = fires(worksSchedule);
+  const harvestDue = fires(harvestSchedule);
+  if (!techniqueDue && !conversionDue && !capacityDue && !growthDue && !migrationDue && !cohortsDue && !worksDue && !harvestDue) return false;
 
   world.ledger.beginPass(
     "people",
@@ -273,12 +337,12 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
   );
   if (techniqueDue) {
     const started = performance.now();
-    stepTechnique(world, solve ? solveDtMonths : passDtMonths(techniqueSchedule!));
+    stepTechnique(world, dtOf(techniqueSchedule!));
     addPhaseTime("technique", started);
   }
   if (conversionDue) {
     const started = performance.now();
-    convertFarmers(world, solve ? solveDtMonths : passDtMonths(conversionSchedule!));
+    convertFarmers(world, dtOf(conversionSchedule!));
     addPhaseTime("conversion", started);
   }
   if (capacityDue) {
@@ -286,10 +350,38 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
     deriveCapacity(world);
     addPhaseTime("capacity", started);
   }
+  // The harvest years (W29) and the store (W31): the firing's years applied
+  // to the authoritative fields in place, before growth reads them — the
+  // year's dead do not bear the year's children. The food sheet opens only
+  // when the harvest fires; between firings the store does not move.
+  const famineDeaths = harvestDue
+    ? (() => {
+      world.ledger.beginPass(
+        "food",
+        world.store,
+        "harvest",
+        "eaten",
+        world.cellAreaKm2,
+        world._landCells,
+      );
+      const started = performance.now();
+      const result = stepHarvest(world, dtOf(harvestSchedule!));
+      const books = harvestBooks(world);
+      world.ledger.recordChannel("food", "spoiled", 0, books.spoiled);
+      world.ledger.recordChannel("food", "unstorable", 0, books.unstorable);
+      world.ledger.endPass("food", world.store, books.harvest, books.eaten, world._landCells);
+      world.debug.foodHarvest = books.harvest;
+      world.debug.foodEaten = books.eaten;
+      world.debug.foodSpoiled = books.spoiled;
+      world.debug.foodUnstorable = books.unstorable;
+      addPhaseTime("harvest", started);
+      return result;
+    })()
+    : 0;
   const growth = growthDue
     ? (() => {
       const started = performance.now();
-      const result = grow(world, solve ? solveDtMonths : passDtMonths(growthSchedule!));
+      const result = grow(world, dtOf(growthSchedule!));
       addPhaseTime("growth", started);
       return result;
     })()
@@ -298,7 +390,7 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
     ? (() => {
       const started = performance.now();
       // A firing of a year or more sees every season: the annual-mean table.
-      const dt = solve ? solveDtMonths : passDtMonths(migrationSchedule!);
+      const dt = dtOf(migrationSchedule!);
       const result = migrate(
         world,
         dt >= MONTHS_PER_YEAR ? MONTHS_PER_YEAR : world.calendarMonth,
@@ -332,20 +424,35 @@ export function stepPeople(worldInput: World, solveDtMonths?: number): boolean {
     normalizeCohorts(world);
     addPhaseTime("cohorts", started);
   }
+  // The works build and rot on the firing's FINAL people and capacity (W28,
+  // v1's order), and the capacity is derived again at once: it is a present
+  // consequence of the state, re-derived on load (capacity.ts), so it must
+  // never lag the works — v1's one-firing lag put a loaded world a firing
+  // ahead of the one it was saved from (the smoke's continuation check).
+  if (worksDue) {
+    const started = performance.now();
+    stepWorks(world, dtOf(worksSchedule!));
+    deriveCapacity(world);
+    addPhaseTime("works", started);
+  }
   const ledgerStarted = performance.now();
   if (migrationDue) world.ledger.recordChannel("people", "migration", migration, migration);
+  if (harvestDue) world.ledger.recordChannel("people", "famine", 0, famineDeaths);
   world.ledger.endPass("people", world.people, growth.births, growth.deaths, world._landCells);
   world.ledger.assertAll();
   addPhaseTime("ledger", ledgerStarted);
   world.debug.conservationChecks++;
   for (const schedule of world.schedule) {
-    if (!solve && !passFires(world, schedule)) continue;
+    if (!fires(schedule)) continue;
+    // politics.taking is counted in maybeStepTaking; it is not a people pass.
+    if (schedule.name.startsWith("politics.")) continue;
     world.debug.peoplePasses[schedule.name] = (world.debug.peoplePasses[schedule.name] ?? 0) + 1;
   }
   world.debug.peopleBirths = growth.births;
   world.debug.peopleDeaths = growth.deaths;
   world.debug.peopleMigration = migration;
-  return growthDue || migrationDue;
+  world.debug.peopleFamineDeaths = famineDeaths;
+  return growthDue || migrationDue || famineDeaths > 0;
 }
 
 export function populationTotal(worldInput: World): number {

@@ -5,6 +5,7 @@ import { printProvenance, provenance } from "./lib/provenance";
 import { buildSubstrate } from "../src/sim/substrate";
 import { createTravelEngine, TravelEngine } from "../src/sim/travel/engine";
 import { runSteps, type GridPreset, World } from "../src/sim/world";
+import { solveSpanMonths } from "../src/sim/scheduler";
 import { ensurePeopleWasm, defaultPeopleWorkers, resizePeoplePool } from "../src/sim/peopleKernel";
 import {
   peoplePhaseMilliseconds,
@@ -17,7 +18,12 @@ import os from "node:os";
 // stride, growth yearly, most months are empty), so the tick row is the
 // mean month over a whole cycle rather than ten months that hold one firing.
 const BENCH_TICKS = 84;
-const SOLVE_TICKS = 10;
+// Ten of the solve regime's COARSEST firings. Counted in clock steps the
+// row would stop being comparable the moment the passes took different
+// strides (W12): at the shipped grid ten steps are ten years of history,
+// at the reference grid seventy. Counted in spans it is seventy years of
+// history at either grid, and the ratchet reads milliseconds per year.
+const SOLVE_SPANS = 10;
 const CADENCE_TICKS = 12;
 
 interface BenchRow {
@@ -28,9 +34,15 @@ interface BenchRow {
   readonly queryMilliseconds: number;
   readonly distanceMapMilliseconds: number;
   readonly tickMilliseconds: number;
-  /** W5: one solve-regime firing (serial), the ratchet's companion to the awake tick, and the derived stride. */
+  /**
+   * W5/W12: the solve regime (serial), the ratchet's companion to the awake
+   * tick. The ratchet reads the per-YEAR row, which survives a change of
+   * schedule; the per-step row is what one frame of the solve costs.
+   */
+  readonly solveYearMilliseconds: number;
   readonly solveStepMilliseconds: number;
-  readonly solveStride: number;
+  readonly solveClock: number;
+  readonly solveStrides: Record<string, number>;
   readonly longRunMilliseconds?: number;
   readonly provenance: ReturnType<typeof provenance>;
 }
@@ -87,9 +99,16 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     config: { preset: "earth_sim", peopleKernel: "wasm", peopleWorkers: 1, wake: "never" },
     substrate,
   });
+  const solveSteps = Math.max(
+    1,
+    Math.round(SOLVE_SPANS * solveSpanMonths(solveWorld.solveSchedule) / solveWorld.solveClock),
+  );
   const solveStart = performance.now();
-  runSteps(solveWorld, SOLVE_TICKS);
-  const solveStepMilliseconds = (performance.now() - solveStart) / SOLVE_TICKS;
+  runSteps(solveWorld, solveSteps);
+  const solveElapsed = performance.now() - solveStart;
+  const solveStepMilliseconds = solveElapsed / solveSteps;
+  const solveYearMilliseconds = solveElapsed
+    / (solveSteps * solveWorld.solveClock / MONTHS_PER_YEAR);
   const result = {
     grid,
     substrateMilliseconds,
@@ -98,8 +117,12 @@ async function benchmark(grid: GridPreset): Promise<BenchRow> {
     queryMilliseconds,
     distanceMapMilliseconds,
     tickMilliseconds,
+    solveYearMilliseconds,
     solveStepMilliseconds,
-    solveStride: solveWorld.solveStride,
+    solveClock: solveWorld.solveClock,
+    solveStrides: Object.fromEntries(
+      solveWorld.solveSchedule.map((row) => [row.name, row.stride]),
+    ),
     ...(longRunMilliseconds === undefined ? {} : { longRunMilliseconds }),
     provenance: provenance(world),
   };
@@ -190,7 +213,7 @@ if (process.argv.includes("--check")) {
     "queryMilliseconds",
     "distanceMapMilliseconds",
     "tickMilliseconds",
-    "solveStepMilliseconds",
+    "solveYearMilliseconds",
   ] as const;
   for (const row of rows) {
     const baseline = baselines[row.grid];
@@ -208,7 +231,7 @@ console.log(JSON.stringify({
   cadence,
   format: "milliseconds",
   peopleTickSamples: BENCH_TICKS,
-  solveStepSamples: SOLVE_TICKS,
+  solveSpanSamples: SOLVE_SPANS,
   cadenceTickSamples: CADENCE_TICKS,
   ceilingMilliseconds: 15.5,
   horizonTicks: TARGET_HORIZON_TICKS,

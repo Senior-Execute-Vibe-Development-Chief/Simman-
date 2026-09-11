@@ -1,4 +1,6 @@
 import {
+  DIFFUSION_MSD_PER_DIFFUSIVITY,
+  FOOD_RATION_TONNES_PER_PERSON_YEAR,
   MATH_NEGATIVE_ONE,
   MONTHS_PER_YEAR,
   PEOPLE_CAPACITY_FLOOR_PER_KM2,
@@ -9,12 +11,12 @@ import {
   PEOPLE_MIGRATION_MAX_SUBSTEPS,
   PEOPLE_NEIGHBOR_OPPOSITE,
 } from "../constants";
-import { monthIndex } from "../scheduler";
+import { meanSquareHopKm2, monthIndex } from "../scheduler";
 import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm } from "../travel/cost";
 import { CROP_PACKAGES } from "../../ported/worldgen/cropPackages.js";
 import { activePackageIndices, packageCapacity } from "./crop";
 import type { PeopleWorld } from "./types";
-import { coastalHopCost } from "./neighbors";
+import { coastalHopCost, landStepCost } from "./neighbors";
 
 /** Two weights per pair: the forager weight then the farmer weight. */
 const PAIR_GROUPS = 2;
@@ -25,13 +27,34 @@ function sumBands(values: Float64Array): number {
   return total;
 }
 
+/**
+ * The per-firing share of a group that hops, for a diffusivity in km2/yr.
+ *
+ * A LATTICE HOP IS NOT A DIFFUSIVITY (W12, QUESTIONS #55). Moving a fraction
+ * `s` of a cell's people one hop per unit time delivers a diffusion
+ * coefficient of `s * <d^2> / 4`, because two-dimensional diffusion spreads
+ * as `<r^2> = 4Dt`. To deliver the diffusivity the constant NAMES, the share
+ * must therefore be `4 * D * dt / <d^2>`.
+ *
+ * It was `D * dt / area`, which is smaller by `4 * area / <d^2>` — a factor
+ * of 2.67 on a square cell — so the scheme delivered about D/2.67 and the
+ * front, which runs as the square root, came out at about 0.6 of its design.
+ * Measured: 0.553 km/yr at the shipped grid against the ledger's own
+ * `2*sqrt((r + adoption) * D)` = 0.936, with the Balkans 822 years late and
+ * the Rhine 2,499. No value of the diffusivity fixes that, because dev
+ * measured 1.077 — ABOVE design — so the error had opposite signs at the two
+ * grids, which is the signature of a discretisation fault rather than a
+ * wrong constant.
+ */
 export function migrationShareForArea(
   area_: number,
   dtMonths = 1,
-  diffusivity = PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR,
+  diffusivity: number,
+  height: number,
 ): number {
   const area = Math.max(1, area_);
-  const annualShare = diffusivity / area;
+  const meanSquareHop = meanSquareHopKm2(area, height);
+  const annualShare = DIFFUSION_MSD_PER_DIFFUSIVITY * diffusivity / meanSquareHop;
   const rawShare = dtMonths === 1
     ? annualShare / MONTHS_PER_YEAR
     : annualShare * dtMonths / MONTHS_PER_YEAR;
@@ -52,8 +75,8 @@ export function migrationShareForArea(
 export function fillMigrationShareRows(world: PeopleWorld, dtMonths = 1): void {
   for (let y = 0; y < world.height; y++) {
     const area = world.cellAreaKm2[y * world.width] ?? 0;
-    world._migrationShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
-    world._migrationFarmerShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
+    world._migrationShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
+    world._migrationFarmerShareRow[y] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
   }
 }
 
@@ -61,7 +84,11 @@ function conductance(world: PeopleWorld, target: number, slot: number): number {
   const distance = world._neighborDistanceKm[slot] ?? 0;
   const cost = world._neighborMode[slot] === 1
     ? coastalHopCost(distance)
-    : (world._migrationDaysPerKm[target] ?? Number.POSITIVE_INFINITY) * distance;
+    : landStepCost(
+      world._migrationDaysPerKm[target] ?? Number.POSITIVE_INFINITY,
+      distance,
+      world._neighborAscent[slot] ?? 0,
+    );
   return Number.isFinite(cost) && cost >= 0 ? 1 / (1 + cost) : 0;
 }
 
@@ -76,16 +103,53 @@ function conductance(world: PeopleWorld, target: number, slot: number): number {
  * drew the foragers of all eight neighbours in as foragers: the flood the
  * W5 flat-field check measured at 58 %, QUESTIONS #40.) Room below the
  * numerical floor is no room, so a full region prices as exactly nothing.
+ *
+ * W33 / P22 (i): in the awake regime the farmer room is this year's food —
+ * `packageCapacity × yearMul` (mean when the year is unread) plus the
+ * store as persons/km² — so a failed harvest and an empty granary push
+ * people toward the neighbour whose year or store is better. The solve
+ * regime keeps the mean-year room: it has no monthly year to answer.
  */
 function foragerRoom(world: PeopleWorld, target: number, targetPacked: number): number {
   const room = (world._foragerCapacity[target] ?? 0) - (world._migrationPopulation[targetPacked] ?? 0);
   return room > PEOPLE_CAPACITY_FLOOR_PER_KM2 ? room * (world.cellAreaKm2[target] ?? 0) : 0;
 }
 
-function farmerRoom(world: PeopleWorld, sourcePacked: number, target: number, targetPacked: number): number {
+/** The land a farmer package holds at a target, before the store and the people. */
+function farmerLandCapacity(
+  world: PeopleWorld,
+  target: number,
+  targetPacked: number,
+  packageIndex: number,
+  flight: boolean,
+): number {
+  const mean = packageCapacity(world, target, packageIndex);
+  if (!flight) return mean;
+  const mul = world._yearMul[targetPacked] ?? 0;
+  return mean * (mul > 0 ? mul : 1);
+}
+
+function storeCapacityPersons(world: PeopleWorld, target: number, flight: boolean): number {
+  if (!flight) return 0;
+  return Math.max(0, world.store[target] ?? 0) / FOOD_RATION_TONNES_PER_PERSON_YEAR;
+}
+
+function farmerRoom(
+  world: PeopleWorld,
+  sourcePacked: number,
+  target: number,
+  targetPacked: number,
+  flight: boolean,
+): number {
   const sourceCell = world._landCells[sourcePacked] ?? 0;
-  const farmed = packageCapacity(world, target, world._dominantPackage[sourceCell] ?? 0);
-  const room = farmed - (world._migrationPopulation[targetPacked] ?? 0);
+  const land = farmerLandCapacity(
+    world,
+    target,
+    targetPacked,
+    world._dominantPackage[sourceCell] ?? 0,
+    flight,
+  );
+  const room = land + storeCapacityPersons(world, target, flight) - (world._migrationPopulation[targetPacked] ?? 0);
   return room > PEOPLE_CAPACITY_FLOOR_PER_KM2 ? room * (world.cellAreaKm2[target] ?? 0) : 0;
 }
 
@@ -100,6 +164,7 @@ function prepareCell(
   packed: number,
   growthPrepared: boolean,
   active: readonly number[],
+  flight: boolean,
 ): void {
   const cell = world._landCells[packed] ?? 0;
   const total = growthPrepared
@@ -128,9 +193,10 @@ function prepareCell(
     (packed + 1) * PEOPLE_CROP_NEIGHBOR_COUNT * PAIR_GROUPS,
   );
   world._roomForagers[packed] = (world._foragerCapacity[cell] ?? 0) - population > PEOPLE_CAPACITY_FLOOR_PER_KM2 ? 1 : 0;
+  const store = storeCapacityPersons(world, cell, flight);
   let farmerRoomFlag = 0;
   for (const packageIndex of active) {
-    if (packageCapacity(world, cell, packageIndex) - population > PEOPLE_CAPACITY_FLOOR_PER_KM2) {
+    if (farmerLandCapacity(world, cell, packed, packageIndex, flight) + store - population > PEOPLE_CAPACITY_FLOOR_PER_KM2) {
       farmerRoomFlag = 1;
       break;
     }
@@ -192,9 +258,12 @@ export function migrate(
   dtMonths = 1,
   growthPrepared = true,
 ): number {
+  // W33: flight is awake-only — the year's multiple and the store scale the
+  // farmer room the hotspot reads. The solve regime keeps the mean-year room.
+  const flight = world.phase === "awake";
   const wasm = world._wasmPeopleKernel;
   if (wasm) {
-    wasm.beginMigration(month, dtMonths, growthPrepared);
+    wasm.beginMigration(month, dtMonths, growthPrepared, flight);
     wasm.prepareMigration();
     wasm.migrateSources();
     wasm.debitMigration();
@@ -233,8 +302,8 @@ export function migrate(
     for (let row = band.rowLo; row < band.rowHi; row++) {
       // Every firing prices its own stride, each group its own share.
       const area = world.cellAreaKm2[row * world.width] ?? 0;
-      world._migrationShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR);
-      world._migrationFarmerShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR);
+      world._migrationShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR, world.height);
+      world._migrationFarmerShareRow[row] = migrationShareForArea(area, dtMonths, PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR, world.height);
     }
     for (let packed = band.rawLo; packed < band.rawHi; packed++) {
       const cell = world._landCells[packed] ?? 0;
@@ -254,7 +323,7 @@ export function migrate(
         world._workingMass[packed] = workingNext[packed] ?? 0;
         world._eldersMass[packed] = elderNext[packed] ?? 0;
       }
-      prepareCell(world, packed, growthPrepared, active);
+      prepareCell(world, packed, growthPrepared, active, flight);
     }
   }
 
@@ -289,7 +358,7 @@ export function migrate(
           }
         }
         if (priceFarmers) {
-          const room = farmerRoom(world, packed, target, targetPacked);
+          const room = farmerRoom(world, packed, target, targetPacked, flight);
           if (room > 0) {
             const weight = ease * room;
             world._pairWeight[slot * PAIR_GROUPS + 1] = weight;

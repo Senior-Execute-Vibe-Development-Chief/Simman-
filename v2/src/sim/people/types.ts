@@ -13,6 +13,8 @@ export interface HearthState {
   ignited: boolean;
   /** The world step the hearth ignited at (the event log's first entries). */
   readonly ignitedStep: number;
+  /** Cells of the range that crossed the lag inside this hearth's basin (W8: a hearth is a region, its count a measurement). */
+  regionCells: number;
 }
 
 export interface PeopleWorld extends World {
@@ -22,6 +24,8 @@ export interface PeopleWorld extends World {
   /** Authoritative per-package farmer masses, in persons/km² over land order. */
   farmers: Record<string, Float64Array>;
   capField: Float64Array;
+  /** The built land capital (W28), full grid, 0..1: the share of a cell's improvable ground improved. Authoritative state (saved, hashed); the wasm kernel owns it. */
+  works: Float64Array;
   cellAreaKm2: Float64Array;
   _peopleNext: Float64Array;
   _techniqueNext: Float64Array;
@@ -54,12 +58,28 @@ export interface PeopleWorld extends World {
   _techniqueSuitability: Float64Array;
   /** Per-package annual climate/season admissibility, packed to land. */
   _canGrow: readonly Uint8Array[];
+  /** Per-package climate fit (the crop bell over its growing months, 0..1), packed to land (W8). Carries the drowning a crop that cannot drain suffers, never the paddy a wetland crop gains (W15). */
+  _cropFit: readonly Float64Array[];
+  /** Per-package paddy gain relative to that fit, packed to land (W15): the standing water a wetland crop gains by is impounded, so capacity pays it out with the technique regime. Zero for every crop that only drowns. */
+  _standingGain: readonly Float64Array[];
+  /** Per-package fitted wild envelope (W9 provenance: the occurrence count and the seasonal centre and tolerance). */
+  _wildEnvelopes: ReadonlyArray<{ readonly cells: number; readonly centre: readonly number[]; readonly tolerance: readonly number[] }>;
+  /** Per-package domestication site quality (0..1 of the crop's best ground), packed to land (W10, static). */
+  _hearthSiteQuality: readonly Float64Array[];
+  /** Per-package wild-stand richness (0..1) and the persons/km² the stand feeds, packed to land (W8, static). */
+  _standRichness: readonly Float64Array[];
+  _standCapacity: readonly Float64Array[];
+  /** Per cell: the richest stand's richness and capacity (W8, static; the lens and the forager capacity read these). */
+  _standBest: Float64Array;
+  _standCapacityBest: Float64Array;
   /** Per-package native wild-progenitor ranges, packed to land. */
   _nativeRanges: readonly Uint8Array[];
   /** Per-package list of packed native cells; the hearth law accrues on exactly these. */
   _nativeCells: readonly Int32Array[];
   /** Peopled-basin years accrued per native cell per package (state: saved and hashed). */
   _hearthYears: readonly Float64Array[];
+  /** Per native cell per package: the cell has ignited, joined a hearth, or can never (W8; rebuilt on load from the years). */
+  _hearthDone: readonly Uint8Array[];
   /** Summed-area tables (width+1)×(height+1) of forager capacity × area (static) and people × area (per pass). */
   _basinCapacitySum: Float64Array;
   _basinPeopleSum: Float64Array;
@@ -68,8 +88,6 @@ export interface PeopleWorld extends World {
   _basinFree: Float64Array;
   _basinRoomSum: Float64Array;
   _basinFreeSum: Float64Array;
-  _bestYield: Float64Array;
-  _bestYieldDigest: string;
   /** Rendering state for the timeline (never saved or hashed): first farmed step and package per land cell. */
   _arrivalStep: Int32Array;
   _arrivalPackage: Uint8Array;
@@ -105,15 +123,50 @@ export interface PeopleWorld extends World {
   _neighborTargets: Int32Array;
   _neighborDistanceKm: Float64Array;
   _neighborMode: Uint8Array;
+  /** Per-slot climb of a land step, elevation units (W24); 0 on a hop. */
+  _neighborAscent: Float64Array;
   /** Per-cell foot days/km for the tick's month (migration conductance numerator). */
   _migrationDaysPerKm: Float64Array;
   /** Lazy per-month days/km caches — climate is periodic, so 12 fills total. */
   _migrationDaysPerKmByMonth: Array<Float64Array | undefined>;
   /** Static water-access and relief multipliers (annual land properties). */
   _waterAccess: Float64Array;
+  /** The water each cell takes from what drains onto it (W13, P17): the routed-runoff term of its water access. */
+  _runoffAccess: Float64Array;
+  /** The water that arrives at each cell from upstream (W14), in the worldgen runoff's units — one unit is a cell's area under one moisture-unit of water; the stream the paddy counts. */
+  _runoffInflow: Float64Array;
+  /** The land's own water, rain aside (W13): the routed stream, floodplain, river and lake terms of water access — what waters a month it does not rain. */
+  _surfaceAccess: Float64Array;
   _reliefMult: Float64Array;
+  /** The improvable share of each cell (W28, static): the ground water can be led onto — the surface access — plus what a wet climate improves by drainage and levelling alone. */
+  _irrigable: Float64Array;
+  /** The yield-variance map (W29, static): the coefficient of variation of each cell's annual harvest, from the rain margin, the season's shape, the winter and the surface-water share. */
+  _yieldCv: Float64Array;
+  /** The spoilage rate map (W31, static): the share of stored grain lost per year from temperature and wetness. */
+  _spoilage: Float64Array;
+  /** The last harvest year's yield multiple per land cell (W29, packed scratch for the lens): 0 where nobody farms, the years passing over an unfarmed cell unread. */
+  _yearMul: Float64Array;
+  /** The harvest rows (W30, static): each land cell's read of the year as weights over the weather grid, CSR by packed index (`_harvestRowStart` holds land + 1 offsets) — its own sky and its catchment's, blended by the harvest's exposure to each and normalised to unit variance under the smoothing, so the CV map keeps its meaning at every cell. Built once from the substrate; both kernels sum the same row in the same order. */
+  _harvestRowStart: Int32Array;
+  _harvestRowCell: Int32Array;
+  _harvestRowWeight: Float64Array;
+  /** Per-band famine deaths of the last harvest firing (W29, oracle scratch), persons. */
+  _harvestDeathsByBand: Float64Array;
+  /** Per-band food-sheet channel totals of the last harvest firing (W31, tonnes): harvest, eaten, spoiled, unstorable. */
+  _harvestBookHarvestByBand: Float64Array;
+  _harvestBookEatenByBand: Float64Array;
+  _harvestBookSpoiledByBand: Float64Array;
+  _harvestBookUnstorableByBand: Float64Array;
+  /** Cumulative persons of famine deaths / farmers at risk in famine-labelled years (W31 severity gate), full grid. */
+  _severityDeathPersons: Float64Array;
+  _severityAtRiskPersons: Float64Array;
+  /** Cumulative famine deaths in years with a predecessor inside the firing, and those whose predecessor also fell short (W31 run gate). */
+  _harvestRunDeaths: number;
+  _harvestRunDenom: number;
   /** Static per-cell forager capacity and disease burden (annual-climate properties). */
   _foragerCapacity: Float64Array;
+  /** The terrestrial part of the forager capacity (W8): the living a stand's gatherers weigh their stand against. */
+  _foragerTerrestrial: Float64Array;
   _diseaseBurden: Float64Array;
   /** Per-row migration share for the tick (area is a row property). */
   _migrationShareRow: Float64Array;

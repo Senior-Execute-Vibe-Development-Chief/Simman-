@@ -618,7 +618,812 @@ lawyered.
     at full contact, which a leading edge never has. Central Europe and
     the Rhine stay late for that reason, and the remedy is P15.
 
+30. **W8: who farms what, where, and why.** (Direction ratified — owner:
+    "spec all of these changes we have talked about", after the W7
+    play-report: the origin "seems fixed, not dynamic and procedural";
+    marginal land farmed as densely as the Crescent on the farming lens;
+    the first crop holding a cell for good.) One wave: (a) wild stands as
+    a field — a wild-habitat envelope per package sampled at the plant's
+    documented localities, polygons for the belts, the hearth clock at the
+    basin's dependence on the stand, the spacing constant deleted and a
+    hearth a region; (b) forager capacity by habitat — shores and stands
+    from the hunter-gatherer density literature, so the affluent forager
+    resists; (c) yield graded by climate fit; (d) adoption under pressure,
+    the cell's fill; (e) the mixture as the capacity; (f) farmers switch
+    to a better crop by the adoption law. New reality tables: the centres
+    of domestication with windows, the staple by region at 1 CE, the
+    forager density ordering. P10 and contingency stay the owner's. Spec:
+    `spec/handoffs/W8-who-farms-what.md`. Implementation on request.
+
+## 2026-09-05 — Front-speed round
+
+31. **W12: the front at the speed its constants name.** (Owner directive
+    2026-09-04/05, after the play-report — "europe seems late?", "so surely
+    if it is half speed, everywhere, we just double the speed?", "can you
+    not just make the cells represent as larger, proportionally?", "think
+    about it a bit" — then **"spec it"**.) The farming front ran at 0.553
+    km/yr at the shipped grid against the ledger's own design of
+    `2·√((r + adoption)·D)` = 0.936, and every reason is in the
+    discretisation. (a) LANDED: a lattice hop is not a diffusivity — the
+    share is `4·D·dt/<d²>` with `<d²>` the stencil's mean square hop, not
+    `D·dt/area`; front 0.670 at target, inside the cited band, the Balkans,
+    Cardial coast and inland Europe cleared, findings 27 → 24 (`a1eac742`).
+    (b) Per-pass strides in the solve regime, as the awake regime already
+    has: only migration needs the 24-month step the corrected share demands
+    at the shipped grid; the other passes keep 84; measured cost ~1.5× not
+    3.5×. (c) The reduced polar grid — the owner's "represent the cells as
+    larger": merge east–west where `cos(lat) < 0.5`, again below 0.25, so
+    every cell's aspect ratio stays inside [0.5, 1]; it makes the migration
+    bound ~48 months at every latitude with nothing given up, where every
+    exclusion-based shortcut measured as giving up most of humanity
+    (QUESTIONS #58). (d) The anisotropic finite-volume flux, face length
+    over distance, which under-serves east–west transport on the isotropic
+    split by the aspect ratio — and is stiff enough at the poles that it
+    must follow (c). Sub-rulings: no constant is re-grounded, the
+    Ammerman & Cavalli-Sforza mobilities are untouched, and "double the
+    speed" is refused on a measurement — dev already runs above design, so
+    no value of the constant satisfies both grids. The visible step at the
+    shipped grid becomes "2-year steps" under (b) until (c) restores 4;
+    that trade is the owner's. The adoption pass at 65 % of a solve firing
+    is owned as a performance task. Spec:
+    `spec/handoffs/W12-front-speed.md`. Implementation on request, in the
+    order (b) → (c) → (d).
+
+32. **W12 §2 landed: each solve pass on its own stride, on a gcd clock.**
+    (31(b), implemented 2026-09-05.) Every solve pass now fires at the
+    largest whole-year stride inside its OWN bound, as the awake regime's
+    passes already did, so the movement cadence the corrected hop share
+    demands is charged to movement alone. Two bounds. The REACTION bound —
+    farmer growth, adoption, cohort ageing, none of which knows the cell
+    size, so it is the same at every grid: min(108.2, 50, 7.5) years, 84
+    months. And the TRANSPORT bound — each group's hop share inside
+    `PEOPLE_MIGRATION_MAX_SHARE` on every row it can be a source from: 24
+    months at the shipped grid, over a century at dev. So dev keeps 84
+    everywhere and is byte-identical, and the shipped grid moves at 24
+    against the other five passes' 84. Four corrections the implementation
+    forced, recorded because the spec said otherwise:
+    (a) *The clock is the greatest common divisor of the strides, not the
+    shortest.* A clock of 24 lands on 0, 24, 48, 72, 96 … and meets
+    `step % 84 === 0` only every 168 months, so growth, capacity, adoption
+    and cohorts would have run at DOUBLE their own bound while every gate
+    still reported 84. Only a divisor of every stride lands on every
+    cadence, and the gcd is the largest such divisor: 84 at dev, 12 at the
+    shipped grid (QUESTIONS #60).
+    (b) *Movement is capped at the reaction stride.* It transports what
+    reaction wrote, so a transport firing longer than the span that field is
+    held fixed over integrates a field which no longer exists — and buys no
+    reach doing it, since a firing moves people at most one cell whatever
+    the share. That cap is what binds at dev, and what keeps dev
+    byte-identical.
+    (c) *The substep allowance leaves the transport bound.* Substepping is
+    what keeps the explicit scheme stable across a long firing, not licence
+    to make one longer; the 16× factor bought a slower front and nothing
+    else (QUESTIONS #57), and it never showed at dev, whose share sits at a
+    sixtieth of its bound.
+    (d) *The visible step at the shipped grid is 1 year, not the 2 that 31
+    promised.* That is what the correct clock gives, and §3 does not restore
+    it on its own — gcd(84, 48) is 12 as well. Two other mechanisms reach a
+    coarser one, both legal because rounding a stride DOWN is always inside
+    its bound: a movement stride that is also a divisor of the coarsest
+    (84/21, 1.75 years, +14 % movement firings, and 3.5 years once §3
+    lands), or the coarsest rounded to a multiple of the shortest (72/24, 2
+    years, ≈ +13 % total, which is where 31's "2-year" came from). The
+    handoff carries the table; the choice is the owner's.
+    Cost, measured on landing: dev unchanged at 0.55 → 0.57 ms per
+    solve-year, the shipped grid 34.9 → 104.8. That 3.0× is §1's, not §2's —
+    the corrected share needs 3.5× the movement firings to carry the same
+    span. What §2 buys is keeping the multiplier OFF the other five passes:
+    against a single stride at migration's own bound, 1.19× on a cold world
+    and 1.65× with every hearth primed, the spread being the adoption pass
+    at 65 % of a firing. Prerequisite: §1 had moved nine rows of the dev
+    solve arm without recording them, so the known-miss manifest was
+    re-measured to 48 first (`15d83fe6`, QUESTIONS #59). Measured at the
+    shipped grid on request (QUESTIONS #63): the front 0.670 → **0.854
+    km/yr** against the 0.936 design, all five European windows met, the
+    Indus 1,128 years later than before (−2027, a new miss) — the residual
+    9 % is not uniform but split by direction, §4's sign, undecidable from
+    box years alone — and decided by the arrival raster, run on request
+    (QUESTIONS #64): the Iranian plateau's capacity, not the split. The
+    eastward leg runs at 1.0 km/yr where the ground holds it and at
+    0.16–0.30 across 750 km the substrate keeps at the moisture floor with
+    no channel, ~2,400 years of the miss; the anisotropy test finds no
+    east–west penalty at 30–60 °N, so neither §4/P16 nor P15 is indicated
+    by the front, and the mechanism the Indus waits on is P17. Population
+    overshoot grew with the speed (M3b). §3 (the
+    reduced polar grid) and §4 (the anisotropic flux) remain on request —
+    see 33, which measures 31(c) and withdraws it.
+
+33. **W12 §3 measured and NOT built: the ratified polar merge moves the
+    stride from 24 months to 24 months.** (31(c), measured 2026-09-05 before
+    building — #58's method applied to #58's own remedy.) 31(c) ratified
+    merging cells east–west in pairs below `cos(lat) = 0.5` and in fours
+    below 0.25, on the claim that the migration bound then becomes ~48
+    months at every latitude. Measured per-row over every row anyone can be
+    a source from, at the shipped grid, from the real substrate, with the
+    same expression `transportBoundYears` uses — validated by reproducing
+    today's 24-month stride exactly on the no-merge arm — the ratified rule
+    takes the bound from 2.045 to 2.408 years and the **stride from 24 to
+    24**. Three findings (QUESTIONS #61, table in the handoff §3d):
+    (a) *It is not the cap of four.* A cell of aspect `a` has mean square
+    hop `(a² + 1)/2` of a square cell's; the equatorial bound is 4.034 years
+    and the stride is that bound FLOORED to whole years, so holding 48
+    months needs **a ≥ 0.992**, not a ≥ 0.5. Any power-of-two rule has
+    worst-case aspect 0.5 by construction, just below each doubling
+    threshold, whatever the cap: 4 → 64 moves the bound 2.408 → 2.525 years
+    and the stride not at all.
+    (b) *The rule fails its own criterion.* Measured worst aspect under it
+    is 0.438 at 83.7 °N, a peopled row at the shipped grid, because
+    `cos(83.7°) = 0.11` is under the 0.125 where a cap of four still reaches
+    0.5. The [0.5, 1] band needs unbounded factors and was given two.
+    (c) *31(d) is worse off than its spec says, not better.* Under every
+    power-of-two merge the anisotropic bound stays under 1.1 years, so §2
+    would derive a **12-month** stride — half of today's, doubling movement
+    cost, poles still clamping — against the ~32 months §4b assumed. §4 is
+    free only on a grid whose aspect is ~1: there its bound is 2.689 years,
+    exactly today's stride.
+    So **31(c) is withdrawn as ratified and nothing was built** — it would
+    have been weeks of structural change (packing, adjacency, persistence,
+    kernel row areas, renderer) for a measured zero, and 31(d) is blocked
+    behind whatever replaces it. The rule that does work is a different
+    design and is proposed, not substituted: P16. Dev is unaffected either
+    way — its transport bound is 116 years today and 227 under P16, and the
+    84-month reaction cap binds long before both.
+
+34. **W13 landed: the routed water (P17) and the watered month.** (Owner,
+    2026-09-05: "so we need water runoff", on #64's finding that the Indus
+    is late because the plateau's water is not in the substrate.) The
+    worldgen's per-tile runoff is returned instead of being summed and
+    thresholded away, and the people world routes it down the worldgen's
+    own flow directions in drainage order: each cell takes from what
+    arrives the water its channel strip lacks in rain
+    (`PEOPLE_CHANNEL_STRIP_KM = 10`, the Upper Nile valley floor and the
+    Kopet Dag fans, as a share of the cell so it is the same ground at
+    every grid), passes the rest on with its own runoff, and never takes
+    its own. What it takes is one more term of water access, kept apart as
+    the land's own water (`_surfaceAccess`, with the floodplain, river and
+    lake terms) so that a growing month is admitted on it — W8 admitted a
+    month on its rain alone and the Nile's winter did not count toward
+    wheat's season; now Luxor has eight months, Mohenjo-daro seven where it
+    had four and no wheat at all. The year's rain does not admit a dry
+    month (the broader form was measured and withdrawn). Measured on the
+    substrate at the shipped grid: Luxor's wheat capacity 0.91 → 3.11
+    persons/km², Mohenjo-daro 0 → 11.4, Patna 4.5 → 11.0, Peshawar 12 → 21;
+    the plateau sites 0.11–0.14 → 0.13–0.15, because their catchments are
+    empty in the 1.9° table — P18, and the reason P17 alone does not move
+    the Indus row. At dev the strip is 0.06 and the gate sees the machinery,
+    not the size: the Indus arrives −4758 → −4121 (in window), central
+    Europe clears, the Ganges takes rice, south China and the lower Yangtze
+    take millet (the W8 grade cannot tell packages apart on watered ground
+    — QUESTIONS #65 — first arrival wins), and the population leaves its
+    band at −5000 (71.4M vs 60M; M3b). Seven dev rows newly recorded,
+    three cleared. The shipped-grid arm is `v2-long` on request; the target
+    rows are annotated, not refreshed.
+
+35. **W14 landed: the rain on the slope (P18) and the paddy.** (Owner,
+    2026-09-05, on the W13 handoff's list of what is next: "2 and 4 are
+    really the only immediate fixes" — P18 and the paddy — then "do it".)
+    P18: within each 1.9° table cell's own footprint, the sampled rain is
+    placed on the slope it fell on — each land pixel weighted by
+    `exp(g · Δz)` for its elevation anomaly against the footprint's land
+    mean (g = 0.5 /km, the windward precipitation gradient, Barry 2008;
+    clamped at the 2.5 km vapour scale height, Smith & Barstad 2004),
+    normalised to a land mean of one so the footprint's rain is conserved
+    and none is invented — before the quantile rank, with the quantile map
+    untouched. The footprint is the widest odd box inside one table cell:
+    zero at the reference grid, where the correction is inert by
+    construction, four at the target grid. The paddy: each package carries
+    `standingWaterResponse`, the relative change of its monthly fit on
+    ground standing under water (rice 1.0, the paddy doubling the upland
+    crop, GRiSP 2013; the New Guinea roots 0.33, Kirch 1994; every other
+    package −0.35, the cereals' waterlogging loss, Setter & Waters 2003),
+    and a cell's standing water in a month is the floodplain under the
+    discharge above the year's own mean plus, for a wetland crop only, the
+    strip W13's routed stream can keep wet — the plant's number and the
+    land's state in one product, no package or place named in code.
+    Measured on the substrate at the target grid: P18 moves every wet
+    range (the Pamir crest 0.33 → 0.59, the Alps' Turin foot 0.34 → 0.20)
+    and **does not lift the plateau sites** — Jeitun, Sang-e Chakhmaq,
+    Mehrgarh, Tepe Yahya 0.02 → 0.02 — because the driest 26 % of land sits
+    at the quantile map's 0.02 floor and a ×1.5 share does not move a
+    desert-range pixel's rank out of that band; so `arrival:indus:solve:
+    target` will not move under W14, the miss is placed at the floor band
+    (QUESTIONS #66), and the floor is not lifted to reach it. The paddy
+    grades rice above every other package exactly where ground stands
+    under water (Mohenjo-daro 0.54 → 0.80, Luxor 0.48 → 0.72, Patna 0.52 →
+    0.77, Dongting 0.48 → 0.74; wheat unchanged everywhere) and flips the
+    best package by summed capacity to rice in south China, the Ganges, the
+    Indus and the Sahel; the lower Yangtze's centre is off the ribbon. At
+    dev P18 is inert and the paddy moves the arm a stride here and there
+    (the Sahel −4758 → −4842) with no verdict changed: the two millet
+    staples stand at 167 km cells and say why. Two findings recorded, not
+    dialed: the floor band, and the seasonal river model's flat flood
+    amplitude (the Nile's peak month 1.21 of the mean against ~3× real).
+    The shipped-grid arm is `v2-long` on request; the target rows carry the
+    substrate numbers and an expectation each.
+    **Run on request the same day** (owner: "do the run"; W14 handoff §6,
+    QUESTIONS #67) — the first target arm since W12 §2, so it measures W13
+    and W14 together and isolates neither: the Indus arrival CLEARED (−2027
+    → −3109) but the box farms millet at 1 CE on twice the cells and the
+    steppe millet ignitions moved thousands of years earlier (the Tarim
+    −5990), so which front reached the plain is not decided and the plateau
+    finding stands until the arrival raster with its package is run (the
+    #64 method, on request); the Ganges is reached by Godavari rice at −4799
+    and farms rice (the paddy's signature; its arrival row is now a miss on
+    the early side); Kuk lights inside its box (P18 on a wet range); south
+    China and the Indus turn to millet at 1 CE and north-China millet lights
+    13 years past the grace (three new misses); the Amazon-margin tubers
+    hearth lights 1,225 years later, which is NOT the paddy's drowning term
+    (corrected 2026-09-05: that term costs the site 3 % of capacity, the
+    flood amplitude being flat, and P18 raises the new hearth cell's quality
+    0.525 → 0.717 — the site got better and lit later, so the delay is in
+    the peopling of the basin and the substrate does not hold it);
+    population 305 / 670 / 797M at −3000 / −1000 / 1 CE (M3b). Three
+    manifest rows added, four removed, the rest re-measured; recorded, not
+    dialed.
+
+36. **W15 landed: the wind the rain climbed, and the paddy as
+    husbandry.** (Owner, 2026-09-05, after the W14 shipped-grid arm's
+    findings: "why did whats wrong go wrong" → "what is the fix" →
+    **"implement all"**.) Two corrections to W14, both mechanism, neither a
+    dial: `constants.ts` is untouched, no cited value moved, and nothing was
+    added to the ledger's constant columns.
+
+    **(a) The paddy is husbandry, not botany.** W14 applied a package's
+    whole `standingWaterResponse` at every technique and to the wild stand.
+    Its grounding does not support that: Bray 1986's and GRiSP 2013's
+    irrigated-over-rainfed ratio is measured on bunded, levelled,
+    water-controlled fields — a thing farmers build, not a thing the plant
+    does. So the POSITIVE part is scaled by the cell's technique (none at
+    technique 0, full paddy at technique 1) and the NEGATIVE part — a crop
+    drowning in a flood it cannot drain — stays physiology at every
+    technique. One factor `1 + technique · gain`, with `gain` measured over
+    the same admitted months, so technique-1 capacity is bit-for-bit W14's
+    and technique-0 is bit-for-bit the un-paddied one; only 0 and 1 appear
+    as literals. Both kernels, parity holds. It matters because the leaked
+    capacity was read by the wild-stand richness and the hearth site
+    quality: measured at the shipped grid, W14 credited un-farmed
+    floodplain with up to 82 % more capacity than un-farmed ground can
+    deliver (the Ganges 8.72 → 5.92 persons/km² at technique 0, Bengal 7.86
+    → 5.35, the Mekong 4.37 → 2.95) — that is, it was moving the ignition
+    clock with a yield nobody had built the works for.
+
+    **(b) P18's footprint had no aspect.** W14's Δz was against the
+    footprint's land-mean elevation, so a lee slope of a given height lifted
+    exactly as much as the windward one — the single thing an orographic
+    term must not do. The reference is now the elevation one footprint
+    half-width UPWIND along that month's own wind, the height the air
+    climbed: the standard upslope model (Smith 1979, *Adv. Geophys.*
+    21:87–230; Roe 2005, *Annu. Rev. Earth Planet. Sci.* 33:645–671 §2).
+    Same gain, same clamp, same footprint, same conservation, no new
+    constant and no new length; the wind is the substrate's own monthly
+    NCEP/NCAR field and a dead calm reads weight one. Measured at the
+    shipped grid on the substrate alone, the windward-minus-lee contrast
+    improves on six ranges of eight (the Alps −0.006 → +0.080, the Andes
+    +0.039 → +0.178, the Western Ghats −0.019 → +0.013, the Himalaya +0.426
+    → +0.474, the Southern Alps −0.148 → −0.033, the Alborz −0.674 →
+    −0.535) and conservation holds (land mean 0.9981 over 558,091 cells).
+    The gain was deliberately NOT re-tuned to the new reference; moving it
+    to suit the term would be fitting the outcome.
+
+    The Cascades and the Zagros move the wrong way and the Alborz is still
+    negative, from one nameable cause — a 1.9° monthly climatological mean
+    averages away the barrier-normal component of a flow that reverses
+    within the month — whose remedy is finer wind data, not a coefficient.
+    Two bugs in the ported wind sampler were found and deliberately left
+    (they are off the sim's own path; a worldgen wave that can re-baseline
+    the v1 hashes owns them). Everything above is substrate only, no
+    history.
+
+    **The shipped-grid arm ran the same day, on the owner's word ("run
+    it"), and answers what the substrate could not.** `a2b40415`, seed
+    42042, target solve leg 1,378 s. It clears exactly one manifest row —
+    **`staple:south-china:solve:target`: south China farms rice at 1 CE**,
+    the first time it has — and regresses none: the gate came back with
+    nothing unacknowledged and that single stale row, so the only edit it
+    forces is a removal. Nothing else changed in kind. Population 307.6 /
+    682.1 / 812.3M at −3000 / −1000 / 1 CE (the same M3b miss, within 2 %
+    of the W14 arm at every checkpoint), the European front 0.891 km/yr,
+    every density and forager ordering held, and no primary arrival moved
+    by more than 102 years except the Andes (189 sooner) and Japan (58
+    later). Downstream: a fourth rice ignition in Myanmar (−4646), the
+    Godavari and Bengal ones EARLIER, two new highland-roots hearths on the
+    southern African highveld, and the first caged basin 616 years sooner
+    and up the Mekong. Twenty rows re-measured in place; 61 rows.
+
+    **The arm does not decompose the two corrections, and the first attempt
+    to say it did was wrong — recorded so the method is not repeated.** A
+    probe diffed `substrate.moisture` as if it were an annual field of
+    length N; it *is* `climate.moisture`, cell-major with twelve months per
+    cell and length N × 12, so the dump covered only the first 135,000
+    cells — everything north of 75°N, where there is no orographic
+    signal to find. Over the whole monthly field the wind reference reaches
+    every box with relief (south China 70 % of cells moved, the loess 91 %,
+    Sichuan 95 %, the Alps 90 %, the Andes 92 %; 18.2 % of all 1.62M cells,
+    and the flat Nile valley the one box it leaves alone), so the field
+    isolates no row to one correction. One thing IS isolated, by
+    construction: the split touches only the two packages with a positive
+    `standingWaterResponse`, and where it acts, technique-0 fit and wild
+    stand are strictly lower while technique-1 capacity is exactly equal —
+    so acting alone it can only ever make rice LATER. This arm makes the
+    Godavari and Bengal ignitions earlier. The wind reference is therefore
+    in them, and south China's clearance rides on a rice front the split
+    alone would have delayed. A clean split needs a hybrid arm (W14's
+    `realClimateData.js` on the W15 tree — the two corrections live in
+    different files), roughly 23 minutes; recorded as needing one, offered
+    and not run (owner directive 2026-09-03). QUESTIONS #68,
+    `spec/handoffs/W15-wind-and-husbandry.md` §6.
+
+37. **W16 landed: the taxon we name, not the crop it resolves to.**
+    (Owner, 2026-09-06: "surely we SHOULD ALREADY be deriving wild ranges
+    from real data?" → "why run? surely you can just look if the derived
+    range covers the yangtze?" → **"do that, but also consider any other
+    important wild ancestors we are missing"**.) No simulation code changed:
+    this wave changes WHICH PLANTS the nine crop packages are built from, in
+    `tools/build-croprelatives.mts` and the file it bakes.
+
+    **(a) A name is not a taxon.** GBIF's occurrence search resolves a
+    `scientificName` query to the ACCEPTED usage of that name and answers
+    with the accepted taxon's records. Four of thirteen taxa this repo names
+    are synonyms in GBIF's backbone, so four reads were not reading the
+    plant they named — and one of the four is a fault that had been in
+    every bake since W9: **`Manihot esculenta` subsp. `flabellifolia` is a
+    synonym of `Manihot esculenta`, cassava.** The tubers package's wild
+    range was fitted to 23,587 records of the modern cassava planting map,
+    where the wild subspecies itself carries 1,448 — exactly the
+    circularity the W12 native-range screen was built to remove, arriving
+    through a door that screen does not watch. It is why tubers held the
+    largest wild stand on Earth (2.2875; now 1.5393, and rice at 1.8653 is
+    the maximum). The read is now pinned to a GBIF **usage key**, and a
+    synonym is followed only where following does not move UP the rank
+    ladder — the rule the WCVP screen already applied to distributions, for
+    a reason that stands on its own: an infraspecific name exists to
+    separate the wild form from the crop, and resolving it to the species
+    throws that distinction away. By that rule wild einkorn and the Ozark
+    gourd follow their synonyms and stay whole, wild rice follows to the
+    *O. rufipogon* complex, and wild manioc does not follow into cassava.
+    Each taxon's resolution is written into the baked file (`usageKey`,
+    `read`, `matchedStatus`), so a silent substitution is visible in the
+    data and not only in the counts. Eleven of thirteen reads come back
+    byte-identical, which is what makes the two that moved trustworthy.
+
+    **(b) Wild barley rejoins the founder set.** The package is called
+    "Wheat & Barley" and had no barley in it. `Hordeum spontaneum` was
+    excluded with a measurement — its range, Morocco to Tibet, "put wheat's
+    envelope in north China" — taken when ONE envelope was fitted to the
+    merged cloud of every member. W10 gave each member its own envelope and
+    made a package rich only where its members CO-OCCUR; W11 divided the
+    collection effort out cell by cell. Under those two a widespread member
+    cannot drag the fit anywhere, it can only restrict the intersection —
+    which IS the founder-set claim the code already cites. Measured: the
+    Crescent keeps all four rich cells, the package's range reaches 74 km of
+    the hearth centre instead of 206, best richness there rises 43 % and
+    best stand anywhere 45 %, site quality 1.0000 unchanged. The revert
+    condition was not met.
+
+    **The exclusions that stand are not the same case**, and were re-argued
+    rather than inherited: broomcorn millet is a feral escape whose ancestor
+    botany does not know; wild taro and wild sweet potato are WCVP-introduced
+    where the package needs them native; wild sugarcane and wild teff are
+    independent crops of one complex, so requiring them alongside yam and
+    enset is a claim the archaeology does not make (and sugarcane was
+    measured to empty the Kuk intersection). Wild banana falls under the same
+    sugarcane ruling. The five non-cereal Crescent founders — the pulses and
+    flax — are excluded because a package's founder set is the progenitors of
+    the crops the package IS, and "Wheat & Barley" is a cereal package.
+    **(c) Wild sunflower was added on barley's argument, measured, and
+    reverted.** It was the one candidate that survived the audit: Smith 2006
+    names four founders of the Eastern Agricultural Complex, the package
+    carried three, and the fourth's stated exclusion — "spanning the
+    continent" — is exactly the breadth argument (b) retires. So it was
+    added and baked. It reads clean — an ACCEPTED species usage, the 44,705
+    European records dropped unread by `continents`, 8,086 of 33,805 kept by
+    the WCVP screen — and it KILLS the package: the screened wild sunflower
+    spans lon −124.0..−96.5 and the Ozark gourd spans −96.5..−83.75, sharing
+    EXACTLY ZERO occurrence cells, so the members' product is empty
+    everywhere. eastern-seeds' best wild stand 0.4429 → 0.0000, its rich
+    cells 17 → 0, and the eastern-woodlands hearth site 1.0000 → 0.0000.
+    Reverted, and the exclusion now rests on that measurement rather than on
+    breadth — **the sugarcane ruling, not the barley one.**
+
+    That makes three packages where the co-occurrence product is the binding
+    constraint (sugarcane at Kuk, teff in Ethiopia, sunflower in the Eastern
+    Woodlands), each held off by an exclusion argued in a comment. **The
+    product is the right rule for a founder set that had to be gathered
+    together and the wrong rule for a complex of crops domesticated
+    independently, and the code has only the first kind of package.** A
+    second kind — members as alternatives, rich where ANY is rich — is
+    unspecified and unbuilt; recorded as the honest next question, not
+    designed here. QUESTIONS #69.
+
+    **Verification.** lint, `npm test` (smoke, parity, byte-identical
+    save/load), `gate:people` → `pass` at dev with the W5 SOLVE arm, all on
+    this bake; the range, stand and hearth-site figures are substrate probes
+    with no history simulated. The manifest keeps all 61 rows: none added,
+    removed or re-banded, three refreshed where the bake moved the
+    measurement their reason describes — the outside tubers ignition left
+    the lower Orinoco (a cell that was cassava's, not wild manioc's) for
+    eastern Brazil at −4114, the Indus box holds rice, and
+    northwest-neotropics still fails but now against the wild plant's real
+    distribution, which is a finding about a MISSING PACKAGE (the region's
+    domesticates are arrowroot, leren and yam bean) rather than a defect to
+    tune. No shipped-grid arm was run; the tubers range lost eleven twelfths
+    of its cells, so one is recorded as needed. QUESTIONS #69,
+    `spec/handoffs/W16-the-taxon-we-name.md`.
+
+
+38. **W17 landed: a harvest is graded over the months the crop is in the
+    ground.** (Owner, 2026-09-06: "simply, no jargon, what?" → **"ok, look it
+    up and implement then"**.) P19 built. `crop.ts` graded every cell as
+    `fitSum / MONTHS_PER_YEAR` — the share of the YEAR that is favourable —
+    and handed that one number to two consumers that want opposite
+    normalisations. The wild stand still reads it, and that is W10's own
+    finding: gatherers graze continuously, so eight good months feed more
+    than five. The farmed capacity now reads a different grade: the mean over
+    the best consecutive run of months the package's own cycle occupies,
+    wrapping the year, with a month the crop cannot use contributing zero to
+    the run it falls in. The run taken is the one that maximises the whole
+    harvest — the fit and W15's paddy gain together — because W15 keeps a
+    wetland crop's advantage OUTSIDE the fit by construction, so a search on
+    fit alone would tie across the flood and leave the paddy outside the very
+    window it exists to sit in. One line of code decides where the crop is
+    planted, and it decides it the way a farmer does — on the calendar, not on
+    the annual average.
+
+    **(a) The window is what dissolves P19's three blockers, and it dissolves
+    them by construction rather than by exception.** A perennial's cycle is
+    longer than a year, so its window is the whole year and its grade reduces
+    EXACTLY to `Σ/12` — the root-crop special case P19 could not specify does
+    not need to exist. A season shorter than the cycle degrades gracefully:
+    five favourable months of a six-month cycle is five sixths of the
+    quality, where `/season` gave a six-month emmer 0.0000 at Cairo and made
+    the result acutely sensitive to a length nobody could source. And the
+    stand keeps `/12`, so W10 is untouched — millet's best stand is
+    bit-for-bit the cell it was, and every stand-side row in the manifest is
+    unmoved. A fourth property falls out that P19 did not anticipate, and it
+    is a change to W14 rather than to W8: a crop can now be sown AROUND a
+    flood it cannot drain, so the drowning loss is charged only where the
+    season leaves no room to avoid it. That is most of why the Nile's wheat
+    doubles below — its winter is wheat's own season and the flood is not in
+    it.
+
+    **(b) The cycle length was sourced before it was measured, by a rule
+    stated structurally.** `cycleDays` per package is FAO-56 Table 11's
+    SHORTEST listed total growing period for the crops that package IS
+    (wheat 120 d, rice 150, maize 125, sorghum 130, millet 105, tubers 210,
+    eastern-seeds 90), with enset (1460 d) and the New Guinea roots (210)
+    from the named literature Table 11 omits. The rule is not "the number
+    that lands Egypt": the month-admission test the fit already applies
+    (W13) drops the months the crop cannot use, so a longer REGIONAL period —
+    long precisely because the crop overwinters or lies dormant — would
+    re-enter those same months as zeros inside the window and charge the crop
+    twice for them. **The sensitivity is recorded rather than hidden, and it
+    cuts the way that would embarrass a fitted choice**: read wheat at
+    FAO-56's Winter Wheat 240 d instead and every rice figure on the dev
+    substrate is bit-for-bit identical while wheat falls everywhere (Nile
+    0.384 → 0.284, Central Europe 0.616 → 0.513, Indus 0.414 → 0.343) — so
+    the shorter reading is the one that favours wheat, it was chosen by the
+    rule above, and the alternative's map is on the record in
+    `spec/09-constants-ledger.md` §W17.
+
+    **(c) Measured on the dev substrate, no history** (centre cell,
+    `yield × fit × (1+gain)` at technique 1, before → after). South China
+    `new-guinea-roots 0.728` → **`rice 0.990`**; the lower Yangtze
+    `new-guinea-roots 0.480` → **`rice 0.787`**; the Ganges `tubers 0.453` →
+    **`rice 0.576`**; Central Europe `highland-roots 0.376` → **`wheat
+    0.616`**; the Sahel sorghum first before and after (0.384 → 0.678). The
+    Nile's wheat doubles (0.187 → 0.384) and rises from below third to
+    SECOND both at the centre (behind rice's 0.426) and by box sum (behind
+    sorghum's 0.47M, at 0.45M) — a much closer call than it was, and still a
+    miss. Blast radius: 2,828 of 6,529 farmable cells
+    change best package (43.3 %; 26.4 % counting annuals alone), and world
+    best-package capacity at technique 1 rises ×1.260 — the largest single
+    re-grading of the farmed map since the crop system was built, which is
+    why it is measured cell by cell and not by the boxes it was aimed at.
+
+    **(d) What it did to the world, dev W5 SOLVE arm.** Four acknowledged
+    misses cleared and were REMOVED from the manifest: the Nile's arrival
+    (−3099 and LATE, the only late row on the arm → −6620, in window),
+    Mesoamerica's staple (eastern-seeds → maize), and south China's and the
+    lower Yangtze's (millet → rice, both by switching — exactly what
+    QUESTIONS #70 predicted the split would do). The staple table goes 5/10
+    to 8/10 at dev. One miss was ADDED, not tuned away: millet lights at
+    45.8°N 77.3°E in −4625, inside its wild range and outside the north-China
+    box — the same spread-not-rank problem already acknowledged at the
+    shipped grid, reachable at dev now because the world carries more people.
+    The Indus changes incumbent (rice → millet) and stays a miss; the Nile
+    stays sorghum on a much closer call (box sums sorghum 0.47M, wheat 0.45M,
+    millet 0.41M). The M3b population rows all worsen against their bands
+    (−5000 69.1 → 98.7M, 1 CE 1,160 → 1,503M): the ceiling that curve
+    saturates against is farmed capacity, and W17 raised it.
+
+    **(e) The asymmetry it exposed is recorded, not fixed.** The gain is not
+    uniform in latitude — by |lat| band the dev capacity goes ×1.086 (0–15°),
+    ×1.250, ×1.556, ×1.682, ×1.997 (60–90°) — because the window credits a
+    short season with one whole harvest, which is right, and credits a
+    year-round season with one harvest too, which is not. `Σ/12` was, read
+    honestly, an UNCAPPED multi-cropping model with every cycle implicitly
+    twelve months; W17 is exactly one harvest everywhere. The truth is
+    between them and its cap is a datum this repo does not have, so it is
+    **P20, Proposed and unbuilt** — the same discipline that kept `cycleDays`
+    unbuilt until it was sourced.
+
+    **Verification.** lint (eslint + the ledger and numeric-literal lints),
+    `npm test` (smoke, unit, kernel parity, byte-identical save/load),
+    `gate:people` → `pass` at dev on the W5 SOLVE arm with the corrected
+    manifest, `bench --check`, the oracle. The bench ratchet failed once at
+    27.04 ms against 26.4 when run back-to-back after the gate and passes at
+    24.14 ms idle; reverting the four runtime files to HEAD and benching on
+    the same idle runner gives 24.27 ms pre-W17 against 23.44 ms with it, so
+    the overrun is contention and runner drift, not this wave — the window
+    search runs once in `initializeCropFields` and the tick loop is
+    untouched. No Rust change was needed and
+    parity is structural: `_cropFit` is a precomputed input the kernel reads,
+    not a quantity it derives. `coverage` and `monotone` are not triggered —
+    no new world state, no new metric. **No shipped-grid arm was run**; a
+    43 % re-grading of the farmed map is exactly the blast radius the third
+    cardinal rule wants measured at the grid that ships, and it is recorded
+    as needed (`v2-long`, on request). QUESTIONS #71,
+    `spec/handoffs/W17-the-harvest-window.md`.
+
+
+39. **W18 landed: the strait carve records the water it opens, and a hop is
+    charged the channel rather than the cell.** (Owner, 2026-09-06, on the
+    sub-grid strait misses: *"we have a few places where you just cut the
+    strait in manually, for real world accuracy instead of pure geographic
+    accuracy?"* → **"yes"** to building the width-carrying term.) Five
+    channels narrower than a cell are opened by hand in `EARTH_STRAITS` so
+    the raster holds them at all — without Gibraltar the Mediterranean is a
+    lake, without the Turkish Straits the Black Sea is terminal and the
+    Danube is erased. **That carve was the CAUSE of the Bosporus miss, not a
+    missing cure**: it converts a would-be land bridge into open water, and
+    `people/neighbors.ts` then prices that water on the cell lattice, so 700 m
+    of Bosporus is charged 333 km at the reference grid — one intervening
+    water cell is two edges — against a 100 km boat hop, and the Neolithic
+    front walks round the Black Sea instead.
+
+    The carve is the only place in the codebase that KNOWS the raster is
+    lying about a piece of water, so it now writes down what it knows:
+    `straitWidthKm`, the real width of every land cell it OPENS, zero
+    everywhere else. A step into or out of such a cell is charged
+    `min(edge, channel)`. Three properties keep this a mechanism rather than
+    a patch. It is **exactly the carve's own deviation from the DEM**, so it
+    cannot reach into a real sea — including the seas at the ends of these
+    channels. It **extinguishes itself as the grid gets finer**, because a
+    finer raster carves less; this is the third cardinal rule taken
+    seriously rather than worked around. And it **over-charges** — a run of
+    k carved cells pays k+1 crossings — so it can refuse a hop and never
+    invent one. No place name appears in the mechanism; it asks whether the
+    carve opened this cell, never whether this is the Bosporus. Five widths
+    were looked up (Gibraltar 13 km, Dardanelles 1.2, Malacca/Singapore 2.8,
+    Messina 3.1, Magellan 3), each the channel's narrows, with the chain rule
+    stated for audit: a row tracing several channels carries the LARGEST of
+    their minima.
+
+    **What it did.** Substrate, both grids, no history: dev gains 2 crossings
+    (Thrace↔Anatolia, 333 km → 2.4; Magellan) from 11 carved cells; target
+    gains 18 from 78, all at the Dardanelles, Malacca or Magellan, with no
+    leakage into open ocean at either. On the dev W5 SOLVE arm **three
+    acknowledged misses cleared** — `arrival:balkans:solve:dev` (−5080 →
+    −6634), `arrival:rhine:solve:dev` (−3981 → −5164),
+    `arrival:cardial-coast:solve:dev` (−4436 → −5871), all now in window —
+    **and a fourth, `europe-front-speed:solve:dev`, 1.447 → 1.082 km/yr,
+    inside the 0.6–1.3 radiocarbon band at the reference grid for the first
+    time.** The speed FALLS while the arrivals come 1,200–1,550 years
+    earlier, and that is the mechanism: the dev grid had been measuring a
+    mature front's detour round the Black Sea and calling it a speed. The
+    population curve's late checkpoints do not move (1 CE 1,503M before and
+    after) because an earlier Europe changes when the curve fills, not the
+    M3b ceiling it fills to; the staple table, every hearth row and the
+    density ordering are unchanged; Japan is still not reached at dev and
+    should not be, the Korea Strait being two genuine ~50 km legs around an
+    island smaller than a cell rather than a carved channel.
+
+    **The imprecision is recorded, not papered over.** The Turkish Straits
+    row traces a chain through the Sea of Marmara, which falls below the
+    enclosed-sea bar and reads as land at every grid; the carve opens it, so
+    W18 prices those cells at 1.2 km too. The crossing it produces is a real
+    1.2 km crossing at either end of the chain, but a route that in reality
+    traverses ~70 km of open Marmara is charged the narrows. The fix is not a
+    constant — it is for the enclosed-sea bar to admit the Marmara as the sea
+    it is, whereupon the carve stops opening it and the term stops applying.
+
+    **Verification.** `tsc`, lint (eslint + the ledger and numeric-literal
+    lints), `npm test` (smoke, unit incl. a new bit-identity test for the
+    neighbour table outside the carved cell, kernel parity, byte-identical
+    save/load), `gate` → `pass` at dev with the corrected manifest,
+    `bench --check`, the oracle → `ok` with `elevation` **exact** at every
+    arm (whose strait splice was loosened to accept the optional recorder
+    argument and now asserts the widths are still there). No Rust change: the neighbour table is built in TS and handed to
+    the kernel, so parity is structural. `coverage` and `monotone` are v1 root
+    tools against v1's `collect()` and are not triggered: W18 adds a static
+    substrate INPUT derived from the DEM at worldgen, not evolving world
+    state, and no metric. **No shipped-grid
+    arm was run**; the target grid gains 18 crossings and what they do to
+    history there is recorded as needed (`v2-long`, on request), as is a
+    trajectory arm for the non-solve European rows whose stated cause is now
+    gone. QUESTIONS #72, `spec/handoffs/W18-the-width-of-the-water.md`.
+    **Superseded by W22 (2026-09-07):** the carve and `straitWidthKm` are
+    deleted; every edge now carries the ground and the water width measured
+    on the fine coastline (`spec/handoffs/W22-ground-and-water.md`, QUESTIONS
+    #76), and the hop rule above reads that table instead of the carve's
+    record.
+
+40. **W19a landed: a cell that is part water feeds part of a cell.** (Owner,
+    2026-09-06, on what should follow W18's channel width: *"so we need finer
+    data, write straits and mini oceans on the coarser map from the fine data,
+    and do the same for sub coarse pixel islands? have then be entities or
+    something like that on the map, with their true size and such"* → **"go"**
+    on the fine data.) **Yes to the data, NO to the entities**, and that "no"
+    is the design decision the wave rests on: a named registry of straits and
+    islets is fine for DRAWING, but the moment a mechanic asks *which feature
+    is this* the second cardinal rule is broken. So the fine measurement lands
+    as a FIELD on cells — like river magnitude, like W18's channel width — and
+    every law reads it without knowing what it is looking at.
+
+    The bug is the land/sea BIT. At the shipped grid a cell is ~21 km on a
+    side and holds ~450 km²; a coast, an island, a strait or a lake shore
+    routinely cuts through the middle of one, and thresholding that to
+    land-or-sea both erases land and invents it. Every capacity law is a
+    density **per km² of LAND**, and the area it is multiplied by to reach a
+    headcount is the **whole cell** — so a cell 30% dry has been fed, taxed
+    and settled as 100% dry.
+
+    `tools/build-landfrac.mts` bakes the missing quantity from the 1-arc-minute
+    ETOPO grid `build-riverdata.mts` already takes (**no new download**):
+    per shipped cell, the share of ~126 fine samples with `altitude > 0` —
+    verifiably the same land test the elevation bake uses. It is stored as
+    varint-delta CORRECTIONS to the bit the elevation raster already implies,
+    so 97.1% of the world is left out: 53,353 cells, 107 KB raw / 143 KB
+    base64 against 1,800 / 2,400 KB for the full plane, with a bake-time
+    byte-for-byte round-trip assertion. `landShare()` reads it and multiplies
+    exactly TWO capacity densities: `foragerTerrestrialCapacity` and
+    `packageCapacityAt` — two and not three, because the wild stand is built
+    FROM `packageCapacityAt` and thins with it automatically.
+
+    Four things were deliberately NOT done, each because it would have been
+    shorter and wrong. The **aquatic** forager term is not scaled: it prices
+    the water's EDGE, and water inside the cell *is* that edge rather than a
+    subtraction from it. **`cellAreaKm2` is not overloaded**, because
+    `migrationShareForArea` reads it as a row property meaning geometric
+    extent — the overload would say people migrate faster out of a half-water
+    cell. **`_reliefMult` is not the carrier**, because it is a penalty
+    response and not a share. And **`PEOPLE_CAPACITY_FLOOR_PER_KM2` is not
+    scaled**: it is a numerical density floor worth ~58 people across all 163
+    wholly-wet target cells. Because `world.people` is a DENSITY, scaling the
+    density is exactly "charge the living to the land the cell has" and every
+    downstream consumer follows for free; the farm-vs-forage adoption test is
+    untouched, both sides scaling by the same share.
+
+    Substrate only, both grids, no history: dev loses **3.02 Mkm² (2.0%)** of
+    land-masked area to water and 2.2% of forager terrestrial headroom; target
+    **3.69 Mkm² (2.5%)** and 2.6%. **10,424 target cells covering ~3.0 Mkm²
+    are MAJORITY WATER and were charged as fully dry land.** The effect is
+    LARGER at the finer grid, not smaller — more marginal coastal cells
+    survive the land mask there — which is the third cardinal rule earning its
+    place a fourth time.
+
+    On the dev W5 SOLVE arm **no row changed status and nothing became
+    stale**: population 1 CE 1,503.0 → 1,482.61M (≈1.4% lower against 2.2% of
+    headroom removed, the shape a curve saturating into an M3b ceiling gives),
+    all five European arrivals still in window, `europe-front-speed` 1.082 →
+    1.0922 km/yr inside the 0.6–1.3 band, density ordering preserved, staples
+    still 8/10 with the same two failures, every hearth row unchanged.
+
+    **W19b is named and NOT built**: letting a cell the raster calls ocean but
+    the fine grid finds partly dry hold people at its true area — the wave in
+    which sub-cell islands exist at all. That changes the land mask's
+    topology (routing, coasts, basins, ancestry) and wants its own wave.
+    **No shipped-grid arm was run** for W17, W18 or W19a; all three are
+    `v2-long` on request. The plane measures height against the sea rather
+    than dryness, so dry ground below sea level reads as water; the size of
+    that gap is not measurable without a hydrography layer and is not claimed.
+    QUESTIONS #73, `spec/handoffs/W19-the-land-a-cell-has.md`.
+
+41. **W20a landed: the map is drawn on a plane finer than the sim's grid.**
+    (Owner, 2026-09-06, on seeing that W19a's sub-cell islands were invisible:
+    *"i am not seeing these islands on the map?"* → *"hold on our sim actually
+    only has that many pixels? we are going to need icons and stuff that is
+    finer than the grid at some point"* → *"ok, IN THE SIM, can we make the
+    pixel density higher, but keep the cell count the same? would that effect
+    performance"* → **"go"** on 3600×1800, everything else left alone. This
+    **replaces W19b**, which stays unbuilt.)
+
+    The bug was in one declaration: the frame buffer was
+    `new ImageData(substrate.width, substrate.height)`, so **the map had
+    exactly as many pixels as the sim had cells** and the finest thing the
+    world could ever show was a whole cell — ~22 km at the shipped grid,
+    ~166 km at the reference grid. Not because the geometry was unknown
+    (W19a had just baked a plane that knows it) but because nothing had asked
+    the frame to be bigger.
+
+    There are now **three planes answering three different questions**: the
+    land/sea mask says WHETHER a cell holds ground, `landFraction` (W19) says
+    HOW MUCH, and `landShape` (W20) says WHERE inside it. The third is
+    deliberately **not** sampled down to the sim grid — sampling it down
+    destroys the only thing it carries — so it keeps its own resolution and
+    the sim reads it through a block.
+
+    **3600×1800 is not an aesthetic choice, it is the seam.** It is a whole
+    multiple of BOTH sim grids on BOTH axes (block 15 at dev, block 2 at
+    target), so every sim cell covers a *whole* block of plane cells and no
+    plane cell is ever split between two sim cells — which is what makes a sum
+    over a block exact rather than approximate. `buildSubstrate` asserts it and
+    **throws** on a grid preset that does not divide the plane, rather than
+    silently producing a slightly-wrong aggregate; `landShapeBlock` rides on
+    the substrate so every future reader sums over the same block. That
+    invariant is the deliverable — the owner named the risk himself ("a bad
+    aggregation fails silently") and this is the answer to it.
+
+    The bake takes the same 1-arc-minute ETOPO1 grid W19a and the river bake
+    already read (**no new download**) and applies one rule with no place name
+    in it: a cell is land when MORE THAN HALF its ~36 samples stand above sea
+    level — the same land test, by the same majority rule, as the elevation
+    bake's own mask. Run-length encoded it is **40,975 bytes**, against 791 KB
+    bit-packed — 20×, because the bit sequence is dominated by long runs of
+    ocean basin and continental interior. The bake asserts its decoder
+    reproduces the plane byte for byte before writing the module.
+
+    **The render rule, chosen from three:** *the map draws the world the SIM
+    has, at the plane's resolution; it never invents ground the sim does not
+    stand on; and a sim land cell whose whole block the plane finds under water
+    keeps its colour throughout, so nothing the sim holds is erased.* The
+    plane-wins rule was rejected because it invents ground with no colour to
+    draw it in; the plane-loses rule is the staircase again at a finer pitch.
+    The chosen rule needs **no branch at draw time** — two precomputed words
+    per sim cell and a `planeBlank` bit, because `pixelColor` already returns
+    the water tone for a sim sea cell. It is not hypothetical: at the shipped
+    grid **4,172 sim land cells (0.75%) hold no plane land at all** and would
+    have vanished from the map; at dev, where a block is 225 cells rather than
+    4, the same count is **9**.
+
+    **The renderer had to get ~7× faster to afford it, and did.** Drawn the old
+    byte-wise way the 6.48M-pixel frame measured 234 ms resample + 103 ms fill
+    — a 2.5× regression at the shipped grid. The loops are overhead-bound, not
+    bandwidth-bound: rewritten as one 32-bit word per pixel (with the machine's
+    byte order detected, not assumed) the same work measures **32 ms + 34 ms**,
+    roughly what sim-resolution byte-wise drawing cost before. The projection
+    table build stays ~898 ms — it is `unproject` per pixel, paid once at
+    startup and once per projection switch, never per frame. That is the honest
+    cost of the wave and it is recorded, not hidden.
+
+    **Nothing else moved, and that is the verification.** No constant, no
+    metric, no law, no kernel array, no persisted field reads the plane; every
+    hash in the repo is byte-identical across the change. Three independent
+    checks say the bake is true: cos(latitude)-weighted land area **147.8 Mkm²
+    / 29.0% of the sphere** against Earth's 148.9 / 29.2%; the decoded land
+    count through the substrate is **2,195,469** at both grids, exactly the
+    bake's own figure; and measured blind, Iceland comes out 100,800 km²
+    (real 103,000) and Malta 400 km² (real 316), while Iki at 138 km² is
+    exactly one cell — the honest statement of the new resolution limit.
+
+    It does **not** subsume `landFraction`: at block 2 the plane expresses 5
+    levels of cover against the cover plane's 256, so the cover plane stays and
+    remains what the capacity laws multiply by. The two agree where they can —
+    at the shipped grid the plane's summed share is 548,867 cells against the
+    cover plane's 549,184, 0.06% apart. It does not change the land mask's
+    topology; no cell became land or sea. And it is not a UI feature yet — it
+    makes glyphs, borders and markers *inside* a cell possible, and builds
+    none of them. `spec/handoffs/W20-the-shape-of-the-land.md`.
+
+
 ## Proposed — working design, awaiting explicit ratification
+
+- **P16. The true reduced grid** (replaces the withdrawn 31(c); measured
+  2026-09-05, DECISIONS 33, QUESTIONS #61). `n_row = max(1, floor(width ·
+  cos(lat)))` — a row holds as many cells as fit at one cell-height each, so
+  a cell is never narrower than it is tall. A mechanism, not a fitted
+  constant: rounding DOWN is what puts the aspect on the safe side of 1, and
+  it self-calibrates at any grid height, on any map. Measured worst aspect
+  0.998; it doubles the shipped-grid migration stride (24 → 48 months),
+  which is what 31(c) promised and did not deliver, and it makes 31(d)'s
+  anisotropic flux free (bound 2.689 years, exactly today's stride). The
+  cost is that it is a TRUE reduced grid — arbitrary run lengths, so
+  adjacent rows disagree everywhere — and the fixed eight-slot stencil the
+  TS oracle and the Rust kernel share cannot express a merged cell's several
+  northern neighbours. It changes what a cell IS, reaching the land packing,
+  the adjacency structure, persistence, the kernel's per-row cell area, and
+  the renderer; and its payoff cannot be confirmed end-to-end without a long
+  arm, which the dev loop forbids. Ratification is the owner's.
 
 - **P8. Glacial-coastline peopling wavefront** (owner question 2026-09-01,
   QUESTIONS #27). Bake an LGM land mask (ETOPO altitude > −120 m — the
@@ -629,6 +1434,337 @@ lawyered.
   physics. Bake-side only — no live sea level; replaces dials with data
   (R2/R7). Not needed for M2: the proxies already yield the correct
   peopling extents and ordering that its gates consume.
+- **P17. Routed catchment runoff as water access** — ~~proposed~~
+  **BUILT as W13 (2026-09-05, owner: "so we need water runoff"; see 34,
+  `spec/handoffs/W13-runoff.md`)**. (W12 raster finding, QUESTIONS #64,
+  2026-09-05.) The substrate carries water in three forms —
+  the cell's own rainfall, the floodplain ribbon of a large river, and a
+  channel magnitude on a 0–4 scale of which 89 % of land reads 0 — and
+  none of them is "a wet catchment drains onto this dry cell". That is
+  what an oasis is, and it is what farmed Jeitun, Sang-e Chakhmaq,
+  Mehrgarh and Tepe Yahya by −7000 to −5500: mountain runoff over an
+  alluvial fan. In the sim those cells read the moisture floor (0.02) and
+  water access 0.02, so wheat capacity is 0.13–0.21 persons/km² against
+  3–19 in Europe, the front crosses the plateau at 0.16–0.30 km/yr, the
+  Indus is reached ~2,400 years late and Jeitun and Mehrgarh are never
+  farmed (arrival:indus:solve:target). The worldgen already computes flow
+  accumulation (it sizes the floodplain ribbon by it); the mechanism is to
+  route each cell's catchment precipitation down it, less an evaporation
+  loss, and count what arrives as water access — a runoff coefficient and
+  a loss rate, both physical quantities, no place named. It lifts every
+  piedmont on every map and nothing else. It is the substrate's, it moves
+  the world hash at both grids, and it is NOT to be substituted by raising
+  the moisture floor or the plateau's fertility (second cardinal rule).
+  The data-side half — the 1.9 ° climatology averaging a range's wet
+  slope with the basin at its foot (the NCEP cell over Shahroud reads
+  95 mm/yr) — is recorded in #64 and is P18. As built, the routing reads
+  the worldgen's own per-tile runoff and flow directions with one
+  constant, a 10 km channel strip; measured at the shipped grid on the
+  substrate alone, it waters the Nile, the lower Indus, the Ganges, the
+  Oxus and the Tarim and leaves the plateau sites at the floor, because
+  their catchments are empty in the table — so P17 alone does not move
+  the Indus row, and the shipped-grid re-measurement is `v2-long` on
+  request.
+- **P18. Sub-grid orographic redistribution of the coarse precipitation** —
+  ~~proposed~~ **built as W14** (DECISIONS 35, 2026-09-05; W13 finding,
+  QUESTIONS #65). The Earth preset's moisture is
+  a quantile map of the 1.9° NCEP/NCAR precipitation, and a range narrower
+  than a cell — the Kopet Dag, the Alborz foot, the Sulaiman, the Makran —
+  is averaged with the basin at its foot and smeared into its desert. With
+  P17 built, that is now the whole of the plateau sites' deficit: routing
+  finds nothing in their catchments to route (Jeitun's water access
+  0.02 → 0.07, Mehrgarh 0.02 → 0.12, Sang-e Chakhmaq 0.02 → 0.02; wheat
+  capacity 0.11–0.14 → 0.13–0.15 persons/km²), while every site under a
+  resolved catchment gets its water. The physical remedy is on the data
+  side: redistribute each coarse cell's precipitation over the fine cells
+  inside it by their elevation anomaly against the coarse mean — an
+  orographic enhancement per metre of relief, one coefficient with a
+  citation — CONSERVING the coarse cell's total, so no rain is invented,
+  only placed on the slope it fell on. (**The reference in that sentence is
+  superseded by W15**, DECISIONS 36: an anomaly against the coarse mean has
+  no aspect, so it lifted a lee slope exactly as much as a windward one.
+  The built term now references the elevation one footprint half-width
+  UPWIND along the month's own wind — the height the air climbed — with the
+  same gain, clamp, footprint and conservation.) No place named; it lifts every
+  range on every map and nothing else. It is the substrate's, it moves the
+  world hash at both grids, and it is not to be substituted by raising the
+  moisture floor, the runoff floor, or the channel strip (second cardinal
+  rule). Built as proposed, one gain and one clamp with citations, the
+  footprint the widest odd box inside a table cell, the total conserved —
+  and measured at the target grid it moves every wet range and NOT the
+  plateau sites (0.02 → 0.02), because the quantile map's floor band (the
+  driest 26 % of land at one value) absorbs the share before it reaches the
+  solver's moisture. The Indus target row therefore stays a miss under W14,
+  now placed at the floor band — a data-side ruling for the owner
+  (QUESTIONS #66) — and neither the floor nor the gain is lifted to reach
+  it.
+- **P19. The crop fit splits: annual share for the wild stand, harvest-cycle
+  grade for the farmed capacity** — ~~proposed~~ **BUILT as W17**
+  (DECISIONS 38, 2026-09-06, owner: "ok, look it up and implement then";
+  `spec/handoffs/W17-the-harvest-window.md`). (W16 finding, 2026-09-06;
+  QUESTIONS #70.)
+  `crop.ts` grades a cell as `fitSum / MONTHS_PER_YEAR` — the share of the
+  year that is favourable — and hands the SAME number to two consumers that
+  want opposite normalisations. For the wild stand that is correct and is
+  W10's own finding: gatherers graze continuously, so eight good months feed
+  more than five, and averaging over qualifying months alone scored a short
+  Siberian summer as highly as a long Chinese one. For a HARVEST it is
+  wrong: a crop occupies one cycle, and the months outside it are not part
+  of the yield, so the model rewards a long season over a good one. Measured
+  cost (dev substrate, technique 1): Cairo wheat 0.171 and third of six
+  under the year share, 0.411 and first over the growing season; Luxor
+  0.168/fifth → 0.289/second, above sorghum — and at Luxor both crops' water
+  terms are identically `access` 0.401, so the entire sorghum-beats-wheat
+  result on the Nile is season LENGTH. The proposal is the W15 pattern
+  again: carry two fits, `/12` for `stand` and hearth site quality, a cycle
+  grade for `packageCapacityAt`. It needs no Rust change — `crop_fit` enters
+  Rust only at `package_capacity`, and the stand is TS-side.
+
+  **It is Proposed and not built because three things are missing, and one
+  of them is a trap.** (i) `/season` alone re-breaks W10 — millet's best
+  stand moves from the 7-month Balkhash cell to a 6-month one and the loess
+  falls 3rd → 5th — which is what forces the split rather than a
+  replacement. (ii) **The cycle length is a datum this repo does not have.**
+  `seasonMinimumMonths` is a growing-season MINIMUM by its ledger entry
+  (§09:242) and is not the cycle; the result is acutely sensitive to what
+  replaces it (a 6-month emmer scores 0.0000 at Cairo, a 5-month one tops
+  the table), so **picking the length that makes Egypt come out wheat is a
+  fitted outcome and is forbidden** (second cardinal rule). The length must
+  be sourced as agronomy — days to maturity, per package, with citations —
+  and the map is then whatever it implies. (iii) Perennials have no
+  within-year cycle: under a cycle window highland-roots zeroes at Luxor,
+  Cairo, Central Europe and the Sahel, and tubers on the lower Yangtze and
+  the loess. A crop standing in the ground is graded by the year like the
+  stand; an annual by its cycle. That is a second KIND of package — the
+  same shape of gap QUESTIONS #69 records on the founder-set side — and it
+  is unspecified.
+
+  **Blast radius, so this is not mistaken for tuning.** The naive `/season`
+  lifts global best-package capacity only ×1.082, but changes which package
+  is best in 25.1 % of farmable cells (1641 of 6529). Forecast under a
+  candidate cycle table: south China and the lower Yangtze both go clearly
+  to rice, the loess millet 4th → 2nd (its real fast maturity is absent from
+  the model today, since millet carries wheat's 5-month minimum); Central
+  Europe goes to eastern-seeds and Mexico is still not maize. Not measured
+  at the shipped grid.
+
+  **As built, all three blockers were answered and the forecast above was
+  superseded by measurement.** The grade is not `/season` but the mean over
+  the best consecutive run of `cycleDays` worth of months, wrapping the year:
+  a perennial's run is the whole year and reduces exactly to `Σ/12`, so (iii)
+  needs no second kind of package; a season shorter than the cycle keeps the
+  fraction it covers instead of zeroing, so (ii)'s acute sensitivity is gone;
+  and the stand keeps `Σ/12`, so (i) — W10 — is untouched. The cycle length
+  was sourced as agronomy exactly as required: FAO-56 Table 11's shortest
+  listed total growing period for each package's own crops, with the two
+  crops that table omits from named literature, and the alternative reading
+  measured and recorded because it moves wheat DOWN (DECISIONS 38(b)).
+  Measured rather than forecast: the blast radius is 43.3 % of farmable cells
+  (not 25.1 %) and capacity ×1.260 (not ×1.082), south China and the lower
+  Yangtze do go to rice, **Mexico DOES go to maize** and Central Europe stays
+  wheat — the forecast was wrong on both of those, which is what a forecast
+  from a normalisation nobody had built is worth.
+- **P20. Harvests per year: how many cycles a field actually takes**
+  (W17 finding, 2026-09-06; QUESTIONS #71). W17 grades a farmed cell over the
+  best run of months its crop's cycle occupies — and then credits the cell
+  with exactly ONE harvest, wherever it is. That is right at the margin,
+  where the season barely holds one cycle, and wrong in the tropics, where
+  the same ground takes two or three. The pre-W17 `Σ/12` was, read honestly,
+  the opposite error: an UNCAPPED multi-cropping model with every crop's
+  cycle implicitly twelve months. Both are wrong in the same term, in
+  opposite directions, and the gap between them is measurable — by |latitude|
+  band the dev capacity moved ×1.086 (0–15°), ×1.250 (15–30°), ×1.556
+  (30–45°), ×1.682 (45–60°), ×1.997 (60–90°), so W17 tilted the world's
+  farmed capacity 1.8× toward the poles relative to the equator. The
+  mechanism is not in doubt: capacity ∝ `min(favourable months / cycle
+  months, C)`, the crop taking as many cycles as the season admits, capped by
+  what one field can carry in a year.
+
+  **It is Proposed and not built because C is a datum this repo does not
+  have, and inventing it would decide the answer.** The cap is real
+  agronomy — fallow, soil nitrogen, labour at harvest and sowing, and the
+  fact that a second crop on the same ground is not a second crop of the
+  same yield — and it is the single term that decides whether the Nile and
+  the Indus, whose real years take a winter crop AND a summer one, out-yield
+  the single-cycle summer cereals that hold them today (staple:nile and
+  staple:indus, both `solve:dev` and `solve:target`). Choosing C to clear
+  those two rows is exactly the fitted outcome the second cardinal rule
+  forbids; C must be sourced — multi-cropping indices and yield-decline
+  figures per cycle, with citations — and the map is then whatever it
+  implies. Until then W17's single harvest stands, and the asymmetry is on
+  the record rather than dialed out of it.
+
+- **P22. The famine's flight and its store** (proposal, 2026-09-08,
+  W29, QUESTIONS #86). The harvest law kills in place: the year's multiple
+  enters no room the movement sees (the migration hotspot is the mean-year
+  capacity), so a starving cell's people die where they stand instead of
+  walking to the neighbour whose year was better, and no store carries a
+  bad year — the granary is W31's (04 §4.1's food books; the W30 slot went
+  to the catchment sky and the famine-frequency row, 2026-09-08). Proposed, not
+  built: (i) the year's multiple scales the room the awake regime's
+  movement reads, so the flight from a failed harvest is the hotspot law on
+  this year's harvest instead of the mean's; (ii) W31's store buffers the
+  year before the deaths law sees it, at the storable share the food books
+  carry — which is where a famine's severity (Ó Gráda's harvest failures of
+  a third to a half becoming deaths of a tenth to a third) comes from;
+  (iii) the famine year's cohort weighting is M3b's. Each is a mechanism
+  with its own datum, none a rate. The famine-year LABEL (a bottom-decile
+  year failing by more than a third) is v1's and is kept: it fires ~10 % of
+  years wherever the yield CV exceeds 0.27 and almost never on reliably
+  watered ground, the shape of the regional famine chronologies, but
+  whether the label should follow the deaths rather than the yield is a
+  ruling.
+  **W30 (2026-09-08): the label now stands against a datum, and the sky a
+  valley reads is its catchment's** (`spec/handoffs/W30-the-catchment-sky.md`,
+  QUESTIONS #87). (a) Each land cell reads the year through a fixed row over
+  the weather grid — the bilinear local sky in the rain-fed share of its
+  yield variance plus the sky its surface water was rained from (W13's
+  routing walked in the composition of the flow) in the river-fed share,
+  normalised to unit variance under the smoothing — so the Nile delta reads
+  the highlands' year (95 % of its row upstream) and every cell reads a 1 σ
+  year as 1 σ, where the bilinear read alone averaged 0.70 of the variance
+  between centres and 1.4× at the poles (W29 gaps 4 and the unlabelled
+  corner loss, both closed by the same normalisation; no constant added).
+  (b) `farmedYears`, the years a cell's farmers stood through, is the
+  famine tally's denominator, and `data/reality/famine-frequency.json`
+  judges famine years per millennium of farmed years against the regional
+  chronologies (windows set before measuring): at the dev solve arm England
+  4.3 [3–30], the Aegean 68 [30–150], the Sahel 72 [50–200], the Nile 55
+  [20–80], the Deccan 71 [20–100], the North China Plain 72 [40–150] —
+  6/6, so v1's label is kept as a definition that now also holds against
+  the chronologies at the coarse grid; the shipped grid is `v2-long`. The
+  spec's "England ~2/millennium" was v1's own output (research/03) and 04
+  §4.4 now carries the chronologies instead. (i) — the flight — is **built
+  (W33, 2026-09-09)** (`spec/handoffs/W33-the-flight.md`): awake farmer
+  room is `packageCapacity × yearMul` (mean when unread) plus
+  `store / ration`; solve keeps the mean-year room; (ii) — the store — is
+  **built (W31, 2026-09-08)**; (iii) remains proposed (M3b). The ruling on
+  the label is no longer needed to make the frequency row honest, only to
+  change it.
+  **W31 built (2026-09-08): the store** —
+  `spec/handoffs/W31-the-store.md`. Conserved `store` field (tonnes/km²),
+  Q10×moisture spoilage, fill at catalogue storability, pooled draw,
+  deaths on the uncovered excess only; `food` sheet; save v12. At the
+  dev solve arm: frequency 6/6 unchanged; run share 0.82 ≥ 0.5; severity
+  0 % in the four judged regions (store covers labelled years —
+  manifested); margin inverted (manifested); curve −5000 95.9 → 114.1M,
+  1 CE 1,491 → 2,077M (up, as expected — not tuned). **P23** proposed
+  for ratification: the store is the FIELD; a community's granary is a
+  query over its cells (18.3), amending 02 box 2. The flight is **built (W33)**.
+  **W31 reviewed and merged (2026-09-09)** with one correction to the
+  law: the harvest fed every package the whole cell's capacity (W29's
+  line), which a pooled granary turns into grain no land grew — the trace
+  packages W8's conversion leaves each reaped the entire cell into the
+  shared store (harvest ÷ need 3.0 at the mean year, sixteen-year
+  granaries, the p90 cell at 1.28 × capacity by 1 CE, and W30's cage a
+  front transient on foragers' land counted twice). Each package now reaps
+  its share of the cell's people, the mixture capacity's own share (W8),
+  so the harvest is the farmed part of the capacity the growth pass reads.
+  Re-measured at dev: 1 CE 1,768M (×1.19 over W30, ×0.84 against W28);
+  severity England / Deccan / NCP / Sahel 0.09 / 0.25 / 0.06 / 0.38 %
+  (below their windows, manifested; the Sahel row crosses into its window
+  at an arid factor of 0.5, a grounding finding, not a dial); run 0.956;
+  margin still inverted, and shown to be confounded by the graveyard
+  density; **no basin cages inside the horizon** — P24, at either grid
+  (the shipped-grid `v2-long` arm of 2026-09-09; handoff status).
+  QUESTIONS #89.
+- **P23. The food book lives below the community bar** (proposed for
+  ratification, 2026-09-08, W31). Amends 02 box 2's "food stocks and
+  flows enter through community books, not a parallel field": the stock
+  is the `store` field; a community's granary (M4's opening) is the SUM
+  of its cells' store — a query, never a second stock, never copied,
+  never authored. Required by 18.3: macro-history must be invariant under
+  the community bar, which is only possible if the food book lives below
+  it. Built in W31 as the field; **community view built in M4** (condensation
+  + granary query; tribute edges).
+- **P24. The room the wake reads is the room the years sustain**
+  (built, 2026-09-09, W32; proposed from the W31 review; QUESTIONS #89).
+  W5's caging knee measured a basin's free share against the pair-spare
+  room at best yield with a farmer share of one and no crop fit — the room
+  a first farmer sees on an empty map, written before W8's fit, W29's
+  mean-year deaths and W31's store bounded what a full cell holds. Under
+  the merged harvest law a full basin stood at 0.78–0.88 of the capacity
+  the growth pass reads, and that capacity is 0.79–0.81 of W5's room; the
+  product left a free share that bottoms at 0.277 against the 0.2 knee, and
+  no basin caged inside the horizon at either grid (the `v2-long` arm of
+  2026-09-09 on `64dd4510`). **Built (W32):** the room `cagedBasin` reads
+  is `capField` — fit, technique, works, water, the land a cell has — and
+  free is capacity minus people, so circumscription is measured against the
+  land people can actually farm; the knee stays at Carneiro's 0.2 and the
+  window at the hearth law's. The `_bestYield` scratch W5 kept for the
+  stale room is gone. Whether "free" should also net out the margin the
+  years demand (the lean-year gap 04 §4.2 withdrew as a founding rule and
+  W31 made a result) remains the open ruling — not built here. The flight is **built (W33)**.
+- **P21. Capacity is the land's, not the crop's** (finding, 2026-09-08,
+  QUESTIONS #83). The 1 CE world decomposed by region at the shipped grid
+  puts China and India at their real populations and ~730M people in
+  regions that held ~40M — sub-Saharan Africa, the Americas, Siberia —
+  farmed at 10–15 persons/km² because every package yields 0.8–1.15 of
+  wheat wherever its climate bell admits it, and reached a thousand to two
+  thousand years before the Bantu, maize or iron did. The population curve's
+  first cause is therefore not mortality (M3b, which would push the cores
+  under their bands) but capacity in the wrong places and the front's
+  reach. Proposed, not built: (i) farmed capacity carries the land's own
+  productivity — soil, growing season, disease burden, the technique
+  level — as the forager capacity already carries habitat (W8), so the
+  Congo and the boreal forest do not feed the density of the Nile delta;
+  (ii) the front's spread into those biomes waits on the same terms, not
+  on a date; (iii) the balance law lets a cell fall back to its ceiling
+  (the growth pass stops births at capacity but never takes a population
+  below it; the p90 farmed cell sits at 1.9 × capacity). Each term is a
+  sourced datum or a mechanism, none a fitted answer; the order and the
+  sources are the owner's ruling. M3b follows on the map this produces.
+  **Sharpened by the factor split (QUESTIONS #84, 2026-09-08):** the
+  4.7 × "technique regime" (0.45 → 2.10) is keyed to the cell's FARMED
+  SHARE, which is 1.00 in every region by 1 CE — the sim has no slow state
+  for agricultural development, so every farmed cell sits at its mature
+  pre-industrial ceiling ~1,600 years after the front arrives, and 97 % of
+  the farmed world had farmers before −1600. **Reviewed against the spec
+  (same day): (i) is not new state.** It is `works` (02 box 2; 04 §4.1's
+  capacity factor; v1's validated LAND_WORKS: built by pressure at the
+  ceiling, rotting unstaffed, ×(1 + 2·w)) and the environmental stocks,
+  which M2 ruling 10 parks inert until M3+ with the food economy, plus
+  §11.3's farming-domain proficiency at M8 as the driver of the technique
+  term itself. The ceiling's deaths are M3's famine derivation (§4.1), the
+  disease pools are §16 at M7–M8. So the proposal reduces to two rulings:
+  **when the ruling-10 slots arm** (M3 as planned, or a wave of their own
+  before the food books, since they are field kernels that need no
+  community), and **what the technique term does until M8** — paid at the
+  front's arrival as today, which is the population excess the manifest
+  carries, or held at the first cultivator's 0.45 until a driver exists,
+  which puts the cores at a quarter of their bands instead. What the spec
+  does not hold and #84 adds: `tileFert` is a climate bell, not soil; the
+  disease burden divides the growth rate and the forager ceiling but not
+  the farmed one; eastern seeds at 0.81 of wheat is a catalogue datum to
+  check.
+  **W28 (2026-09-08): the ruling-10 works slot is ARMED** as a wave of its
+  own before the food books (`spec/handoffs/W28-the-works.md`): v1's
+  validated LAND_WORKS ported to both kernels — built where the fill presses
+  past 0.5 on improvable ground at the skill of the farmed share, rotting
+  below a quarter staffed, ×(1 + 2·works) on the crop; the improvable share
+  is W13's surface access plus the wet climate's own term. Measured at dev
+  (QUESTIONS #85): it raises the ceiling ×1.96 over the farmed world and the
+  1 CE checkpoint 1,487 → 2,108M, and at 165 km cells it raises it where the
+  RAIN is, not where the water can be led — so it takes back none of the
+  excess and adds to it in the regions (i) names. Still open, unchanged by
+  the arming: (i) the land's own productivity, (ii) the front's reach, (iii)
+  the balance law, the technique-term ruling (the works' skill is that same
+  farmed share, so it builds at full rate from the front's arrival), and now
+  (iv) whether the shipped grid's valley strips carry the improvable share
+  the dev cells cannot — `v2-long`. The other ruling-10 slots (the
+  environmental stocks: soil fatigue, deforestation) stay inert until the
+  food economy.
+  **W29 (2026-09-08): (iii) is BUILT** as the harvest law's mean year
+  (`spec/handoffs/W29-the-harvest-years.md`): the farmers above what the
+  year feeds die at 0.3 per year of the excess, so in a mean year a cell
+  above its ceiling falls back toward it at that rate and in a bad year —
+  the anomaly scaled by the cell's own yield CV — below it. Measured at dev
+  (QUESTIONS #86): the curve ×0.80 at −3000, −1000 and 1 CE (2,108 →
+  1,689M), the river cells' density ×0.88 and the rain-fed ×0.79, famine
+  deaths about one in six of the booked deaths. A fifth, not the fourfold
+  excess: (i) the land's own productivity and (ii) the front's reach remain
+  the first cause, the technique-term ruling is unchanged, and the store
+  (W31, the store) and the flight (P22) are the harvest's own open ends.
 - **P15. The frontier growth rate** (W7 finding, 2026-09-03). The
   farming front is a pulled wave whose speed is 2·√(r·D) of the farmer
   group's own uncrowded growth; the kernel reproduces that to two figures
@@ -641,6 +1777,11 @@ lawyered.
   front at ~0.8–1 km/yr at both grids and lift the population curve toward
   capacity faster, which M3b's mortality then has to pay for; the owner
   rules on the order.
+  **W29 (2026-09-08):** the harvest years are the first deaths in the
+  curve (a fifth of it at dev, QUESTIONS #86), the mechanism that pays for
+  a faster uncrowded rate in every bad year; the ruling on r is still the
+  owner's, and the store (W31) comes before it, since without one a faster
+  refill of the excess is paid in deaths at once.
 - **P10. Paleoclimate anomaly track** (review, 2026-09-02). The sim
   applies today's climatology from 9700 BCE; the Sahara was green from
   ~9000 to ~4000 BCE, with lakes, herders, and the first Nile settlers

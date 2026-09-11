@@ -12,16 +12,19 @@ import {
   ROUTING_FIXTURE_TEMPERATURE,
   ROUTING_FIXTURE_WATER_ELEVATION,
   ROUTING_FIXTURE_WIND_MS,
+  TRAVEL_PASS_DIRECTIONS,
   TRAVEL_RIVER_TEST_MAGNITUDE,
   UINT8_SENTINEL,
 } from "../constants";
 import { hash32 } from "../../ported/rng";
+import { emptySnowpack } from "../snow";
 import type { GridPreset } from "../world";
 import type { Substrate } from "../substrate";
+import { fallbackCrossings } from "../crossings";
 import { TravelEngine } from "./engine";
 import type { TravelMetric, TravelMode } from "./cost";
 
-function fixtureSubstrate(grid: GridPreset): Substrate {
+export function routingFixtureSubstrate(grid: GridPreset): Substrate {
   const width = grid === "dev" ? ROUTING_FIXTURE_DEV_WIDTH : ROUTING_FIXTURE_TARGET_WIDTH;
   const height = grid === "dev" ? ROUTING_FIXTURE_DEV_HEIGHT : ROUTING_FIXTURE_TARGET_HEIGHT;
   const N = width * height;
@@ -36,6 +39,7 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
   const direction = new Uint8Array(N);
   direction.fill(UINT8_SENTINEL);
   const flowAccum = new Float32Array(N);
+  const runoff = new Float32Array(N);
   const lake = new Int32Array(N);
   lake.fill(MATH_NEGATIVE_ONE);
   // A uniform eastward breeze: sail modes must come out direction-asymmetric
@@ -71,13 +75,28 @@ function fixtureSubstrate(grid: GridPreset): Substrate {
     height,
     N,
     preset: "routing-fixture",
+    crossings: fallbackCrossings(landMask, width, height),
+    landFraction: new Float32Array(N).fill(1),
+    // The fixture has no geometry finer than itself, so the shape plane is its
+    // own mask at a block of one — the smallest whole multiple there is.
+    landShape: new Uint8Array(landMask),
+    landShapeWidth: width,
+    landShapeHeight: height,
+    landShapeBlock: 1,
+    walkKm: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
+    snow: emptySnowpack(N),
+    dryFraction: new Float32Array(N),
+    temperatureAmplitude: new Float32Array(N),
+    warmRainFraction: new Float32Array(N),
+    walkAscent: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
+    walkDescent: new Float32Array(N * TRAVEL_PASS_DIRECTIONS),
     elevation,
     landMask,
     climate,
     wind: { u: windU, v: windV },
     temperature,
     moisture,
-    rivers: { magnitude, direction, flowAccum, lake },
+    rivers: { magnitude, direction, flowAccum, runoff, lake },
     ancestry: {
       lineage: new Int16Array(N),
       arrival: new Float32Array(N),
@@ -129,7 +148,7 @@ export interface RoutingBatteryResult {
 }
 
 export async function runRoutingBattery(grid: GridPreset): Promise<RoutingBatteryResult> {
-  const substrate = fixtureSubstrate(grid);
+  const substrate = routingFixtureSubstrate(grid);
   const engine = await TravelEngine.create(substrate);
   let hash = hash32(substrate.width, substrate.height, grid);
   let queries = 0;

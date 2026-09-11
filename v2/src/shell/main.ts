@@ -1,4 +1,8 @@
 import {
+  CROSSING_ROSE_DX,
+  CROSSING_ROSE_DY,
+  CROSSING_SAMPLE_KM,
+  FOOD_GRANARY_MONTHS_SATURATION,
   M0_DEFAULT_SEED,
   MONTHS_PER_YEAR,
   TRAVEL_RIVER_MIN_MAGNITUDE,
@@ -6,9 +10,18 @@ import {
   TRAVEL_RIVER_NAVIGABLE_GRADIENT_M_PER_KM,
   TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM,
 } from "../sim/constants";
+import { snowCoveredAreaMid, snowDepthCm, snowMeanMm } from "../sim/snow";
 import { buildSubstrate, type Substrate } from "../sim/substrate";
+import { crossingHasGround, crossingIsOpenWater, crossingWaterWidth } from "../sim/crossings";
 import { yearFromStep } from "../sim/horizon";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
+import { decodePasses, PASS_SOURCE_COLS, PASS_SOURCE_ROWS } from "../ported/worldgen/passData.js";
+import { decodeWaypoints, WALK_DIRECTIONS, WALK_SOURCE_COLS, WALK_SOURCE_ROWS } from "../ported/worldgen/walkData.js";
+import { edgeWindow, sampleBins, WALK_DX, WALK_DY } from "../ported/worldgen/sampleBins.js";
+import {
+  B_BOREAL, B_COLD_DESERT, B_DESERT, B_FLOODPLAIN, B_GRASSLAND, B_ICE, B_MEDITERRANEAN, B_SAVANNA,
+  B_SHRUBLAND, B_SUBTROP, B_TAIGA, B_TEMP_FOREST, B_TEMP_RAIN, B_TROP_DRY, B_TROP_RAIN, B_TUNDRA,
+} from "../ported/worldgen/biomeClass.js";
 import { createTravelEngine, type TravelRoute } from "../sim/travel/engine";
 import { riverReachGradient, type Capability, type TravelMetric } from "../sim/travel/cost";
 import type { GridPreset } from "../sim/world";
@@ -58,10 +71,47 @@ if (!context) throw new Error("Canvas is unavailable.");
 
 const substrate = buildSubstrate(M0_DEFAULT_SEED, { preset: "earth_sim" }, GRID);
 const travel = await createTravelEngine(substrate);
-// Colours are computed per SIM cell into `frame` (grid-sized), then sampled
-// through the projection table into `projected` (map-sized); CSS scales the
-// display. The projection is display only — the sim grid is lat-lon.
-const frame = new ImageData(substrate.width, substrate.height);
+// The map is drawn on the LAND SHAPE PLANE, not on the sim grid: colours are
+// computed per sim cell (a cell is one colour — it is one place), and the plane
+// decides, at ~11 km, where that colour stops and the sea begins. So a coast,
+// a strait or an island inside a cell has a shape on the map even though the
+// sim holds the cell whole. The frame is plane-sized, sampled through the
+// projection table into `projected` (map-sized); CSS scales the display.
+const PLANE_W = substrate.landShapeWidth;
+const PLANE_H = substrate.landShapeHeight;
+const PLANE_BLOCK = substrate.landShapeBlock;
+const frame = new ImageData(PLANE_W, PLANE_H);
+// One 32-bit word per pixel instead of four byte writes: the frame and the
+// reprojection are the two loops that run every redraw, and at plane size that
+// is 6.5M pixels each. Byte order is the machine's, so pack to match it.
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+function pack(colour: readonly [number, number, number]): number {
+  const [red, green, blue] = colour;
+  return LITTLE_ENDIAN
+    ? ((255 << 24) | (blue << 16) | (green << 8) | red) >>> 0
+    : ((red << 24) | (green << 16) | (blue << 8) | 255) >>> 0;
+}
+const frameWords = new Uint32Array(frame.data.buffer);
+// Per sim cell, the word a pixel of its block takes where the plane finds land
+// and where it finds water. A cell the sim calls sea is its water tone either
+// way — the map draws the world the SIM has, at the plane's resolution; it
+// never invents ground the sim does not stand on. A cell the sim calls land
+// whose whole block the plane finds under water keeps its colour on both, so
+// nothing the sim holds is erased by a plane too coarse to see it.
+const shapeLand = new Uint32Array(substrate.N);
+const shapeWater = new Uint32Array(substrate.N);
+/** True where the plane finds no land at all inside a cell's block. */
+const planeBlank = (() => {
+  const blank = new Uint8Array(substrate.N).fill(1);
+  for (let y = 0; y < PLANE_H; y++) {
+    const row = ((y / PLANE_BLOCK) | 0) * substrate.width;
+    const rowStart = y * PLANE_W;
+    for (let x = 0; x < PLANE_W; x++) {
+      if (substrate.landShape[rowStart + x]) blank[row + ((x / PLANE_BLOCK) | 0)] = 0;
+    }
+  }
+  return blank;
+})();
 const base = document.createElement("canvas");
 const baseContext = base.getContext("2d")!;
 let baseKey = "";
@@ -77,10 +127,35 @@ let graticuleLines: Array<Array<[number, number]>> = [];
 // while sampling, so the spin is instant at any grid.
 let centreDegrees = 0;
 
-/** The central meridian in radians, snapped to the whole-cell shift the table uses. */
+/** The central meridian in radians, exactly where the drag put it. The base
+ * image is sampled at the whole-column shift the table snaps to; the rest of
+ * the spin — under half a plane column — is applied as a translation of the
+ * base when it is drawn (`residualPixels`), so a drag moves the world
+ * continuously instead of in column steps (an 18-pixel jump per step at
+ * 64× zoom, and the vertical pan was continuous beside it — the jitter). */
 function centralMeridian(): number {
-  const shift = table.shiftFor(degreesToRadians(centreDegrees));
-  return (shift / substrate.width) * 2 * Math.PI;
+  return degreesToRadians(centreDegrees);
+}
+
+/** The snapped meridian the base image was sampled at. */
+function snappedMeridian(): number {
+  const shift = table.shiftFor(centralMeridian());
+  return (shift / PLANE_W) * 2 * Math.PI;
+}
+
+/** How far, in projected pixels, the drawn base must move to sit at the exact
+ * meridian: the sub-column residual, scaled by the width of the parallel at
+ * the middle of the view (a plane column is narrower toward the poles). */
+function residualPixels(): number {
+  const delta = centralMeridian() - snappedMeridian();
+  const wrapped = Math.atan2(Math.sin(delta), Math.cos(delta));
+  const columns = (wrapped / (2 * Math.PI)) * PLANE_W;
+  const middle = lonLatAtScreen(0.5, 0.5);
+  const lat = middle ? middle[1] : 0;
+  const centre = snappedMeridian();
+  const [westX] = table.lonLatToPixel(centre - Math.PI + 1e-9, lat, centre);
+  const [eastX] = table.lonLatToPixel(centre + Math.PI - 1e-9, lat, centre);
+  return columns * Math.max(0, eastX - westX) / table.width;
 }
 
 function formatCentre(): string {
@@ -97,7 +172,7 @@ function applyCentre(): void {
 }
 
 function applyProjection(name: ProjectionName): void {
-  table = buildProjectionTable(PROJECTIONS[name], substrate.width, substrate.height);
+  table = buildProjectionTable(PROJECTIONS[name], PLANE_W, PLANE_H);
   if (!projected || projected.width !== table.width || projected.height !== table.height) {
     projected = new ImageData(table.width, table.height);
     canvas.width = table.width;
@@ -129,23 +204,44 @@ let speed = 1;
 // a batch is several multi-year steps and the map plays the peopling; after
 // the wake the timeline scrubs the solved span through reconstructed frames.
 let phase = "solve";
-let solveStride = 1;
+let solveClock = 1;
+let solveSpan = 1;
 let wakeStep = -1;
 let cagedStep = -1;
 let liveStep = 0;
 let scrubbing = false;
-const BATCH_SOLVE_STEPS = 8;
+// A solve frame advances a fixed number of the world's COARSEST firings,
+// not a fixed number of clock steps: once the passes are on their own
+// strides (W12) the clock ticks as often as the shortest of them, and a
+// frame counted in clock steps would cover a seventh of the history at the
+// shipped grid for a fifth of the work. Counted this way the play advances
+// the same span at either grid.
+const BATCH_SOLVE_SPANS = 8;
+const solveBatchSteps = (): number => Math.max(
+  1,
+  Math.round(BATCH_SOLVE_SPANS * solveSpan / Math.max(1, solveClock)),
+);
 let overlayPopulation: Float32Array | undefined;
 let overlayTechnique: Float32Array | undefined;
 let overlayPackage: Float32Array | undefined;
 let overlayCanGrow: Float32Array | undefined;
 let overlayNative: Float32Array | undefined;
+let overlayWorks: Float32Array | undefined;
+let overlayHarvest: Float32Array | undefined;
+let overlayFamine: Float32Array | undefined;
+let overlayGranary: Float32Array | undefined;
+/** M4 politics overlay from the live snapshot (empty while solving / reconstructed). */
+let overlayPolitics: {
+  seats: Array<{ id: number; seat: number; exitBlocked: boolean; unrest: number }>;
+  tribute: Array<{ from: number; to: number; strength: number }>;
+  recent: Array<{ step: number; kind: string; cell: number }>;
+} = { seats: [], tribute: [], recent: [] };
 function displayDate(step: number): string {
   const year = yearFromStep(step);
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
 }
 function regimeLabel(): string {
-  if (phase === "solve") return `solving · ${solveStride / MONTHS_PER_YEAR}-year steps`;
+  if (phase === "solve") return `solving · ${solveClock / MONTHS_PER_YEAR}-year steps`;
   if (wakeStep >= 0) return `awake since ${displayDate(wakeStep)}${cagedStep >= 0 && cagedStep !== wakeStep ? ` · caged ${displayDate(cagedStep)}` : ""}`;
   return "awake";
 }
@@ -172,7 +268,8 @@ worker.addEventListener("message", (event) => {
   if (event.data?.type === "created") {
     worldReady = true;
     phase = String(event.data.phase ?? "solve");
-    solveStride = Number(event.data.solveStride ?? 1);
+    solveClock = Number(event.data.solveClock ?? 1);
+    solveSpan = Number(event.data.solveSpan ?? 1);
     wakeStep = Number(event.data.wakeStep ?? -1);
     cagedStep = Number(event.data.cagedStep ?? -1);
     liveStep = Number(event.data.step ?? 0);
@@ -199,17 +296,39 @@ worker.addEventListener("message", (event) => {
     const packageView = new Float32Array(buffer, 8 + count * 8, count);
     const canGrowView = new Float32Array(buffer, 8 + count * 12, count);
     const nativeView = new Float32Array(buffer, 8 + count * 16, count);
+    const worksView = new Float32Array(buffer, 8 + count * 20, count);
+    const harvestView = new Float32Array(buffer, 8 + count * 24, count);
+    const famineView = new Float32Array(buffer, 8 + count * 28, count);
+    const granaryView = new Float32Array(buffer, 8 + count * 32, count);
     overlayPopulation = new Float32Array(count);
     overlayTechnique = new Float32Array(count);
     overlayPackage = new Float32Array(count);
     overlayCanGrow = new Float32Array(count);
     overlayNative = new Float32Array(count);
+    overlayWorks = new Float32Array(count);
+    overlayHarvest = new Float32Array(count);
+    overlayFamine = new Float32Array(count);
+    overlayGranary = new Float32Array(count);
     overlayPopulation.set(populationView);
     overlayTechnique.set(techniqueView);
     overlayPackage.set(packageView);
     overlayCanGrow.set(canGrowView);
     overlayNative.set(nativeView);
+    overlayWorks.set(worksView);
+    overlayHarvest.set(harvestView);
+    overlayFamine.set(famineView);
+    overlayGranary.set(granaryView);
     const reconstructed = event.data.reconstructed === true;
+    const politics = event.data.politics;
+    if (!reconstructed && politics && typeof politics === "object") {
+      overlayPolitics = {
+        seats: Array.isArray(politics.seats) ? politics.seats : [],
+        tribute: Array.isArray(politics.tribute) ? politics.tribute : [],
+        recent: Array.isArray(politics.recent) ? politics.recent : [],
+      };
+    } else if (reconstructed) {
+      overlayPolitics = { seats: [], tribute: [], recent: [] };
+    }
     if (!reconstructed) {
       const wokeNow = phase === "solve" && event.data.phase === "awake";
       phase = String(event.data.phase ?? phase);
@@ -220,6 +339,10 @@ worker.addEventListener("message", (event) => {
       updateTimeline();
     }
     population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}${reconstructed ? " · reconstructed" : ` · ${regimeLabel()}`}`;
+    if (!reconstructed && overlayPolitics.seats.length > 0) {
+      const caged = overlayPolitics.seats.filter((seat) => seat.exitBlocked).length;
+      population.textContent += ` · ${overlayPolitics.seats.length} communities (${caged} caged) · ${overlayPolitics.tribute.length} tribute`;
+    }
     baseKey = "";
     lastFrameKey = "";
     draw();
@@ -234,7 +357,7 @@ let worldReady = false;
 function requestTicks(): void {
   if (!playing || tickPending || !worldReady || scrubbing) return;
   tickPending = true;
-  worker.postMessage({ type: "tick", steps: phase === "solve" ? speed * BATCH_SOLVE_STEPS : speed });
+  worker.postMessage({ type: "tick", steps: phase === "solve" ? speed * solveBatchSteps() : speed });
 }
 window.setInterval(requestTicks, 250);
 createWorld();
@@ -296,16 +419,206 @@ function setZoom(next: number, fx = 0.5, fy = 0.5): void {
   draw();
 }
 
-function terrainColor(cell: number, moisture: number, _y: number): [number, number, number] {
-  const elevation = substrate.elevation[cell];
+/** The lens's water tone: what a pixel shows where there is no ground. The
+ * shape plane draws this inside a land cell too, wherever the cell's ground
+ * does not reach, so it has to be one definition rather than three. */
+function waterColor(): [number, number, number] {
+  if (lens.value === "crossings") return [52, 120, 190];
+  return lens.value === "wind" || lens.value === "rivers" ? [16, 34, 54] : [25, 55, 86];
+}
+
+// Crossings lens (W22, "sailing" until W24): what a ship can use. Land is land and sea is sea — a
+// coast cell is a port a ship touches, never a place it is drawn on — and
+// what the raster hides is drawn on the EDGES: every strait, water between
+// two land cells whose ground does not meet, is a line between the two cell
+// centres, which is where a strait lives in the sim. Since W23 the sim's mask
+// follows the fine source (a cell is land when at least half of it is), so
+// there is no third kind of cell: what a ship crosses is sea, or a strait.
+interface ChannelEdge { readonly cell: number; readonly direction: number; readonly width: number }
+// The brightness scale of a drawn strait: white-hot at a sample or two, the
+// sea's own tone by the time it is as wide as half a cell's edge at the
+// equator, in source samples.
+const CHANNEL_DRAW_SAMPLES = (40075 / substrate.width) / 2 / CROSSING_SAMPLE_KM;
+const channels: ChannelEdge[] = (() => {
+  const list: ChannelEdge[] = [];
+  const { crossings, width, height } = substrate;
+  for (let cell = 0; cell < substrate.N; cell++) {
+    const y = Math.floor(cell / width);
+    const x = cell - y * width;
+    for (let direction = 0; direction < 4; direction++) {
+      const byte = crossings[cell * 4 + direction] ?? 0;
+      const ny = y + (CROSSING_ROSE_DY[direction] ?? 0);
+      if (ny < 0 || ny >= height) continue;
+      const neighbour = ny * width + ((x + (CROSSING_ROSE_DX[direction] ?? 0) + width) % width);
+      const channel = crossingWaterWidth(byte);
+      if (channel === 0) continue;
+      const grade = crossingIsOpenWater(byte) ? 2 : 1;
+      // Only the straits the raster HIDES are drawn: water between two cells
+      // the sim calls LAND whose ground does NOT meet — two banks, not one
+      // shore. Two coastal cells on the same shore share ground and also
+      // share the sea along it (their water seats sit a few samples from
+      // land, so that edge always measures narrow); that is a coast, not a
+      // strait, and a water cell already shows as water.
+      if (grade === 1 && !crossingHasGround(byte)
+        && substrate.landMask[cell] && substrate.landMask[neighbour]) {
+        list.push({ cell, direction, width: channel });
+      }
+    }
+  }
+  return list;
+})();
+
+// Passes (W25; W24 drew the edge table and the owner read it as "VERY large
+// and geometric and odd" — it had no position in it). A pass is a saddle of
+// the terrain, measured on the 1-arc-minute raster with no cell in the rule
+// (tools/build-passes.mts): the key col of a summit whose ridge drops at
+// least PASS_MIN_PROMINENCE_M to it, which a route climbs at least
+// PASS_MIN_CLIMB_M to reach. Each has its own coordinates; the lens places
+// it there on any grid, the largest first.
+const passList = decodePasses();
+// The prominence at which a drawn pass is white-hot: the great Alpine passes
+// separate massifs by 1,500-2,000 m (the Great St Bernard 1,825 m, the
+// Simplon 1,642 m, the Brenner 1,631 m on the raster).
+const PASS_DRAW_PROMINENCE_M = 1500;
+// How many are drawn: at zoom 1 only the passes that divide whole ranges
+// (prominence ≥ 3,000 m, a few dozen on Earth); each doubling of the zoom
+// halves the bar, so every pass in the list shows from zoom 10.
+const PASS_DRAW_PROMINENCE_AT_ZOOM_1_M = 3000;
+
+// The ground a land step walks (W26): each baked edge's waypoints, as
+// fractions of the edge's window in the shared binning, decoded on the first
+// route and placed through the projection. A route is drawn along them
+// instead of centre to centre, so it goes up the valley and over the col.
+const walkBins = sampleBins(substrate.width, substrate.height, WALK_SOURCE_COLS, WALK_SOURCE_ROWS);
+let walkWaypoints: Map<number, Uint8Array> | null | undefined;
+const LAND_MODE_COUNT = 3;
+/** Screen points from cell a's centre to cell b's along the baked walk, or
+ * null where the step has no waypoints or crosses the seam. */
+function walkScreenPoints(a: number, b: number): [number, number][] | null {
+  if (walkWaypoints === undefined) walkWaypoints = decodeWaypoints(substrate.width, substrate.height);
+  if (!walkWaypoints) return null;
+  const width = substrate.width;
+  const ay = Math.floor(a / width);
+  const by = Math.floor(b / width);
+  const ax = a - ay * width;
+  const bx = b - by * width;
+  let dx = bx - ax;
+  if (dx > 1) dx -= width;
+  else if (dx < -1) dx += width;
+  const dy = by - ay;
+  // The edge is stored from one of its two cells, in one of four directions.
+  let stored = -1;
+  let from = a;
+  let fx = ax;
+  let fy = ay;
+  let reversed = false;
+  for (let d = 0; d < WALK_DIRECTIONS; d++) {
+    if (WALK_DX[d] === dx && WALK_DY[d] === dy) { stored = d; break; }
+    if (WALK_DX[d] === -dx && WALK_DY[d] === -dy) { stored = d; from = b; fx = bx; fy = by; reversed = true; break; }
+  }
+  if (stored < 0) return null;
+  const points = walkWaypoints.get(from * WALK_DIRECTIONS + stored);
+  if (!points || points.length === 0) return null;
+  const window = edgeWindow(walkBins, fx, fy, stored);
+  const cols = window.c1 - window.c0 + 1;
+  const rows = window.r1 - window.r0 + 1;
+  const centre = centralMeridian();
+  const [sax, say] = toScreenXY(ax, ay);
+  const [sbx, sby] = toScreenXY(bx, by);
+  const out: [number, number][] = [[sax, say]];
+  const count = points.length / 2;
+  for (let k = 0; k < count; k++) {
+    const index = reversed ? count - 1 - k : k;
+    const sx = window.c0 + ((points[index * 2] ?? 0) / 255) * Math.max(1, cols - 1);
+    const sy = window.r0 + ((points[index * 2 + 1] ?? 0) / 255) * Math.max(1, rows - 1);
+    const lon = -Math.PI + (((sx % WALK_SOURCE_COLS) + WALK_SOURCE_COLS) % WALK_SOURCE_COLS / WALK_SOURCE_COLS) * 2 * Math.PI;
+    const lat = -Math.PI / 2 + (sy / (WALK_SOURCE_ROWS - 1)) * Math.PI;
+    const [px, py] = table.lonLatToPixel(lon, lat, centre);
+    out.push([(px - viewX) * zoom, (py - viewY) * zoom]);
+  }
+  out.push([sbx, sby]);
+  for (let k = 1; k < out.length; k++) {
+    if (Math.abs((out[k]?.[0] ?? 0) - (out[k - 1]?.[0] ?? 0)) > table.width * zoom / 2) return null;
+  }
+  return out;
+}
+
+function crossingsColor(cell: number): [number, number, number] {
+  if (!substrate.landMask[cell]) return waterColor();
+  return [38, 42, 46];
+}
+
+/** The colour of each biome the classifier returns (biomeClass.js); a
+ * natural-map palette, one tone per class. */
+const BIOME_COLORS: ReadonlyMap<number, readonly [number, number, number]> = new Map([
+  [B_TUNDRA, [152, 162, 140]],
+  [B_ICE, [222, 230, 238]],
+  [B_TAIGA, [42, 92, 72]],
+  [B_BOREAL, [58, 112, 82]],
+  [B_TEMP_FOREST, [62, 132, 62]],
+  [B_TEMP_RAIN, [32, 112, 72]],
+  [B_TROP_RAIN, [22, 100, 42]],
+  [B_SAVANNA, [172, 162, 82]],
+  [B_GRASSLAND, [142, 176, 92]],
+  [B_DESERT, [216, 190, 130]],
+  [B_SHRUBLAND, [176, 150, 96]],
+  [B_TROP_DRY, [112, 142, 62]],
+  [B_SUBTROP, [52, 126, 72]],
+  [B_COLD_DESERT, [170, 165, 140]],
+  [B_FLOODPLAIN, [96, 152, 82]],
+  [B_MEDITERRANEAN, [132, 152, 72]],
+]);
+const SNOW_COLOR: readonly [number, number, number] = [240, 244, 248];
+const ICE_COLOR: readonly [number, number, number] = [214, 230, 246];
+// Drawing scale (W27): ten centimetres of settled snow hides grass and
+// furrow; the ground shows through anything thinner.
+const SNOW_HIDES_GROUND_CM = 10;
+
+/** Terrain (W24, W27): the cell's biome in its colour, whitened by the snow
+ * that lies on it this month — the ground showing through a thin pack,
+ * white under a deep one, patchy as a melting cell goes bare in its thin
+ * places first, and the ice tone where the pack never melts out. Lakes and
+ * large rivers keep their water tones. */
+function terrainColor(cell: number, selectedMonth: number): [number, number, number] {
   if ((substrate.rivers.lake?.[cell] ?? -1) >= 0) return [55, 135, 165];
   const river = substrate.rivers.magnitude[cell];
+  if (river >= 2) return [45, 125, 155];
+  if (substrate.snow.perennial[cell]) return [ICE_COLOR[0], ICE_COLOR[1], ICE_COLOR[2]];
+  const ground = groundColor(cell, selectedMonth);
+  const pack = snowMeanMm(substrate.snow, cell, selectedMonth);
+  if (pack <= 0) return ground;
+  const cover = snowCoveredAreaMid(substrate.snow, cell, selectedMonth) * Math.min(1, snowDepthCm(pack) / SNOW_HIDES_GROUND_CM);
+  return [
+    Math.round(ground[0] + (SNOW_COLOR[0] - ground[0]) * cover),
+    Math.round(ground[1] + (SNOW_COLOR[1] - ground[1]) * cover),
+    Math.round(ground[2] + (SNOW_COLOR[2] - ground[2]) * cover),
+  ];
+}
+
+/** The biome's colour, or the height-and-moisture tone for a land cell the
+ * classifier did not place (it returns -1 at or below the datum), so nothing
+ * is left unpainted. */
+function groundColor(cell: number, selectedMonth: number): [number, number, number] {
+  const biome = BIOME_COLORS.get(substrate.biome[cell] ?? -1);
+  if (biome) return [biome[0], biome[1], biome[2]];
+  const elevation = substrate.elevation[cell];
+  const moisture = substrate.moisture[cell * MONTHS_PER_YEAR + selectedMonth] ?? 0;
   const green = clamp(85 + moisture * 100 - elevation * 40, 0, 210);
   const brown = clamp(135 - elevation * 90, 40, 170);
-  // Per-cell hash dither, not a row stripe: the old (y % 3) blue banding read
-  // as horizontal scanlines at zoom (owner play-report).
   const dither = ((cell * 2654435761) >>> 28) & 3;
-  return river >= 2 ? [45, 125, 155] : [brown, green, 62 + dither * 5];
+  return [brown, green, 62 + dither * 5];
+}
+
+/** The tone of land the plane holds inside a cell the mask calls water: the
+ * cell's own lowland terrain, muted where the lens mutes land, dark on the
+ * crossings lens — an islet is drawn, and it is never painted as sea. */
+function isletColor(cell: number, selectedMonth: number): [number, number, number] {
+  if (lens.value === "crossings") return [38, 42, 46];
+  const [red, green, blue] = terrainColor(cell, selectedMonth);
+  if (lens.value === "wind" || lens.value === "rivers") {
+    return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
+  }
+  return [red, green, blue];
 }
 
 function pixelColor(cell: number, selectedMonth: number): [number, number, number] {
@@ -315,8 +628,8 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   const moisture = substrate.moisture[climateIndex];
   if (lens.value === "wind") {
     // Muted geography so the arrow glyphs carry the signal over land and sea alike.
-    if (!substrate.landMask[cell]) return [16, 34, 54];
-    const [red, green, blue] = terrainColor(cell, moisture, y);
+    if (!substrate.landMask[cell]) return waterColor();
+    const [red, green, blue] = terrainColor(cell, selectedMonth);
     return [Math.round(red * 0.45), Math.round(green * 0.45), Math.round(blue * 0.45)];
   }
   if (lens.value === "rivers") {
@@ -324,7 +637,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     // reach) that the router compares against its two bars. Green = sailable
     // both ways, orange = downstream only, red = cataract/falls (blocked),
     // grey = channel too small to navigate; everything else muted terrain.
-    if (!substrate.landMask[cell]) return [16, 34, 54];
+    if (!substrate.landMask[cell]) return waterColor();
     const magnitude = substrate.rivers.magnitude[cell] ?? 0;
     // Ice: below freshwater freezing this month the leg is CLOSED (the router
     // refuses it) — show it as ice, not as an open channel (owner play-report:
@@ -348,15 +661,17 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
       if (gradient > TRAVEL_RIVER_UPSTREAM_GRADIENT_M_PER_KM) return [240, 170, 40];
       return [70, 225, 90];
     }
-    const [red, green, blue] = terrainColor(cell, moisture, y);
+    const [red, green, blue] = terrainColor(cell, selectedMonth);
     return [Math.round(red * 0.35), Math.round(green * 0.35), Math.round(blue * 0.35)];
   }
-  if (!substrate.landMask[cell]) return [25, 55, 86];
-  if (lens.value === "population") {
+  if (lens.value === "crossings") return crossingsColor(cell);
+  if (!substrate.landMask[cell]) return waterColor();
+  if (lens.value === "population" || lens.value === "politics") {
     // Log ramp over the historically meaningful density span, 0.01..100
     // persons/km2 (sparse foragers .. dense farmed valleys). EMPTY land is
     // dark - the old ramp's zero point was bright green, so an unpeopled
     // Antarctica read exactly like a peopled steppe (owner play-report).
+    // Politics uses the same underlay; seats and tribute arrows draw on top.
     const density = overlayPopulation?.[cell] ?? 0;
     if (density <= 0) return [28, 34, 40];
     const intensity = Math.min(1, Math.max(0, (Math.log10(density) + 2) / 4));
@@ -370,6 +685,40 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const value = Math.max(0, Math.min(1, overlayTechnique?.[cell] ?? 0));
     return [Math.round(45 + 190 * value), Math.round(70 + 140 * value), Math.round(105 - 70 * value)];
   }
+  if (lens.value === "works") {
+    // The built land (W28): unimproved ground dark earth, fully worked land
+    // the blue-green of a watered field.
+    const value = Math.max(0, Math.min(1, overlayWorks?.[cell] ?? 0));
+    if (value <= 0) return [40, 36, 30];
+    return [Math.round(40 + 20 * value), Math.round(36 + 150 * value), Math.round(30 + 170 * value)];
+  }
+  if (lens.value === "harvest") {
+    // The last harvest year (W29): the year's yield multiple, a failed year
+    // red, an ordinary one the dun of a field, a bumper year green; land no
+    // year has been read on yet is dark.
+    const value = overlayHarvest?.[cell] ?? 0;
+    if (value <= 0) return [40, 36, 30];
+    const swing = Math.max(-1, Math.min(1, (value - 1) / 0.5));
+    if (swing < 0) return [Math.round(150 - 90 * swing), Math.round(130 + 100 * swing), Math.round(70 + 40 * swing)];
+    return [Math.round(150 - 90 * swing), Math.round(130 + 90 * swing), Math.round(70 - 20 * swing)];
+  }
+  if (lens.value === "famine") {
+    // The famine frequency (W30): the cell's share of farmed years that
+    // failed, dark where none, the red deepening with the share (saturating
+    // at one year in ten, a famine-prone margin).
+    const frequency = overlayFamine?.[cell] ?? 0;
+    if (frequency <= 0) return [40, 36, 30];
+    const share = Math.min(1, frequency / 0.1);
+    return [Math.round(90 + 165 * share), Math.round(50 - 30 * share), Math.round(40 - 20 * share)];
+  }
+  if (lens.value === "granary") {
+    // Months of food in store (W31): dark where nobody farms, a warm amber
+    // ramp saturating at two harvests in hand.
+    const months = overlayGranary?.[cell] ?? 0;
+    if (months <= 0) return [40, 36, 30];
+    const share = Math.min(1, months / FOOD_GRANARY_MONTHS_SATURATION);
+    return [Math.round(70 + 150 * share), Math.round(55 + 110 * share), Math.round(30 + 20 * share)];
+  }
   if (lens.value === "package") {
     const index = Math.floor(overlayPackage?.[cell] ?? 0);
     const color = CROP_PACKAGES[index]?.color ?? [80, 80, 80];
@@ -381,13 +730,14 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     ];
   }
   if (lens.value === "can-grow" || lens.value === "native") {
-    // Counts: how many packages can grow here / are native here. One package
-    // is a dim ochre, every package a bright one.
+    // Can-grow is a count (one package a dim ochre, every package a bright
+    // one); wild stands (W8) are a richness, 0..1, the belt a hearth can
+    // condense on.
     const value = lens.value === "can-grow"
-      ? overlayCanGrow?.[cell] ?? 0
+      ? (overlayCanGrow?.[cell] ?? 0) / CROP_PACKAGES.length
       : overlayNative?.[cell] ?? 0;
     if (value <= 0) return [35, 45, 55];
-    const share = Math.min(1, value / CROP_PACKAGES.length);
+    const share = Math.min(1, value);
     return [Math.round(150 + 70 * share), Math.round(110 + 70 * share), 65];
   }
   if (lens.value === "climate") {
@@ -400,7 +750,7 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
     const v = clamp(value, 0, 1);
     return [Math.round(60 + 40 * v), Math.round(45 + 175 * v), Math.round(40 + 25 * (1 - v))];
   }
-  return terrainColor(cell, moisture, y);
+  return terrainColor(cell, selectedMonth);
 }
 
 function renderBase(selectedMonth: number): void {
@@ -408,40 +758,52 @@ function renderBase(selectedMonth: number): void {
   const frameKey = `${lens.value}|${selectedMonth}`;
   const key = `${table.projection.name}|${shift}|${frameKey}`;
   if (key === baseKey) return;
-  const pixels = frame.data;
   // Per-cell colours depend on lens and month only; projection and centre
   // are applied by sampling, so a spin never recomputes a colour.
-  if (frameKey !== lastFrameKey) for (let cell = 0; cell < substrate.N; cell++) {
-    const [red, green, blue] = pixelColor(cell, selectedMonth);
-    const offset = cell * 4;
-    pixels[offset] = red;
-    pixels[offset + 1] = green;
-    pixels[offset + 2] = blue;
-    pixels[offset + 3] = 255;
+  if (frameKey !== lastFrameKey) {
+    const water = pack(waterColor());
+    for (let cell = 0; cell < substrate.N; cell++) {
+      const colour = pack(pixelColor(cell, selectedMonth));
+      // Plane land inside a WATER cell (an islet the mask cannot hold) is
+      // still land on the map: it takes a land tone, never the sea's.
+      shapeLand[cell] = substrate.landMask[cell] ? colour : pack(isletColor(cell, selectedMonth));
+      shapeWater[cell] = planeBlank[cell] ? colour : water;
+    }
+    // Each cell's colour over the whole block of the plane it covers, with the
+    // plane cutting the coastline through it.
+    const shape = substrate.landShape;
+    for (let y = 0; y < PLANE_H; y++) {
+      const row = ((y / PLANE_BLOCK) | 0) * substrate.width;
+      const rowStart = y * PLANE_W;
+      for (let x = 0; x < PLANE_W; x++) {
+        const index = rowStart + x;
+        const cell = row + ((x / PLANE_BLOCK) | 0);
+        frameWords[index] = shape[index] ? shapeLand[cell]! : shapeWater[cell]!;
+      }
+    }
   }
   lastFrameKey = frameKey;
   if (!projected) return;
-  const out = projected.data;
+  const out = new Uint32Array(projected.data.buffer);
+  const offGlobe = pack(OFF_GLOBE);
   const { rowOf, columnOf, width, gridWidth } = table;
   for (let py = 0, pixel = 0; py < table.height; py++) {
     const row = rowOf[py] ?? -1;
-    for (let px = 0; px < width; px++, pixel++) {
-    const column = row < 0 ? -1 : (columnOf[pixel] ?? -1);
-    let x = column + shift;
-    if (x >= gridWidth) x -= gridWidth;
-    const cell = column < 0 ? -1 : row * gridWidth + x;
-    const offset = pixel * 4;
-    if (cell < 0) {
-      out[offset] = OFF_GLOBE[0];
-      out[offset + 1] = OFF_GLOBE[1];
-      out[offset + 2] = OFF_GLOBE[2];
-    } else {
-      const source = cell * 4;
-      out[offset] = pixels[source] ?? 0;
-      out[offset + 1] = pixels[source + 1] ?? 0;
-      out[offset + 2] = pixels[source + 2] ?? 0;
+    if (row < 0) {
+      out.fill(offGlobe, pixel, pixel + width);
+      pixel += width;
+      continue;
     }
-    out[offset + 3] = 255;
+    const rowBase = row * gridWidth;
+    for (let px = 0; px < width; px++, pixel++) {
+      const column = columnOf[pixel] ?? -1;
+      if (column < 0) {
+        out[pixel] = offGlobe;
+        continue;
+      }
+      let x = column + shift;
+      if (x >= gridWidth) x -= gridWidth;
+      out[pixel] = frameWords[rowBase + x]!;
     }
   }
   baseContext.putImageData(projected, 0, 0);
@@ -450,7 +812,8 @@ function renderBase(selectedMonth: number): void {
 
 /** Sim-grid cell coordinates → canvas pixels, through the projection and viewport. */
 function toScreenXY(x: number, y: number): [number, number] {
-  const [px, py] = table.gridToPixel(x + 0.5, y + 0.5, centralMeridian());
+  // The table is built on the shape plane, so a sim cell's centre is its block's.
+  const [px, py] = table.gridToPixel((x + 0.5) * PLANE_BLOCK, (y + 0.5) * PLANE_BLOCK, centralMeridian());
   return [(px - viewX) * zoom, (py - viewY) * zoom];
 }
 
@@ -490,6 +853,56 @@ function drawGraticule(): void {
 // saturating at WIND_ARROW_FULL_MS). v is northward; screen y grows south.
 const WIND_ARROW_SPACING_DISPLAY_PX = 26;
 const WIND_ARROW_FULL_MS = 10;
+
+/** M4 politics: seat markers + tribute arrows over the population underlay. */
+function drawPoliticsOverlay(): void {
+  const width = substrate.width;
+  const byId = new Map(overlayPolitics.seats.map((seat) => [seat.id, seat]));
+  const stroke = Math.max(1.25, table.width / 900);
+
+  context.lineWidth = Math.max(1.5, stroke * 1.4);
+  context.strokeStyle = "rgba(255, 220, 60, 0.92)";
+  context.fillStyle = "rgba(255, 220, 60, 0.95)";
+  for (const edge of overlayPolitics.tribute) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    if (!from || !to) continue;
+    const fromY = Math.floor(from.seat / width);
+    const fromX = from.seat - fromY * width;
+    const toY = Math.floor(to.seat / width);
+    const toX = to.seat - toY * width;
+    const [x0, y0] = toScreenXY(fromX, fromY);
+    const [x1, y1] = toScreenXY(toX, toY);
+    if (Math.abs(x1 - x0) > table.width * zoom / 2) continue; // skip seam-crossing for now
+    context.beginPath();
+    context.moveTo(x0, y0);
+    context.lineTo(x1, y1);
+    context.stroke();
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    const head = Math.max(5, stroke * 3);
+    context.beginPath();
+    context.moveTo(x1, y1);
+    context.lineTo(x1 - head * Math.cos(ang - 0.4), y1 - head * Math.sin(ang - 0.4));
+    context.lineTo(x1 - head * Math.cos(ang + 0.4), y1 - head * Math.sin(ang + 0.4));
+    context.closePath();
+    context.fill();
+  }
+
+  const radius = Math.max(2.5, Math.min(7, stroke * 2.8));
+  for (const seat of overlayPolitics.seats) {
+    const y = Math.floor(seat.seat / width);
+    const x = seat.seat - y * width;
+    const [sx, sy] = toScreenXY(x, y);
+    if (sx < -20 || sy < -20 || sx > canvas.width + 20 || sy > canvas.height + 20) continue;
+    context.beginPath();
+    context.arc(sx, sy, radius, 0, Math.PI * 2);
+    context.fillStyle = seat.exitBlocked ? "#e74c3c" : "#f5f5f5";
+    context.fill();
+    context.strokeStyle = "#111";
+    context.lineWidth = Math.max(1, stroke * 0.7);
+    context.stroke();
+  }
+}
 
 function drawWindArrows(selectedMonth: number): void {
   const bounds = canvas.getBoundingClientRect();
@@ -531,6 +944,79 @@ function drawWindArrows(selectedMonth: number): void {
   }
 }
 
+/** Every channel narrower than open sea, as a line on its edge; the narrower
+ * the brighter, so a strait a ship threads reads over the sea it joins. */
+function drawChannels(): void {
+  const margin = Math.max(4, table.width / 100);
+  const stroke = Math.max(1.5, table.width / 400);
+  context.lineCap = "round";
+  for (const edge of channels) {
+    const y = Math.floor(edge.cell / substrate.width);
+    const x = edge.cell - y * substrate.width;
+    const [sax, say] = toScreenXY(x, y);
+    if (sax < -margin || say < -margin || sax > canvas.width + margin || say > canvas.height + margin) continue;
+    const nx = (x + (CROSSING_ROSE_DX[edge.direction] ?? 0) + substrate.width) % substrate.width;
+    const ny = y + (CROSSING_ROSE_DY[edge.direction] ?? 0);
+    const [sbx, sby] = toScreenXY(nx, ny);
+    if (Math.abs(sbx - sax) > table.width * zoom / 2) continue;
+    // Width in samples: a kilometre or two is white-hot, a channel near the
+    // cell's own size is barely brighter than the sea.
+    const narrow = 1 - Math.min(1, Math.log2(edge.width) / Math.log2(CHANNEL_DRAW_SAMPLES));
+    const weight = narrow * narrow;
+    context.strokeStyle = `rgba(${Math.round(120 + 135 * narrow)}, ${Math.round(200 + 55 * narrow)}, 255, ${(0.12 + 0.88 * weight).toFixed(2)})`;
+    context.lineWidth = stroke * (0.6 + narrow);
+    context.beginPath();
+    context.moveTo(sax, say);
+    context.lineTo(sbx, sby);
+    context.stroke();
+  }
+}
+
+/** Every pass above the zoom's prominence bar, at its own coordinates: a
+ * disc, larger and brighter the more its ridge drops to it, ringed dark so
+ * it reads on snow and on sea alike. Nothing here is on the sim grid. */
+function drawPasses(): void {
+  const bar = PASS_DRAW_PROMINENCE_AT_ZOOM_1_M / zoom;
+  const margin = Math.max(4, table.width / 100);
+  const unit = Math.max(1.5, table.width / 400);
+  const centre = centralMeridian();
+  const { count, column, row, prominence } = passList;
+  for (let k = 0; k < count; k++) {
+    const p = prominence[k] ?? 0;
+    // Sorted by prominence descending: past the bar, every later one is too.
+    if (p < bar) break;
+    const lon = (-Math.PI + ((column[k] ?? 0) / PASS_SOURCE_COLS) * 2 * Math.PI);
+    const lat = (-Math.PI / 2 + ((row[k] ?? 0) / (PASS_SOURCE_ROWS - 1)) * Math.PI);
+    const [px, py] = table.lonLatToPixel(lon, lat, centre);
+    const sx = (px - viewX) * zoom;
+    const sy = (py - viewY) * zoom;
+    if (sx < -margin || sy < -margin || sx > canvas.width + margin || sy > canvas.height + margin) continue;
+    const height = Math.min(1, p / PASS_DRAW_PROMINENCE_M);
+    // A hill pass is a dot, a pass between massifs a disc three times as wide.
+    const radius = unit * (0.35 + 1.2 * height);
+    context.beginPath();
+    context.arc(sx, sy, radius, 0, Math.PI * 2);
+    context.fillStyle = `rgb(255, ${Math.round(150 + 105 * height)}, ${Math.round(60 + 195 * height)})`;
+    context.fill();
+    context.lineWidth = Math.max(1, unit * 0.4);
+    context.strokeStyle = "rgba(20, 16, 10, 0.85)";
+    context.stroke();
+  }
+}
+
+// Pointer events arrive faster than frames; a drag that redrew on every one
+// stacked several 6.5M-pixel resamples behind a single frame and stuttered.
+// One draw per animation frame, with the latest position.
+let drawQueued = false;
+function scheduleDraw(): void {
+  if (drawQueued) return;
+  drawQueued = true;
+  window.requestAnimationFrame(() => {
+    drawQueued = false;
+    draw();
+  });
+}
+
 function draw(): void {
   const selectedMonth = Number(month.value);
   monthLabel.textContent = `Month ${selectedMonth + 1}`;
@@ -540,7 +1026,7 @@ function draw(): void {
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(
     base,
-    viewX, viewY, table.width / zoom, table.height / zoom,
+    viewX + residualPixels(), viewY, table.width / zoom, table.height / zoom,
     0, 0, canvas.width, canvas.height,
   );
   drawGraticule();
@@ -554,9 +1040,18 @@ function draw(): void {
       const by = Math.floor(b / substrate.width);
       const ax = a - ay * substrate.width;
       const bx = b - by * substrate.width;
-      context.strokeStyle = MODE_COLORS[lastRoute.modes[index] ?? 0] ?? "#ffd166";
+      const modeIndex = lastRoute.modes[index] ?? 0;
+      context.strokeStyle = MODE_COLORS[modeIndex] ?? "#ffd166";
       context.lineWidth = stroke;
       context.beginPath();
+      // A land step is drawn along the walk it was charged for (W26).
+      const walk = modeIndex < LAND_MODE_COUNT && a !== b ? walkScreenPoints(a, b) : null;
+      if (walk) {
+        context.moveTo(walk[0]?.[0] ?? 0, walk[0]?.[1] ?? 0);
+        for (let k = 1; k < walk.length; k++) context.lineTo(walk[k]?.[0] ?? 0, walk[k]?.[1] ?? 0);
+        context.stroke();
+        continue;
+      }
       const [sax, say] = toScreenXY(ax, ay);
       const [sbx, sby] = toScreenXY(bx, by);
       // A segment that crosses the seam is drawn out through it on both
@@ -579,6 +1074,11 @@ function draw(): void {
     }
   }
   if (lens.value === "wind") drawWindArrows(selectedMonth);
+  if (lens.value === "crossings") {
+    drawChannels();
+    drawPasses();
+  }
+  if (lens.value === "politics") drawPoliticsOverlay();
   if (startCell !== undefined) {
     const y = Math.floor(startCell / substrate.width);
     const [sx, sy] = toScreenXY(startCell - y * substrate.width, y);
@@ -602,10 +1102,17 @@ function cellFromPointer(event: MouseEvent): number | undefined {
   const bounds = canvas.getBoundingClientRect();
   const fx = (event.clientX - bounds.left) / bounds.width;
   const fy = (event.clientY - bounds.top) / bounds.height;
-  const px = clamp(Math.floor(viewX + fx * table.width / zoom), 0, table.width - 1);
+  // The base is drawn shifted by the sub-column residual, so the pick reads
+  // the pixel the pointer is actually over.
+  const px = clamp(Math.floor(viewX + residualPixels() + fx * table.width / zoom), 0, table.width - 1);
   const py = clamp(Math.floor(viewY + fy * table.height / zoom), 0, table.height - 1);
-  const cell = table.cellAt(px, py, table.shiftFor(degreesToRadians(centreDegrees)));
-  return cell < 0 ? undefined : cell;
+  // The table addresses the shape plane; the pointer picks the SIM cell whose
+  // block that pixel falls in.
+  const planeCell = table.cellAt(px, py, table.shiftFor(centralMeridian()));
+  if (planeCell < 0) return undefined;
+  const planeY = Math.floor(planeCell / PLANE_W);
+  const planeX = planeCell - planeY * PLANE_W;
+  return Math.floor(planeY / PLANE_BLOCK) * substrate.width + Math.floor(planeX / PLANE_BLOCK);
 }
 
 function describeModes(result: TravelRoute): string {
@@ -691,7 +1198,7 @@ canvas.addEventListener("pointermove", (event) => {
   centreDegrees -= dx / rowWidthScreen * 360;
   viewY -= dy / bounds.height * table.height / zoom;
   applyCentre();
-  draw();
+  scheduleDraw();
 });
 function releasePointer(event: PointerEvent): void {
   const had = pointers.delete(event.pointerId);
@@ -763,8 +1270,14 @@ speedInput.addEventListener("input", () => {
 });
 
 const riverLegend = document.querySelector<HTMLElement>("#river-legend");
+const crossingsLegend = document.querySelector<HTMLElement>("#crossings-legend");
+const terrainLegend = document.querySelector<HTMLElement>("#terrain-legend");
+const politicsLegend = document.querySelector<HTMLElement>("#politics-legend");
 lens.addEventListener("change", () => {
   if (riverLegend) riverLegend.hidden = lens.value !== "rivers";
+  if (crossingsLegend) crossingsLegend.hidden = lens.value !== "crossings";
+  if (terrainLegend) terrainLegend.hidden = lens.value !== "terrain";
+  if (politicsLegend) politicsLegend.hidden = lens.value !== "politics";
   draw();
 });
 projectionSelect.addEventListener("change", () => {

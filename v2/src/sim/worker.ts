@@ -14,36 +14,39 @@ import {
   PEOPLE_R_GROWTH_PER_YEAR,
   PEOPLE_SNAPSHOT_FIELD_COUNT,
   PEOPLE_WATER_ACCESS_GAIN,
+  FOOD_RATION_TONNES_PER_PERSON_YEAR,
 } from "./constants";
 import { dexp } from "./dmath";
 import { ensurePeopleWasm } from "./peopleKernel";
 import { hashWorld, runSteps, type GridPreset, World } from "./world";
 import { populationTotal } from "./people";
 import { yearFromStep } from "./horizon";
+import { solveSpanMonths } from "./scheduler";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import type { Substrate } from "./substrate";
 import type { PeopleWorld } from "./people/types";
+import { politicsSnapshot } from "./politics";
 
 /**
  * The can-grow and native overlays are annual land properties: how many
  * packages can grow in a cell, and how many are native there. They never
  * change after creation, so they are built once per world, not per batch.
  */
-let overlayCache: { world: PeopleWorld; canGrow: Uint8Array; native: Uint8Array } | undefined;
-function staticOverlays(world: PeopleWorld): { canGrow: Uint8Array; native: Uint8Array } {
+let overlayCache: { world: PeopleWorld; canGrow: Uint8Array; native: Float32Array } | undefined;
+function staticOverlays(world: PeopleWorld): { canGrow: Uint8Array; native: Float32Array } {
   if (overlayCache?.world === world) return overlayCache;
   const canGrow = new Uint8Array(world.N);
-  const native = new Uint8Array(world.N);
+  // The "native" plane is the wild-stand richness (W8): the richest stand of
+  // any package in the cell, 0..1 — the belt a hearth can condense on.
+  const native = new Float32Array(world.N);
   for (let packed = 0; packed < world._landCells.length; packed++) {
     const cell = world._landCells[packed] ?? 0;
     let grows = 0;
-    let natives = 0;
     for (let packageIndex = 0; packageIndex < world._canGrow.length; packageIndex++) {
       grows += world._canGrow[packageIndex]?.[packed] ?? 0;
-      natives += world._nativeRanges[packageIndex]?.[packed] ?? 0;
     }
     canGrow[cell] = grows;
-    native[cell] = natives;
+    native[cell] = world._standBest[cell] ?? 0;
   }
   overlayCache = { world, canGrow, native };
   return overlayCache;
@@ -87,7 +90,8 @@ let snapshotVersion = 0;
 function regimeOf(target: World): Record<string, unknown> {
   return {
     phase: target.phase,
-    solveStride: target.solveStride,
+    solveClock: target.solveClock,
+    solveSpan: solveSpanMonths(target.solveSchedule),
     wakeStep: target.wakeStep,
     cagedStep: target.cagedStep,
     cagedCell: target.cagedCell,
@@ -100,6 +104,10 @@ interface SnapshotPlanes {
   readonly people: Float32Array;
   readonly technique: Float32Array;
   readonly packageView: Float32Array;
+  readonly works: Float32Array;
+  readonly harvest: Float32Array;
+  readonly famine: Float32Array;
+  readonly granary: Float32Array;
 }
 
 function snapshotPlanes(target: World): SnapshotPlanes {
@@ -116,12 +124,16 @@ function snapshotPlanes(target: World): SnapshotPlanes {
   const packageView = plane(2);
   const canGrowView = plane(2 + 1);
   const nativeView = plane(2 + 2);
+  const works = plane(2 + 2 + 1);
+  const harvest = plane(2 + 2 + 2);
+  const famine = plane(2 + 2 + 2 + 1);
+  const granary = plane(2 + 2 + 2 + 2);
   if (target.substrate) {
     const overlays = staticOverlays(target as PeopleWorld);
     canGrowView.set(overlays.canGrow);
     nativeView.set(overlays.native);
   }
-  return { buffer, people, technique, packageView };
+  return { buffer, people, technique, packageView, works, harvest, famine, granary };
 }
 
 function liveSnapshot(target: World): Record<string, unknown> {
@@ -129,7 +141,30 @@ function liveSnapshot(target: World): Record<string, unknown> {
   new Float64Array(planes.buffer, 0, 1)[0] = target.step;
   planes.people.set(target.people);
   planes.technique.set(target.technique);
-  if (target.substrate) planes.packageView.set((target as PeopleWorld)._dominantPackage);
+  planes.works.set(target.works);
+  // The famine frequency (W30): the cell's tally of failed harvests over the
+  // years its farmers stood through; unfarmed land shows nothing.
+  for (let cell = 0; cell < target.N; cell++) {
+    const farmed = target.farmedYears[cell] ?? 0;
+    planes.famine[cell] = farmed > 0 ? (target.famineYears[cell] ?? 0) / farmed : 0;
+  }
+  planes.harvest.fill(0);
+  planes.granary.fill(0);
+  if (target.substrate) {
+    const people = target as PeopleWorld;
+    planes.packageView.set(people._dominantPackage);
+    // The last harvest year's yield multiple is land-packed scratch (W29).
+    // The granary (W31): months of food in store for the cell's farmers.
+    for (let packed = 0; packed < people._landCells.length; packed++) {
+      const cell = people._landCells[packed] ?? 0;
+      planes.harvest[cell] = people._yearMul[packed] ?? 0;
+      let farmers = 0;
+      for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
+      planes.granary[cell] = farmers > 0
+        ? (target.store[cell] ?? 0) / (farmers * FOOD_RATION_TONNES_PER_PERSON_YEAR) * MONTHS_PER_YEAR
+        : 0;
+    }
+  }
   // No world hash per snapshot: hashWorld walks every field with BigInt
   // arithmetic (5.3 s at the target grid — measured, review W3), which
   // made every tick batch take seconds regardless of the kernel. The hash
@@ -142,6 +177,7 @@ function liveSnapshot(target: World): Record<string, unknown> {
     cells: target.N,
     population: target.substrate ? populationTotal(target) : 0,
     ...regimeOf(target),
+    politics: politicsSnapshot(target),
     buffer: planes.buffer,
   };
 }
@@ -162,6 +198,14 @@ function reconstructedSnapshot(target: World, step: number): Record<string, unkn
   planes.people.fill(0);
   planes.technique.fill(0);
   planes.packageView.fill(0);
+  // The reconstruction carries no works: a condensation of the arrival
+  // record, it shows unimproved land before the wake (W28, recorded).
+  planes.works.fill(0);
+  // Nor a harvest year, a famine tally (W29) or a granary (W31): the record
+  // holds none of them.
+  planes.harvest.fill(0);
+  planes.famine.fill(0);
+  planes.granary.fill(0);
   const years = step / MONTHS_PER_YEAR;
   let total = 0;
   for (let packed = 0; packed < people._landCells.length; packed++) {
@@ -218,6 +262,8 @@ function reconstructedSnapshot(target: World, step: number): Record<string, unkn
     population: total,
     ...regimeOf(target),
     year: yearFromStep(step),
+    // Reconstructions are pre-wake: no taking register yet.
+    politics: { seats: [], tribute: [], recent: [] },
     buffer: planes.buffer,
   };
 }
@@ -232,6 +278,8 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
     })._wasmPeopleKernel;
     const growth = world.awakeSchedule.find((row) => row.name === "people.growth")?.stride ?? 1;
     const migration = world.awakeSchedule.find((row) => row.name === "people.migration")?.stride ?? 1;
+    const solve = world.solveSchedule.find((row) => row.name === "people.growth")?.stride ?? 1;
+    const solveMigration = world.solveSchedule.find((row) => row.name === "people.migration")?.stride ?? 1;
     const isolated = typeof crossOriginIsolated === "undefined" || crossOriginIsolated;
     return {
       type: "created",
@@ -242,7 +290,7 @@ export async function handleWorkerMessage(message: WorkerMessage): Promise<Recor
       workerCount: peopleKernel?.workerCount ?? 1,
       usesThreads: peopleKernel?.usesThreads === true,
       isolated,
-      scheduleLabel: `growth ${growth} · migration ${migration} · solve ${world.solveStride}`,
+      scheduleLabel: `growth ${growth} · migration ${migration} · solve ${solve}/${solveMigration}`,
       sharedBands: peopleKernel?.control.shared === true,
       ...regimeOf(world),
     };

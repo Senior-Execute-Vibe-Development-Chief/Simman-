@@ -1,4 +1,4 @@
-# Simman v2 — W7 where farming begins, and how it travels
+# Simman v2 — W8 who farms what, where, and why
 
 M3a builds on the immutable Earth substrate and seasonal multimodal travel
 field with one real-unit population field. Population grows toward derived
@@ -86,6 +86,13 @@ fudge factors.
   measured fractional floodplain and monthly river-flow scales, biome,
   soil/crop suitability, resources, relief, coast distance,
   and deep ancestry as typed arrays; it is rebuilt, never saved.
+- Three planes answer three different questions about ground: the land/sea
+  mask says WHETHER a cell holds it, `landFraction` says HOW MUCH, and
+  `landShape` says WHERE inside the cell. The last is read-only geometry at
+  its own resolution, a whole multiple of every sim grid on both axes, so a
+  cell always covers a whole block of it and `buildSubstrate` throws rather
+  than let a grid straddle one. The map is drawn at that resolution: it never
+  invents ground the sim does not stand on, and never erases ground it does.
 - Travel is in days using real Earth geometry, month-specific climate,
   capability-gated modes, directed river costs, intermodal transfers, and a
   three-phase WASM routing API.
@@ -104,16 +111,55 @@ fudge factors.
   the land a farming source can enter opens in proportion to the farmers it
   sends; a hearth ignites where a native range has been a peopled basin for
   the package's domestication lag (the M2 law).
-- Save format v6 persists people, farmer masses, derived technique, cohorts,
+- Save format v12 persists people, farmer masses, derived technique, cohorts,
+  the works (the built land capital, W28), the harvest anomaly state and the
+  famine-years field (W29), the farmed-years field (W30), the store (W31 —
+  tonnes of storable food per km²),
   peopled arrivals, hearth progress, the resolved pass schedules, the regime
   (phase, wake and caged steps) and the event log; terrain remains immutable
   substrate rebuilt from its identity.
 - `collect()` exposes `pop.people`, `pop.perKm2`, largest-cell density,
-  technique coverage, weighted cohort shares, and per-pass firing counts.
+  technique coverage, weighted cohort shares, per-pass firing counts, and
+  `food.storeMonths.{median,p10,p90}` plus the last firing's food-sheet
+  channel totals (`food.harvest` / `eaten` / `spoiled` / `unstorable`).
 - Every people field pass uses aggregated named source/sink accounting.
 - People cadence is derived, not scripted: growth/technique/capacity/cohorts
-  fire annually; migration's stride is the largest divisor of 12 whose
+  fire annually, and the works build and rot on the growth stride after the
+  commit, the capacity derived again at once; migration's stride is the largest divisor of 12 whose
   per-firing share stays inside the diffusion bound (dev 12, target 1).
+- **The harvest years (W29).** Every year has a weather: a spatially
+  correlated, year-persistent standard-normal anomaly per 12° weather cell
+  (AR(1), lag-one 0.3, 3 × 3 smoothed), read at every land cell through
+  its own row over the weather grid (W30: the bilinear local sky in the
+  rain-fed share of the yield's variance, plus the sky its surface water
+  was rained from — W13's routing walked in the composition of the flow —
+  in the river-fed share; normalised to unit variance under the smoothing,
+  so a valley's mouth reads its highlands' year and every cell reads a
+  1 σ year as 1 σ) and scaled by the cell's own static yield CV (the rain
+  margin, the single season, the winter risk, the flood regime) into the
+  year's yield multiple.
+  The `people.harvest` pass fires between capacity and growth on the growth
+  stride, tiling the month line by whole years (every year exactly once in
+  both regimes): the farmers above what the year feeds die at the
+  starvation rate, foragers are exempt, a bottom-decile year failing by
+  more than a third counts a famine year. The year index is only the RNG
+  stream's address; nothing is keyed on the calendar. Famine deaths are a
+  named sink (`people.famine`); the "Harvest year" and "Famine frequency"
+  overlays paint the last year's multiple and the famine years over the
+  farmed years (W30's `farmedYears`, the tally's own denominator, counted
+  on the same cells and years).
+- **The store (W31).** Every farmed cell keeps a granary — a conserved
+  `store` field in tonnes/km². Each harvest year: spoil the opening stock
+  at the climate's Q10×moisture rate, fill from surplus at the package's
+  storability, draw the year's shortfall pooled across packages, and apply
+  the starvation rate only to the uncovered excess. Each package's farmers
+  reap their share of the cell's land (the mixture capacity's share), so
+  the harvest is the farmed part of the capacity the growth pass reads.
+  Foragers neither sow nor store; an abandoned store spoils alone. A
+  `food` conservation sheet (harvest / eaten / spoiled / unstorable)
+  asserts zero unexplained flux beside `people`. The "Granary" overlay paints months of food in store
+  (saturating at 24). Severity, run and margin reality rows live in
+  `data/reality/famine-severity.json`.
 - **Two regimes (W5).** A peopled world opens in the SOLVE regime: every
   pass fires at one stride derived from the bounds the passes already carry
   (each group's hops on the rows it can be a source from, farmer growth,
@@ -163,8 +209,9 @@ fudge factors.
   wild-range mask per package, farmer masses in the same land-packed order as
   the kernel's cohort state, and an annual local adoption/reversion pass.
   Migration uses an eight-neighbour true-distance stencil with coastal hops
-  capped by the grounded crossing length. The package, can-grow, and native
-  overlays are available in the shell. QUESTIONS #37 has the M3a review:
+  capped by the grounded crossing length. The package, can-grow, native,
+  land works, harvest year and famine frequency overlays are available in the
+  shell. QUESTIONS #37 has the M3a review:
   what the delivered mechanisms did, what the corrections are, and the
   measurements.
 - `collect()` measures numeric leaves and distributions by default; its
@@ -183,6 +230,24 @@ fudge factors.
   yield, so its clock all but stops: arrival pre-empts invention with no
   rule for it. Boats hop 100 km (`PEOPLE_COASTAL_HOP_KM`, the Neolithic's
   own crossings), which at the shipped grid opens the Aegean, the Marmara
-  and the Korea Strait. The dev grid cannot represent those straits, so the
-  European rows and Japan are measured at the shipped grid.
+  and the Korea Strait. Since W22 every edge carries the ground and the
+  water width the fine coastline measures, so a strait narrower than a cell
+  is crossed at its own width at either grid; the European rows now pass at
+  dev, and Japan is still measured at the shipped grid.
+- **Who farms what, where, and why (W8).** Wild stands are a field: each
+  package carries the habitat envelope of its wild ancestor, sampled at the
+  plant's documented localities, and its range is a polygon, so richness
+  has a core and edges. Forager capacity is by habitat — the terrestrial
+  living, plus fishing on shores, rivers, lakes and floodplains (Binford's
+  densities; the shore as a day's strip so it is the same at every grid),
+  plus the richest stand — so dense sedentary foragers sit on the stands
+  and the shores before any farming. A crop's capacity is graded by its
+  climate fit, with a floodplain meeting the water a desert lacks; a cell's
+  capacity is the mixture of the crops its people farm; foragers adopt
+  under pressure (their people against the forager living) and farmers
+  switch to a better crop by the same law. A hearth ignites where a basin's
+  dependence on its stand has run the package's lag and the crop beats
+  foraging there, and it is a region, not one label per 1,000 km. Reality
+  tables: the centres of domestication, the staple by region at 1 CE, the
+  forager density ordering.
 

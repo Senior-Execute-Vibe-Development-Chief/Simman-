@@ -18,6 +18,9 @@
 // simulation run on a world whose weather is real. Everything downstream — rivers,
 // fertility, settlement, empires — still emerges; only the climate is given.
 
+import { dexp } from "../../sim/dmath.ts";
+import { sampleMonthlyWind } from "./realWindData.js";
+
 let precip = null, airtemp = null, derived = null;
 let loadPromise = null, loadFailed = false;
 
@@ -121,6 +124,129 @@ const ELEV_M = 9400;
 // Environmental lapse rate, K/km. Textbook constant, not a tuning knob.
 const LAPSE_K_PER_KM = 6.5;
 
+// ── Sub-grid orographic redistribution of the coarse rain (W14, P18) ──
+// The observation is ~1.9° per cell; a range narrower than that — the Kopet
+// Dag, the Sulaiman, the Makran, the Alborz foot — is averaged with the basin
+// at its foot, and its wet slope comes back as desert. Within the observation's
+// own footprint the rain is placed on the slope it fell on: each land pixel is
+// weighted by exp(g·Δz) for the height the air CLIMBED to reach it — its own
+// elevation above the ground one footprint half-width UPWIND along that month's
+// observed wind — and the weights are normalised to a land mean of one over the
+// same footprint, so the footprint's rain is conserved to first order and none
+// is invented. This is the standard upslope model (Smith 1979, Adv. Geophys.
+// 21:87–230): the condensation follows the vertical velocity the terrain imposes
+// on the flow, so a windward face gains exactly what the lee face behind it
+// loses, and a valley floor sheltered by the wall the wind crossed first is dry
+// however high the wall beside it stands. The gain g is the relative windward
+// precipitation gradient — Barry (2008, *Mountain Weather and Climate*, ch. 4):
+// 50–100 mm per 100 m on 1,000–2,000 mm regimes, i.e. 0.25–1 per km; PRISM's
+// slope-regression fits the same order (Daly, Neilson & Phillips 1994, J. Appl.
+// Meteorol. 33:140–158). The middle of that range. The climb is clamped at the
+// vapour scale height (Smith & Barstad 2004, J. Atmos. Sci. 61:1377–1391, H_w
+// 2–3 km; Roe 2005, Annu. Rev. Earth Planet. Sci. 33:645–671): above it the
+// column has no more water to wring out. The wind is the observation's own
+// monthly climatology, so a monsoon slope is lifted by the monsoon in the months
+// the monsoon falls and by the winter's wind in the months it does not. The rain
+// shadow BETWEEN table cells stays in the table; only the placement inside one
+// is corrected.
+const OROGRAPHIC_GAIN_PER_KM = 0.5;
+const VAPOUR_SCALE_HEIGHT_KM = 2.5;
+const TABLE_CELL_DEG = 1.9;
+
+/**
+ * The half-width, in map cells, of the footprint the coarse rain is
+ * redistributed within: the widest odd box that fits INSIDE one table cell,
+ * so nothing is moved across the table's own resolution. Zero where the map
+ * cell is no finer than about half the table's (the reference grid, and the
+ * 0.75° cross-grid proxy), where the correction is inert by construction;
+ * four at the v2 target grid (1800 wide, 0.2°: a 9-cell, 1.8° box) and two
+ * at the app's Half grid (960 wide: a 5-cell, 1.875° box).
+ */
+export function orographicFootprintRadius(W) {
+  return Math.max(0, Math.floor((W * TABLE_CELL_DEG / 360 - 1) / 2));
+}
+
+/** Separable box sum over a (2·rad + 1)² window: columns wrap, rows clamp at the poles — the lapse smoothing's own convention. */
+function boxSum(W, H, src, rad, out) {
+  const tmp = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    let acc = 0;
+    for (let d = -rad; d <= rad; d++) acc += src[y * W + ((d % W) + W) % W];
+    for (let x = 0; x < W; x++) {
+      tmp[y * W + x] = acc;
+      acc += src[y * W + ((x + rad + 1) % W)] - src[y * W + ((x - rad) % W + W) % W];
+    }
+  }
+  for (let x = 0; x < W; x++) {
+    let acc = 0;
+    for (let d = -rad; d <= rad; d++) acc += tmp[Math.min(H - 1, Math.max(0, d)) * W + x];
+    for (let y = 0; y < H; y++) {
+      out[y * W + x] = acc;
+      acc += tmp[Math.min(H - 1, y + rad + 1) * W + x] - tmp[Math.min(H - 1, Math.max(0, y - rad)) * W + x];
+    }
+  }
+  return out;
+}
+
+/**
+ * The share of its footprint's rain each land pixel receives (W14, P18): a
+ * land-mean-of-one weight exp(g·Δz) over the footprint of half-width `rad`,
+ * where Δz is the pixel's height above the ground one half-width UPWIND along
+ * (windU, windV) — the climb the air made to get there. One everywhere at rad
+ * 0, on the sea, and where the wind is exactly calm. Exported so the property
+ * can be checked on a synthetic field; the loader calls it once per month.
+ * @param {Float32Array} windU eastward wind component, one value per cell (m/s)
+ * @param {Float32Array} windV northward wind component, one value per cell (m/s)
+ */
+export function orographicShare(W, H, elevation, rad, windU, windV, share = new Float32Array(W * H)) {
+  const N = W * H;
+  share.fill(1);
+  if (rad <= 0) return share;
+  const land = new Float32Array(N);
+  for (let i = 0; i < N; i++) if (elevation[i] > 0) land[i] = 1;
+  const landCount = boxSum(W, H, land, rad, new Float32Array(N));
+  const weight = new Float32Array(N);
+  for (let y = 0; y < H; y++) {
+    // The map is equirectangular, so a cell of longitude covers cos(lat) of what
+    // a cell of latitude does. Scaling the eastward component by that before
+    // normalising turns the wind's BEARING into a direction in cells; the
+    // normalisation removes the divergence at the pole, where the bearing
+    // degenerates to purely zonal of its own accord.
+    const cosLat = Math.cos((90 - (y + 0.5) / H * 180) * Math.PI / 180);
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (!land[i] || landCount[i] <= 0) continue;
+      // Raster y grows southward, so air moving north (v > 0) travels toward
+      // smaller y: the direction of travel in cells is (+u/cos φ, −v).
+      const ex = cosLat > 0 ? (windU[i] ?? 0) / cosLat : (windU[i] ?? 0);
+      const ny = -(windV[i] ?? 0);
+      const len = Math.sqrt(ex * ex + ny * ny);
+      if (!(len > 0)) { weight[i] = 1; continue; }   // dead calm: no slope is windward
+      const upwind = sampleElevation(W, H, elevation, x - rad * ex / len, y - rad * ny / len);
+      const dzKm = Math.max(-VAPOUR_SCALE_HEIGHT_KM, Math.min(VAPOUR_SCALE_HEIGHT_KM,
+        (elevation[i] - upwind) * ELEV_M / 1000));
+      weight[i] = dexp(OROGRAPHIC_GAIN_PER_KM * dzKm);
+    }
+  }
+  const weightSum = boxSum(W, H, weight, rad, new Float32Array(N));
+  for (let i = 0; i < N; i++) {
+    if (land[i] && weightSum[i] > 0) share[i] = weight[i] * landCount[i] / weightSum[i];
+  }
+  return share;
+}
+
+/** Bilinear elevation with the sea read as sea level; columns wrap, rows clamp at the poles — the box pass's own convention. */
+function sampleElevation(W, H, elevation, fx, fy) {
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const tx = fx - x0, ty = fy - y0;
+  const xa = ((x0 % W) + W) % W, xb = (((x0 + 1) % W) + W) % W;
+  const ya = Math.min(H - 1, Math.max(0, y0)), yb = Math.min(H - 1, Math.max(0, y0 + 1));
+  const at = (index) => Math.max(0, elevation[index] ?? 0);
+  const a = at(ya * W + xa) * (1 - tx) + at(ya * W + xb) * tx;
+  const b = at(yb * W + xa) * (1 - tx) + at(yb * W + xb) * tx;
+  return a * (1 - ty) + b * ty;
+}
+
 // Precompute the derived fields on the observation's own 94x192 Gaussian grid — the
 // per-pixel pass then only has to interpolate three smooth scalars instead of
 // re-reducing 24 monthly values per pixel.
@@ -176,24 +302,18 @@ function deriveGrids() {
 }
 
 /**
- * Sample the observed MONTHLY climatology onto a W×H map grid (M1 review
- * addition). Returns, per cell × month: 2 m air temperature in °C and the
- * month's precipitation as a RATIO of the cell's own annual monthly mean
- * (so multiplying the sim's annual moisture by it preserves the annual
- * total while carrying the observed seasonal pattern — the monsoon
- * included). Bilinear on the Gaussian grid, same dateline offset as
- * fillRealClimate. Anomalies, not absolutes: the sim's own annual fields
- * (with their lapse/orography detail) stay authoritative.
- * @returns {{tempC: Float32Array, precipRatio: Float32Array}|null}
+ * Bilinear index tables from the W×H map grid onto the observation's Gaussian
+ * grid, shared by every sampler here. The Earth heightmap starts at the
+ * International Date Line while the NCEP grid starts at Greenwich — the same
+ * 180° offset realWindData applies.
  */
-export function sampleMonthlyClimate(W, H) {
-  if (!isRealClimateAvailable()) return null;
+function gridIndices(W, H) {
   const LAT = precip.lat, NLAT = LAT.length, NLON = precip.lon.length;
   const jIdx = new Int32Array(H), jFrac = new Float32Array(H);
   for (let y = 0; y < H; y++) {
     const lat = 90 - (y + 0.5) / H * 180;
     let j = 0;
-    while (j < NLAT - 2 && LAT[j + 1] > lat) j++;
+    while (j < NLAT - 2 && LAT[j + 1] > lat) j++;   // LAT descends 88.5 → -88.5
     jIdx[y] = j;
     const span = LAT[j] - LAT[j + 1];
     jFrac[y] = span !== 0 ? Math.max(0, Math.min(1, (LAT[j] - lat) / span)) : 0;
@@ -206,29 +326,122 @@ export function sampleMonthlyClimate(W, H) {
     iIdx[x] = i0 % NLON;
     iFrac[x] = f - i0;
   }
-  const sampMonth = (months, m, y, x) => {
+  return { jIdx, jFrac, iIdx, iFrac, NLON };
+}
+
+/** Bilinear sampler for one month of a 12×NLAT×NLON observation cube on the tables above. */
+function monthSampler(months, idx) {
+  const { jIdx, jFrac, iIdx, iFrac, NLON } = idx;
+  return (m, y, x) => {
     const j = jIdx[y], jf = jFrac[y], i0 = iIdx[x], i1 = (i0 + 1) % NLON, xf = iFrac[x];
     const row0 = months[m][j], row1 = months[m][j + 1];
     const a = row0[i0] * (1 - xf) + row0[i1] * xf;
     const b = row1[i0] * (1 - xf) + row1[i1] * xf;
     return a * (1 - jf) + b * jf;
   };
-  const tempC = new Float32Array(W * H * 12);
-  const precipRatio = new Float32Array(W * H * 12);
+}
+
+/**
+ * The observed month's rainfall as a RATIO of the cell's own annual monthly
+ * mean, indexed cell × 12. Mean-preserving by construction: the twelve ratios
+ * average to one, so multiplying an annual field by them carries the observed
+ * seasonal pattern — the monsoon included — without changing the total.
+ */
+function sampleMonthlyPrecipRatio(W, H, out = new Float32Array(W * H * 12)) {
+  const idx = gridIndices(W, H);
+  const sampMonth = monthSampler(precip.months, idx);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const cell = y * W + x;
       let pAnnual = 0;
-      for (let m = 0; m < 12; m++) pAnnual += sampMonth(precip.months, m, y, x);
+      for (let m = 0; m < 12; m++) pAnnual += sampMonth(m, y, x);
       pAnnual /= 12;
       for (let m = 0; m < 12; m++) {
-        tempC[cell * 12 + m] = sampMonth(airtemp.months, m, y, x);
-        precipRatio[cell * 12 + m] = pAnnual > 1e-6
-          ? sampMonth(precip.months, m, y, x) / pAnnual
-          : 1;
+        out[cell * 12 + m] = pAnnual > 1e-6 ? sampMonth(m, y, x) / pAnnual : 1;
       }
     }
   }
+  return out;
+}
+
+let oroCache = null;
+
+/**
+ * The W14 (P18) correction as the two fields the rest of the loader wants,
+ * built month by month so each month's rain is placed by the wind that carried
+ * it:
+ *
+ *   `annual[i]` — the share of its footprint's ANNUAL rain a land pixel keeps
+ *   once every month is redistributed by its own wind and the twelve are
+ *   re-totalled. This is a rainfall-weighted mean of the monthly shares: a
+ *   slope that faces the season the rain falls in gains, one that faces the dry
+ *   season's wind does not.
+ *
+ *   `ratio[i·12+m]` — the observed monthly ratio carrying the same correction,
+ *   renormalised so it still averages to one over the year.
+ *
+ * One entry is memoised, on the grid and the elevation identity it was built
+ * from: the annual fill and the monthly sampler both ask for the same one.
+ * Without the wind climatology there is no direction, so the correction is
+ * inert (share one) rather than guessed.
+ */
+function orographicFields(W, H, elevation) {
+  const rad = orographicFootprintRadius(W);
+  if (oroCache && oroCache.W === W && oroCache.H === H && oroCache.rad === rad
+    && oroCache.elevation === elevation) return oroCache;
+  const N = W * H;
+  const ratio = sampleMonthlyPrecipRatio(W, H);
+  const annual = new Float32Array(N);
+  const wind = rad > 0 ? sampleMonthlyWind(W, H) : null;
+  if (!wind) {
+    annual.fill(1);
+  } else {
+    const share = new Float32Array(N), u = new Float32Array(N), v = new Float32Array(N);
+    for (let m = 0; m < 12; m++) {
+      for (let i = 0; i < N; i++) { u[i] = wind.u[i * 12 + m]; v[i] = wind.v[i * 12 + m]; }
+      orographicShare(W, H, elevation, rad, u, v, share);
+      for (let i = 0; i < N; i++) {
+        const lifted = ratio[i * 12 + m] * share[i];
+        ratio[i * 12 + m] = lifted;
+        annual[i] += lifted / 12;
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      const a = annual[i];
+      for (let m = 0; m < 12; m++) ratio[i * 12 + m] = a > 0 ? ratio[i * 12 + m] / a : 1;
+    }
+  }
+  oroCache = { W, H, rad, elevation, annual, ratio };
+  return oroCache;
+}
+
+/**
+ * Sample the observed MONTHLY climatology onto a W×H map grid (M1 review
+ * addition). Returns, per cell × month: 2 m air temperature in °C and the
+ * month's precipitation as a RATIO of the cell's own annual monthly mean
+ * (so multiplying the sim's annual moisture by it preserves the annual
+ * total while carrying the observed seasonal pattern — the monsoon
+ * included), with the W14 sub-grid orographic share applied month by month
+ * unless the probe switch turns it off. Bilinear on the Gaussian grid, same
+ * dateline offset as fillRealClimate. Anomalies, not absolutes: the sim's own
+ * annual fields (with their lapse/orography detail) stay authoritative.
+ * @param {Float32Array} [elevation] read-only; required for the orographic share
+ * @returns {{tempC: Float32Array, precipRatio: Float32Array}|null}
+ */
+export function sampleMonthlyClimate(W, H, elevation, { orographicRain = true } = {}) {
+  if (!isRealClimateAvailable()) return null;
+  const idx = gridIndices(W, H);
+  const sampTemp = monthSampler(airtemp.months, idx);
+  const tempC = new Float32Array(W * H * 12);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const cell = y * W + x;
+      for (let m = 0; m < 12; m++) tempC[cell * 12 + m] = sampTemp(m, y, x);
+    }
+  }
+  const precipRatio = orographicRain && elevation
+    ? orographicFields(W, H, elevation).ratio
+    : sampleMonthlyPrecipRatio(W, H);
   return { tempC, precipRatio };
 }
 
@@ -243,34 +456,22 @@ export function sampleMonthlyClimate(W, H) {
  * @param {Float32Array} temperature out
  * @param {Float32Array} [dryFrac]  out, fraction of the year that is arid
  * @param {Float32Array} [summerDry] out, phase of the drought (>0 = summer-dry)
+ * @param {{ orographicRain?: boolean, rainMm?: Float32Array|null }} [options] `orographicRain` (default true) applies the W14 sub-grid orographic share to the sampled rain before the ranking; `rainMm` (W27), when given, receives each land cell's observed annual precipitation in mm (with that share) — the quantity the ranking consumed, kept for the snowpack
  * @returns {boolean} false if the data is not loaded
  */
-export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac) {
+export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac, { orographicRain = true, rainMm = null } = {}) {
   if (!isRealClimateAvailable()) return false;
-  const { P, T, D, S, A, WF, LAT, NLAT, NLON } = deriveGrids();
+  const { P, T, D, S, A, WF, NLON } = deriveGrids();
+  // W14 (P18): the coarse rain placed on the slope it fell on, inside the
+  // table's own footprint, before the ranking — each month carried by its own
+  // wind and the twelve re-totalled, so what lands here is the annual share.
+  // Off (`rawRain`) for probes that compare against the table as sampled.
+  const share = orographicRain ? orographicFields(W, H, elevation).annual : null;
 
-  // Latitude index + fraction per map ROW (the Gaussian grid is not evenly spaced, so
-  // this is a scan rather than arithmetic — but it is H scans, not W*H).
-  const jIdx = new Int32Array(H), jFrac = new Float32Array(H);
-  for (let y = 0; y < H; y++) {
-    const lat = 90 - (y + 0.5) / H * 180;
-    let j = 0;
-    while (j < NLAT - 2 && LAT[j + 1] > lat) j++;   // LAT descends 88.5 → -88.5
-    jIdx[y] = j;
-    const span = LAT[j] - LAT[j + 1];
-    jFrac[y] = span !== 0 ? Math.max(0, Math.min(1, (LAT[j] - lat) / span)) : 0;
-  }
-  // Longitude index + fraction per map COLUMN. The Earth heightmap starts at the
-  // International Date Line while the NCEP grid starts at Greenwich — the same 180°
-  // offset realWindData applies.
-  const iIdx = new Int32Array(W), iFrac = new Float32Array(W);
-  const dLon = 360 / NLON;
-  for (let x = 0; x < W; x++) {
-    const lon = (((x + 0.5) / W * 360 + 180) % 360 + 360) % 360;
-    const f = lon / dLon, i0 = Math.floor(f);
-    iIdx[x] = i0 % NLON;
-    iFrac[x] = f - i0;
-  }
+  // Latitude/longitude index + fraction per map row and column (the Gaussian grid
+  // is not evenly spaced, so the row table is a scan rather than arithmetic — but
+  // it is H scans, not W*H).
+  const { jIdx, jFrac, iIdx, iFrac } = gridIndices(W, H);
   const samp = (g, y, x) => {
     const j = jIdx[y], jf = jFrac[y], i0 = iIdx[x], i1 = (i0 + 1) % NLON, xf = iFrac[x];
     const a = g[j * NLON + i0] * (1 - xf) + g[j * NLON + i1] * xf;
@@ -326,12 +527,13 @@ export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac,
       if (tAmp) tAmp[i] = Math.max(0, samp(A, y, x) / 100);
       if (warmRainFrac) warmRainFrac[i] = Math.max(0, Math.min(1, samp(WF, y, x)));
       if (e > 0) {
-        const mm = Math.max(0, samp(P, y, x));
+        const mm = Math.max(0, samp(P, y, x)) * (share ? share[i] : 1);
         obsP[i] = mm; nLand++;
         if (mm > pMax) pMax = mm;
       }
     }
   }
+  if (rainMm) rainMm.set(obsP);
   if (!nLand) return true;
 
   // ── Pass 2: quantile-map observed rainfall onto the solver's own moisture

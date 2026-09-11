@@ -26,23 +26,53 @@ function patchedV1SimDir(): string {
     fileURLToPath(new URL("../src/ported/worldgen/earthData.js", import.meta.url)),
     join(dir, "earthData.js"),
   );
-  // The v2 strait carve is polyline-based and its table grew (QUESTIONS.md
-  // #21/#25 — the Black Sea link, the Singapore pinch, no rectangle bites);
-  // the carve mutates elevation, which the earth arm asserts byte-exact, so
-  // the v1 copy runs with v2's own EARTH_STRAITS + carveStraits block spliced
-  // in — one source of truth, lifted from the v2 module at patch time.
+  // v2 no longer carves straits (W22): a channel the raster cannot hold is
+  // carried on the edges between cells, and no cell is opened. v1 still
+  // carves rectangle boxes, and the carve mutates the elevation the earth arm
+  // asserts byte-exact, so the v1 copy runs with its carve made a no-op.
   const worldgenPath = join(dir, "worldgen.js");
   const worldgenSource = readFileSync(worldgenPath, "utf8");
-  const v2WorldgenSource = readFileSync(
-    fileURLToPath(new URL("../src/ported/worldgen/worldgen.js", import.meta.url)),
-    "utf8",
-  );
-  const straitBlock = /const EARTH_STRAITS = \[[\s\S]*?\nfunction carveStraits\(elevation, W, H\) \{[\s\S]*?\n\}/;
-  const v2Block = v2WorldgenSource.match(straitBlock)?.[0];
-  assert.ok(v2Block?.includes("path:"), "v2 strait block changed shape — update the oracle patch");
+  const straitBlock = /const EARTH_STRAITS = \[[\s\S]*?\nfunction carveStraits\(elevation, W, H[^)]*\) \{[\s\S]*?\n\}/;
   const v1Block = worldgenSource.match(straitBlock)?.[0];
   assert.ok(v1Block, "v1 strait block changed shape — update the oracle patch");
-  writeFileSync(worldgenPath, worldgenSource.replace(v1Block, v2Block ?? ""));
+  const noCarve = "const EARTH_STRAITS = [];\nfunction carveStraits(elevation, W, H) {}";
+  // v2 decides land by the 1-arc-minute cover (W23): a cell is land when at
+  // least half of it stands above the sea, whatever the coarse byte says. The
+  // earth arm asserts elevation byte-exact, so the v1 copy gets the same
+  // rule, spelled the same way, over the same cover plane.
+  for (const module of ["landCoverData.js", "crossingData.js", "coverMask.js"]) {
+    copyFileSync(
+      fileURLToPath(new URL(`../src/ported/worldgen/${module}`, import.meta.url)),
+      join(dir, module),
+    );
+  }
+  const v1Elevation = [
+    "if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;",
+    "elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);",
+    "}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}",
+  ].join("\n");
+  const coverElevation = [
+    "const hm=coverByte(he,sampleEarth(fData,EARTH_W,EARTH_H,x,y,W,H)/255,hasGroundLink(crossingTable,W,H,x,y));",
+    "if(hm<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;",
+    "elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-hm/3))*0.12+depth);",
+    "}else{let e=(hm-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}",
+  ].join("\n");
+  const v1Decode = "const eData=decodeEarth(EARTH_ELEV);";
+  const v1Import = 'import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";';
+  let patched = worldgenSource.replace(v1Block, noCarve);
+  assert.equal(patched.split(v1Elevation).length - 1, 2, "v1 elevation block changed shape — update the oracle patch");
+  assert.equal(patched.split(v1Decode).length - 1, 2, "v1 earth decode changed shape — update the oracle patch");
+  assert.ok(patched.includes(v1Import), "v1 earthData import changed shape — update the oracle patch");
+  patched = patched
+    .replaceAll(v1Elevation, coverElevation)
+    .replaceAll(v1Decode, `${v1Decode}const fData=decodeLandFrac(LAND_FRAC,eData);const crossingTable=decodeCrossings(W,H);`)
+    .replace(v1Import, [
+      v1Import,
+      'import { LAND_FRAC, decodeLandFrac } from "./landCoverData.js";',
+      'import { decodeCrossings } from "./crossingData.js";',
+      'import { coverByte, hasGroundLink } from "./coverMask.js";',
+    ].join("\n"));
+  writeFileSync(worldgenPath, patched);
   return dir;
 }
 const v1SimDir = patchedV1SimDir();

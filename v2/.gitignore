@@ -2,3 +2,4 @@ node_modules/
 dist/
 rust/**/target/
 src/wasm/*
+.croprelatives-cache/

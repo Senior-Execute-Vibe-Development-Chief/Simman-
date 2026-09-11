@@ -11,6 +11,33 @@ export interface PortedWorld {
   readonly tAmp: Float32Array;
   readonly warmRainFrac: Float32Array;
   readonly preset: string;
+  /** How each cell is joined to its neighbours, one byte per edge, cells × 4
+   * directions (E, SE, S, SW) on this world's own grid (W22): bit 7 says the
+   * two cells' ground meets, bits 0..6 the width in 1-arc-minute samples of
+   * the widest water channel between them (0 none, 127 open water). Null
+   * where no table was baked. */
+  readonly crossings: Uint8Array | null;
+  /** The share of each cell standing above sea level, 0..1, measured on the
+   * 1-arc-minute grid (W19). The land/sea bit says WHETHER there is ground
+   * here; this says HOW MUCH. Null on presets that carry no cover plane. */
+  readonly landFraction: Float32Array | null;
+  /** W27: each land cell's observed annual precipitation in mm (with the W14 orographic share), or null where the preset has none. */
+  readonly rainMm: Float32Array | null;
+  /** WHERE that ground is: one byte per cell, 1 = land, on a fixed grid finer
+   * than any the sim steps (W20). Read-only geometry — the coastline the world
+   * is drawn from and measured against, never a field that is stepped — so it
+   * keeps its own resolution rather than being sampled down to the world's.
+   * Null on presets that carry no measured fine geometry. */
+  readonly landShape: Uint8Array | null;
+  /** The shape plane's own dimensions, a whole multiple of every sim grid on
+   * each axis, so a cell of any grid covers a whole block of these. */
+  readonly landShapeWidth: number;
+  readonly landShapeHeight: number;
+  /** The walk between adjacent land cells (W26): its detour over the straight
+   * line (bytes of WALK_DETOUR_UNIT, 1 = none, 0 = no walk) and its ascent
+   * out and back in WALK_VERTICAL_UNIT_M steps, cells × 4 directions (E, SE,
+   * S, SW) on this world's own grid. Null where no table was baked. */
+  readonly walks: { readonly detour: Uint8Array; readonly up: Uint16Array; readonly down: Uint16Array } | null;
   readonly _seed: number;
   readonly rivers?: unknown;
   readonly deposits?: Record<string, Float32Array>;
@@ -40,6 +67,8 @@ export interface PortedTerritory {
   readonly rivers: {
     readonly flowDir: Uint8Array;
     readonly flowAccum: Float32Array;
+    /** Per-tile runoff the accumulation summed: moisture less evaporation plus mountain melt, tile-depth units. */
+    readonly runoff: Float32Array;
     readonly riverMag: Uint8Array;
     readonly lake: Int32Array;
     readonly lakeGeometry: Uint8Array;

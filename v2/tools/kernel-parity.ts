@@ -7,10 +7,15 @@ import { hashWorld, runSteps, type GridPreset, World } from "../src/sim/world";
 import { float64Bits } from "./lib/dmath-check";
 import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { HORIZON_OPENING_YEAR, MONTHS_PER_YEAR } from "../src/sim/constants";
+import { passFires } from "../src/sim/scheduler";
 
 const PEOPLE_FIELDS = [
   "people",
   "technique",
+  "works",
+  "famineYears",
+  "farmedYears",
+  "store",
   "children",
   "working",
   "elders",
@@ -18,6 +23,7 @@ const PEOPLE_FIELDS = [
 ] as const;
 
 const PEOPLE_SCRATCH = [
+  "_yearMul",
   "_peopleNext",
   "_techniqueNext",
   "_childrenMass",
@@ -33,6 +39,25 @@ const PEOPLE_SCRATCH = [
   "_farmerTotal",
   "_farmerTotalNext",
 ] as const;
+
+/**
+ * The kernel's firing totals that are not fields (W31): the run counters and
+ * the food-sheet channels are folded from per-band slots in band order, so a
+ * threaded run must reproduce the serial run's values bit for bit — a shared
+ * scalar written from every band would not.
+ */
+function kernelScalars(world: World): Record<string, number> {
+  const people = world as PeopleWorld;
+  return {
+    runDeaths: people._harvestRunDeaths,
+    runDenom: people._harvestRunDenom,
+    famineDeaths: world.debug.peopleFamineDeaths,
+    foodHarvest: world.debug.foodHarvest,
+    foodEaten: world.debug.foodEaten,
+    foodSpoiled: world.debug.foodSpoiled,
+    foodUnstorable: world.debug.foodUnstorable,
+  };
+}
 
 function bytes(value: unknown): Buffer {
   if (!(value instanceof Float64Array)) throw new Error("Parity value is not a Float64Array.");
@@ -117,6 +142,7 @@ async function runParity(
     comparePeopleState(reference, wasm, grid, step);
   }
   const serialHash = hashWorld(wasm);
+  const serialScalars = kernelScalars(wasm);
   assert.equal(serialHash, hashWorld(reference), `${grid} ${label} serial hash diverged after ${steps} firings`);
   const result = {
     label,
@@ -150,6 +176,7 @@ async function runParity(
     hashWorld(threadedReference),
     `${grid} ${label} 1-worker hash diverged after ${steps} firings`,
   );
+  assert.deepEqual(kernelScalars(threadedOne), serialScalars, `${grid} ${label} 1-worker firing totals diverged`);
   (threadedOne as PeopleWorld)._wasmPeopleKernel?.dispose();
 
   const hashes: Record<number, string> = { 1: serialHash };
@@ -167,11 +194,34 @@ async function runParity(
     );
     runSteps(workerWorld, steps);
     hashes[workerCount] = hashWorld(workerWorld);
+    assert.deepEqual(
+      kernelScalars(workerWorld),
+      serialScalars,
+      `${grid} ${label} ${workerCount}-worker firing totals diverged`,
+    );
     (workerWorld as PeopleWorld)._wasmPeopleKernel?.dispose();
   }
   assert.equal(hashes[2], hashes[1], `${grid} ${label} 2-worker hash changed`);
   assert.equal(hashes[8], hashes[1], `${grid} ${label} 8-worker hash changed`);
   return result;
+}
+
+/**
+ * The cadence combinations an arm of this many solve steps actually visits:
+ * which passes fire on each landing of the clock (W12). A schedule whose
+ * passes take different strides is only exercised where one fires WITHOUT
+ * the other, and on a step where nothing fires at all — three cases the
+ * harness could not produce while every pass shared one stride, since then
+ * the clock is that stride and every step fires everything.
+ */
+function solveCadenceCoverage(world: World, steps: number): string[] {
+  const seen = new Set<string>();
+  for (let index = 0; index <= steps; index++) {
+    const step = index * world.solveClock;
+    const fired = world.solveSchedule.filter((row) => passFires({ step }, row));
+    seen.add(fired.length === 0 ? "none" : fired.map((row) => row.name).join("+"));
+  }
+  return [...seen].sort();
 }
 
 /**
@@ -186,8 +236,25 @@ async function runGrid(grid: GridPreset, steps: number): Promise<Record<string, 
   const substrate = buildSubstrate(42042, { preset: "earth_sim" }, grid);
   const probe = makeWorld(grid, substrate, { peopleKernel: "ts" });
   const switchYear = HORIZON_OPENING_YEAR
-    + Math.floor(steps / 2) * probe.solveStride / MONTHS_PER_YEAR
+    + Math.floor(steps / 2) * probe.solveClock / MONTHS_PER_YEAR
     + 1;
+  // Where the grid gives the passes different strides, an arm this long has
+  // to reach every cadence combination or it is comparing the kernels on the
+  // uniform case again. At the shipped grid movement fires at two years and
+  // the reaction passes at seven, so the four cases appear within fourteen
+  // landings of the twelve-month clock.
+  const cadences = solveCadenceCoverage(probe, steps);
+  if (probe.solveSchedule.some((row) => row.stride !== probe.solveClock)) {
+    assert.ok(cadences.includes("none"), `${grid} solve arm never takes an empty step`);
+    assert.ok(
+      cadences.some((key) => key === "people.migration"),
+      `${grid} solve arm never moves people without a reaction firing`,
+    );
+    assert.ok(
+      cadences.some((key) => key.includes("people.growth") && !key.includes("people.migration")),
+      `${grid} solve arm never fires a reaction pass without moving people`,
+    );
+  }
   // The chosen-epoch switch is the same code path at either grid; running
   // it at dev alone keeps the CI parity job near its pre-W5 time
   // (QUESTIONS #40: 7:41 with three regimes at both grids).
@@ -196,7 +263,16 @@ async function runGrid(grid: GridPreset, steps: number): Promise<Record<string, 
     await runParity(grid, steps, substrate, { wake: HORIZON_OPENING_YEAR }, "awake"),
   ];
   if (grid === "dev") regimes.push(await runParity(grid, steps, substrate, { wake: switchYear }, "switch"));
-  return regimes;
+  return regimes.map((regime) => (
+    regime.label === "solve"
+      ? {
+        ...regime,
+        solveClock: probe.solveClock,
+        solveStrides: Object.fromEntries(probe.solveSchedule.map((row) => [row.name, row.stride])),
+        cadences,
+      }
+      : regime
+  ));
 }
 
 function checkWasmDmath(): number {

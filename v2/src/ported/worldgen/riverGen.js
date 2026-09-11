@@ -1,5 +1,5 @@
 /* V2 M1 PORT
- * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; W1 adds a data lake mask and a monthly-flow reader over fixed geometry; hydrology otherwise remains verbatim.
+ * source: src/sim/riverGen.js; deviations: lake cap converted from tile count to MAX_LAKE_AREA_KM2; optional bakedDir gives Earth presets real river geometry (QUESTIONS.md #21) and shields data-sourced exits from the endorheic cut; W1 adds a data lake mask and a monthly-flow reader over fixed geometry; the per-tile runoff field is returned alongside the accumulation (P17); hydrology otherwise remains verbatim.
  * source commit: 97f51dd7c3a3142bfbb366f2e08491f582367e30
  */
 import {
@@ -95,7 +95,11 @@ const SEASONAL_SNOW_RELEASE_BAND = 0.08;
 // data (derive from elevation as before). Water amounts stay emergent: runoff,
 // accumulation, transmission loss and magnitude all run through the given
 // geometry unchanged.
-export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bakedLakeMask = null) {
+// `crossings` (W22), when supplied, is the per-edge table on this grid: the
+// ocean fill then floods across every edge the 1-arc-minute source found water
+// on, so a strait narrower than a cell joins the sea behind it to the ocean
+// without any cell being opened.
+export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bakedLakeMask = null, crossings = null) {
   const N = tw * th;
 
   // ── Step 1: Priority-flood pit filling ──
@@ -181,6 +185,14 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bak
   {
     // ── Phase 1: the OPEN ocean — sub-sea water connected to the map edge by water alone.
     //    (Includes any sea joined by a strait wide enough to resolve as water: the Bosphorus.)
+    //    With the crossing table (W22) "water alone" is read on the EDGES: the flood crosses
+    //    every edge the source found a channel on, whatever the two cells' majorities. A land
+    //    cell the water reaches that way is a CONDUIT — the flood passes through it and on
+    //    across its own water edges — never ocean: no cell changes what it is.
+    const waterEdge = crossings
+      ? (ti, ni, d) => (d < 4 ? crossings[ti * 4 + d] : crossings[ni * 4 + d - 4]) & 0x7f
+      : null;
+    const conduit = crossings ? new Uint8Array(N) : null;
     const flood = (seed) => {
       const q = seed.slice(); let h = 0;
       while (h < q.length) {
@@ -188,7 +200,11 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bak
         for (let d = 0; d < 8; d++) {
           const ny = ty + D8_DY[d]; if (ny < 0 || ny >= th) continue;
           const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw);
-          if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; q.push(ni); }
+          if (waterEdge) {
+            if (!waterEdge(ti, ni, d)) continue;
+            if (tElev[ni] <= 0) { if (!trueOcean[ni]) { trueOcean[ni] = 1; q.push(ni); } }
+            else if (!conduit[ni]) { conduit[ni] = 1; q.push(ni); }
+          } else if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; q.push(ni); }
         }
       }
     };
@@ -768,6 +784,10 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp, bakedDir = null, bak
   return {
     flowDir,
     flowAccum,
+    // The per-tile runoff the accumulation summed (moisture less evaporation,
+    // plus mountain melt; tile-depth units). Exported for the people world's
+    // routed water access (P17), which routes it with its own offtake law.
+    runoff,
     riverMag,
     maxAccum,
     lake,

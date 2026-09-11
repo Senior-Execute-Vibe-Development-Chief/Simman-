@@ -1,15 +1,16 @@
 import { FIELD_LIST, type FieldDefinition, type NumericField } from "./fields";
 import { BASE64_CHUNK_SIZE } from "./constants";
-import { SAVE_VERSION_W5 } from "./constants";
+import { SAVE_VERSION_M4 } from "./constants";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import { type GridPreset, World, type WorldEvent } from "./world";
 import type { HearthState } from "./people/types";
+import type { Community, ObligationEdge } from "./politics/types";
 import { sameSchedule, type PassSchedule, type WorldPhase } from "./scheduler";
 import { deriveCapacity } from "./people/capacity";
 import { asPeopleWorld } from "./people/types";
 import { markPackageActive, rebuildFarmerTotals, refreshTechniqueShare } from "./people/crop";
 
-export const SAVE_VERSION = SAVE_VERSION_W5;
+export const SAVE_VERSION = SAVE_VERSION_M4;
 
 export interface SerializedField {
   readonly length: number;
@@ -23,9 +24,9 @@ export interface SaveEnvelope {
   readonly grid: GridPreset;
   readonly step: number;
   readonly calendarMonth: number;
-  /** The AWAKE schedule; the solve regime's is every pass at `solveStride`. */
+  /** Both regimes' schedules; each pass on the stride its own bound permits (W12). */
   readonly schedule: readonly PassSchedule[];
-  readonly solveStride: number;
+  readonly solveSchedule: readonly PassSchedule[];
   /** The regime the world was saved in, and the steps it woke and was first caged at (−1 while not yet). */
   readonly phase: WorldPhase;
   readonly wakeStep: number;
@@ -43,7 +44,18 @@ export interface SaveEnvelope {
     readonly hearthYears?: Record<string, SerializedField>;
     readonly peopledMask: string;
     readonly dominantPackage: string;
+    /** The harvest anomaly's raw AR(1) state on the weather grid (W29). */
+    readonly harvestZ: SerializedField;
   };
+  /** M4: condensed communities (seat, unrest, members); empty before the first taking. */
+  readonly communities: readonly {
+    readonly id: number;
+    readonly seat: number;
+    readonly members: readonly number[];
+    readonly unrest: number;
+  }[];
+  /** M4: obligation edges (tribute). */
+  readonly obligationEdges: readonly ObligationEdge[];
 }
 
 function base64FromField(field: NumericField): string {
@@ -136,7 +148,7 @@ export function saveWorld(world: World): SaveEnvelope {
     step: world.step,
     calendarMonth: world.calendarMonth,
     schedule: world.awakeSchedule,
-    solveStride: world.solveStride,
+    solveSchedule: world.solveSchedule,
     phase: world.phase,
     wakeStep: world.wakeStep,
     cagedStep: world.cagedStep,
@@ -151,7 +163,19 @@ export function saveWorld(world: World): SaveEnvelope {
       hearthYears,
       peopledMask,
       dominantPackage,
+      harvestZ: {
+        length: world.harvestZ.length,
+        encoding: "base64-float64-le",
+        data: base64FromField(world.harvestZ),
+      },
     },
+    communities: world.communities.map((community) => ({
+      id: community.id,
+      seat: community.seat,
+      members: [...community.members],
+      unrest: community.unrest,
+    })),
+    obligationEdges: world.obligationEdges.map((edge) => ({ ...edge })),
   };
 }
 
@@ -173,8 +197,8 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   if (!Array.isArray(data.schedule) || !sameSchedule(world.awakeSchedule, data.schedule)) {
     throw new Error("Save schedule does not match the world schedule.");
   }
-  if (data.solveStride !== world.solveStride) {
-    throw new Error("Save solve stride does not match the world's derived stride.");
+  if (!Array.isArray(data.solveSchedule) || !sameSchedule(world.solveSchedule, data.solveSchedule)) {
+    throw new Error("Save solve schedule does not match the world's derived schedule.");
   }
   world.step = data.step;
   world.calendarMonth = data.calendarMonth;
@@ -196,6 +220,14 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   }
   world.peopleInitialized = data.people.initialized;
   world.hearths = data.people.hearths.map((hearth) => ({ ...hearth }));
+  if (!data.people.harvestZ) throw new Error("Missing harvest anomaly state.");
+  const harvestZ = fieldFromBase64(data.people.harvestZ, {
+    name: "harvestZ",
+    defaultValue: 0,
+    allocate: (length) => new Float64Array(length),
+  });
+  if (harvestZ.length !== world.harvestZ.length) throw new Error("Invalid harvest anomaly length.");
+  world.harvestZ.set(harvestZ);
   if (world.substrate) for (const [packageId, current] of Object.entries(asPeopleWorld(world).farmers)) {
     const serialized = data.people.farmerFields?.[packageId];
     if (!serialized) {
@@ -222,6 +254,7 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
       const serialized = data.people.hearthYears?.[pkg.id];
       if (!serialized) {
         years.fill(0);
+        peopleWorld._hearthDone[index]?.fill(0);
         return;
       }
       const field = fieldFromBase64(serialized, {
@@ -231,6 +264,10 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
       });
       if (field.length !== years.length) throw new Error(`Invalid hearth-years length for ${pkg.id}.`);
       years.set(field);
+      // A cell at or past its lag has ignited, joined, or can never (W8):
+      // the capacities are static, so the flag is a function of the years.
+      const done = peopleWorld._hearthDone[index];
+      if (done) for (let i = 0; i < years.length; i++) done[i] = (years[i] ?? 0) >= pkg.domLagY ? 1 : 0;
     });
     const mask = bytesFromBase64(data.people.peopledMask);
     if (mask.length !== asPeopleWorld(world)._peopledMask.length) {
@@ -249,6 +286,19 @@ export function loadWorld(input: string | SaveEnvelope, substrate?: import("./su
   // run many migration-only months before the next capacity firing, so
   // re-derive from the restored technique rather than keeping the seed.
   if (world.substrate && world.peopleInitialized) deriveCapacity(asPeopleWorld(world));
+  // M4 register: seats + unrest and edges. Membership is rebuilt on the
+  // next taking firing from the field; carry unrest by seat until then.
+  world.communities = (data.communities ?? []).map((row) => ({
+    id: row.id,
+    seat: row.seat,
+    members: [...row.members],
+    people: 0,
+    exit: 1,
+    exitBlocked: false,
+    appropriable: 0,
+    unrest: Math.max(0, Math.min(1, row.unrest)),
+  }));
+  world.obligationEdges = (data.obligationEdges ?? []).map((edge) => ({ ...edge }));
   return world;
 }
 

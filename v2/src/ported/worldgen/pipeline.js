@@ -337,7 +337,8 @@ if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+
 // presets derive geometry from elevation as before.
 const bakedDir=(!w._rawRivers&&(w.preset==="earth"||w.preset==="earth_sim"))?sampleRiverDirections(tw,th):null;
 const bakedLakeMask=bakedDir?sampleLakeMask(tw,th):null;
-const rivers=computeRivers(tw,th,tElev,tMoist,tTemp,bakedDir,bakedLakeMask);
+const crossings=(!w._rawRivers&&w.crossings&&tw===w.width&&th===w.height)?w.crossings:null;   // W22: the edge table is baked data on the world grid, so it is withheld with the rest of the baked river data under rawRivers (the v1-verbatim oracle arm) and passed only when the territory grid is that grid
+const rivers=computeRivers(tw,th,tElev,tMoist,tTemp,bakedDir,bakedLakeMask,crossings);
 
 // ── River moisture boost: rivers raise local moisture, then fertility recalculates ──
 // This is the physically correct approach: rivers bring water → soil moisture rises →

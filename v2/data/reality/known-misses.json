@@ -3,7 +3,7 @@
     "check": "route",
     "id": "london-bordeaux",
     "grid": "target",
-    "reason": "48% over: coastal mode traces the water-cell lattice around every Breton headland and estuary \u2014 it cannot chord across bay mouths the way real fair-wind coastal passages did. The ETOPO coastline resolves MORE real bays (Loire, Gironde), so the recorded no-chords coarseness measures larger than the pre-regeneration 27%; the pilotage-chord coastal model is the scheduled fix."
+    "reason": "48% over: coastal mode traces the water-cell lattice around every Breton headland and estuary \u2014 it cannot chord across bay mouths the way real fair-wind coastal passages did. The ETOPO coastline resolves MORE real bays (Loire, Gironde), so the recorded no-chords coarseness measures larger than the pre-regeneration 27%; the pilotage-chord coastal model is the scheduled fix. Re-measured after W22d (a ship passes between two land cells only where their ground does not meet; where a walker can cross, the ship keeps to the water cell beside the shore): 17.7 d (from 17.6)."
   },
   {
     "check": "route",
@@ -21,19 +21,19 @@
     "check": "route",
     "id": "rome-alexandria-winter",
     "grid": "dev",
-    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (208.8 vs 214.0 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells)."
+    "reason": "Same no-infrastructure miss as the summer row; the winter/summer RATIO the row exists for is carried (208.8 vs 214.0 dev \u2014 the seasonal land signal on this Mediterranean loop is honest but small without pass closures resolved at 165 km cells). Re-measured after W27 (the snowpack: a land step through a month's snow is charged the footprint-depth term of the walking-energy coefficient over the month's mean pack): 268.2 d (from 241.3): the December loop over the Balkans and Anatolia now walks December's pack, deep on dev's 165 km cells that average a plateau's snow over its coast."
   },
   {
     "check": "route",
     "id": "rome-alexandria-winter",
     "grid": "target",
-    "reason": "Same no-infrastructure miss as the summer row at the shipped grid."
+    "reason": "Same no-infrastructure miss as the summer row at the shipped grid. Re-measured after W27 (the snowpack: a land step through a month's snow is charged the footprint-depth term of the walking-energy coefficient over the month's mean pack): 203.2 d (from 198.5): the shipped grid's route keeps to lower ground and pays 2%."
   },
   {
     "check": "route",
     "id": "rome-london",
     "grid": "target",
-    "reason": "The sea legs are honest; the land legs lack roads (M7), so the mixed journey runs 37.5 vs ORBIS's ~27-day express figure."
+    "reason": "The sea legs are honest; the land legs lack roads (M7), so the mixed journey runs 40.4 vs ORBIS's ~27-day express figure (37.5 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land): three cells on the old path that touched a water cell without holding any sea are no longer ports). Re-measured after W22d (a ship passes between two land cells only where their ground does not meet; where a walker can cross, the ship keeps to the water cell beside the shore): 40.8 d (from 40.4). The cross-grid row for this route cleared (8.3%) and was deleted."
   },
   {
     "check": "route",
@@ -73,16 +73,6 @@
   },
   {
     "check": "crossGrid",
-    "id": "rome-london",
-    "reason": "Dev land-bridges the Channel (sub-pixel strait at 165 km cells), so the two grids answer different journeys. Dev-raster geometry."
-  },
-  {
-    "check": "crossGrid",
-    "id": "alexandria-antioch",
-    "reason": "10.0% vs the 10% band: dev's 165 km Levant coast road is marginally stretched. Dev-raster geometry (its dev route row was FIXED by the ETOPO coastline and ratcheted out)."
-  },
-  {
-    "check": "crossGrid",
     "id": "chang-an-dunhuang",
     "reason": "Dev-raster geometry over broken terrain \u2014 finer cells resolve a cheaper corridor."
   },
@@ -104,13 +94,8 @@
   },
   {
     "check": "crossGrid",
-    "id": "rome-paris",
-    "reason": "Dev crosses the Alps in one coarse cell; target resolves the Rhone corridor. Dev-raster geometry over honest ETOPO relief."
-  },
-  {
-    "check": "crossGrid",
     "id": "london-bordeaux",
-    "reason": "Dev's coarse coast IS a chord (10.9 d, passes); target's honest coastline forces the no-chords coastal model to trace every bay (17.7 d). The gap is the recorded pilotage-chord coarseness, not a physics divergence."
+    "reason": "Before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land) dev's coarse coast WAS a chord (10.9 d): coastal mode sailed the Channel into a 165 km cell of Anjou that holds no sea at all and out again into Biscay. The table refuses both edges, so dev now rounds Brittany a cell at a time (21.8 d) against target's honest coastline tracing every bay (17.6 d). The gap is the recorded pilotage-chord coarseness at two resolutions, not a physics divergence. Re-measured after W22d (a ship passes between two land cells only where their ground does not meet; where a walker can cross, the ship keeps to the water cell beside the shore): 21.9 vs 17.7 d, 19.1%."
   },
   {
     "check": "crossGrid",
@@ -120,6 +105,80 @@
   {
     "check": "crossGrid",
     "id": "rome-alexandria-winter",
-    "reason": "Same dev-raster re-wetting as the summer row (32%); the shipped grid holds ~142 d."
+    "reason": "Same dev-raster re-wetting as the summer row (32%); the shipped grid holds ~142 d. Re-measured after W27 (the snowpack: a land step through a month's snow is charged the footprint-depth term of the walking-energy coefficient over the month's mean pack): 268.2 vs 203.2 d, 24.2% (from 17.7%): the same December pack, deeper on the coarse cells."
+  },
+  {
+    "check": "route",
+    "id": "rome-london",
+    "grid": "dev",
+    "reason": "36.3 vs the 27-day figure (33.8 with the 25% band; 31.6 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)). Dev's coarse raster made a 165 km cell of central France (47\u00b0N 2\u00b0E, no sea in it, landFraction 1.000) a port because it touches the water-majority Channel cell at a corner; the source finds no water there, so the journey walks two more cells to a cell that does hold the Channel's water. The land legs still lack roads (M7), the same class as the target row. Re-measured after W22d (a ship passes between two land cells only where their ground does not meet; where a walker can cross, the ship keeps to the water cell beside the shore): 37.4 d (from 36.3), one more coastal hop moved off a same-shore land edge onto the water cell beside it."
+  },
+  {
+    "check": "route",
+    "id": "calicut-aden",
+    "grid": "dev",
+    "reason": "52.5 vs the 40-day figure (52.0 with the 30% band; 43.0 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)). The gate's start cell at dev (the 165 km cell at 11\u00b0N 77\u00b0E) holds no sea at all (landFraction 1.000); it counted as a port only because it touches the water-majority Arabian-Sea cell at a corner. The source finds no water on that edge, so the journey walks one cell south to a cell whose water reaches the sea (a 5.6 km channel), a foot leg that costs the ~10 days. Passes at the shipped grid (39.6 vs 40), where the start cell is on the coast. Dev-raster geometry."
+  },
+  {
+    "check": "route",
+    "id": "london-bordeaux",
+    "grid": "dev",
+    "reason": "21.8 vs the 12-day figure (15.0 with the 25% band; 10.9 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land), which passed by sailing THROUGH a 165 km cell of Anjou that holds no sea: in from the Channel, out into Biscay). The table refuses both edges, so coastal mode now rounds Brittany a cell at a time. Target traces the honest coastline at 17.6 d (its own known miss); dev's coarser lattice adds a cell's worth of detour on top. The pilotage-chord coastal model is the scheduled fix for both. Re-measured after W22d (a ship passes between two land cells only where their ground does not meet; where a walker can cross, the ship keeps to the water cell beside the shore): 21.9 d (from 21.8)."
+  },
+  {
+    "check": "route",
+    "id": "calicut-aden-monsoon",
+    "grid": "dev",
+    "reason": "38.3 vs the 25-day figure (32.5 with the 30% band; 27.8 before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)): the same lost corner-port at dev's inland start cell as calicut-aden, one foot cell to the coast before the with-monsoon passage. Passes at the shipped grid (24.9 vs 25). Dev-raster geometry."
+  },
+  {
+    "check": "crossGrid",
+    "id": "calicut-aden",
+    "reason": "24.5% dev/target split: dev walks a 165 km cell to reach water the source finds (its start cell holds no sea and was a port only by corner adjacency before W22 (the baked crossing table: a sea mode crosses an edge only where the 1-arc-minute source finds water joining the two cells' water, and a land mode only where ground joins their land)); target starts on the coast and passes. Dev-raster geometry."
+  },
+  {
+    "check": "crossGrid",
+    "id": "calicut-aden-monsoon",
+    "reason": "34.9% dev/target split, the same lost corner-port at dev's start cell as crossGrid:calicut-aden on the shorter with-monsoon passage. Dev-raster geometry."
+  },
+  {
+    "check": "crossGrid",
+    "id": "alexandria-antioch",
+    "reason": "12.1% vs the 10% band (dev 39.4 vs target 34.6 d; 10.0% before W23): dev's 165 km Levant coast road is marginally stretched. Dev-raster geometry (its dev route row was FIXED by the ETOPO coastline and ratcheted out). W23 (the mask reads the cover and the ground bit) moved the target shore a cell on the Orontes mouth; the dev route is unchanged."
+  },
+  {
+    "check": "crossGrid",
+    "id": "rome-paris",
+    "reason": "16.5% (dev 54.0 vs target 45.1 d). Dev crosses the Alps in one coarse cell; target resolves the Rhone corridor. Dev-raster geometry over honest ETOPO relief. Re-measured after W23 (the mask reads the cover and the ground bit): both rows still the M7 no-roads miss, the cross-grid spread still the Alps at 165 km."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-04",
+    "grid": "dev",
+    "reason": "+18%: 35.1 Mkm\u00b2 against 29.9 (\u00b14.5 allowed). The field it is built from is the miss, not the pack law: the reanalysis' April runs 3\u20137\u00b0C colder than the 1991\u20132020 station normals across the continental interior at 55\u201365\u00b0N (raw 1.9\u00b0 cells: Yakutsk \u22127.6 vs ~\u22124, Tomsk \u22121.4 vs ~2.1, Moscow 3.4 vs ~6.6, Fairbanks \u22126.4 vs ~0.4, Winnipeg 0.8 vs ~4.4) and 2\u20133.5\u00d7 wetter over the boreal interior (Fairbanks 971 vs ~275 mm a year, Norilsk 981 vs ~500, Anadyr 762 vs ~350, Verkhoyansk 384 vs ~180), so the pack the field builds is deeper and its April colder than the ground the charts see \u2014 the land below 0\u00b0C in the field's April mean is 31.5 Mkm\u00b2, more than the charts' whole April extent. The model's own convention (fractional cover against the charts' half-cell binary rule) accounts for at most exp(\u2212\u03c3\u00b2/2) \u2248 7% of the melt season's area-time, inside the band. Weekly stepping within the month took the row from +22% to +18% (dev) and +21% to +17% (target); the band was set before the first measurement and is not widened."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-05",
+    "grid": "dev",
+    "reason": "+24%: 22.6 Mkm\u00b2 against 18.2 (\u00b13.0 allowed). The same input as nh-extent-04: the interior's April cold bias and the boreal wet bias carry a deeper pack into a colder spring, so the field melts out two to three weeks late where the charts go bare. Weekly stepping within the month took the row from +32% to +24% (dev) and +31% to +23% (target); June is inside the band at both grids. Not tuned; the band stands."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-04",
+    "grid": "target",
+    "reason": "+17%: 35.0 Mkm\u00b2 against 29.9 (\u00b14.5 allowed). The field it is built from is the miss, not the pack law: the reanalysis' April runs 3\u20137\u00b0C colder than the 1991\u20132020 station normals across the continental interior at 55\u201365\u00b0N (raw 1.9\u00b0 cells: Yakutsk \u22127.6 vs ~\u22124, Tomsk \u22121.4 vs ~2.1, Moscow 3.4 vs ~6.6, Fairbanks \u22126.4 vs ~0.4, Winnipeg 0.8 vs ~4.4) and 2\u20133.5\u00d7 wetter over the boreal interior (Fairbanks 971 vs ~275 mm a year, Norilsk 981 vs ~500, Anadyr 762 vs ~350, Verkhoyansk 384 vs ~180), so the pack the field builds is deeper and its April colder than the ground the charts see \u2014 the land below 0\u00b0C in the field's April mean is 31.5 Mkm\u00b2, more than the charts' whole April extent. The model's own convention (fractional cover against the charts' half-cell binary rule) accounts for at most exp(\u2212\u03c3\u00b2/2) \u2248 7% of the melt season's area-time, inside the band. Weekly stepping within the month took the row from +22% to +18% (dev) and +21% to +17% (target); the band was set before the first measurement and is not widened."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-05",
+    "grid": "target",
+    "reason": "+23%: 22.4 Mkm\u00b2 against 18.2 (\u00b13.0 allowed). The same input as nh-extent-04: the interior's April cold bias and the boreal wet bias carry a deeper pack into a colder spring, so the field melts out two to three weeks late where the charts go bare. Weekly stepping within the month took the row from +32% to +24% (dev) and +31% to +23% (target); June is inside the band at both grids. Not tuned; the band stands."
+  },
+  {
+    "check": "snow",
+    "id": "nh-extent-10",
+    "grid": "target",
+    "reason": "\u221218%: 15.5 Mkm\u00b2 against 19.0 (\u00b13.0 allowed); the dev row passes on the absolute floor (16.0, 2.96 short). Read at a 1 mm bar the same month is 22.2 Mkm\u00b2: the pack is there but thin at the month's end across the 50\u201360\u00b0N belt, and a cell counts for the share of the month its pack stands above the 5 mm bar. It is not a warm bias \u2014 the field's October runs 1\u20133\u00b0C COLD of the stations there (Yakutsk \u22129.5 vs ~\u22127.5, Yellowknife \u22124.1 vs ~\u22121) \u2014 but the season's onset: the first snow lies at the bar for most of the month in the model, while the charts count a cell from its first white week. Weekly stepping within the month took the row from \u221229% to \u221216% (dev) and \u221231% to \u221218% (target). The bar and the band were set before the measurement; the onset (a fresh-snow depth of its own, the charts' half-cell rule) is the open mechanism, \u00a78 of the W27 handoff."
   }
 ]

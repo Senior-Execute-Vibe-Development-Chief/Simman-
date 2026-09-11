@@ -7,6 +7,10 @@
 // The exact height and preset naming remain logged in QUESTIONS.md.
 export const DEV_GRID_WIDTH = 240; // spec/09-constants-ledger.md §Units — M0 grid convention
 export const DEV_GRID_HEIGHT = 120; // spec/09-constants-ledger.md §Units — M0 grid convention
+export const TOY_GRID_WIDTH = 100; // spec/09-constants-ledger.md §M4 toy — 100×100 playground grid (shell only)
+export const TOY_GRID_HEIGHT = 100; // spec/09-constants-ledger.md §M4 toy — 100×100 playground grid (shell only)
+/** Square cell edge on the M4 toy map — sized so COMMUNITY_RADIUS_KM spans several cells. */
+export const TOY_CELL_EDGE_KM = 12; // spec/09-constants-ledger.md §M4 toy — playground cell edge (shell only)
 export const TARGET_GRID_WIDTH = 1800; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 export const TARGET_GRID_HEIGHT = 900; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 
@@ -50,10 +54,19 @@ export const MATH_ATAN_STEP = 2; // spec/09-constants-ledger.md §Units — M0 d
 export const MATH_TAN_EIGHTH_PI = 0.41421356237309503; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (tan(π/8), atan range reduction)
 export const MATH_EXP_MAX = 709; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_EXP_MIN = -745; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const GAUSSIAN_HALF_EXPONENT = -0.5; // spec/09-constants-ledger.md §Units — the exponent of the normal density, exp(-(x/s)^2/2)
 export const MATH_HALF = 0.5; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_THREE = 3; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_FOUR = 4; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 export const MATH_NEGATIVE_ONE = -1; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
+export const MATH_SQRT_HALF = 0.7071067811865476; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (1/√2, the normal CDF through erf)
+export const MATH_INV_SQRT_2PI = 0.3989422804014327; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (the standard normal density at 0)
+export const MATH_ERF_P = 0.3275911; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26, |error| ≤ 1.5e-7)
+export const MATH_ERF_A1 = 0.254829592; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A2 = -0.284496736; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A3 = 1.421413741; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A4 = -1.453152027; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
+export const MATH_ERF_A5 = 1.061405429; // spec/09-constants-ledger.md §Units — M0 deterministic math contract (Abramowitz & Stegun 7.1.26)
 export const MATH_NEGATIVE_TWO = -2; // spec/09-constants-ledger.md §Units — M0 deterministic math contract
 
 export const CONSERVATION_EPSILON = 1e-10; // spec/09-constants-ledger.md §Units — M0 conservation assertion
@@ -91,6 +104,7 @@ export const BYTE_SHIFT_3 = 24; // spec/09-constants-ledger.md §Units — M0 RN
 // M1 calendar and real-unit travel constants. Proposed rows are appended to
 // spec/09-constants-ledger.md by the M1 change.
 export const MONTHS_PER_YEAR = 12; // spec/09-constants-ledger.md §M1 proposed — monthly climate cadence
+export const MEAN_DAYS_PER_MONTH = 30.436875; // spec/09-constants-ledger.md §W17 — the Gregorian mean year (365.2425 d) over twelve, to read a crop cycle in days as a count of the climate's months
 export const EARTH_CIRCUMFERENCE_KM = 40075; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
 export const EARTH_MERIDIONAL_KM = 20004; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
 export const EARTH_DEGREES = 360; // spec/09-constants-ledger.md §M1 proposed — Earth geodesy
@@ -139,9 +153,44 @@ export const TRAVEL_RELIEF_THRESHOLD = 0.07; // spec/09-constants-ledger.md §M1
 export const TRAVEL_ELEVATION_FACTOR = 5; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
 export const TRAVEL_RELIEF_COST_FACTOR = 4; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
 export const TRAVEL_SLOPE_COST_FACTOR = 3; // spec/09-constants-ledger.md §M1 proposed — continuous terrain cost
+// A cell's mean hides the boundary: two cells can share a mean while a ridge
+// stands between them, or a valley threads through. The pass table carries the
+// lowest crossing of each land edge measured on the fine DEM, four directions
+// per cell (E, SE, S, SW); the other four are the neighbour's opposite entry.
+export const TRAVEL_PASS_DIRECTIONS = 4; // spec/09-constants-ledger.md §W21a — stored pass directions per cell
+// W22: how two adjacent cells are JOINED, one byte per edge from the same
+// 1-arc-minute source: a land link (ground runs between the two cells' land)
+// and a water width (the narrowest point of the widest channel between their
+// water, in samples). The table shares the pass table's stored rose, E, SE, S,
+// SW, and the other four directions are the neighbour's opposite entry.
+export const CROSSING_SAMPLE_KM = 1.853; // spec/09-constants-ledger.md §W22 — one arc-minute of meridian, the pitch of the source grid a width is counted in
+export const CROSSING_ROSE_DX = [1, 1, 0, -1, -1, -1, 0, 1] as const; // spec/09-constants-ledger.md §W22 — the router's D8 rose: E, SE, S, SW, W, NW, N, NE
+export const CROSSING_ROSE_DY = [0, 1, 1, 1, 0, -1, -1, -1] as const; // spec/09-constants-ledger.md §W22 — the router's D8 rose: E, SE, S, SW, W, NW, N, NE
 export const TRAVEL_COLD_THRESHOLD = 0.35; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_COLD_COST_FACTOR = 2; // spec/09-constants-ledger.md §M1 proposed — seasonal cold cost
 export const TRAVEL_MUD_COST_FACTOR = 0.8; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
+// W27 — the snowpack. A month's daily means spread about the monthly mean,
+// which is what lets a −3°C month thaw on some days and a +2°C month snow on
+// others; one spread gives both the snow share of the month's precipitation
+// and its positive degree-days.
+export const SNOW_DAILY_TEMPERATURE_SPREAD_C = 5; // spec/09-constants-ledger.md §W27 — σ of daily mean temperature about the monthly mean, the positive-degree-day model's (Reeh 1991; Braithwaite 1995)
+export const SNOW_RAIN_THRESHOLD_C = 1; // spec/09-constants-ledger.md §W27 — daily mean air temperature at which precipitation is as likely snow as rain (Jennings et al. 2018)
+export const SNOW_MELT_FACTOR_MAX_MM = 4; // spec/09-constants-ledger.md §W27 — mm of water melted from snow per positive degree-day at the summer solstice: the NWS SNOW-17 melt factor's maximum (Anderson 2006), inside Hock 2003's range for snow
+export const SNOW_MELT_FACTOR_MIN_MM = 1.2; // spec/09-constants-ledger.md §W27 — the same at the winter solstice, SNOW-17's minimum: a warm winter day melts by the air's heat alone, the sun being low
+export const SUMMER_SOLSTICE_MONTH = 5.69; // spec/09-constants-ledger.md §W27 — June 21 in month-index units (5 + 21/30.44), where the northern sun peaks; the southern peak is six months on
+export const SNOW_STEPS_PER_MONTH = 4; // spec/09-constants-ledger.md §W27 — the pack is walked through each month in weekly steps, the temperature read between the neighbouring monthly means (a discretisation; the charts it is measured against are weekly, and 8 steps move no monthly extent by more than the table's unit)
+export const SNOW_SPINUP_MAX_YEARS = 10; // spec/09-constants-ledger.md §W27 — the years a pack is cycled before one still growing is called perennial (a cadence)
+export const SNOW_PERIODIC_MM = 1; // spec/09-constants-ledger.md §W27 — the year-on-year change under which a pack is periodic (the table's own unit)
+export const SNOW_PACK_MAX_MM = 65535; // spec/09-constants-ledger.md §W27 — the table's range (uint16 mm of water)
+export const SNOW_SUBGRID_CV = 0.4; // spec/09-constants-ledger.md §W27 — coefficient of variation of the peak pack within a cell, Liston 2004's arctic tundra class (the nine-class table by landscape is the follow-up)
+export const SNOW_DEPLETION_STEPS = 1000; // spec/09-constants-ledger.md §W27 — the depletion table's resolution in remaining-share (a cadence)
+export const SNOW_DEPLETION_BISECTIONS = 50; // spec/09-constants-ledger.md §W27 — bisections per table entry, to double precision over the quantile span (a cadence)
+export const SNOW_DEPLETION_QUANTILE_SPAN = 8; // spec/09-constants-ledger.md §W27 — standard-normal quantiles beyond ±8 are 0 and 1 to double precision
+export const SNOW_PACK_DENSITY_KG_M3 = 300; // spec/09-constants-ledger.md §W27 — settled seasonal snow (Sturm, Taras, Liston et al. 2010)
+export const WATER_DENSITY_KG_M3 = 1000; // spec/09-constants-ledger.md §W27 — water
+export const MM_PER_CM = 10; // spec/09-constants-ledger.md §W27 — units
+export const SNOW_STEP_COST_PER_CM = 0.082; // spec/09-constants-ledger.md §W27 — Pandolf, Givoni & Goldman 1977: the terrain coefficient for snow rises 0.082 per cm of footprint depression
+export const SNOW_FOOTPRINT_MAX_CM = 35; // spec/09-constants-ledger.md §W27 — the deepest footprint the coefficient was measured over (Soule & Goldman 1972)
 export const TRAVEL_WATERLOG_THRESHOLD = 0.7; // spec/09-constants-ledger.md §M1 proposed — seasonal wet-ground cost
 export const TRAVEL_MOISTURE_FLOOR = 0.4; // spec/09-constants-ledger.md §M1 proposed — aridity cost (baseEdgeCost terrain seed)
 export const TRAVEL_LAND_MIN_FACTOR = 0.5; // spec/09-constants-ledger.md §M1 proposed — terrain factor floor
@@ -224,11 +273,12 @@ export const PEOPLE_GRAVEYARD_DENSITY = 30; // spec/09-constants-ledger.md §M2 
 export const PEOPLE_GRAVEYARD_GAMMA = 0.5; // spec/09-constants-ledger.md §People — urban graveyard exponent
 export const PEOPLE_CAPACITY_FLOOR_PER_KM2 = 0.001; // spec/09-constants-ledger.md §M2 proposed — numerical density floor
 export const PEOPLE_FORAGER_MOBILITY_KM2_PER_YEAR = 23; // spec/09-constants-ledger.md §W6 — forager population mobility, Aka mating/exploration range (Cavalli-Sforza & Hewlett 1982) by the parent–offspring displacement convention; replaces the v1 diffusivity of 1200
+export const DIFFUSION_MSD_PER_DIFFUSIVITY = 4; // spec/09-constants-ledger.md §W12 — <r^2> = 4Dt, the mean-square displacement of two-dimensional diffusion
+export const MIGRATION_HOP_MEAN_SQUARE_WEIGHT = 0.75; // spec/09-constants-ledger.md §W12 — the 8-neighbour stencil's mean square hop, (2h_ew^2 + 2h_ns^2 + 4(h_ew^2 + h_ns^2)) / 8
 export const PEOPLE_MIGRATION_MAX_SHARE = 0.5; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion stability bound
 export const PEOPLE_MIGRATION_MAX_SUBSTEPS = 16; // spec/09-constants-ledger.md §M2 proposed — explicit diffusion substep cap
 export const PEOPLE_TECHNIQUE_PRESENT = 0.01; // spec/09-constants-ledger.md §M2 proposed — reached-technique visibility threshold
 export const PEOPLE_TECHNIQUE_CLIMATE_FLOOR = 0.05; // spec/09-constants-ledger.md §M2 proposed — package-envelope spread floor
-export const PEOPLE_HEARTH_MIN_SEPARATION_KM = 1000; // spec/09-constants-ledger.md §M2 proposed — independent hearth spacing
 export const PEOPLE_HEARTH_BASIN_RADIUS_KM = 500; // spec/09-constants-ledger.md §M2 proposed — peopled-basin maturity radius
 export const PEOPLE_COHORT_CHILD_FRACTION = 0.35; // spec/09-constants-ledger.md §M2 proposed — opening child cohort share
 export const PEOPLE_COHORT_WORKING_FRACTION = 0.6; // spec/09-constants-ledger.md §M2 proposed — opening working cohort share
@@ -264,7 +314,7 @@ export const SAVE_VERSION_M3A = 5; // spec/09-constants-ledger.md §M3a proposed
 export const PEOPLE_NEIGHBOR_DX = [0, 0, -1, 1, -1, 1, -1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_DY = [-1, 1, 0, 0, -1, -1, 1, 1] as const; // spec/09-constants-ledger.md §M3a proposed — N/S/W/E then diagonals
 export const PEOPLE_NEIGHBOR_OPPOSITE = [1, 0, 3, 2, 7, 6, 5, 4] as const; // spec/09-constants-ledger.md §M3a proposed — reverse stencil directions
-export const PEOPLE_SNAPSHOT_FIELD_COUNT = 5; // spec/09-constants-ledger.md §M3a proposed — population, technique, package, can-grow, native overlays
+export const PEOPLE_SNAPSHOT_FIELD_COUNT = 9; // spec/09-constants-ledger.md §W31 — population, technique, package, can-grow, native, works, harvest year, famine frequency, granary months overlays (8 through W30)
 
 // W5: the peopling solve and the wake. No physical constant is added; the
 // knee is the Power row CAGE_KNEE made concrete, the marker is the gate's
@@ -276,3 +326,87 @@ export const SOLVE_AGREEMENT_POP_TOLERANCE = 0.05; // spec/09-constants-ledger.m
 export const SAVE_VERSION_W5 = 6; // spec/09-constants-ledger.md §W5 proposed — phase, wake and caged steps, events in the envelope
 export const HORIZON_OPENING_YEAR = -9700; // spec/09-constants-ledger.md §Units — Phase 1 opening, the end of the Younger Dryas (calendar label and the clock's origin)
 export const HORIZON_END_YEAR = 1; // spec/09-constants-ledger.md §Units — Phase 1 primary horizon end (calendar label)
+
+export const PEOPLE_SHORE_STRIP_KM = 20; // spec/09-constants-ledger.md §W8 — the shore strip a coastal forager works, a day's foraging radius each way (Kelly 2013, ~10 km); a coast cell's aquatic access is the strip's share of the cell, the same in real km at every grid
+export const PEOPLE_FORAGER_AQUATIC_CAPACITY_PER_KM2 = 0.4; // spec/09-constants-ledger.md §W8 — forager density at full aquatic access (shore, river, lake, floodplain): the median of Binford 2001's aquatic-resource groups (0.3–3 persons/km², Kelly 2013)
+export const PEOPLE_WILD_STAND_SHARE = 0.35; // spec/09-constants-ledger.md §W10 — what a wild stand yields as a share of the same ground farmed at first technique: Harlan 1967 (a family gathered a year of grain from a hectare of wild wheat at Karacadag in three weeks, within a factor of two or three of early cultivated yields on the harvested ground) against the partial cover of a primary habitat (Harlan & Zohary 1966). Replaces PEOPLE_WILD_STAND_CAPACITY_PER_KM2 (0.5), a flat density that ignored the ground a stand grew on and so fed as many gatherers on the Siberian steppe as on a Levantine hillside
+export const PEOPLE_WILD_STAND_CAPACITY_PER_KM2_RETIRED = 0.5; // spec/09-constants-ledger.md §W8 — forager density a dense wild stand feeds at full richness: Natufian hamlets on the Levantine stands (Bar-Yosef 1998), Binford 2001's terrestrial-plant groups in warm-temperate settings (0.1–0.5 persons/km²)
+export const SAVE_VERSION_W8 = 7; // spec/09-constants-ledger.md §W8 — hearth records carry their region size
+export const SAVE_VERSION_W12 = 8; // spec/09-constants-ledger.md §W12 — the solve regime carries a schedule, not one stride
+
+// W13 (P17): the routed water. One physical constant; the routing itself is
+// the worldgen's own flow field and per-tile runoff, read rather than re-derived.
+export const PEOPLE_CHANNEL_STRIP_KM = 10; // spec/09-constants-ledger.md §W13 — the ground a channel's own gravity offtake commands, both banks together: the Upper Nile valley floor (5–15 km, Butzer 1976) and the piedmont fans the first Central Asian farmers sat on (Jeitun on the Kopet Dag fans, Harris 2010). A cell's irrigable share is the strip's share of the cell, min(1, 10 / √area), the shore strip's law — the same ground in real km at every grid
+
+export const WILD_RANGE_INTERPOLATION_KM = 200; // spec/09-constants-ledger.md §W9 — the distance a georeferenced record set is interpolated over to become a continuous range: the observations are the range, and this fills the gaps between them without inventing one. Stated in real km, so the same range is derived at either grid
+export const WILD_ENVELOPE_AXES = 4; // spec/09-constants-ledger.md §W9 — the climate signature's axes: the warmth of the warmest and coldest quarters and the moisture of the wettest and driest, the four that separate winter-rain country from monsoon country
+export const WILD_ENVELOPE_QUARTER_MONTHS = 3; // spec/09-constants-ledger.md §W9 — the season a climate signature averages over: a quarter, the bioclim convention (Busby 1991; Hijmans et al. 2005 BIO8-BIO17)
+export const NORMAL_MAD_TO_SIGMA = 1.4826; // spec/09-constants-ledger.md §W9 — the constant taking a median absolute deviation to a standard deviation for a normal distribution (1/Phi^-1(3/4))
+export const WILD_ENVELOPE_SIGMA = 1.5; // spec/09-constants-ledger.md §W9 — the envelope's edge in robust standard deviations of the weighted occurrence spread; a stated statistical convention, so the range's extent is a prediction
+export const WILD_ENVELOPE_TOLERANCE_FLOOR = 0.02; // spec/09-constants-ledger.md §W9 — the narrowest spread the climate table can resolve (~1.9-degree cells), so a lineage known from one valley gets no envelope narrower than the data can see
+
+
+// W28: the works slot (02 box 2 `works`; 04 §4.1's capacity factor; M2
+// ruling 10's inert slot) armed as v1's validated LAND_WORKS — the built land
+// capital of canals, terraces, drainage and levelling: built where people
+// press their ceiling and water can be led onto the fields, rotting where
+// nobody keeps it. Ported constants; a v1 tick was half a year.
+export const PEOPLE_WORKS_GAIN = 2; // spec/09-constants-ledger.md §W28 — yield multiple of fully-improved over rain-fed land, the historical basin-irrigation premium (v1 LAND_WORKS = 2; research/03 row 91)
+export const PEOPLE_WORKS_PRESSURE_FLOOR = 0.5; // spec/09-constants-ledger.md §W28 — the fill (people ÷ capacity) above which land is improved: intensification once extensification is exhausted (Boserup 1965; v1 WORKS_PRESS)
+export const PEOPLE_WORKS_STAFF_FLOOR = 0.25; // spec/09-constants-ledger.md §W28 — the fill below which works go unmaintained and rot in proportion to the missing hands (v1 WORKS_STAFF)
+export const PEOPLE_WORKS_BUILD_PER_YEAR = 0.0024; // spec/09-constants-ledger.md §W28 — share of a cell's improvable ground built per year per unit of excess fill at full skill (v1 WORKS_RATE 0.0012 per half-year tick)
+export const PEOPLE_WORKS_DECAY_PER_YEAR = 0.0018; // spec/09-constants-ledger.md §W28 — share of the works lost per year when wholly unstaffed, a 385-year half-life (v1 WORKS_DECAY 0.0009 per half-year tick)
+export const PEOPLE_WORKS_SKILL_FLOOR = 0.05; // spec/09-constants-ledger.md §W28 — the farmed share below which nobody builds: a presence floor, v1's own
+export const PEOPLE_WORKS_RAIN_FLOOR = 0.55; // spec/09-constants-ledger.md §W28 — annual moisture above which a climate is wet enough that its works are drainage and levelling, needing no water led on (v1 _ensureIrr; the worldgen's woodland moisture band)
+export const PEOPLE_WORKS_RAIN_SHARE = 0.6; // spec/09-constants-ledger.md §W28 — the improvable share of a cell at the wettest climate from rain alone (v1 _ensureIrr)
+export const SAVE_VERSION_W28 = 9; // spec/09-constants-ledger.md §W28 — the works field and pass in the envelope
+
+// W29 — the harvest years: the yield-variance map (v1 harvest.js, validated 11/12 literature regions, 2026-08-25).
+export const HARVEST_CV_BASE = 0.1; // spec/09-constants-ledger.md §W29 — the year-to-year coefficient of variation of the harvest on reliably watered temperate ground, the England/Java floor (v1 CV_BASE)
+export const HARVEST_CV_MARGIN = 0.35; // spec/09-constants-ledger.md §W29 — the CV added at the full semi-arid margin: desert-edge rain farming swings ~0.45 (v1 CV_MARGIN)
+export const HARVEST_CV_SEASON = 0.12; // spec/09-constants-ledger.md §W29 — the CV added where one rainy season carries the whole year (v1 CV_SEASON)
+export const HARVEST_CV_WINTER = 0.17; // spec/09-constants-ledger.md §W29 — the CV added at the full continental cold margin, winterkill and the season squeezed between frost and drought (v1 CV_WINTER)
+export const HARVEST_CV_FLOOD = 0.2; // spec/09-constants-ledger.md §W29 — the flood regime's own CV a wholly river-fed valley converges to, the pre-dam Nile's bad-flood years (v1 CV_FLOOD)
+export const HARVEST_MOISTURE_ONSET = 0.55; // spec/09-constants-ledger.md §W29 — effective moisture (the annual index over the evaporative demand) below which the rain margin opens: the semi-arid onset, the ~38th percentile of land (v1 CV_EM0)
+export const HARVEST_MOISTURE_RAMP = 0.5; // spec/09-constants-ledger.md §W29 — the effective-moisture span from that onset to the full margin (v1 CV_EM_RAMP)
+export const HARVEST_COOL_ONSET_C = 6; // spec/09-constants-ledger.md §W29 — the cool-half mean temperature, °C, below which the winter risk engages (v1 CV_COOL0)
+export const HARVEST_COOL_RAMP_C = 13; // spec/09-constants-ledger.md §W29 — the °C span from that onset to the full winter margin, a −7 °C cool half (v1 CV_COOL_RAMP)
+export const HARVEST_GAUSSEN_SHAPE = 8; // spec/09-constants-ledger.md §W29 — the dry-season shape 8·d·(1−d) − 1 over the Gaussen-dry share d of the year: one at the half-dry year, nothing under ~0.15 or over ~0.85 dry (v1's 4·d·(1−d) − ½, doubled)
+export const HARVEST_SEASON_AMPLITUDE_MIN_C = 4; // spec/09-constants-ledger.md §W29 — the seasonal temperature amplitude, °C, under which the warm half is not a season and the monsoon concentration is not read (v1: the low-amplitude tropics)
+export const HARVEST_MONSOON_ONSET = 0.3; // spec/09-constants-ledger.md §W29 — the warm-half rain concentration |share − ½|·2 above which the year rides one season (v1)
+// W29 — the harvest years themselves (v1 harvest.js): a spatially correlated,
+// year-persistent standard-normal weather anomaly per weather cell, read
+// bilinearly at every land cell and scaled by the cell's yield CV into the
+// year's yield multiple; farmers above what the year feeds die back at the
+// starvation rate; a bottom-decile year that also fails by more than a third
+// is a famine year. Nothing here is keyed on the calendar: the year index is
+// the world's own clock counted in twelves, the RNG stream's address only.
+export const HARVEST_WEATHER_CELL_DEGREES = 12; // spec/09-constants-ledger.md §W29 — the weather cell of a harvest year, degrees: the ~1,300 km synoptic scale a drought or a wet year covers (the 1315–17 rains over all of northern Europe; the 1876–78 monsoon failure over the whole Deccan; v1 CELL_DEG). The grid is EARTH_DEGREES ÷ this by EARTH_HALF_DEGREES ÷ this, 30 × 15
+export const HARVEST_YEAR_PERSISTENCE = 0.3; // spec/09-constants-ledger.md §W29 — the lag-one autocorrelation of a weather cell's anomaly: droughts run in twos and threes (the Nile flood series' lag-one correlation ~0.3, Hassan 1981; soil-moisture and ENSO memory; v1 RHO)
+export const HARVEST_DRAW_CLAMP = 3.5; // spec/09-constants-ledger.md §W29 — the standard-normal draw is clamped to ±3.5 σ: a one-in-four-thousand year is the worst the mechanism admits (v1)
+export const HARVEST_SMOOTH_CENTRE = 0.5; // spec/09-constants-ledger.md §W29 — the weight of a weather cell's own draw in the 3 × 3 spatial smoothing (v1)
+export const HARVEST_SMOOTH_EDGE = 0.125; // spec/09-constants-ledger.md §W29 — the weight of each of its four edge neighbours; the sum is renormalised to unit variance, √(centre² + 4·edge²) (v1)
+export const HARVEST_LEAN_Z = -1.28; // spec/09-constants-ledger.md §W29 — the bottom-decile anomaly, Φ⁻¹(0.1): a famine year is a one-in-ten year (v1)
+export const HARVEST_FAMINE_LOSS = 0.65; // spec/09-constants-ledger.md §W29 — the yield multiple under which a bottom-decile year is a famine year, a harvest more than a third short (Ó Gráda 2009: the great famines were harvest failures of a third to a half; v1)
+export const HARVEST_MULTIPLIER_FLOOR = 0.15; // spec/09-constants-ledger.md §W29 — the worst yield multiple a year can bring, a harvest nearly wholly lost (v1)
+export const HARVEST_MULTIPLIER_CEILING = 1.6; // spec/09-constants-ledger.md §W29 — the best, a bumper year (v1)
+export const PEOPLE_STARVATION_RATE_PER_YEAR = 0.3; // spec/09-constants-ledger.md §W29 — the share of the farmers above what the year's harvest feeds who die in that year: Finland 1695–97 lost a quarter to a third of its people over two failed harvests (Ó Gráda 2009), a half-shortfall year at this rate killing 15 % a year. The same law as P21 (iii)'s mean-year balance: a cell above its ceiling falls back toward it at this rate
+export const SAVE_VERSION_W29 = 10; // spec/09-constants-ledger.md §W29 — the harvest anomaly state and the famine-years field in the envelope; the harvest pass on the schedule
+export const SAVE_VERSION_W30 = 11; // spec/09-constants-ledger.md §W30 — the farmed-years field in the envelope; the harvest rows are derived from the substrate and not saved
+export const FOOD_RATION_TONNES_PER_PERSON_YEAR = 1.095; // spec/09-constants-ledger.md §W31 — 04 §4.2's 3 kg per person per day-equivalent (grain eaten ~0.55 kg/day plus seed, fodder and waste — v1's 0.003 per tick re-derived in real units) × 365. The bridge between the harvest law's persons and the book's tonnes; cancels in every W31 dynamic
+export const FOOD_SPOILAGE_PER_YEAR = 0.08; // spec/09-constants-ledger.md §W31 — the share of stored cereal lost in a year in traditional storage at the temperate humid reference: 5–10 % (Hodges, Buzby & Bennett 2011, J. Agric. Sci. 149; Boxall 2002). v1's 1 % base (GRANARY_SPOIL) is not adopted: it was set to make granaries fill
+export const FOOD_SPOILAGE_REFERENCE_C = 10; // spec/09-constants-ledger.md §W31 — the annual mean temperature, °C, of the store the base is measured in (the English and North European granary)
+export const FOOD_SPOILAGE_Q10 = 2; // spec/09-constants-ledger.md §W31 — the factor by which insect and mould development in stored grain multiplies per FOOD_SPOILAGE_Q10_STEP_C (Howe 1965, J. Stored Prod. Res. 1; the biological Q10, 2–3)
+export const FOOD_SPOILAGE_Q10_STEP_C = 10; // spec/09-constants-ledger.md §W31 — §Units. The temperature step of a Q10, by definition
+export const FOOD_SPOILAGE_ARID_FACTOR = 0.25; // spec/09-constants-ledger.md §W31 — the loss in a fully arid store relative to a humid one at the same temperature: APHLIS's arid-zone cereal storage losses run about a quarter of the humid zone's; "dry heat preserves — Egypt's central stores" (v1's CLIMATE_SPOIL grounding). The least-grounded row; flagged; the sensitivity probe is required
+export const SAVE_VERSION_W31 = 12; // spec/09-constants-ledger.md §W31 — the store field in the envelope; a v11 save is refused
+export const FOOD_GRANARY_MONTHS_SATURATION = 24; // spec/09-constants-ledger.md §W31 — the Granary lens ramp saturates at two harvests in hand (Will & Wong 1991 on the Qing target of a year's reserve as the state's ambition, rarely met)
+export const COMMUNITY_BAR_PERSONS = 2000; // spec/09-constants-ledger.md §M4 — settlement-size literature / v1 village core; representation threshold (18.3), not physics
+export const COMMUNITY_RADIUS_KM = 50; // spec/09-constants-ledger.md §M4 — day's-walk catchment for membership
+export const EXTRACT_FLOOR = 0.10; // spec/09-constants-ledger.md §M4 — harvest-tax literature floor (EXTRACT_BAND)
+export const TAKING_RAID_RATE_PER_YEAR = 0.05; // spec/09-constants-ledger.md §M4 — pre-state raiding as war's ground state; measured against the M4 geography gate, never cradle-fitted
+export const PLUNDER_SHARE = 0.25; // spec/09-constants-ledger.md §M4 — movable share of a raided granary when exit is cheap
+export const SAVE_VERSION_M4 = 13; // spec/09-constants-ledger.md §M4 — communities, obligation edges, and unrest in the envelope
+export const POLITICS_OVERLAY_MAX_SEATS = 2000; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (seats)
+export const POLITICS_OVERLAY_MAX_TRIBUTE = 500; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (tribute edges)
+export const POLITICS_OVERLAY_MAX_RECENT = 32; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (recent taking events)

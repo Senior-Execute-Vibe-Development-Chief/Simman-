@@ -3,6 +3,13 @@ import { performance } from "node:perf_hooks";
 import populationCurve from "../data/reality/population-curve.json";
 import farmingArrivals from "../data/reality/farming-arrivals.json";
 import neolithicArrivals from "../data/reality/neolithic-arrivals.json";
+import hearthCentres from "../data/reality/hearths.json";
+import stapleByRegion from "../data/reality/staple-by-region.json";
+import yieldVariance from "../data/reality/yield-variance.json";
+import famineFrequency from "../data/reality/famine-frequency.json";
+import famineSeverity from "../data/reality/famine-severity.json";
+import { aquaticAccess } from "../src/sim/people/habitability";
+import { CROP_PACKAGES } from "../src/ported/worldgen/cropPackages.js";
 import { buildSubstrate } from "../src/sim/substrate";
 import { populationTotal } from "../src/sim/people";
 import type { PeopleWorld } from "../src/sim/people/types";
@@ -31,7 +38,21 @@ interface GridResult {
   readonly emptyUnpeopledCells: number;
   readonly conservationError: number;
   readonly provenance: ReturnType<typeof provenance>;
+  readonly yieldVariance: Record<string, unknown>;
 }
+
+interface KnownPeopleMiss { readonly id: string; readonly reason: string; }
+let peopleMisses: readonly KnownPeopleMiss[] = [];
+try {
+  peopleMisses = (await import("../data/reality/known-misses-people.json", { with: { type: "json" } })).default.misses;
+} catch { peopleMisses = []; }
+const acknowledged = new Map(peopleMisses.map((miss) => [miss.id, miss.reason]));
+const failures: string[] = [];
+// Only checks the CURRENT arm actually concludes participate in the
+// stale-ratchet: the fast trajectory arm must not read the long-horizon
+// manifest rows as stale merely because it cannot measure them.
+const measured = new Set<string>();
+const findings: Record<string, unknown> = {};
 
 const FAST_STEPS = 12;
 
@@ -39,6 +60,45 @@ if (!await ensurePeopleWasm()) throw new Error("People WASM failed to initialize
 
 function disposePeople(world: World): void {
   (world as PeopleWorld)._wasmPeopleKernel?.dispose();
+}
+
+/**
+ * The yield-variance map against the literature bands (W29): per region the
+ * fertility-weighted median of the static yield CV over the box's land cells
+ * above the fertility floor, from the substrate alone — no history, so it
+ * runs at both grids on every commit. Rows `yield-cv:<region>:<grid>`.
+ */
+function judgeYieldVariance(world: World, grid: GridPreset): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const substrate = world.substrate!;
+  const result: Record<string, unknown> = {};
+  for (const region of yieldVariance.regions) {
+    const pairs: Array<[number, number]> = [];
+    for (const cell of people._landCells) {
+      const fertility = substrate.fertility[cell] ?? 0;
+      if (fertility <= yieldVariance.fertilityFloor) continue;
+      if (!insideBox(world, cell, region.box)) continue;
+      pairs.push([people._yieldCv[cell] ?? 0, fertility]);
+    }
+    pairs.sort((a, b) => a[0] - b[0]);
+    const total = pairs.reduce((sum, pair) => sum + pair[1], 0);
+    let median = 0;
+    let accumulated = 0;
+    for (const pair of pairs) {
+      accumulated += pair[1];
+      if (accumulated >= total / 2) { median = pair[0]; break; }
+    }
+    const pass = pairs.length > 0 && median >= region.minimum && median <= region.maximum;
+    result[region.id] = { cells: pairs.length, median, minimum: region.minimum, maximum: region.maximum, pass };
+    const id = `yield-cv:${region.id}:${grid}`;
+    measured.add(id);
+    if (!pass) failures.push(id);
+  }
+  // In the findings too, so an honest failure still prints what it measured.
+  const rows = (findings.yieldVariance ?? {}) as Record<string, unknown>;
+  rows[grid] = result;
+  findings.yieldVariance = rows;
+  return result;
 }
 
 function measure(grid: GridPreset): GridResult {
@@ -50,6 +110,7 @@ function measure(grid: GridPreset): GridResult {
     substrate,
   });
   const initialPeople = populationTotal(world);
+  const yieldRows = judgeYieldVariance(world, grid);
   runSteps(world, FAST_STEPS);
   const finalPeople = populationTotal(world);
   let land = 0;
@@ -76,6 +137,7 @@ function measure(grid: GridPreset): GridResult {
     emptyUnpeopledCells,
     conservationError: balance?.unexplained ?? Number.POSITIVE_INFINITY,
     provenance: provenance(world),
+    yieldVariance: yieldRows,
   };
   disposePeople(world);
   return result;
@@ -108,18 +170,6 @@ const longArm = process.env.GATE_PEOPLE_LONG === "1";
 const horizonYears = longArm ? HORIZON_END_YEAR - HORIZON_OPENING_YEAR : 3000;
 const fullHorizonStep = stepFromYear(HORIZON_END_YEAR);
 
-interface KnownPeopleMiss { readonly id: string; readonly reason: string; }
-let peopleMisses: readonly KnownPeopleMiss[] = [];
-try {
-  peopleMisses = (await import("../data/reality/known-misses-people.json", { with: { type: "json" } })).default.misses;
-} catch { peopleMisses = []; }
-const acknowledged = new Map(peopleMisses.map((miss) => [miss.id, miss.reason]));
-const failures: string[] = [];
-// Only checks the CURRENT arm actually concludes participate in the
-// stale-ratchet: the fast trajectory arm must not read the long-horizon
-// manifest rows as stale merely because it cannot measure them.
-const measured = new Set<string>();
-const findings: Record<string, unknown> = {};
 
 interface RegionRow {
   readonly id: string;
@@ -430,6 +480,248 @@ function cellLonLat(world: World, cell: number): { lon: number; lat: number } | 
   };
 }
 
+function cellDistanceDegrees(world: World, cell: number, latitude: number, longitude: number): number {
+  const at = cellLonLat(world, cell);
+  if (!at) return Number.POSITIVE_INFINITY;
+  const dLon = Math.abs(((at.lon - longitude + 540) % 360) - 180);
+  return Math.max(Math.abs(at.lat - latitude), dLon);
+}
+
+/**
+ * The centres of domestication (W8): every hearth must sit inside a cited
+ * centre of its package, and every centre must have lit by its latest.
+ * The count per centre is reported; it is a measurement now, not a spacing.
+ */
+function judgeHearths(world: World, scope: string): Record<string, unknown> {
+  const radius = hearthCentres.radiusDegrees;
+  const perCentre: Record<string, { hearths: number; first: number | null; regionCells: number; inWindow: boolean }> = {};
+  const outside: Array<{ packageId: string; year: number; lat: number; lon: number }> = [];
+  for (const centre of hearthCentres.centres) perCentre[centre.id] = { hearths: 0, first: null, regionCells: 0, inWindow: false };
+  for (const hearth of world.hearths) {
+    if (!hearth.ignited) continue;
+    const year = Math.round(yearFromStep(hearth.ignitedStep));
+    const centre = hearthCentres.centres.find((row) => row.packageId === hearth.packageId
+      && cellDistanceDegrees(world, hearth.cell, row.latitude, row.longitude) <= ((row as { radiusDegrees?: number }).radiusDegrees ?? radius));
+    if (!centre) {
+      const at = cellLonLat(world, hearth.cell);
+      outside.push({ packageId: hearth.packageId, year, lat: at?.lat ?? 0, lon: at?.lon ?? 0 });
+      continue;
+    }
+    const row = perCentre[centre.id]!;
+    row.hearths++;
+    row.regionCells += hearth.regionCells;
+    if (row.first === null || year < row.first) row.first = year;
+  }
+  for (const centre of hearthCentres.centres) {
+    const row = perCentre[centre.id]!;
+    row.inWindow = row.first !== null && row.first >= centre.earliest - 800 && row.first <= centre.latest + 800;
+    const id = `hearth:${centre.id}:${scope}`;
+    measured.add(id);
+    if (!row.inWindow) failures.push(id);
+  }
+  const outsidePackages = new Set(outside.map((row) => row.packageId));
+  for (const pkg of CROP_PACKAGES) {
+    const id = `hearth-outside:${pkg.id}:${scope}`;
+    measured.add(id);
+    if (outsidePackages.has(pkg.id)) failures.push(id);
+  }
+  return { centres: perCentre, outside };
+}
+
+/** The staple by region at 1 CE (W8): the majority dominant package of a region's farmed cells. */
+function judgeStaples(world: World, scope: string): Record<string, unknown> {
+  const radius = stapleByRegion.radiusDegrees;
+  const result: Record<string, unknown> = {};
+  for (const region of stapleByRegion.regions) {
+    const counts = new Map<string, number>();
+    let farmed = 0;
+    for (let cell = 0; cell < world.N; cell++) {
+      if (!world.substrate!.landMask[cell]) continue;
+      if ((world.technique[cell] ?? 0) < PEOPLE_FARMED_MARKER_SHARE) continue;
+      if (cellDistanceDegrees(world, cell, region.latitude, region.longitude) > radius) continue;
+      farmed++;
+      const id = CROP_PACKAGES[(world as PeopleWorld)._dominantPackage[cell] ?? 0]?.id ?? "";
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    let dominant = "";
+    let dominantCount = 0;
+    for (const [id, count] of counts) if (count > dominantCount) { dominant = id; dominantCount = count; }
+    const pass = farmed > 0 && dominant === region.packageId;
+    result[region.id] = { expected: region.packageId, dominant: dominant || null, farmedCells: farmed, pass };
+    const id = `staple:${region.id}:${scope}`;
+    measured.add(id);
+    if (!pass) failures.push(id);
+  }
+  return result;
+}
+
+/**
+ * The famine frequency against the historical chronologies (W30): per region
+ * the famine years per thousand farmed years, pooled over the box's land
+ * cells farmers stood on by the end of the arm. Farmed years are the tally's
+ * own denominator, so a region farmed late or thinly is judged on the years
+ * it was farmed. A region no farmer reached fails: there is nothing to judge.
+ * Rows `famine-frequency:<region>:<scope>`.
+ */
+function judgeFamineFrequency(world: World, scope: string): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const result: Record<string, unknown> = {};
+  for (const region of famineFrequency.regions) {
+    let famineYears = 0;
+    let farmedYears = 0;
+    let cells = 0;
+    for (const cell of people._landCells) {
+      const farmed = world.farmedYears[cell] ?? 0;
+      if (farmed <= 0) continue;
+      if (!insideBox(world, cell, region.box)) continue;
+      cells++;
+      farmedYears += farmed;
+      famineYears += world.famineYears[cell] ?? 0;
+    }
+    const perMillennium = farmedYears > 0 ? famineYears / farmedYears * 1000 : 0;
+    const pass = cells > 0 && perMillennium >= region.minimum && perMillennium <= region.maximum;
+    result[region.id] = {
+      cells,
+      famineYears,
+      farmedYears,
+      perMillennium,
+      minimum: region.minimum,
+      maximum: region.maximum,
+      pass,
+    };
+    const id = `famine-frequency:${region.id}:${scope}`;
+    measured.add(id);
+    if (!pass) failures.push(id);
+  }
+  return result;
+}
+
+/**
+ * Famine severity, the run, and the margin (W31): what the store does to a
+ * labelled year's mortality, whether deaths cluster in runs, and whether
+ * high-CV cells sit further below their mean-year ceiling.
+ * Rows `famine-severity:<region>:<scope>`, `famine-run:<scope>`,
+ * `famine-margin:<scope>`.
+ */
+function judgeFamineSeverity(world: World, scope: string): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const severity: Record<string, unknown> = {};
+  const judgeRegion = (
+    region: { readonly id: string; readonly box: readonly number[]; readonly minimum?: number; readonly maximum?: number },
+    judged: boolean,
+  ): void => {
+    let deaths = 0;
+    let atRisk = 0;
+    let cells = 0;
+    for (const cell of people._landCells) {
+      if (!insideBox(world, cell, region.box)) continue;
+      const risk = people._severityAtRiskPersons[cell] ?? 0;
+      if (risk <= 0) continue;
+      cells++;
+      atRisk += risk;
+      deaths += people._severityDeathPersons[cell] ?? 0;
+    }
+    const share = atRisk > 0 ? deaths / atRisk : 0;
+    const pass = judged
+      && cells > 0
+      && share >= (region.minimum ?? 0)
+      && share <= (region.maximum ?? 1);
+    severity[region.id] = {
+      cells,
+      deaths,
+      atRisk,
+      share,
+      minimum: region.minimum ?? null,
+      maximum: region.maximum ?? null,
+      pass: judged ? pass : null,
+    };
+    if (judged) {
+      const id = `famine-severity:${region.id}:${scope}`;
+      measured.add(id);
+      if (!pass) failures.push(id);
+    }
+  };
+  for (const region of famineSeverity.severity) judgeRegion(region, true);
+  for (const region of famineSeverity.reported) judgeRegion(region, false);
+
+  const runShare = people._harvestRunDenom > 0
+    ? people._harvestRunDeaths / people._harvestRunDenom
+    : 0;
+  const runPass = people._harvestRunDenom > 0 && runShare >= famineSeverity.run.minimum;
+  const run = {
+    deaths: people._harvestRunDeaths,
+    denom: people._harvestRunDenom,
+    share: runShare,
+    minimum: famineSeverity.run.minimum,
+    pass: runPass,
+  };
+  const runId = `famine-run:${scope}`;
+  measured.add(runId);
+  if (!runPass) failures.push(runId);
+
+  // The margin: median fill of farmed cells at 1 CE by yield-CV quartile.
+  const fills: Array<{ cv: number; fill: number }> = [];
+  for (let packed = 0; packed < people._landCells.length; packed++) {
+    const cell = people._landCells[packed] ?? 0;
+    let farmers = 0;
+    for (const pkg of CROP_PACKAGES) farmers += Math.max(0, people.farmers[pkg.id]?.[packed] ?? 0);
+    if (farmers <= 0) continue;
+    const capacity = people.capField[cell] ?? 0;
+    if (capacity <= 0) continue;
+    fills.push({
+      cv: people._yieldCv[cell] ?? 0,
+      fill: (people.people[cell] ?? 0) / capacity,
+    });
+  }
+  fills.sort((a, b) => a.cv - b.cv);
+  const quartile = (lo: number, hi: number): number => {
+    const slice = fills.slice(Math.floor(lo * fills.length), Math.floor(hi * fills.length));
+    if (slice.length === 0) return 0;
+    const values = slice.map((row) => row.fill).sort((a, b) => a - b);
+    return values[Math.floor(0.5 * (values.length - 1))] ?? 0;
+  };
+  const lowCv = quartile(0, 0.25);
+  const highCv = quartile(0.75, 1);
+  const marginPass = fills.length > 0 && highCv < lowCv;
+  const margin = {
+    cells: fills.length,
+    lowCvMedianFill: lowCv,
+    highCvMedianFill: highCv,
+    pass: marginPass,
+  };
+  const marginId = `famine-margin:${scope}`;
+  measured.add(marginId);
+  if (!marginPass) failures.push(marginId);
+
+  return { severity, run, margin };
+}
+
+/**
+ * Forager density by habitat at the opening (W8, Binford): shores and stands
+ * hold denser foragers than fertile interior land, which holds denser than
+ * desert and boreal land. Measured on the static forager capacity.
+ */
+function judgeForagerOrdering(world: World, scope: string): Record<string, unknown> {
+  const people = world as PeopleWorld;
+  const sums = { aquaticOrStand: [0, 0], fertileInterior: [0, 0], poorInterior: [0, 0] };
+  for (const cell of people._landCells) {
+    if (people._peopledMask[cell] !== 1) continue;
+    const capacity = people._foragerCapacity[cell] ?? 0;
+    const fertility = world.substrate!.fertility[cell] ?? 0;
+    const rich = aquaticAccess(people, cell) >= 0.5 || (people._standBest[cell] ?? 0) >= 0.5;
+    const bucket = rich ? sums.aquaticOrStand : fertility >= 0.6 ? sums.fertileInterior : fertility < 0.2 ? sums.poorInterior : null;
+    if (!bucket) continue;
+    bucket[0] += capacity;
+    bucket[1] += 1;
+  }
+  const mean = (pair: number[]) => (pair[1]! > 0 ? pair[0]! / pair[1]! : 0);
+  const ordering = { aquaticOrStand: mean(sums.aquaticOrStand), fertileInterior: mean(sums.fertileInterior), poorInterior: mean(sums.poorInterior) };
+  const id = `forager-ordering:${scope}`;
+  measured.add(id);
+  if (!(ordering.aquaticOrStand > ordering.fertileInterior && ordering.fertileInterior > ordering.poorInterior)) failures.push(id);
+  return ordering;
+}
+
 /**
  * The solve arm (W5): the solve regime to the end of the horizon, with the
  * caged-basin trigger recorded but not acted on (`wake: "never"`), so every
@@ -443,7 +735,8 @@ function runSolveArm(grid: GridPreset): TrajectorySample {
   const solve = (findings.solve ?? {}) as Record<string, unknown>;
   solve[grid] = {
     ...judgeTrajectory(sample, scope, true),
-    stride: world.solveStride,
+    clock: world.solveClock,
+    strides: Object.fromEntries(world.solveSchedule.map((row) => [row.name, row.stride])),
     steps: world.debug.ticks,
     cagedStep: world.cagedStep,
     cagedYear: world.cagedStep >= 0 ? yearFromStep(world.cagedStep) : null,
@@ -452,7 +745,13 @@ function runSolveArm(grid: GridPreset): TrajectorySample {
       packageId: hearth.packageId,
       cell: hearth.cell,
       year: yearFromStep(hearth.ignitedStep),
+      regionCells: hearth.regionCells,
     })),
+    centres: judgeHearths(world, scope),
+    staples: judgeStaples(world, scope),
+    foragerOrdering: judgeForagerOrdering(world, scope),
+    famineFrequency: judgeFamineFrequency(world, scope),
+    famineSeverity: judgeFamineSeverity(world, scope),
   };
   findings.solve = solve;
   return sample;

@@ -7,6 +7,7 @@ import initThreads, {
   PeopleKernel as ThreadedPeopleKernel,
 } from "../wasm/people-threads/people.js";
 import { fillMeanMigrationDaysPerKm, fillMigrationDaysPerKm, migrationEdgeLengths } from "./travel/cost";
+import { landShare } from "./people/habitability";
 import type { PeopleWorld } from "./people/types";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import {
@@ -66,6 +67,7 @@ interface PeopleKernelLike {
   people_ptr(): number;
   peopled_ptr(): number;
   technique_ptr(): number;
+  works_ptr(): number;
   children_ptr(): number;
   working_ptr(): number;
   elders_ptr(): number;
@@ -93,7 +95,7 @@ interface PeopleKernelLike {
   growth_band(rawLo: number, rawHi: number, bandIndex: number): void;
   births(): number;
   deaths(): number;
-  begin_migration(month: number, dtMonths: number, growthPrepared: boolean): void;
+  begin_migration(month: number, dtMonths: number, growthPrepared: boolean, flight: boolean): void;
   migration_prepare_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_source_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_debit_band(rawLo: number, rawHi: number): void;
@@ -104,6 +106,23 @@ interface PeopleKernelLike {
   commit_population(): void;
   commit_farmers(): void;
   normalize_cohorts(): void;
+  begin_works(dtMonths: number): void;
+  works_band(rawLo: number, rawHi: number): void;
+  famine_years_ptr(): number;
+  farmed_years_ptr(): number;
+  store_ptr(): number;
+  severity_death_persons_ptr(): number;
+  severity_at_risk_persons_ptr(): number;
+  year_mul_ptr(): number;
+  begin_harvest(grids: Float64Array, years: number): void;
+  harvest_band(rawLo: number, rawHi: number, bandIndex: number): void;
+  harvest_deaths(): number;
+  harvest_book_harvest(): number;
+  harvest_book_eaten(): number;
+  harvest_book_spoiled(): number;
+  harvest_book_unstorable(): number;
+  harvest_run_deaths_total(): number;
+  harvest_run_denom_total(): number;
 }
 
 type BandOperation =
@@ -112,7 +131,9 @@ type BandOperation =
   | "migration-prepare"
   | "migration-source"
   | "migration-debit"
-  | "migration-target";
+  | "migration-target"
+  | "works"
+  | "harvest";
 
 /** Operation codes written into the control plane; the worker script mirrors this order. */
 const BAND_OPERATIONS: readonly BandOperation[] = [
@@ -122,6 +143,8 @@ const BAND_OPERATIONS: readonly BandOperation[] = [
   "migration-source",
   "migration-debit",
   "migration-target",
+  "works",
+  "harvest",
 ];
 
 // The worker script is plain JS outside the constants ledger; it receives
@@ -326,7 +349,24 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
       packageIndex * world._landCells.length,
     );
   }
+  // The ground share each capacity law charges (W19), built through the same
+  // law the reference kernel calls so both read identical numbers.
+  const landShareField = new Float64Array(world.N);
+  for (let cell = 0; cell < world.N; cell++) landShareField[cell] = landShare(world, cell);
   const yields = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.yield ?? 1);
+  const storability = Float64Array.from(CROP_PACKAGES, (pkg) => pkg.storability ?? 0);
+  const cropFit = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
+  const standingGain = new Float64Array(CROP_PACKAGES.length * world._landCells.length);
+  for (let packageIndex = 0; packageIndex < CROP_PACKAGES.length; packageIndex++) {
+    cropFit.set(
+      world._cropFit[packageIndex] ?? new Float64Array(world._landCells.length),
+      packageIndex * world._landCells.length,
+    );
+    standingGain.set(
+      world._standingGain[packageIndex] ?? new Float64Array(world._landCells.length),
+      packageIndex * world._landCells.length,
+    );
+  }
   return [
     world.width,
     world.height,
@@ -335,6 +375,7 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     Float64Array.from(world.substrate.fertility),
     world._waterAccess,
     world._reliefMult,
+    landShareField,
     world._foragerCapacity,
     world._diseaseBurden,
     world.cellAreaKm2,
@@ -342,10 +383,20 @@ function kernelArguments(world: PeopleWorld): ConstructorParameters<typeof WasmP
     world._migrationShareRow,
     CROP_PACKAGES.length,
     yields,
+    storability,
     canGrow,
+    cropFit,
+    standingGain,
+    world._irrigable,
+    world._yieldCv,
+    world._spoilage,
+    world._harvestRowStart,
+    world._harvestRowCell,
+    world._harvestRowWeight,
     world._neighborTargets,
     world._neighborDistanceKm,
     world._neighborMode,
+    world._neighborAscent,
   ];
 }
 
@@ -474,7 +525,7 @@ export interface PeopleKernelRuntime {
   deriveCapacity(): void;
   beginGrowth(dtMonths?: number): void;
   grow(): void;
-  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
+  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean, flight?: boolean): void;
   prepareMigration(): void;
   migrateSources(): void;
   debitMigration(): void;
@@ -483,6 +534,19 @@ export interface PeopleKernelRuntime {
   commitPopulation(): void;
   commitFarmers(): void;
   normalizeCohorts(): void;
+  /** The works pass (W28) over the bands, at the firing's stride. */
+  buildWorks(dtMonths?: number): void;
+  /** The harvest pass (W29/W31) over the bands: the firing's smoothed year grids, `years` of HARVEST_CELLS each. */
+  harvest(grids: Float64Array, years: number): void;
+  harvestDeaths(): number;
+  harvestBooks(): {
+    readonly harvest: number;
+    readonly eaten: number;
+    readonly spoiled: number;
+    readonly unstorable: number;
+    readonly runDeaths: number;
+    readonly runDenom: number;
+  };
   dispose(): void;
   births(): number;
   deaths(): number;
@@ -493,10 +557,17 @@ export interface PeopleKernelRuntime {
 type KernelFieldName =
   | "people"
   | "technique"
+  | "works"
+  | "famineYears"
+  | "farmedYears"
+  | "store"
+  | "_severityDeathPersons"
+  | "_severityAtRiskPersons"
   | "children"
   | "working"
   | "elders"
   | "capField"
+  | "_yearMul"
   | "_peopleNext"
   | "_techniqueNext"
   | "_childrenMass"
@@ -575,10 +646,17 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     const pointers: Record<KernelFieldName, number> = {
       people: this.kernel.people_ptr(),
       technique: this.kernel.technique_ptr(),
+      works: this.kernel.works_ptr(),
+      famineYears: this.kernel.famine_years_ptr(),
+      farmedYears: this.kernel.farmed_years_ptr(),
+      store: this.kernel.store_ptr(),
+      _severityDeathPersons: this.kernel.severity_death_persons_ptr(),
+      _severityAtRiskPersons: this.kernel.severity_at_risk_persons_ptr(),
       children: this.kernel.children_ptr(),
       working: this.kernel.working_ptr(),
       elders: this.kernel.elders_ptr(),
       capField: this.kernel.capacity_ptr(),
+      _yearMul: this.kernel.year_mul_ptr(),
       _peopleNext: this.kernel.people_next_ptr(),
       _techniqueNext: this.kernel.technique_next_ptr(),
       _childrenMass: this.kernel.children_mass_ptr(),
@@ -595,6 +673,12 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     const fullGrid = new Set<KernelFieldName>([
       "people",
       "technique",
+      "works",
+      "famineYears",
+      "farmedYears",
+      "store",
+      "_severityDeathPersons",
+      "_severityAtRiskPersons",
       "children",
       "working",
       "elders",
@@ -647,6 +731,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
         this.kernel.migration_source_band(band.rawLo, band.rawHi, band.index);
       } else if (operation === "migration-debit") {
         this.kernel.migration_debit_band(band.rawLo, band.rawHi);
+      } else if (operation === "works") {
+        this.kernel.works_band(band.rawLo, band.rawHi);
+      } else if (operation === "harvest") {
+        this.kernel.harvest_band(band.rawLo, band.rawHi, band.index);
       } else {
         this.kernel.migration_target_band(band.rawLo, band.rawHi, band.index);
       }
@@ -675,10 +763,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.dispatchBands("growth");
   }
 
-  beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
+  beginMigration(month: number, dtMonths = 1, growthPrepared = true, flight = false): void {
     this.assertMemoryStable();
     this.syncActivePackages();
-    this.kernel.begin_migration(month, dtMonths, growthPrepared);
+    this.kernel.begin_migration(month, dtMonths, growthPrepared, flight);
   }
 
   prepareMigration(): void {
@@ -720,6 +808,47 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
   normalizeCohorts(): void {
     this.assertMemoryStable();
     this.kernel.normalize_cohorts();
+  }
+
+  buildWorks(dtMonths = MONTHS_PER_YEAR): void {
+    this.assertMemoryStable();
+    this.kernel.begin_works(dtMonths);
+    this.dispatchBands("works", dtMonths);
+  }
+
+  harvest(grids: Float64Array, years: number): void {
+    this.assertMemoryStable();
+    this.syncActivePackages();
+    this.kernel.begin_harvest(grids, years);
+    // The year grids are the one per-firing input the kernel keeps: the
+    // first firing carrying more years than any before may make the
+    // allocator grow, which moves every view. Re-attach before the bands run.
+    if (this.memory.buffer.byteLength !== this.memoryBytes) {
+      for (const runtime of runtimeRegistry) runtime.refreshViews();
+    }
+    this.dispatchBands("harvest");
+  }
+
+  harvestDeaths(): number {
+    return this.kernel.harvest_deaths();
+  }
+
+  harvestBooks(): {
+    readonly harvest: number;
+    readonly eaten: number;
+    readonly spoiled: number;
+    readonly unstorable: number;
+    readonly runDeaths: number;
+    readonly runDenom: number;
+  } {
+    return {
+      harvest: this.kernel.harvest_book_harvest(),
+      eaten: this.kernel.harvest_book_eaten(),
+      spoiled: this.kernel.harvest_book_spoiled(),
+      unstorable: this.kernel.harvest_book_unstorable(),
+      runDeaths: this.kernel.harvest_run_deaths_total(),
+      runDenom: this.kernel.harvest_run_denom_total(),
+    };
   }
 
   births(): number {
