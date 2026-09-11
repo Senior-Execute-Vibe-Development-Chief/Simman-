@@ -24,7 +24,7 @@
       input[type="range"] { accent-color: #e5b65c; }
       #wake-year { width: 6em; }
     </style>
-    <script type="module" crossorigin src="./assets/main-BorWjf9D.js"></script>
+    <script type="module" crossorigin src="./assets/main-B9xTWArW.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-CbXtAM7H.js">
     <link rel="modulepreload" crossorigin href="./assets/world-Oat72RaV.js">
     <link rel="modulepreload" crossorigin href="./assets/global_precip-CdgUZ06r.js">
@@ -47,6 +47,7 @@
             <option value="fertility">Fertility</option>
             <option value="crops">Crop suitability</option>
             <option value="population">Population density</option>
+            <option value="politics">Politics (communities)</option>
             <option value="technique">Farming technique</option>
             <option value="works">Land works</option>
             <option value="harvest">Harvest year</option>
@@ -116,6 +117,12 @@
           <span style="color:#c8f0ff">— strait: water between two land cells with no ground between (brighter = narrower)</span> ·
           <span style="color:#ffc850">● pass: a saddle of the terrain at its own place, the ridge dropping ≥300 m to it on both sides and the route climbing ≥300 m to reach it (larger and brighter = the ridge drops further; zoom in for the smaller ones)</span> ·
           <span style="color:#262a2e">■ land</span>
+        </span>
+        <span id="politics-legend" hidden> · politics lens:
+          <span style="color:#e74c3c">● caged seat</span> ·
+          <span style="color:#f5f5f5">● open seat</span> ·
+          <span style="color:#ffdc3c">→ tribute</span>
+          (underlay = population density)
         </span>
         <span id="terrain-legend"> · terrain lens (biome, this month's snow):
           <span style="color:#f0f4f8">■ snow (whiter as it lies deeper)</span> ·
