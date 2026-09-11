@@ -38,7 +38,8 @@ export type WorldPhase = "solve" | "awake";
 
 const DEFAULT_PHASE = 0;
 const MIGRATION_PASS = "people.migration";
-const SCHEDULE_NAMES = [
+export const TAKING_PASS = "politics.taking";
+const PEOPLE_SCHEDULE_NAMES = [
   "people.technique",
   "people.conversion",
   "people.capacity",
@@ -173,18 +174,21 @@ export function resolveSchedule(world: World): readonly PassSchedule[] {
   );
   const migrationStride = derivedMigrationStride(world, growthStride);
   return Object.freeze([
-    scheduleEntry(world, SCHEDULE_NAMES[0], growthStride),
-    scheduleEntry(world, SCHEDULE_NAMES[1], growthStride),
-    scheduleEntry(world, SCHEDULE_NAMES[2], growthStride),
-    scheduleEntry(world, SCHEDULE_NAMES[3], growthStride),
-    scheduleEntry(world, SCHEDULE_NAMES[4], migrationStride),
-    scheduleEntry(world, SCHEDULE_NAMES[5], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[0], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[1], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[2], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[3], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[4], migrationStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[5], growthStride),
     // The works build and rot on the firing's committed people and derived
     // capacity (W28): the growth stride, after the commit.
-    scheduleEntry(world, SCHEDULE_NAMES[6], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[6], growthStride),
     // The harvest years (W29) fall between the firing's capacity and its
     // growth, one per year of the firing: the growth stride.
-    scheduleEntry(world, SCHEDULE_NAMES[7], growthStride),
+    scheduleEntry(world, PEOPLE_SCHEDULE_NAMES[7], growthStride),
+    // M4 taking: annual with growth; stepWorld runs it after stepPeople so
+    // the year's store is committed. Awake only — absent from the solve schedule.
+    scheduleEntry(world, TAKING_PASS, growthStride),
   ]);
 }
 
@@ -299,7 +303,7 @@ export function resolveSolveStrides(world: World): SolveStrides {
 
 export function resolveSolveSchedule(world: World): readonly PassSchedule[] {
   const { reaction, migration } = resolveSolveStrides(world);
-  return Object.freeze(SCHEDULE_NAMES.map((name) => Object.freeze({
+  return Object.freeze(PEOPLE_SCHEDULE_NAMES.map((name) => Object.freeze({
     name,
     stride: name === MIGRATION_PASS ? migration : reaction,
     phase: DEFAULT_PHASE,

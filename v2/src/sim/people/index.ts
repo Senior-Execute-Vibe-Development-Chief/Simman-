@@ -117,8 +117,6 @@ function allocatePeopleScratch(world: PeopleWorld): void {
   world._basinFree = new Float64Array(length);
   world._basinRoomSum = new Float64Array((world.width + 1) * (world.height + 1));
   world._basinFreeSum = new Float64Array((world.width + 1) * (world.height + 1));
-  world._bestYield = new Float64Array(landCount);
-  world._bestYieldDigest = "";
   world._arrivalStep = new Int32Array(landCount);
   world._arrivalStep.fill(MATH_NEGATIVE_ONE);
   world._arrivalPackage = new Uint8Array(landCount);
@@ -446,6 +444,8 @@ export function stepPeople(worldInput: World, flushDtMonths?: number): boolean {
   world.debug.conservationChecks++;
   for (const schedule of world.schedule) {
     if (!fires(schedule)) continue;
+    // politics.taking is counted in maybeStepTaking; it is not a people pass.
+    if (schedule.name.startsWith("politics.")) continue;
     world.debug.peoplePasses[schedule.name] = (world.debug.peoplePasses[schedule.name] ?? 0) + 1;
   }
   world.debug.peopleBirths = growth.births;

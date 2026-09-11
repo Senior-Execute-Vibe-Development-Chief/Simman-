@@ -7,6 +7,10 @@
 // The exact height and preset naming remain logged in QUESTIONS.md.
 export const DEV_GRID_WIDTH = 240; // spec/09-constants-ledger.md §Units — M0 grid convention
 export const DEV_GRID_HEIGHT = 120; // spec/09-constants-ledger.md §Units — M0 grid convention
+export const TOY_GRID_WIDTH = 100; // spec/09-constants-ledger.md §M4 toy — 100×100 playground grid (shell only)
+export const TOY_GRID_HEIGHT = 100; // spec/09-constants-ledger.md §M4 toy — 100×100 playground grid (shell only)
+/** Square cell edge on the M4 toy map — sized so COMMUNITY_RADIUS_KM spans several cells. */
+export const TOY_CELL_EDGE_KM = 12; // spec/09-constants-ledger.md §M4 toy — playground cell edge (shell only)
 export const TARGET_GRID_WIDTH = 1800; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 export const TARGET_GRID_HEIGHT = 900; // spec/09-constants-ledger.md §M1 proposed — target grid convention
 
@@ -397,3 +401,12 @@ export const FOOD_SPOILAGE_Q10_STEP_C = 10; // spec/09-constants-ledger.md §W31
 export const FOOD_SPOILAGE_ARID_FACTOR = 0.25; // spec/09-constants-ledger.md §W31 — the loss in a fully arid store relative to a humid one at the same temperature: APHLIS's arid-zone cereal storage losses run about a quarter of the humid zone's; "dry heat preserves — Egypt's central stores" (v1's CLIMATE_SPOIL grounding). The least-grounded row; flagged; the sensitivity probe is required
 export const SAVE_VERSION_W31 = 12; // spec/09-constants-ledger.md §W31 — the store field in the envelope; a v11 save is refused
 export const FOOD_GRANARY_MONTHS_SATURATION = 24; // spec/09-constants-ledger.md §W31 — the Granary lens ramp saturates at two harvests in hand (Will & Wong 1991 on the Qing target of a year's reserve as the state's ambition, rarely met)
+export const COMMUNITY_BAR_PERSONS = 2000; // spec/09-constants-ledger.md §M4 — settlement-size literature / v1 village core; representation threshold (18.3), not physics
+export const COMMUNITY_RADIUS_KM = 50; // spec/09-constants-ledger.md §M4 — day's-walk catchment for membership
+export const EXTRACT_FLOOR = 0.10; // spec/09-constants-ledger.md §M4 — harvest-tax literature floor (EXTRACT_BAND)
+export const TAKING_RAID_RATE_PER_YEAR = 0.05; // spec/09-constants-ledger.md §M4 — pre-state raiding as war's ground state; measured against the M4 geography gate, never cradle-fitted
+export const PLUNDER_SHARE = 0.25; // spec/09-constants-ledger.md §M4 — movable share of a raided granary when exit is cheap
+export const SAVE_VERSION_M4 = 13; // spec/09-constants-ledger.md §M4 — communities, obligation edges, and unrest in the envelope
+export const POLITICS_OVERLAY_MAX_SEATS = 2000; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (seats)
+export const POLITICS_OVERLAY_MAX_TRIBUTE = 500; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (tribute edges)
+export const POLITICS_OVERLAY_MAX_RECENT = 32; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (recent taking events)

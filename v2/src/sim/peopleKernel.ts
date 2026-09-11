@@ -95,7 +95,7 @@ interface PeopleKernelLike {
   growth_band(rawLo: number, rawHi: number, bandIndex: number): void;
   births(): number;
   deaths(): number;
-  begin_migration(month: number, dtMonths: number, growthPrepared: boolean): void;
+  begin_migration(month: number, dtMonths: number, growthPrepared: boolean, flight: boolean): void;
   migration_prepare_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_source_band(rawLo: number, rawHi: number, bandIndex: number): void;
   migration_debit_band(rawLo: number, rawHi: number): void;
@@ -525,7 +525,7 @@ export interface PeopleKernelRuntime {
   deriveCapacity(): void;
   beginGrowth(dtMonths?: number): void;
   grow(): void;
-  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean): void;
+  beginMigration(month: number, dtMonths?: number, growthPrepared?: boolean, flight?: boolean): void;
   prepareMigration(): void;
   migrateSources(): void;
   debitMigration(): void;
@@ -763,10 +763,10 @@ class PeopleKernelRuntimeImpl implements PeopleKernelRuntime {
     this.dispatchBands("growth");
   }
 
-  beginMigration(month: number, dtMonths = 1, growthPrepared = true): void {
+  beginMigration(month: number, dtMonths = 1, growthPrepared = true, flight = false): void {
     this.assertMemoryStable();
     this.syncActivePackages();
-    this.kernel.begin_migration(month, dtMonths, growthPrepared);
+    this.kernel.begin_migration(month, dtMonths, growthPrepared, flight);
   }
 
   prepareMigration(): void {

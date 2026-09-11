@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { resolve } from "node:path";
 
 const isolationHeaders = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -12,5 +13,11 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, "index.html"),
+        toy: resolve(import.meta.dirname, "toy.html"),
+      },
+    },
   },
 });

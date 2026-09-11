@@ -230,6 +230,12 @@ let overlayWorks: Float32Array | undefined;
 let overlayHarvest: Float32Array | undefined;
 let overlayFamine: Float32Array | undefined;
 let overlayGranary: Float32Array | undefined;
+/** M4 politics overlay from the live snapshot (empty while solving / reconstructed). */
+let overlayPolitics: {
+  seats: Array<{ id: number; seat: number; exitBlocked: boolean; unrest: number }>;
+  tribute: Array<{ from: number; to: number; strength: number }>;
+  recent: Array<{ step: number; kind: string; cell: number }>;
+} = { seats: [], tribute: [], recent: [] };
 function displayDate(step: number): string {
   const year = yearFromStep(step);
   return year < 0 ? `${Math.round(-year)} BCE` : `${Math.round(year)} CE`;
@@ -313,6 +319,16 @@ worker.addEventListener("message", (event) => {
     overlayFamine.set(famineView);
     overlayGranary.set(granaryView);
     const reconstructed = event.data.reconstructed === true;
+    const politics = event.data.politics;
+    if (!reconstructed && politics && typeof politics === "object") {
+      overlayPolitics = {
+        seats: Array.isArray(politics.seats) ? politics.seats : [],
+        tribute: Array.isArray(politics.tribute) ? politics.tribute : [],
+        recent: Array.isArray(politics.recent) ? politics.recent : [],
+      };
+    } else if (reconstructed) {
+      overlayPolitics = { seats: [], tribute: [], recent: [] };
+    }
     if (!reconstructed) {
       const wokeNow = phase === "solve" && event.data.phase === "awake";
       phase = String(event.data.phase ?? phase);
@@ -323,6 +339,10 @@ worker.addEventListener("message", (event) => {
       updateTimeline();
     }
     population.textContent = `Population: ${Math.round(Number(event.data.population ?? 0)).toLocaleString()} persons · ${displayDate(Number(event.data.step ?? 0))}${reconstructed ? " · reconstructed" : ` · ${regimeLabel()}`}`;
+    if (!reconstructed && overlayPolitics.seats.length > 0) {
+      const caged = overlayPolitics.seats.filter((seat) => seat.exitBlocked).length;
+      population.textContent += ` · ${overlayPolitics.seats.length} communities (${caged} caged) · ${overlayPolitics.tribute.length} tribute`;
+    }
     baseKey = "";
     lastFrameKey = "";
     draw();
@@ -646,11 +666,12 @@ function pixelColor(cell: number, selectedMonth: number): [number, number, numbe
   }
   if (lens.value === "crossings") return crossingsColor(cell);
   if (!substrate.landMask[cell]) return waterColor();
-  if (lens.value === "population") {
+  if (lens.value === "population" || lens.value === "politics") {
     // Log ramp over the historically meaningful density span, 0.01..100
     // persons/km2 (sparse foragers .. dense farmed valleys). EMPTY land is
     // dark - the old ramp's zero point was bright green, so an unpeopled
     // Antarctica read exactly like a peopled steppe (owner play-report).
+    // Politics uses the same underlay; seats and tribute arrows draw on top.
     const density = overlayPopulation?.[cell] ?? 0;
     if (density <= 0) return [28, 34, 40];
     const intensity = Math.min(1, Math.max(0, (Math.log10(density) + 2) / 4));
@@ -833,6 +854,56 @@ function drawGraticule(): void {
 const WIND_ARROW_SPACING_DISPLAY_PX = 26;
 const WIND_ARROW_FULL_MS = 10;
 
+/** M4 politics: seat markers + tribute arrows over the population underlay. */
+function drawPoliticsOverlay(): void {
+  const width = substrate.width;
+  const byId = new Map(overlayPolitics.seats.map((seat) => [seat.id, seat]));
+  const stroke = Math.max(1.25, table.width / 900);
+
+  context.lineWidth = Math.max(1.5, stroke * 1.4);
+  context.strokeStyle = "rgba(255, 220, 60, 0.92)";
+  context.fillStyle = "rgba(255, 220, 60, 0.95)";
+  for (const edge of overlayPolitics.tribute) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    if (!from || !to) continue;
+    const fromY = Math.floor(from.seat / width);
+    const fromX = from.seat - fromY * width;
+    const toY = Math.floor(to.seat / width);
+    const toX = to.seat - toY * width;
+    const [x0, y0] = toScreenXY(fromX, fromY);
+    const [x1, y1] = toScreenXY(toX, toY);
+    if (Math.abs(x1 - x0) > table.width * zoom / 2) continue; // skip seam-crossing for now
+    context.beginPath();
+    context.moveTo(x0, y0);
+    context.lineTo(x1, y1);
+    context.stroke();
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    const head = Math.max(5, stroke * 3);
+    context.beginPath();
+    context.moveTo(x1, y1);
+    context.lineTo(x1 - head * Math.cos(ang - 0.4), y1 - head * Math.sin(ang - 0.4));
+    context.lineTo(x1 - head * Math.cos(ang + 0.4), y1 - head * Math.sin(ang + 0.4));
+    context.closePath();
+    context.fill();
+  }
+
+  const radius = Math.max(2.5, Math.min(7, stroke * 2.8));
+  for (const seat of overlayPolitics.seats) {
+    const y = Math.floor(seat.seat / width);
+    const x = seat.seat - y * width;
+    const [sx, sy] = toScreenXY(x, y);
+    if (sx < -20 || sy < -20 || sx > canvas.width + 20 || sy > canvas.height + 20) continue;
+    context.beginPath();
+    context.arc(sx, sy, radius, 0, Math.PI * 2);
+    context.fillStyle = seat.exitBlocked ? "#e74c3c" : "#f5f5f5";
+    context.fill();
+    context.strokeStyle = "#111";
+    context.lineWidth = Math.max(1, stroke * 0.7);
+    context.stroke();
+  }
+}
+
 function drawWindArrows(selectedMonth: number): void {
   const bounds = canvas.getBoundingClientRect();
   const displayScale = bounds.width > 0 ? bounds.width / canvas.width : 1;
@@ -1007,6 +1078,7 @@ function draw(): void {
     drawChannels();
     drawPasses();
   }
+  if (lens.value === "politics") drawPoliticsOverlay();
   if (startCell !== undefined) {
     const y = Math.floor(startCell / substrate.width);
     const [sx, sy] = toScreenXY(startCell - y * substrate.width, y);
@@ -1200,10 +1272,12 @@ speedInput.addEventListener("input", () => {
 const riverLegend = document.querySelector<HTMLElement>("#river-legend");
 const crossingsLegend = document.querySelector<HTMLElement>("#crossings-legend");
 const terrainLegend = document.querySelector<HTMLElement>("#terrain-legend");
+const politicsLegend = document.querySelector<HTMLElement>("#politics-legend");
 lens.addEventListener("change", () => {
   if (riverLegend) riverLegend.hidden = lens.value !== "rivers";
   if (crossingsLegend) crossingsLegend.hidden = lens.value !== "crossings";
   if (terrainLegend) terrainLegend.hidden = lens.value !== "terrain";
+  if (politicsLegend) politicsLegend.hidden = lens.value !== "politics";
   draw();
 });
 projectionSelect.addEventListener("change", () => {

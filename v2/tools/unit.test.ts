@@ -89,16 +89,21 @@ import {
   FOOD_SPOILAGE_ARID_FACTOR,
   CONSERVATION_EPSILON,
   SAVE_VERSION_W31,
+  SAVE_VERSION_M4,
+  COMMUNITY_BAR_PERSONS,
+  EXTRACT_FLOOR,
+  PLUNDER_SHARE,
   MATH_HALF,
   PEOPLE_WORKS_DECAY_PER_YEAR,
   PEOPLE_WORKS_GAIN,
   PEOPLE_WORKS_PRESSURE_FLOOR,
   PEOPLE_WORKS_RAIN_FLOOR,
   PEOPLE_WORKS_RAIN_SHARE,
+  CAGE_KNEE_FREE_SHARE,
   TRAVEL_PASS_DIRECTIONS,
   TRAVEL_SLOPE_COST_FACTOR,
 } from "../src/sim/constants";
-import { migrationShareForArea } from "../src/sim/people/migration";
+import { migrationShareForArea, migrate } from "../src/sim/people/migration";
 import { landStepCost } from "../src/sim/people/neighbors";
 import {
   decodePasses, PASS_COUNT, PASS_MIN_CLIMB_M, PASS_MIN_PROMINENCE_M, PASS_SOURCE_COLS, PASS_SOURCE_ROWS,
@@ -109,6 +114,8 @@ import { northSouthKm, rowEastWestKm } from "../src/sim/travel/cost";
 import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
+import { cagedBasin } from "../src/sim/people/wake";
+import { condenseCommunities, politicsSnapshot, remitStore, stepTaking } from "../src/sim/politics";
 import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare, spoilageRate, yieldVariance, yieldVarianceParts } from "../src/sim/people/habitability";
 import { stepWorks } from "../src/sim/people/works";
 import {
@@ -481,6 +488,297 @@ async function main(): Promise<void> {
     const awake = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", wake: HORIZON_OPENING_YEAR }, substrate });
     assert.equal(awake.phase, "awake", "a world whose epoch is the opening must open awake");
     assert.equal(awake.wakeStep, 0);
+  }
+  // W32 / P24: the wake's room is `capField`. A basin filled to 0.85 of the
+  // capacity the growth pass reads has free share 0.15 and cages; the same
+  // fill against W5's inflated best-yield room sat above the knee (~0.32) and
+  // never did. Free is capacity minus people — the lean-year margin is not
+  // netted here (the open ruling on P24).
+  {
+    const world = new World({ seed: 5, grid: "dev", config: { peopleKernel: "ts", wake: "never" }, substrate }) as PeopleWorld;
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(wheat >= 0);
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    let farmed = 0;
+    for (const cell of world._landCells) {
+      const packed = world._packedOf[cell] ?? -1;
+      if ((world._canGrow[wheat]?.[packed] ?? 0) === 0) continue;
+      world.people[cell] = 1;
+      world.farmers[wheatId]![packed] = 1;
+      farmed++;
+    }
+    assert.ok(farmed > 0, "the fixture has no wheat land");
+    markPackageActive(world, wheat);
+    deriveTechniqueFromFarmers(world);
+    deriveCapacity(world);
+    for (const cell of world._landCells) {
+      world.people[cell] = 0.85 * (world.capField[cell] ?? 0);
+    }
+    const caged = cagedBasin(world);
+    assert.ok(caged, "a basin at 0.85 of capField must cage under P24");
+    assert.ok(caged!.freeShare < CAGE_KNEE_FREE_SHARE, `free share ${caged!.freeShare} is not below the knee`);
+    assert.ok(
+      Math.abs(caged!.freeShare - 0.15) < 0.01,
+      `free share ${caged!.freeShare} is not the uniform 0.15 fill gap`,
+    );
+    for (const cell of world._landCells) world.people[cell] = 0;
+    assert.equal(cagedBasin(world), undefined, "an empty world is not caged");
+  }
+  // W33 / P22 (i): awake farmer room is this year's food. A bad-year cell
+  // next to a good-year cell loses farmers; the store alone opens room; the
+  // solve regime ignores yearMul and store in the room.
+  {
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(wheat >= 0);
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    const setupPair = (phase: "awake" | "solve"): {
+      world: PeopleWorld;
+      a: number;
+      b: number;
+      aPacked: number;
+      bPacked: number;
+    } => {
+      const world = new World({
+        seed: 5,
+        grid: "dev",
+        config: {
+          peopleKernel: "ts",
+          wake: phase === "awake" ? HORIZON_OPENING_YEAR : "never",
+        },
+        substrate,
+      }) as PeopleWorld;
+      assert.equal(world.phase, phase);
+      const a = Math.floor(world.height / 2) * world.width + Math.floor(world.width / 2);
+      let b = -1;
+      for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
+        const aPacked = world._packedOf[a] ?? -1;
+        const target = world._neighborTargets[aPacked * PEOPLE_CROP_NEIGHBOR_COUNT + direction] ?? -1;
+        if (target < 0) continue;
+        const tPacked = world._packedOf[target] ?? -1;
+        if ((world._canGrow[wheat]?.[aPacked] ?? 0) === 0) continue;
+        if ((world._canGrow[wheat]?.[tPacked] ?? 0) === 0) continue;
+        b = target;
+        break;
+      }
+      assert.ok(b >= 0, "the fixture centre has no wheat neighbour");
+      const aPacked = world._packedOf[a] ?? -1;
+      const bPacked = world._packedOf[b] ?? -1;
+      for (const cell of [a, b]) {
+        const packed = world._packedOf[cell] ?? -1;
+        world.people[cell] = 4;
+        world.farmers[wheatId]![packed] = 4;
+        world.store[cell] = 0;
+      }
+      markPackageActive(world, wheat);
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      // Pin equal mean capacity and equal fill so only the year / store differ.
+      const mean = Math.min(packageCapacity(world, a, wheat), packageCapacity(world, b, wheat));
+      assert.ok(mean > 1, "the pair has no farmed capacity");
+      for (const cell of [a, b]) {
+        const packed = world._packedOf[cell] ?? -1;
+        world.people[cell] = mean * 0.5;
+        world.farmers[wheatId]![packed] = mean * 0.5;
+        world._dominantPackage[cell] = wheat;
+      }
+      deriveTechniqueFromFarmers(world);
+      deriveCapacity(world);
+      return { world, a, b, aPacked, bPacked };
+    };
+
+    {
+      const { world, a, b, aPacked, bPacked } = setupPair("awake");
+      world._yearMul[aPacked] = 0.4;
+      world._yearMul[bPacked] = 1.2;
+      migrate(world, 0, MONTHS_PER_YEAR, false);
+      assert.equal(world._roomFarmers[aPacked], 0, "the bad-year cell still has farmer room");
+      assert.equal(world._roomFarmers[bPacked], 1, "the good-year cell has no farmer room");
+      assert.ok(
+        (world._migrationReceived[bPacked] ?? 0) > (world._migrationReceived[aPacked] ?? 0),
+        "the good-year cell did not receive the flight",
+      );
+      for (const packed of [aPacked, bPacked]) {
+        const cell = world._landCells[packed] ?? 0;
+        world.people[cell] = world._peopleNext[packed] ?? 0;
+      }
+      assert.ok((world.people[a] ?? 0) < (world.people[b] ?? 0), "the bad-year cell is not emptier");
+    }
+    {
+      const { world, a, b, aPacked, bPacked } = setupPair("awake");
+      world._yearMul[aPacked] = 1;
+      world._yearMul[bPacked] = 1;
+      // Fill both to the mean ceiling so only the store opens room on A.
+      const mean = packageCapacity(world, a, wheat);
+      for (const cell of [a, b]) {
+        const packed = world._packedOf[cell] ?? -1;
+        world.people[cell] = mean;
+        world.farmers[wheatId]![packed] = mean;
+      }
+      deriveTechniqueFromFarmers(world);
+      world.store[a] = mean * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+      world.store[b] = 0;
+      migrate(world, 0, MONTHS_PER_YEAR, false);
+      assert.equal(world._roomFarmers[aPacked], 1, "the store did not open room");
+      assert.equal(world._roomFarmers[bPacked], 0, "a full mean-year cell still has room");
+      assert.ok((world._migrationReceived[aPacked] ?? 0) > 0, "the stored cell received no flight");
+    }
+    {
+      const run = (mulA: number, mulB: number): number => {
+        const { world, aPacked, bPacked } = setupPair("solve");
+        world._yearMul[aPacked] = mulA;
+        world._yearMul[bPacked] = mulB;
+        world.store[world._landCells[aPacked] ?? 0] = 100;
+        migrate(world, MONTHS_PER_YEAR, resolveSolveStrides(world).migration, false);
+        return world._migrationOutFarmers[aPacked] ?? 0;
+      };
+      assert.equal(
+        run(0.4, 1.2),
+        run(1.2, 0.4),
+        "solve migration answered the year's multiple",
+      );
+    }
+    {
+      // Awake: the bad-year source still hops its share, but the good-year
+      // neighbour is the one that receives. Solve (above) is blind to the year.
+      const { world, aPacked, bPacked } = setupPair("awake");
+      world._yearMul[aPacked] = 0.4;
+      world._yearMul[bPacked] = 1.2;
+      migrate(world, 0, MONTHS_PER_YEAR, false);
+      assert.ok((world._migrationReceived[bPacked] ?? 0) > 0, "awake flight delivered no one to the good year");
+      assert.equal(world._migrationReceived[aPacked] ?? 0, 0, "awake flight filled the bad year");
+    }
+  }
+  // M4: communities condense; caged exit → tribute edge; cheap exit → plunder only.
+  {
+    assert.equal(SAVE_VERSION, SAVE_VERSION_M4, "the envelope is v13");
+    const earth = buildSubstrate(42042, {}, "dev");
+    const world = new World({
+      seed: 4,
+      grid: "dev",
+      config: { peopleKernel: "ts", wake: HORIZON_OPENING_YEAR },
+      substrate: earth,
+    }) as PeopleWorld;
+    assert.equal(world.phase, "awake");
+    const wheat = CROP_PACKAGES.findIndex((pkg) => pkg.id === "wheat");
+    assert.ok(wheat >= 0);
+    const wheatId = CROP_PACKAGES[wheat]!.id;
+    // Two adjacent farmable cells, each a local mass peak above the bar.
+    let a = -1;
+    let b = -1;
+    for (const cell of world._landCells) {
+      const packed = world._packedOf[cell] ?? -1;
+      if ((world._canGrow[wheat]?.[packed] ?? 0) === 0) continue;
+      for (let direction = 0; direction < PEOPLE_CROP_NEIGHBOR_COUNT; direction++) {
+        const target = world._neighborTargets[packed * PEOPLE_CROP_NEIGHBOR_COUNT + direction] ?? -1;
+        if (target < 0) continue;
+        const tPacked = world._packedOf[target] ?? -1;
+        if ((world._canGrow[wheat]?.[tPacked] ?? 0) === 0) continue;
+        a = cell;
+        b = target;
+        break;
+      }
+      if (a >= 0) break;
+    }
+    assert.ok(a >= 0 && b >= 0, "no adjacent wheat pair");
+    const areaA = world.cellAreaKm2[a] ?? 1;
+    const areaB = world.cellAreaKm2[b] ?? 1;
+    const densityA = (COMMUNITY_BAR_PERSONS * 2) / areaA;
+    const densityB = (COMMUNITY_BAR_PERSONS * 1.5) / areaB;
+    for (const cell of world._landCells) {
+      world.people[cell] = 0;
+      world.technique[cell] = 0;
+      world.store[cell] = 0;
+    }
+    world.people[a] = densityA;
+    world.people[b] = densityB;
+    world.technique[a] = 1;
+    world.technique[b] = 1;
+    const aPacked = world._packedOf[a] ?? -1;
+    const bPacked = world._packedOf[b] ?? -1;
+    world.farmers[wheatId]![aPacked] = densityA;
+    world.farmers[wheatId]![bPacked] = densityB;
+    markPackageActive(world, wheat);
+    deriveTechniqueFromFarmers(world);
+    deriveCapacity(world);
+    // Fill stores so there is appropriable surplus.
+    world.store[a] = 10 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    world.store[b] = 10 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+
+    const communities = condenseCommunities(world);
+    assert.ok(communities.length >= 2, `expected ≥2 communities, got ${communities.length}`);
+
+    // Remit conserves tonnes.
+    const before = [...world._landCells].reduce(
+      (sum, cell) => sum + (world.store[cell] ?? 0) * (world.cellAreaKm2[cell] ?? 0),
+      0,
+    );
+    remitStore(world, [a], b, 100);
+    const after = [...world._landCells].reduce(
+      (sum, cell) => sum + (world.store[cell] ?? 0) * (world.cellAreaKm2[cell] ?? 0),
+      0,
+    );
+    assert.ok(Math.abs(before - after) < 1e-6, "remit does not conserve store tonnes");
+
+    // Cage basins globally so the lighter seat's exit blocks (wake window is
+    // the hearth-law radius — hundreds of km of otherwise-empty room).
+    for (const cell of world._landCells) {
+      const cap = world.capField[cell] ?? 0;
+      if (cap <= 0) continue;
+      world.people[cell] = Math.max(world.people[cell] ?? 0, cap * (1 - CAGE_KNEE_FREE_SHARE * 0.5));
+    }
+    // Keep the two seats as the mass peaks above neighbours.
+    world.people[a] = Math.max(world.people[a] ?? 0, densityA);
+    world.people[b] = Math.max(world.people[b] ?? 0, densityB);
+    deriveCapacity(world);
+    world.store[a] = 20 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    world.store[b] = 20 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    world.obligationEdges = [];
+    world.events = world.events.filter((event) => event.kind === "wake" || event.kind === "hearth");
+    // Force many raid draws by stepping the taking pass with a long dt.
+    for (let year = 0; year < 40; year++) {
+      world.step = year * MONTHS_PER_YEAR;
+      stepTaking(world, MONTHS_PER_YEAR);
+      if (world.obligationEdges.some((edge) => edge.kind === "tribute")) break;
+    }
+    const tribute = world.obligationEdges.filter((edge) => edge.kind === "tribute");
+    assert.ok(tribute.length >= 1, "caged loser formed no tribute edge");
+    assert.equal(tribute[0]!.strength, EXTRACT_FLOOR);
+    const overlay = politicsSnapshot(world);
+    assert.ok(overlay.seats.length >= 2, "politics snapshot missed seats");
+    assert.ok(overlay.tribute.length >= 1, "politics snapshot missed tribute edges");
+    assert.ok(
+      overlay.recent.some((event) => event.kind === "tribute"),
+      "politics snapshot missed recent tribute events",
+    );
+
+    // Open-country loser: reset edges, thin people so exit opens, expect plunder only.
+    world.obligationEdges = [];
+    const plunderEventsBefore = world.events.filter((event) => event.kind === "plunder").length;
+    for (const cell of world._landCells) {
+      const cap = world.capField[cell] ?? 0;
+      if (cap > 0) world.people[cell] = cap * 0.4;
+    }
+    // Keep community masses above the bar on the two seats.
+    world.people[a] = Math.max(world.people[a] ?? 0, densityA);
+    world.people[b] = Math.max(world.people[b] ?? 0, densityB);
+    world.store[a] = 20 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    world.store[b] = 20 * FOOD_RATION_TONNES_PER_PERSON_YEAR;
+    let plundered = false;
+    for (let year = 0; year < 40; year++) {
+      world.step = (100 + year) * MONTHS_PER_YEAR;
+      stepTaking(world, MONTHS_PER_YEAR);
+      if (world.events.filter((event) => event.kind === "plunder").length > plunderEventsBefore) {
+        plundered = true;
+        break;
+      }
+    }
+    assert.ok(plundered, "open-country raid produced no plunder");
+    assert.equal(
+      world.obligationEdges.filter((edge) => edge.kind === "tribute").length,
+      0,
+      "cheap exit must not stick a tribute edge",
+    );
+    void PLUNDER_SHARE;
   }
   // The two hop invariants (W6): in one firing a cell's farmers hop
   // PEOPLE_FARMER_MOBILITY_KM2_PER_YEAR × dt / area of themselves (after
@@ -1989,7 +2287,7 @@ async function main(): Promise<void> {
   // packages, deaths on the uncovered excess; empty store reproduces W30;
   // a tuber stores a third of its surplus; the food sheet closes; save v12.
   {
-    assert.equal(SAVE_VERSION, SAVE_VERSION_W31, "the envelope is v12");
+    assert.equal(SAVE_VERSION, SAVE_VERSION_M4, "the envelope is v13");
     assert.ok(Math.abs(spoilageRate(10, 1) - FOOD_SPOILAGE_PER_YEAR) < 1e-12, "8 % at 10 °C humid");
     assert.ok(Math.abs(spoilageRate(25, 1) - FOOD_SPOILAGE_PER_YEAR * (FOOD_SPOILAGE_Q10 ** 1.5)) < 1e-12, "Q10 at 25 °C humid");
     assert.ok(Math.abs(spoilageRate(25, 0) - FOOD_SPOILAGE_PER_YEAR * (FOOD_SPOILAGE_Q10 ** 1.5) * FOOD_SPOILAGE_ARID_FACTOR) < 1e-12, "a quarter of that arid");

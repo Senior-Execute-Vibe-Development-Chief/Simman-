@@ -2,6 +2,8 @@ import {
   BYTE_MASK,
   DEV_GRID_HEIGHT,
   DEV_GRID_WIDTH,
+  TOY_GRID_HEIGHT,
+  TOY_GRID_WIDTH,
   HASH_HEX_WIDTH,
   HASH_LANE_SEED,
   HASH_NUMBER_BYTES,
@@ -21,6 +23,8 @@ import { HARVEST_CELLS } from "./people/harvest";
 import { evaluateWake, recordArrivals } from "./people/wake";
 import type { HearthState } from "./people/types";
 import { wakeTargetStep } from "./horizon";
+import { maybeStepTaking } from "./politics";
+import type { Community, ObligationEdge } from "./politics/types";
 import {
   monthIndex,
   nextMonth,
@@ -31,7 +35,7 @@ import {
   type WorldPhase,
 } from "./scheduler";
 
-export type GridPreset = "dev" | "target";
+export type GridPreset = "dev" | "target" | "toy";
 
 export interface GridDimensions {
   readonly width: number;
@@ -68,12 +72,14 @@ export interface WorldDebug {
   foodUnstorable: number;
   /** Neighbour pairs priced by the last movement firing (W6: a full region prices none). */
   pricedPairs: number;
+  /** Wall time spent in the last politics.taking firings this session (M4). */
+  politicsTakingMs: number;
 }
 
-/** The append-only event log: hearth ignitions and the wake, the first world content it holds. */
+/** The append-only event log: hearth ignitions, the wake, and M4 taking events. */
 export interface WorldEvent {
   readonly step: number;
-  readonly kind: "hearth" | "wake";
+  readonly kind: "hearth" | "wake" | "tribute" | "plunder" | "community";
   readonly cell: number;
   readonly packageId?: string;
 }
@@ -121,6 +127,12 @@ export class World {
   cagedStep = MATH_NEGATIVE_ONE;
   cagedCell = MATH_NEGATIVE_ONE;
   events: WorldEvent[] = [];
+  /** Condensed communities (M4); rebuilt each taking firing, unrest carried by seat. */
+  communities: Community[] = [];
+  /** First obligation edges (M4); tribute subordination only in this cut. */
+  obligationEdges: ObligationEdge[] = [];
+  /** Scratch: cell → community seat id (−1 unclaimed); not hashed alone (derived). */
+  _communityOwner: Int32Array;
 
   constructor(options: WorldOptions) {
     const dimensions = dimensionsFor(options.grid);
@@ -155,10 +167,12 @@ export class World {
       foodSpoiled: 0,
       foodUnstorable: 0,
       pricedPairs: 0,
+      politicsTakingMs: 0,
     };
     this.cellAreaKm2 = new Float64Array(this.N);
     this.capField = new Float64Array(this.N);
     this.harvestZ = new Float64Array(HARVEST_CELLS);
+    this._communityOwner = new Int32Array(this.N).fill(MATH_NEGATIVE_ONE);
     if (this.substrate) initializePeople(this);
     else allocateFields(this as unknown as Record<string, unknown>, this.N);
     this.awakeSchedule = resolveSchedule(this);
@@ -185,6 +199,7 @@ export class World {
 
 export function dimensionsFor(grid: GridPreset): GridDimensions {
   if (grid === "dev") return { width: DEV_GRID_WIDTH, height: DEV_GRID_HEIGHT };
+  if (grid === "toy") return { width: TOY_GRID_WIDTH, height: TOY_GRID_HEIGHT };
   return { width: TARGET_GRID_WIDTH, height: TARGET_GRID_HEIGHT };
 }
 
@@ -220,10 +235,12 @@ export function stepWorld(world: World): void {
   // (most months, once movement runs on its own multi-year stride — W6)
   // costs nothing.
   const committed = world.substrate ? stepPeople(world) : false;
+  if (committed) recordArrivals(world);
+  // M4 taking: same step as the people passes (after harvest/store commit).
+  maybeStepTaking(world);
   world.step++;
   world.calendarMonth = nextMonth(world.calendarMonth);
   world.debug.ticks++;
-  if (committed) recordArrivals(world);
 }
 
 export function runSteps(world: World, steps: number): void {
@@ -326,6 +343,17 @@ export function hashWorld(world: World): string {
     cagedStep: world.cagedStep,
     cagedCell: world.cagedCell,
     events: world.events,
+    communities: world.communities.map((community) => ({
+      id: community.id,
+      seat: community.seat,
+      members: community.members,
+      people: community.people,
+      exit: community.exit,
+      exitBlocked: community.exitBlocked,
+      appropriable: community.appropriable,
+      unrest: community.unrest,
+    })),
+    obligationEdges: world.obligationEdges,
   }));
   hashNumber(hash, world.step);
   hashNumber(hash, world.calendarMonth);
