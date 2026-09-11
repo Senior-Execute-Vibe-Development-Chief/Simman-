@@ -115,7 +115,7 @@ import { deriveCapacity } from "../src/sim/people/capacity";
 import { deriveTechniqueFromFarmers, markPackageActive, packageCapacity, packageCapacityAt, standCapacity } from "../src/sim/people/crop";
 import { hearthAccrualRate } from "../src/sim/people/technique";
 import { cagedBasin } from "../src/sim/people/wake";
-import { condenseCommunities, remitStore, stepTaking } from "../src/sim/politics";
+import { condenseCommunities, politicsSnapshot, remitStore, stepTaking } from "../src/sim/politics";
 import { cellAreasKm2, foragerCapacity, foragerTerrestrialCapacity, irrigableShare, spoilageRate, yieldVariance, yieldVarianceParts } from "../src/sim/people/habitability";
 import { stepWorks } from "../src/sim/people/works";
 import {
@@ -743,6 +743,13 @@ async function main(): Promise<void> {
     const tribute = world.obligationEdges.filter((edge) => edge.kind === "tribute");
     assert.ok(tribute.length >= 1, "caged loser formed no tribute edge");
     assert.equal(tribute[0]!.strength, EXTRACT_FLOOR);
+    const overlay = politicsSnapshot(world);
+    assert.ok(overlay.seats.length >= 2, "politics snapshot missed seats");
+    assert.ok(overlay.tribute.length >= 1, "politics snapshot missed tribute edges");
+    assert.ok(
+      overlay.recent.some((event) => event.kind === "tribute"),
+      "politics snapshot missed recent tribute events",
+    );
 
     // Open-country loser: reset edges, thin people so exit opens, expect plunder only.
     world.obligationEdges = [];

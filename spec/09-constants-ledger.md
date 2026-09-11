@@ -848,6 +848,9 @@ granary is a query.
 | `SAVE_VERSION_M4` | 13 | communities, obligation edges, unrest in the envelope |
 | `TOY_GRID_WIDTH` / `TOY_GRID_HEIGHT` | 100 / 100 | M4 playground shell only — Nile-mouth Earth crop, not a shipped grid |
 | `TOY_CELL_EDGE_KM` | 12 | M4 playground only — square cell edge so a day's-walk community radius spans several cells |
+| `POLITICS_OVERLAY_MAX_SEATS` | 2000 | Earth observatory snapshot cap — seats shipped to the Politics lens |
+| `POLITICS_OVERLAY_MAX_TRIBUTE` | 500 | Earth observatory snapshot cap — tribute edges |
+| `POLITICS_OVERLAY_MAX_RECENT` | 32 | Earth observatory snapshot cap — recent tribute/plunder events |
 | (mechanism) | — | condense communities from people; exit = basin free share at seat; appropriable = Σ store×area × farmed legibility; caged loser → tribute edge + EXTRACT_FLOOR remit; open loser → plunder only. Awake annual `politics.taking`. No centers, no map colour |
 | (next) | — | geography acceptance on long arms; M5 chiefs; M3b beside the ladder |
 

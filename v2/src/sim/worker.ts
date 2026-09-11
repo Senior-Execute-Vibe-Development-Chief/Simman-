@@ -25,6 +25,7 @@ import { solveSpanMonths } from "./scheduler";
 import { CROP_PACKAGES } from "../ported/worldgen/cropPackages.js";
 import type { Substrate } from "./substrate";
 import type { PeopleWorld } from "./people/types";
+import { politicsSnapshot } from "./politics";
 
 /**
  * The can-grow and native overlays are annual land properties: how many
@@ -176,6 +177,7 @@ function liveSnapshot(target: World): Record<string, unknown> {
     cells: target.N,
     population: target.substrate ? populationTotal(target) : 0,
     ...regimeOf(target),
+    politics: politicsSnapshot(target),
     buffer: planes.buffer,
   };
 }
@@ -260,6 +262,8 @@ function reconstructedSnapshot(target: World, step: number): Record<string, unkn
     population: total,
     ...regimeOf(target),
     year: yearFromStep(step),
+    // Reconstructions are pre-wake: no taking register yet.
+    politics: { seats: [], tribute: [], recent: [] },
     buffer: planes.buffer,
   };
 }

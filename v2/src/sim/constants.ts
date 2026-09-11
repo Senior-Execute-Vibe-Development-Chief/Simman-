@@ -407,3 +407,6 @@ export const EXTRACT_FLOOR = 0.10; // spec/09-constants-ledger.md §M4 — harve
 export const TAKING_RAID_RATE_PER_YEAR = 0.05; // spec/09-constants-ledger.md §M4 — pre-state raiding as war's ground state; measured against the M4 geography gate, never cradle-fitted
 export const PLUNDER_SHARE = 0.25; // spec/09-constants-ledger.md §M4 — movable share of a raided granary when exit is cheap
 export const SAVE_VERSION_M4 = 13; // spec/09-constants-ledger.md §M4 — communities, obligation edges, and unrest in the envelope
+export const POLITICS_OVERLAY_MAX_SEATS = 2000; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (seats)
+export const POLITICS_OVERLAY_MAX_TRIBUTE = 500; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (tribute edges)
+export const POLITICS_OVERLAY_MAX_RECENT = 32; // spec/09-constants-ledger.md §M4 — Earth observatory snapshot cap (recent taking events)
